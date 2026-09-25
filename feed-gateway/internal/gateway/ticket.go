@@ -20,8 +20,12 @@ import (
 type Grants interface {
 	// The broker's name for a channel of the protocol's.
 	StreamChannel(channel string) string
-	// A credential admitting a listener to exactly these broker channels, and its lifetime.
-	Grant(streamChannels []string, at time.Time) (string, time.Duration, error)
+	// The broker's name for a restricted channel at one access epoch (SEE-156). It is never the
+	// public name, and it changes with the epoch, so a revocation retires every name issued before it.
+	RestrictedStreamChannel(channel string, epoch uint64) string
+	// A credential admitting a listener to exactly these broker channels, lasting at most `most`
+	// when that is positive and the broker's own lifetime otherwise, and its lifetime.
+	GrantWithin(streamChannels []string, at time.Time, most time.Duration) (string, time.Duration, error)
 	// The most channels one ticket may grant.
 	MostChannels() int
 }
@@ -57,9 +61,19 @@ func (f *Feed) GetStreamTicket(
 	// A repeat is not a mistake worth an error: a grant is a set of channels, and asking for one
 	// twice asks for nothing more. It is dropped rather than refused, and the answer says which
 	// channels were granted, so a caller that did it can see what happened.
+	//
+	// A restricted channel (SEE-156) is granted only for a live grant's session, and is left out
+	// otherwise exactly as an unknown channel is: the other feeds on the phone keep their stream,
+	// and the phone learns why this one is missing by reading it. The ticket then lasts no longer
+	// than the shortest grant it carries.
 	seen := make(map[string]bool, len(asked))
 	granted := make([]*gatewayv1.StreamChannel, 0, len(asked))
 	streams := make([]string, 0, len(asked))
+	sessions := sessionsOf(request.Msg.GetSessions())
+	var (
+		most    time.Duration
+		refused *connect.Error
+	)
 	for _, channel := range asked {
 		serverID := rules.ServerOf(channel)
 		if serverID == "" {
@@ -69,7 +83,7 @@ func (f *Feed) GetStreamTicket(
 			continue
 		}
 		seen[channel] = true
-		known, err := f.storage.PublisherExists(ctx, serverID)
+		access, known, err := f.accessOf(ctx, serverID)
 		if err != nil {
 			return nil, internal(err)
 		}
@@ -77,6 +91,20 @@ func (f *Feed) GetStreamTicket(
 			continue
 		}
 		stream := f.grants.StreamChannel(channel)
+		if access.Restricted() {
+			grant, denied := f.admit(ctx, serverID, access, sessions[channel])
+			if denied != nil {
+				if refused == nil {
+					refused = denied
+				}
+				continue
+			}
+			left := grant.ExpiresAt.Sub(f.now())
+			if most == 0 || left < most {
+				most = left
+			}
+			stream = f.grants.RestrictedStreamChannel(channel, access.Epoch)
+		}
 		granted = append(granted, &gatewayv1.StreamChannel{
 			Channel:       channel,
 			StreamChannel: stream,
@@ -87,10 +115,15 @@ func (f *Feed) GetStreamTicket(
 	// connection that receives nothing for as long as it is held open, which is worse for the
 	// caller than being told so.
 	if len(streams) == 0 {
+		// When the only channels asked for were restricted ones this caller may not read, the
+		// reason is the access, and the phone acts on it rather than on "not here".
+		if refused != nil {
+			return nil, refused
+		}
 		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_SERVER, "channels")
 	}
 
-	ticket, lifetime, err := f.grants.Grant(streams, f.now())
+	ticket, lifetime, err := f.grants.GrantWithin(streams, f.now(), most)
 	if err != nil {
 		return nil, internal(err)
 	}

@@ -138,6 +138,38 @@ enum GatewayProblem {
   // may still carry these values while the corresponding routes remain permanently unavailable.
   reserved 35 to 46;
   reserved "GATEWAY_PROBLEM_BAD_USER_REF", "GATEWAY_PROBLEM_BAD_LIFETIME", "GATEWAY_PROBLEM_INVALID_INVITATION", "GATEWAY_PROBLEM_INVITATION_EXPIRED", "GATEWAY_PROBLEM_INVITATION_USED", "GATEWAY_PROBLEM_NO_BINDING", "GATEWAY_PROBLEM_BINDING_EXISTS", "GATEWAY_PROBLEM_WRONG_RECIPIENT", "GATEWAY_PROBLEM_NO_SUCH_REQUEST", "GATEWAY_PROBLEM_RESULT_CONFLICT", "GATEWAY_PROBLEM_REQUEST_SETTLED", "GATEWAY_PROBLEM_NOT_PRIVATE";
+
+  // --- Restricted feeds (SEE-156) -------------------------------------------
+  // Numbered after the retired range above, which stays retired: none of these reuses a number or
+  // a meaning that range carried (docs/wiki/restricted-feeds.md).
+  //
+  // The channel is restricted and the call carried no session, or one this gateway does not hold
+  // for that channel. One code for both, so a caller learns nothing about sessions it does not
+  // hold; the phone answers it by asking the publisher for access, never by reading anonymously.
+  GATEWAY_PROBLEM_ACCESS_REQUIRED = 47;
+  // The session was granted for this channel and the publisher revoked it. Final: the same
+  // session will never be accepted again, and only a new approval can grant another.
+  GATEWAY_PROBLEM_ACCESS_REVOKED = 48;
+  // The session's grant ran out without being renewed — the bound on how long access outlives a
+  // publisher the gateway cannot hear from. Not final: a publisher that still approves the device
+  // renews the same grant, and the session works again.
+  GATEWAY_PROBLEM_ACCESS_EXPIRED = 49;
+  // A publisher's manifest claims an access policy or authentication origin other than the one
+  // its operator registered. A restricted feed cannot be published as public by omission, and a
+  // public one cannot point phones at an origin nobody registered.
+  GATEWAY_PROBLEM_ACCESS_MISMATCH = 50;
+  // A grant call from a publisher whose feed is not restricted. Access to a public feed is not a
+  // thing this gateway records.
+  GATEWAY_PROBLEM_NOT_RESTRICTED = 51;
+  // A grant the caller does not hold: never granted, or granted by another publisher. One code
+  // for both, so a publisher cannot probe another publisher's grants — and a cross-publisher
+  // revocation changes nothing.
+  GATEWAY_PROBLEM_NO_SUCH_GRANT = 52;
+  // A renewal of a grant this gateway already revoked. A revocation is final at the gateway, so a
+  // late or replayed renewal can never bring access back.
+  GATEWAY_PROBLEM_GRANT_REVOKED = 53;
+  // A grant whose identity, references, session digest or lifetime is not well formed.
+  GATEWAY_PROBLEM_BAD_GRANT = 54;
 }
 
 // GatewayErrorDetail is the Connect error detail on every FeedService and PublisherService error.

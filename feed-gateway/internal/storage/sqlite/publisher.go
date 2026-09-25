@@ -46,6 +46,10 @@ func (s *Store) Register(ctx context.Context, registration Registration, capabil
 	if !capability.Valid() {
 		return "", fmt.Errorf("not a capability: %s", capability)
 	}
+	if !registration.Access.Valid() {
+		return "", fmt.Errorf("not an access policy: %q with origin %q",
+			registration.Access.Policy, registration.Access.AuthOrigin)
+	}
 	err := s.write(ctx, func(tx *Tx) error {
 		known, err := tx.PublisherExists(ctx, registration.ServerID)
 		if err != nil {
@@ -55,10 +59,12 @@ func (s *Store) Register(ctx context.Context, registration Registration, capabil
 			return fmt.Errorf("%w: %s", ErrPublisherExists, registration.ServerID)
 		}
 		if _, err := tx.tx.ExecContext(ctx,
-			`INSERT INTO publisher (server_id, label, host, created_at_ms, publishing, relaying)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO publisher
+			   (server_id, label, host, created_at_ms, publishing, relaying, access_policy, auth_origin)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			registration.ServerID, registration.Label, registration.Host, milliseconds(at),
-			flag(registration.Publishing), flag(registration.Relaying)); err != nil {
+			flag(registration.Publishing), flag(registration.Relaying),
+			string(policyOf(registration.Access)), registration.Access.AuthOrigin); err != nil {
 			return fmt.Errorf("register publisher: %w", err)
 		}
 		return tx.addCredential(ctx, registration.ServerID, registration.Label, capability, hash, at)
@@ -313,6 +319,9 @@ func (s *Store) Publisher(ctx context.Context, serverID string) (*Publisher, err
 // they have enabled, and how many credentials of each kind would be accepted right now. The two
 // counts are separate because the two grants are, and a page that showed one number would let a
 // relay-only server look like it could publish.
+//
+// The grant count (SEE-156) is a count of live grants and nothing more: the operator's view says
+// how many devices a restricted feed admits, never which.
 const publisherColumns = `SELECT p.server_id, p.label, p.host, p.created_at_ms,
 	        p.publishing, p.relaying,
 	        (SELECT COUNT(*) FROM publisher_credential c
@@ -320,16 +329,23 @@ const publisherColumns = `SELECT p.server_id, p.label, p.host, p.created_at_ms,
 	            AND c.capability = 'publish'),
 	        (SELECT COUNT(*) FROM publisher_credential c
 	          WHERE c.server_id = p.server_id AND c.revoked_at_ms IS NULL
-	            AND c.capability = 'relay')`
+	            AND c.capability = 'relay'),
+	        p.access_policy, p.auth_origin, p.access_epoch,
+	        (SELECT COUNT(*) FROM access_grant g
+	          WHERE g.server_id = p.server_id AND g.revoked_at_ms IS NULL
+	            AND g.expires_at_ms > CAST(strftime('%s','now') AS INTEGER) * 1000)`
 
 func scanPublisher(from scanner) (Publisher, error) {
 	var (
 		publisher            Publisher
 		created              int64
 		publishing, relaying int
+		policy               string
+		epoch                int64
 	)
 	if err := from.Scan(&publisher.ServerID, &publisher.Label, &publisher.Host, &created,
-		&publishing, &relaying, &publisher.Active, &publisher.ActiveRelay); err != nil {
+		&publishing, &relaying, &publisher.Active, &publisher.ActiveRelay,
+		&policy, &publisher.Access.AuthOrigin, &epoch, &publisher.Grants); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return publisher, err
 		}
@@ -337,6 +353,8 @@ func scanPublisher(from scanner) (Publisher, error) {
 	}
 	publisher.CreatedAt = instant(created)
 	publisher.Publishing, publisher.Relaying = publishing == 1, relaying == 1
+	publisher.Access.Policy = storage.AccessPolicy(policy)
+	publisher.Access.Epoch = uint64(epoch)
 	return publisher, nil
 }
 

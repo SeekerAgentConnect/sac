@@ -147,6 +147,37 @@ const (
 	// with its own server ID, credential and database — which is what the publisher's own database
 	// stamp already enforces at its end.
 	GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT GatewayProblem = 34
+	// --- Restricted feeds (SEE-156) -------------------------------------------
+	// Numbered after the retired range above, which stays retired: none of these reuses a number or
+	// a meaning that range carried (docs/wiki/restricted-feeds.md).
+	//
+	// The channel is restricted and the call carried no session, or one this gateway does not hold
+	// for that channel. One code for both, so a caller learns nothing about sessions it does not
+	// hold; the phone answers it by asking the publisher for access, never by reading anonymously.
+	GatewayProblem_GATEWAY_PROBLEM_ACCESS_REQUIRED GatewayProblem = 47
+	// The session was granted for this channel and the publisher revoked it. Final: the same
+	// session will never be accepted again, and only a new approval can grant another.
+	GatewayProblem_GATEWAY_PROBLEM_ACCESS_REVOKED GatewayProblem = 48
+	// The session's grant ran out without being renewed — the bound on how long access outlives a
+	// publisher the gateway cannot hear from. Not final: a publisher that still approves the device
+	// renews the same grant, and the session works again.
+	GatewayProblem_GATEWAY_PROBLEM_ACCESS_EXPIRED GatewayProblem = 49
+	// A publisher's manifest claims an access policy or authentication origin other than the one
+	// its operator registered. A restricted feed cannot be published as public by omission, and a
+	// public one cannot point phones at an origin nobody registered.
+	GatewayProblem_GATEWAY_PROBLEM_ACCESS_MISMATCH GatewayProblem = 50
+	// A grant call from a publisher whose feed is not restricted. Access to a public feed is not a
+	// thing this gateway records.
+	GatewayProblem_GATEWAY_PROBLEM_NOT_RESTRICTED GatewayProblem = 51
+	// A grant the caller does not hold: never granted, or granted by another publisher. One code
+	// for both, so a publisher cannot probe another publisher's grants — and a cross-publisher
+	// revocation changes nothing.
+	GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_GRANT GatewayProblem = 52
+	// A renewal of a grant this gateway already revoked. A revocation is final at the gateway, so a
+	// late or replayed renewal can never bring access back.
+	GatewayProblem_GATEWAY_PROBLEM_GRANT_REVOKED GatewayProblem = 53
+	// A grant whose identity, references, session digest or lifetime is not well formed.
+	GatewayProblem_GATEWAY_PROBLEM_BAD_GRANT GatewayProblem = 54
 )
 
 // Enum value maps for GatewayProblem.
@@ -187,6 +218,14 @@ var (
 		32: "GATEWAY_PROBLEM_TOO_MANY_CHANNELS",
 		33: "GATEWAY_PROBLEM_NO_PUSH",
 		34: "GATEWAY_PROBLEM_OTHER_ENVIRONMENT",
+		47: "GATEWAY_PROBLEM_ACCESS_REQUIRED",
+		48: "GATEWAY_PROBLEM_ACCESS_REVOKED",
+		49: "GATEWAY_PROBLEM_ACCESS_EXPIRED",
+		50: "GATEWAY_PROBLEM_ACCESS_MISMATCH",
+		51: "GATEWAY_PROBLEM_NOT_RESTRICTED",
+		52: "GATEWAY_PROBLEM_NO_SUCH_GRANT",
+		53: "GATEWAY_PROBLEM_GRANT_REVOKED",
+		54: "GATEWAY_PROBLEM_BAD_GRANT",
 	}
 	GatewayProblem_value = map[string]int32{
 		"GATEWAY_PROBLEM_UNSPECIFIED":        0,
@@ -224,6 +263,14 @@ var (
 		"GATEWAY_PROBLEM_TOO_MANY_CHANNELS":  32,
 		"GATEWAY_PROBLEM_NO_PUSH":            33,
 		"GATEWAY_PROBLEM_OTHER_ENVIRONMENT":  34,
+		"GATEWAY_PROBLEM_ACCESS_REQUIRED":    47,
+		"GATEWAY_PROBLEM_ACCESS_REVOKED":     48,
+		"GATEWAY_PROBLEM_ACCESS_EXPIRED":     49,
+		"GATEWAY_PROBLEM_ACCESS_MISMATCH":    50,
+		"GATEWAY_PROBLEM_NOT_RESTRICTED":     51,
+		"GATEWAY_PROBLEM_NO_SUCH_GRANT":      52,
+		"GATEWAY_PROBLEM_GRANT_REVOKED":      53,
+		"GATEWAY_PROBLEM_BAD_GRANT":          54,
 	}
 )
 
@@ -328,7 +375,7 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x12GatewayErrorDetail\x12@\n" +
 	"\aproblem\x18\x01 \x01(\x0e2&.seekervault.gateway.v1.GatewayProblemR\aproblem\x12\x14\n" +
 	"\x05field\x18\x02 \x01(\tR\x05field\x12#\n" +
-	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\xd8\f\n" +
+	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\xf3\x0e\n" +
 	"\x0eGatewayProblem\x12\x1f\n" +
 	"\x1bGATEWAY_PROBLEM_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fGATEWAY_PROBLEM_UNAUTHENTICATED\x10\x01\x12 \n" +
@@ -365,7 +412,15 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x19GATEWAY_PROBLEM_NO_STREAM\x10\x1f\x12%\n" +
 	"!GATEWAY_PROBLEM_TOO_MANY_CHANNELS\x10 \x12\x1b\n" +
 	"\x17GATEWAY_PROBLEM_NO_PUSH\x10!\x12%\n" +
-	"!GATEWAY_PROBLEM_OTHER_ENVIRONMENT\x10\"\"\x04\b#\x10.*\x1cGATEWAY_PROBLEM_BAD_USER_REF*\x1cGATEWAY_PROBLEM_BAD_LIFETIME*\"GATEWAY_PROBLEM_INVALID_INVITATION*\"GATEWAY_PROBLEM_INVITATION_EXPIRED*\x1fGATEWAY_PROBLEM_INVITATION_USED*\x1aGATEWAY_PROBLEM_NO_BINDING*\x1eGATEWAY_PROBLEM_BINDING_EXISTS*\x1fGATEWAY_PROBLEM_WRONG_RECIPIENT*\x1fGATEWAY_PROBLEM_NO_SUCH_REQUEST*\x1fGATEWAY_PROBLEM_RESULT_CONFLICT*\x1fGATEWAY_PROBLEM_REQUEST_SETTLED*\x1bGATEWAY_PROBLEM_NOT_PRIVATEB\x85\x02\n" +
+	"!GATEWAY_PROBLEM_OTHER_ENVIRONMENT\x10\"\x12#\n" +
+	"\x1fGATEWAY_PROBLEM_ACCESS_REQUIRED\x10/\x12\"\n" +
+	"\x1eGATEWAY_PROBLEM_ACCESS_REVOKED\x100\x12\"\n" +
+	"\x1eGATEWAY_PROBLEM_ACCESS_EXPIRED\x101\x12#\n" +
+	"\x1fGATEWAY_PROBLEM_ACCESS_MISMATCH\x102\x12\"\n" +
+	"\x1eGATEWAY_PROBLEM_NOT_RESTRICTED\x103\x12!\n" +
+	"\x1dGATEWAY_PROBLEM_NO_SUCH_GRANT\x104\x12!\n" +
+	"\x1dGATEWAY_PROBLEM_GRANT_REVOKED\x105\x12\x1d\n" +
+	"\x19GATEWAY_PROBLEM_BAD_GRANT\x106\"\x04\b#\x10.*\x1cGATEWAY_PROBLEM_BAD_USER_REF*\x1cGATEWAY_PROBLEM_BAD_LIFETIME*\"GATEWAY_PROBLEM_INVALID_INVITATION*\"GATEWAY_PROBLEM_INVITATION_EXPIRED*\x1fGATEWAY_PROBLEM_INVITATION_USED*\x1aGATEWAY_PROBLEM_NO_BINDING*\x1eGATEWAY_PROBLEM_BINDING_EXISTS*\x1fGATEWAY_PROBLEM_WRONG_RECIPIENT*\x1fGATEWAY_PROBLEM_NO_SUCH_REQUEST*\x1fGATEWAY_PROBLEM_RESULT_CONFLICT*\x1fGATEWAY_PROBLEM_REQUEST_SETTLED*\x1bGATEWAY_PROBLEM_NOT_PRIVATEB\x85\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\fProblemProtoP\x01Z_github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (

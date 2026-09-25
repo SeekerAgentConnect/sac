@@ -580,6 +580,7 @@ func registrationOf(publisher storage.Publisher) storage.Registration {
 		Host:       publisher.Host,
 		Publishing: publisher.Publishing,
 		Relaying:   publisher.Relaying,
+		Access:     publisher.Access,
 	}
 }
 

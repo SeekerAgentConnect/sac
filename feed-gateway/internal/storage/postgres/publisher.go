@@ -46,6 +46,10 @@ func (s *Store) Register(ctx context.Context, registration Registration, capabil
 	if !capability.Valid() {
 		return "", fmt.Errorf("not a capability: %s", capability)
 	}
+	if !registration.Access.Valid() {
+		return "", fmt.Errorf("not an access policy: %q with origin %q",
+			registration.Access.Policy, registration.Access.AuthOrigin)
+	}
 	err := s.write(ctx, func(tx *Tx) error {
 		known, err := tx.PublisherExists(ctx, registration.ServerID)
 		if err != nil {
@@ -55,10 +59,12 @@ func (s *Store) Register(ctx context.Context, registration Registration, capabil
 			return fmt.Errorf("%w: %s", ErrPublisherExists, registration.ServerID)
 		}
 		if _, err := tx.tx.ExecContext(ctx,
-			`INSERT INTO `+Schema+`.publisher (server_id, label, host, created_at_ms, publishing, relaying)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			`INSERT INTO `+Schema+`.publisher
+			   (server_id, label, host, created_at_ms, publishing, relaying, access_policy, auth_origin)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 			registration.ServerID, registration.Label, registration.Host, milliseconds(at),
-			registration.Publishing, registration.Relaying); err != nil {
+			registration.Publishing, registration.Relaying,
+			string(policyOf(registration.Access)), registration.Access.AuthOrigin); err != nil {
 			return fmt.Errorf("register publisher: %w", err)
 		}
 		return tx.addCredential(ctx, registration.ServerID, registration.Label, capability, hash, at)
@@ -308,22 +314,31 @@ const publisherColumns = `SELECT p.server_id, p.label, p.host, p.created_at_ms,
 	            AND c.capability = 'publish'),
 	        (SELECT COUNT(*) FROM ` + Schema + `.publisher_credential c
 	          WHERE c.server_id = p.server_id AND c.revoked_at_ms IS NULL
-	            AND c.capability = 'relay')`
+	            AND c.capability = 'relay'),
+	        p.access_policy, p.auth_origin, p.access_epoch,
+	        (SELECT COUNT(*) FROM ` + Schema + `.access_grant g
+	          WHERE g.server_id = p.server_id AND g.revoked_at_ms IS NULL
+	            AND g.expires_at_ms > (EXTRACT(EPOCH FROM now()) * 1000)::BIGINT)`
 
 func scanPublisher(from scanner) (Publisher, error) {
 	var (
 		publisher Publisher
 		created   int64
+		policy    string
+		epoch     int64
 	)
 	if err := from.Scan(&publisher.ServerID, &publisher.Label, &publisher.Host, &created,
 		&publisher.Publishing, &publisher.Relaying, &publisher.Active,
-		&publisher.ActiveRelay); err != nil {
+		&publisher.ActiveRelay, &policy, &publisher.Access.AuthOrigin, &epoch,
+		&publisher.Grants); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return publisher, err
 		}
 		return publisher, fmt.Errorf("read publisher: %w", err)
 	}
 	publisher.CreatedAt = instant(created)
+	publisher.Access.Policy = storage.AccessPolicy(policy)
+	publisher.Access.Epoch = uint64(epoch)
 	return publisher, nil
 }
 

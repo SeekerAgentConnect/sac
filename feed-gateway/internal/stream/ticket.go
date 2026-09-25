@@ -42,6 +42,20 @@ import (
 // broker closes the connection when it expires (`3005 connection expired`), the listener asks for
 // another, and a ticket that leaked stops mattering by itself.
 func (b *Broker) Grant(streamChannels []string, at time.Time) (string, time.Duration, error) {
+	return b.GrantWithin(streamChannels, at, 0)
+}
+
+// GrantWithin is Grant for a ticket that must not outlive something else — a restricted channel's
+// grant (SEE-156). A positive bound shorter than the broker's lifetime is the ticket's lifetime; the
+// broker then closes the connection at that moment (`3005`), and the listener's renewal is checked
+// against the grant again.
+func (b *Broker) GrantWithin(streamChannels []string, at time.Time, most time.Duration) (string, time.Duration, error) {
+	lifetime := b.lifetime
+	if most > 0 && most < lifetime {
+		// Whole seconds, because that is all a JWT expiry says; never zero, because a ticket that
+		// has already expired is not one.
+		lifetime = max(most.Truncate(time.Second), time.Second)
+	}
 	if len(streamChannels) == 0 {
 		return "", 0, fmt.Errorf("stream: a grant needs at least one channel")
 	}
@@ -51,13 +65,13 @@ func (b *Broker) Grant(streamChannels []string, at time.Time) (string, time.Dura
 	}
 	token, err := sign(b.tokenKey, ticket{
 		Subject:  "",
-		Expires:  at.Add(b.lifetime).Unix(),
+		Expires:  at.Add(lifetime).Unix(),
 		Channels: streamChannels,
 	})
 	if err != nil {
 		return "", 0, err
 	}
-	return token, b.lifetime, nil
+	return token, lifetime, nil
 }
 
 // ticket is the whole claim set, and its field order is the order it is signed in.

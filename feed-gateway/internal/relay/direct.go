@@ -95,17 +95,41 @@ const (
 // token the endpoint has stopped accepting is this service's own state, and it is the only
 // condition where trying again immediately can change the answer.
 func (d *Direct) Send(ctx context.Context, target string, timeSensitive bool) (Outcome, error) {
+	return d.deliver(ctx, target, timeSensitive,
+		map[string]string{"kind": RequestKind, "version": RequestVersion},
+		RequestCollapseKey, RequestLifetime)
+}
+
+// SendFeedHint is a restricted feed's hint to one approved device (SEE-156).
+//
+// It is exactly the message a public feed's topic carries — the same two-key data map, collapse key
+// and lifetime — addressed to one device instead of a topic, so the phone handles it with the code
+// that already handles a topic hint: it reads its feeds, under its own sessions, and the gateway
+// checks every one of those reads. Nothing in it names the feed, the grant or the document.
+func (d *Direct) SendFeedHint(ctx context.Context, target string, timeSensitive bool) (Outcome, error) {
+	return d.deliver(ctx, target, timeSensitive,
+		map[string]string{"kind": Kind, "version": Version}, CollapseKey, Lifetime)
+}
+
+func (d *Direct) deliver(
+	ctx context.Context,
+	target string,
+	timeSensitive bool,
+	data map[string]string,
+	collapseKey string,
+	lifetime time.Duration,
+) (Outcome, error) {
 	priority := "NORMAL"
 	if timeSensitive {
 		priority = "HIGH"
 	}
 	body, err := json.Marshal(deviceEnvelope{Message: deviceMessage{
 		Target: target,
-		Data:   map[string]string{"kind": RequestKind, "version": RequestVersion},
+		Data:   data,
 		Android: android{
-			CollapseKey: RequestCollapseKey,
+			CollapseKey: collapseKey,
 			Priority:    priority,
-			Lifetime:    fmt.Sprintf("%ds", int(RequestLifetime.Seconds())),
+			Lifetime:    fmt.Sprintf("%ds", int(lifetime.Seconds())),
 		},
 	}})
 	if err != nil {

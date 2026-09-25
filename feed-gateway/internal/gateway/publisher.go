@@ -36,6 +36,9 @@ type Publisher struct {
 	// (SEE-150, presence.go). The window a feed is shown online for is three of these, derived
 	// where it is read rather than configured separately.
 	heartbeat time.Duration
+	// The restricted-feed methods (SEE-156, access.go). Nil until WithAccess, and the methods then
+	// answer that this gateway does not serve them.
+	access *Access
 }
 
 // PublishRequest is the primary developer publication operation. The older proposal RPC below is
@@ -206,8 +209,26 @@ func (p *Publisher) PublishManifest(
 	answer := &gatewayv1.PublishManifestResponse{
 		SettingsRevision: manifest.GetSettingsRevision(),
 	}
+	declared := request.Msg.GetManifest().GetFeed().GetAccess()
 	var refused *rules.Fault
 	err := p.storage.Write(ctx, func(tx storage.PublicationTx) error {
+		// The policy is the operator's registration, never the publisher's claim (SEE-156). The
+		// claim has to agree with it — so a restricted feed cannot be published as public by
+		// leaving the field out, and a public one cannot send phones to an origin nobody
+		// registered — and the stored document carries the registration's own words.
+		access, err := tx.Access(ctx, manifest.GetServerId())
+		if err != nil {
+			return err
+		}
+		if !declaredAccessFits(declared, access) {
+			refused = &rules.Fault{
+				Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_ACCESS_MISMATCH,
+				Field:   "feed.access",
+			}
+			return nil
+		}
+		manifest = stamped(manifest, access)
+		answer.Access = described(access)
 		held, err := tx.Manifest(ctx, manifest.GetServerId())
 		if err != nil {
 			return err

@@ -103,7 +103,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -118,7 +119,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -133,7 +135,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -148,7 +151,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -163,7 +167,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -186,7 +191,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -203,7 +209,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -219,7 +226,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -236,7 +244,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -253,7 +262,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -267,7 +277,8 @@ public  final class GetStreamTicketResponse extends
    * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
    * stale feed reference keeps the stream for its others, and learns which one was not granted by
    * comparing what it asked with what it got. A malformed channel is refused outright, because that
-   * is a caller's mistake rather than a fact about the gateway.
+   * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+   * session is absent the same way (SEE-156), and the caller finds out why by reading it.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -283,7 +294,8 @@ public  final class GetStreamTicketResponse extends
    * <pre>
    * How long the ticket is good for. A duration rather than an instant, so a phone whose clock
    * disagrees with the gateway's still renews at the right time — and renewing is ordinary: the
-   * stream ends when the ticket expires, and the listener asks for another.
+   * stream ends when the ticket expires, and the listener asks for another. A ticket that includes
+   * a restricted channel lasts no longer than the shortest of its grants (SEE-156).
    * </pre>
    *
    * <code>uint32 lifetime_seconds = 3 [json_name = "lifetimeSeconds"];</code>
@@ -297,7 +309,8 @@ public  final class GetStreamTicketResponse extends
    * <pre>
    * How long the ticket is good for. A duration rather than an instant, so a phone whose clock
    * disagrees with the gateway's still renews at the right time — and renewing is ordinary: the
-   * stream ends when the ticket expires, and the listener asks for another.
+   * stream ends when the ticket expires, and the listener asks for another. A ticket that includes
+   * a restricted channel lasts no longer than the shortest of its grants (SEE-156).
    * </pre>
    *
    * <code>uint32 lifetime_seconds = 3 [json_name = "lifetimeSeconds"];</code>
@@ -311,7 +324,8 @@ public  final class GetStreamTicketResponse extends
    * <pre>
    * How long the ticket is good for. A duration rather than an instant, so a phone whose clock
    * disagrees with the gateway's still renews at the right time — and renewing is ordinary: the
-   * stream ends when the ticket expires, and the listener asks for another.
+   * stream ends when the ticket expires, and the listener asks for another. A ticket that includes
+   * a restricted channel lasts no longer than the shortest of its grants (SEE-156).
    * </pre>
    *
    * <code>uint32 lifetime_seconds = 3 [json_name = "lifetimeSeconds"];</code>
@@ -503,7 +517,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -519,7 +534,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -533,7 +549,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -548,7 +565,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -565,7 +583,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -583,7 +602,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -599,7 +619,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -616,7 +637,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -633,7 +655,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -651,7 +674,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -668,7 +692,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -684,7 +709,8 @@ public  final class GetStreamTicketResponse extends
      * for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
      * stale feed reference keeps the stream for its others, and learns which one was not granted by
      * comparing what it asked with what it got. A malformed channel is refused outright, because that
-     * is a caller's mistake rather than a fact about the gateway.
+     * is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+     * session is absent the same way (SEE-156), and the caller finds out why by reading it.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.StreamChannel channels = 2 [json_name = "channels"];</code>
@@ -699,7 +725,8 @@ public  final class GetStreamTicketResponse extends
      * <pre>
      * How long the ticket is good for. A duration rather than an instant, so a phone whose clock
      * disagrees with the gateway's still renews at the right time — and renewing is ordinary: the
-     * stream ends when the ticket expires, and the listener asks for another.
+     * stream ends when the ticket expires, and the listener asks for another. A ticket that includes
+     * a restricted channel lasts no longer than the shortest of its grants (SEE-156).
      * </pre>
      *
      * <code>uint32 lifetime_seconds = 3 [json_name = "lifetimeSeconds"];</code>
@@ -713,7 +740,8 @@ public  final class GetStreamTicketResponse extends
      * <pre>
      * How long the ticket is good for. A duration rather than an instant, so a phone whose clock
      * disagrees with the gateway's still renews at the right time — and renewing is ordinary: the
-     * stream ends when the ticket expires, and the listener asks for another.
+     * stream ends when the ticket expires, and the listener asks for another. A ticket that includes
+     * a restricted channel lasts no longer than the shortest of its grants (SEE-156).
      * </pre>
      *
      * <code>uint32 lifetime_seconds = 3 [json_name = "lifetimeSeconds"];</code>
@@ -729,7 +757,8 @@ public  final class GetStreamTicketResponse extends
      * <pre>
      * How long the ticket is good for. A duration rather than an instant, so a phone whose clock
      * disagrees with the gateway's still renews at the right time — and renewing is ordinary: the
-     * stream ends when the ticket expires, and the listener asks for another.
+     * stream ends when the ticket expires, and the listener asks for another. A ticket that includes
+     * a restricted channel lasts no longer than the shortest of its grants (SEE-156).
      * </pre>
      *
      * <code>uint32 lifetime_seconds = 3 [json_name = "lifetimeSeconds"];</code>

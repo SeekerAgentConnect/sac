@@ -42,6 +42,9 @@ type Feed struct {
 	// presence.go). It has no nil case: every deployment answers presence, from the store it
 	// already keeps registrations in.
 	window time.Duration
+	// Where a restricted grant's push target is recorded (SEE-156, access.go). Nil when this
+	// deployment relays nothing.
+	targets storage.AccessStore
 }
 
 // ListRequests is the common-contract snapshot read. It deliberately shares the cursor, sequence
@@ -68,6 +71,11 @@ func (f *Feed) ListRequests(
 	}
 	if !known {
 		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_SERVER, "channel")
+	}
+	// Before anything about the channel is read, including whether it moved: a sequence is not
+	// something a device without access may learn either (SEE-156).
+	if refused := f.authorize(ctx, channel, request.Msg.GetSession()); refused != nil {
+		return nil, refused
 	}
 	var snapshot uint64
 	var after string
@@ -117,6 +125,9 @@ func (f *Feed) GetRequest(
 	if !rules.IsID(requestID) {
 		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ID, "request_id")
 	}
+	if refused := f.authorizePoint(ctx, channel, request.Msg.GetSession()); refused != nil {
+		return nil, refused
+	}
 	document, err := f.storage.Request(ctx, channel, requestID)
 	if err != nil {
 		return nil, internal(err)
@@ -161,12 +172,23 @@ func (f *Feed) GetServerManifest(
 	if manifest == nil {
 		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_SERVER, "server_id")
 	}
+	// The manifest is public for a restricted feed as well: it is the onboarding metadata a phone
+	// needs to know that it must prove itself, and where (SEE-156). It is served with the policy the
+	// operator registered, whatever the stored document says, so no feed is ever described as more
+	// open than it is.
+	access, hosted, err := f.accessOf(ctx, serverID)
+	if err != nil {
+		return nil, internal(err)
+	}
+	if !hosted {
+		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_SERVER, "server_id")
+	}
 	revision := manifest.Document.GetSettingsRevision()
 	answer := &gatewayv1.GetServerManifestResponse{SettingsRevision: revision}
 	if request.Msg.GetKnownSettingsRevision() == revision {
 		answer.Unchanged = true
 	} else {
-		answer.Manifest = manifest.Document
+		answer.Manifest = stamped(manifest.Document, access)
 	}
 	return uncached(connect.NewResponse(answer)), nil
 }
@@ -205,6 +227,11 @@ func (f *Feed) ListProposals(
 	// heard of.
 	if !known {
 		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_SERVER, "channel")
+	}
+	// The legacy view is the same rows, so it is the same check: a protocol-1 client is not a way
+	// around a restricted feed (SEE-156).
+	if refused := f.authorize(ctx, channel, request.Msg.GetSession()); refused != nil {
+		return nil, refused
 	}
 
 	var (
@@ -271,6 +298,9 @@ func (f *Feed) GetProposal(
 	proposalID := request.Msg.GetProposalId()
 	if !rules.IsID(proposalID) {
 		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ID, "proposal_id")
+	}
+	if refused := f.authorizePoint(ctx, channel, request.Msg.GetSession()); refused != nil {
+		return nil, refused
 	}
 	proposal, err := f.storage.Proposal(ctx, channel, proposalID)
 	if err != nil {

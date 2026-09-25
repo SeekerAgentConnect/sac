@@ -20,6 +20,11 @@ public inline fun streamChannel(block: io.github.brrenat.seekervault.gateway.v1.
  * transport's, and it is opaque — it exists so the broker's own namespaces can scope history,
  * recovery and permissions to these channels and nothing else, without the protocol having to know
  * that the broker has namespaces at all.
+ *
+ * For a restricted channel (SEE-156) the stream name also carries the channel's access epoch,
+ * which the gateway moves on every revocation. A listener still holding an older name — a revoked
+ * device replaying an old ticket, say — is attached to a stream nothing is published on any more,
+ * so revocation does not depend on the broker closing anybody's connection.
  * ```
  *
  * Protobuf type `seekervault.gateway.v1.StreamChannel`
