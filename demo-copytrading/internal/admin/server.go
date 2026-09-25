@@ -102,6 +102,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST "+s.path+"/create", s.create)
 	mux.HandleFunc("POST "+s.path+"/signals/{id}/cancel", s.cancel)
 	mux.HandleFunc("POST "+s.path+"/signals/{id}/retry", s.retry)
+	// Devices / feed access (SEE-156).
+	mux.HandleFunc("GET "+s.path+"/devices", s.showDevices)
+	mux.HandleFunc("POST "+s.path+"/devices/{id}/{action}", s.actOnDevice)
+	mux.HandleFunc("POST "+s.path+"/wallets/{wallet}/revoke", s.revokeWallet)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		request.Body = http.MaxBytesReader(writer, request.Body, MostBodyBytes)
 		s.headers(writer)
