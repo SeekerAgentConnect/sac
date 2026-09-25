@@ -231,6 +231,78 @@ func (g *Gateway) Heartbeat(ctx context.Context) (time.Duration, error) {
 	return time.Duration(seconds) * time.Second, nil
 }
 
+// Access is what the gateway enforces for this publisher's feed (SEE-156).
+type Access struct {
+	// Restricted is true only when the gateway said so explicitly. A gateway that answers nothing,
+	// or answers public, is one that would serve a restricted feed's documents to anybody.
+	Restricted bool
+	AuthOrigin string
+	// MostGrant is the longest a grant may run without renewal.
+	MostGrant time.Duration
+}
+
+// DescribeAccess asks which access policy the gateway enforces for this publisher. A gateway that
+// predates restricted feeds answers unimplemented, which is a permanent refusal: a restricted
+// publisher must stop rather than hand it documents.
+func (g *Gateway) DescribeAccess(ctx context.Context) (Access, error) {
+	ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	defer cancel()
+	answer, err := g.client.DescribeAccess(ctx, carrying(g.credential, &gatewayv1.DescribeAccessRequest{}))
+	if err != nil {
+		return Access{}, classify(err)
+	}
+	access := answer.Msg.GetAccess()
+	return Access{
+		Restricted: access.GetPolicy() == serverv1.FeedAccessPolicy_FEED_ACCESS_POLICY_RESTRICTED,
+		AuthOrigin: access.GetAuthOrigin(),
+		MostGrant:  time.Duration(answer.Msg.GetMostGrantSeconds()) * time.Second,
+	}, nil
+}
+
+// Grant is one device's grant as the gateway is told it: references this publisher chose, and the
+// digest of the session the device holds. Never a wallet.
+type Grant struct {
+	ID            string
+	SubscriberRef string
+	DeviceRef     string
+	SessionDigest []byte
+	Lifetime      time.Duration
+}
+
+// GrantAccess records or renews a grant, and answers how long the gateway will honour it.
+func (g *Gateway) GrantAccess(ctx context.Context, grant Grant) (time.Duration, error) {
+	ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	defer cancel()
+	answer, err := g.client.GrantAccess(ctx, carrying(g.credential, &gatewayv1.GrantAccessRequest{
+		GrantId:         grant.ID,
+		SubscriberRef:   grant.SubscriberRef,
+		DeviceRef:       grant.DeviceRef,
+		SessionDigest:   grant.SessionDigest,
+		LifetimeSeconds: uint32(grant.Lifetime.Seconds()),
+	}))
+	if err != nil {
+		return 0, classify(err)
+	}
+	return time.Duration(answer.Msg.GetLifetimeSeconds()) * time.Second, nil
+}
+
+// RevokeAccess revokes grants. A grant the gateway never held (NO_SUCH_GRANT) is reported as
+// Absent: there is nothing to take back, because it was never given.
+func (g *Gateway) RevokeAccess(ctx context.Context, grantIDs ...string) (Status, error) {
+	ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	defer cancel()
+	_, err := g.client.RevokeAccess(ctx, carrying(g.credential,
+		&gatewayv1.RevokeAccessRequest{GrantIds: grantIDs}))
+	if err != nil {
+		refusal := classify(err)
+		if refusal.Problem == "no_such_grant" {
+			return Absent, nil
+		}
+		return "", refusal
+	}
+	return Stored, nil
+}
+
 // DefaultHeartbeat is the interval assumed when a gateway names none. It matches the gateway's own
 // default (feed-gateway: PRESENCE_HEARTBEAT_SECONDS).
 const DefaultHeartbeat = 30 * time.Second

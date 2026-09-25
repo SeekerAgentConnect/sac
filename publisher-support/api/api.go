@@ -128,6 +128,10 @@ type Server struct {
 	// unlimited (SEE-126).
 	creates  *limit.Limiter
 	createMu sync.Mutex
+	// The restricted feed's operator routes, or nil (SEE-156).
+	access interface {
+		AdminRoutes() map[string]http.HandlerFunc
+	}
 }
 
 // Plan is what a [Server] needs.
@@ -148,6 +152,13 @@ type Plan struct {
 	Cycles  Cycles
 	// The most new creates this process will accept in one hour. Zero (the default) is unlimited.
 	CreateLimit int
+	// Access, for a restricted feed, is the operator's device-access routes (SEE-156,
+	// access.Service.AdminRoutes). They are mounted here, behind the same token as everything else,
+	// so the trader page reaches them through the one path it already uses and this process stays
+	// the only writer of its database. Nil for a public feed, which has no such routes.
+	Access interface {
+		AdminRoutes() map[string]http.HandlerFunc
+	}
 }
 
 // New builds the API.
@@ -183,6 +194,7 @@ func New(plan Plan) *Server {
 		cycles:     plan.Cycles,
 		newID:      newID,
 		creates:    creates,
+		access:     plan.Access,
 	}
 }
 
@@ -225,6 +237,11 @@ func (s *Server) Handler() http.Handler {
 	}
 	for route, handler := range writing {
 		mux.HandleFunc(route, s.authorized(handler))
+	}
+	if s.access != nil {
+		for route, handler := range s.access.AdminRoutes() {
+			mux.HandleFunc(route, s.authorized(handler))
+		}
 	}
 	return answering(mux)
 }
@@ -332,7 +349,7 @@ func (s *Server) status(writer http.ResponseWriter, request *http.Request) {
 		"environment": s.settings.Environment,
 		"operation":   s.kind.Operation(),
 		"plugin_id":   s.kind.Requirement().PluginID,
-		"reference":   manifest.Reference(s.settings.GatewayURL, s.settings.ServerID),
+		"reference":   manifest.ReferenceOf(s.settings),
 		"manifest": map[string]any{
 			"settings_revision": number(revision),
 			"publication":       publicationOf(state, revision),
@@ -480,6 +497,16 @@ func (s *Server) manifest(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	document := manifest.Document(s.settings, revision)
+	feed := map[string]string{
+		"gateway_url": s.settings.GatewayURL,
+		"channel":     signals.ChannelFor(s.settings.ServerID),
+	}
+	if s.settings.Restricted() {
+		// Who may read, as this publisher states it (SEE-156). The gateway serves the policy the
+		// operator registered, and refuses this manifest when the two disagree.
+		feed["access"] = "restricted"
+		feed["auth_origin"] = s.settings.AuthOrigin
+	}
 	send(writer, http.StatusOK, map[string]any{
 		"manifest": map[string]any{
 			"server_id":         document.GetServerId(),
@@ -493,12 +520,9 @@ func (s *Server) manifest(writer http.ResponseWriter, request *http.Request) {
 				"min_contract": s.kind.Requirement().MinContract,
 				"max_contract": s.kind.Requirement().MostContract,
 			}},
-			"feed": map[string]string{
-				"gateway_url": s.settings.GatewayURL,
-				"channel":     signals.ChannelFor(s.settings.ServerID),
-			},
+			"feed": feed,
 		},
-		"reference":   manifest.Reference(s.settings.GatewayURL, s.settings.ServerID),
+		"reference":   manifest.ReferenceOf(s.settings),
 		"publication": publicationOf(state, revision),
 	})
 }

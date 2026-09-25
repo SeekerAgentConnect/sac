@@ -45,10 +45,25 @@ type Settings struct {
 	// The name the server calls itself, for the connection's default label. The owner can rename
 	// any connection, and their name is the one the app shows.
 	DisplayName string
+	// AuthOrigin, when set, makes this a restricted feed (SEE-156): only devices this publisher
+	// approved may read it, and they prove who they are at this origin. It must be the origin the
+	// gateway's operator registered, and the gateway refuses the manifest otherwise. Empty is a
+	// public feed, whose manifest is byte for byte what it always was.
+	AuthOrigin string
 }
+
+// Restricted says whether these settings describe a restricted feed.
+func (s Settings) Restricted() bool { return s.AuthOrigin != "" }
 
 // Document is the manifest as it will be published, at the revision the store holds for it.
 func Document(settings Settings, revision uint64) *serverv1.ServerManifest {
+	var access *serverv1.FeedAccess
+	if settings.Restricted() {
+		access = &serverv1.FeedAccess{
+			Policy:     serverv1.FeedAccessPolicy_FEED_ACCESS_POLICY_RESTRICTED,
+			AuthOrigin: settings.AuthOrigin,
+		}
+	}
 	return &serverv1.ServerManifest{
 		ServerId:         settings.ServerID,
 		ProtocolVersion:  Protocol,
@@ -68,6 +83,7 @@ func Document(settings Settings, revision uint64) *serverv1.ServerManifest {
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: settings.GatewayURL,
 			Channel:    signals.ChannelFor(settings.ServerID),
+			Access:     access,
 		}},
 	}
 }
@@ -99,4 +115,17 @@ func Fingerprint(settings Settings) string {
 func Reference(gatewayURL, serverID string) string {
 	return "seekervault://feed?v=1&gateway=" + url.QueryEscape(gatewayURL) +
 		"&server=" + url.QueryEscape(serverID)
+}
+
+// ReferenceOf is the feed reference for these settings. A restricted feed's reference says so
+// (`&access=restricted`), which is a hint and never an authority: the phone reads the policy and
+// the authentication origin from the manifest the gateway serves, and refuses a feed whose manifest
+// is less restricted than its reference claims — so a link cannot downgrade a feed, and it carries
+// no origin a phone would send anything to (SEE-156).
+func ReferenceOf(settings Settings) string {
+	reference := Reference(settings.GatewayURL, settings.ServerID)
+	if settings.Restricted() {
+		reference += "&access=restricted"
+	}
+	return reference
 }

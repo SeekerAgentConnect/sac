@@ -51,6 +51,10 @@ type Drainer struct {
 	// nothing else was happening.
 	idle  time.Duration
 	batch int
+	// guard is asked before any signal leaves this process (SEE-156). A restricted feed's guard
+	// answers a refusal until the gateway confirms it enforces the restriction, so a gateway that
+	// would serve the feed to anybody is never handed a signal.
+	guard func(context.Context) *gateway.Refusal
 }
 
 // Plan is what a [Drainer] needs.
@@ -65,6 +69,10 @@ type Plan struct {
 	Backoff func(attempts int) time.Duration
 	// Idle is how long a quiet pass waits. Nil (zero) means half a minute.
 	Idle time.Duration
+	// Guard, when set, is asked before every signal is published or withdrawn, and a refusal it
+	// answers defers the signal exactly as a gateway outage would (SEE-156, access.Guard). Nil
+	// publishes unconditionally, which is what a public feed does.
+	Guard func(context.Context) *gateway.Refusal
 }
 
 // NewDrainer builds one.
@@ -92,6 +100,7 @@ func NewDrainer(plan Plan) *Drainer {
 		wake:      make(chan struct{}, 1),
 		idle:      idle,
 		batch:     32,
+		guard:     plan.Guard,
 	}
 }
 
@@ -203,7 +212,15 @@ func (d *Drainer) One(ctx context.Context, record signals.Record) (*gateway.Refu
 		status gateway.Status
 		err    error
 	)
-	if signal.Status == signals.Cancelled {
+	if d.guard != nil {
+		if refusal := d.guard(ctx); refusal != nil {
+			err = refusal
+		}
+	}
+	if err != nil {
+		// Held back before the gateway was asked anything: handled below exactly like a refusal
+		// the gateway gave, so it is deferred, retried, and visible on the signal.
+	} else if signal.Status == signals.Cancelled {
 		status, err = d.gateway.WithdrawRequest(ctx, signal.ProposalID, signal.Revision)
 		if unimplemented(err) {
 			status, err = d.gateway.Withdraw(ctx, signal.ProposalID, signal.Revision)

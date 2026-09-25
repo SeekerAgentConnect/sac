@@ -1,0 +1,19 @@
+{
+  "_comment": "SEE-156: the restricted-feed wallet challenge, pinned on both sides (publisher-support/access/proof_test.go, android .../access/AccessProofTest.kt). The wallet key is Ed25519 from the seed 0x01..0x20; its signature is over message exactly.",
+  "attempt": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "auth_origin": "https://auth.copytrading.example.com",
+  "channel": "server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+  "expires_at": "2026-09-25T12:05:00Z",
+  "installation": "0f1e2d3c4b5a69788796",
+  "issued_at": "2026-09-25T12:00:00Z",
+  "message": "Seeker Agent Connect feed access v1\n\nhttps://auth.copytrading.example.com asks you to prove that you control this wallet, so it can decide whether this device may read its restricted feed.\n\nThis is not a transaction. Signing it moves no funds and approves nothing.\n\nWallet: 9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj\nFeed: server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d\nDevice key: 0f1e2d3c4b5a69788796\nAttempt: 7c9e6679-7425-40de-944b-e07fc1f90ae7\nNonce: AAECAwQFBgcICQoLDA0ODw\nIssued: 2026-09-25T12:00:00Z\nExpires: 2026-09-25T12:05:00Z",
+  "nonce": "AAECAwQFBgcICQoLDA0ODw",
+  "redeem_at": 1790337660000,
+  "redeem_invitation": "invitation-token-for-the-fixture",
+  "redeem_statement": "seekervault-feed-access-redeem:v1\nserver/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d\ninvitation-token-for-the-fixture\n1790337660000",
+  "status_at": 1790337600000,
+  "status_request_id": "a1b2c3d4-e5f6-4789-abcd-0123456789ab",
+  "status_statement": "seekervault-feed-access-status:v1\na1b2c3d4-e5f6-4789-abcd-0123456789ab\n1790337600000",
+  "wallet": "9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj",
+  "wallet_signature": "L2p4lQCiYhXbmo0t+k7Uxa/Itnvkj0iC7YFYpKxE7Qk4dFNKGR4zegLHD+x6QS5thPJplrzD+6W0t+mxja74CQ=="
+}
