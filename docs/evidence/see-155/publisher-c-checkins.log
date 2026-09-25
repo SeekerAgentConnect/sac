@@ -1,0 +1,2 @@
+{"time":"2026-09-25T11:27:30.007376904Z","level":"INFO","msg":"this gateway does not answer check-ins, so phones cannot be shown whether this feed is online; publishing is unaffected, and this publisher will keep asking in case the gateway is upgraded"}
+{"time":"2026-09-25T11:30:30.068112027Z","level":"INFO","msg":"this gateway answers check-ins again, so phones can be shown whether this feed is online"}

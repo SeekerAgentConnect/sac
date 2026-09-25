@@ -217,6 +217,39 @@ func TestPresenceRefusesARequestThatIsNotOne(t *testing.T) {
 		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_CHANNELS)
 }
 
+// The other side of that bound, which the phone's batching is sized to (SEE-155): exactly
+// MostStatusChannels is answered, not refused.
+//
+// It is worth its own test because the phone now splits its reads at this number, and a bound that
+// were actually one lower would turn every full batch into a refusal — which is the shape of the
+// bug the splitting fixes, moved one channel along. Most of the channels here are ones this gateway
+// does not host, so what is pinned is the size of the request rather than the size of the answer.
+func TestPresenceAnswersExactlyTheMostChannelsItAllows(t *testing.T) {
+	service := newGateway(t)
+	hosted := rules.ChannelFor(publisherA)
+	service.publishManifest(service.publisher(service.register(publisherA)),
+		manifestOf(publisherA, 1))
+
+	full := []string{hosted}
+	for index := range gateway.MostStatusChannels - 1 {
+		full = append(full, fmt.Sprintf("server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c%02d", index))
+	}
+	if len(full) != gateway.MostStatusChannels {
+		t.Fatalf("the request named %d channel(s)", len(full))
+	}
+
+	answer := service.status(full...)
+
+	if got := availabilityOf(answer, hosted); got != online {
+		t.Fatalf("a full batch answered %v about its running publisher", got)
+	}
+	// And the channels this gateway does not host are left out rather than refused, so one stale
+	// feed reference on a phone never costs that phone the answer for its others.
+	if got := len(answer.GetStatuses()); got != 1 {
+		t.Fatalf("a full batch answered about %d channel(s)", got)
+	}
+}
+
 // A deployment with no broker and no relay still answers presence. The ticket and the topic methods
 // each have a seam that can be nil and each says so once; this one has none, because it is answered
 // from the store that already holds the registration — and a smaller deployment's phones should not

@@ -6,6 +6,7 @@ import io.github.brrenat.seekervault.feeds.FeedStatusState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
+import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.FeedReferenceProblem
 import io.github.brrenat.seekervault.servers.FeedReferenceResult
@@ -171,6 +172,15 @@ class ConnectionsViewModel(
     private val foregroundUpdates: StateFlow<ForegroundUpdatesState>? = null,
     private val foregroundFeeds: StateFlow<ForegroundFeedsState>? = null,
     private val foregroundFeedStatus: StateFlow<FeedStatusState>? = null,
+    /**
+     * Asks for a fresh presence read, outside the periodic one (SEE-155).
+     *
+     * Production passes [io.github.brrenat.seekervault.feeds.FeedStatusManager.refresh]. It is a
+     * function rather than the manager because this holds the manager's *state* as a flow and has
+     * no other use for the object — and because a test of the refresh action should be able to
+     * count the asks without standing up a poll.
+     */
+    private val refreshFeedStatus: () -> Unit = {},
     /** The bundled client plugins this build carries, which is what a manifest is matched to. */
     private val plugins: ProviderRegistry = ProviderRegistry.of(),
     /** A seam for the add flow's state tests; production always uses the repository method. */
@@ -350,8 +360,23 @@ class ConnectionsViewModel(
     /** Forgets the entered reference and any pairing token when the owner cancels or leaves. */
     fun resetAdding() = _state.update { it.copy(codeDraft = "", adding = AddConnectionState.Idle) }
 
-    /** Returns the fetch, or null when one for [id] is already running. */
+    /**
+     * Returns the fetch, or null when one for [id] is already running.
+     *
+     * A feed's refresh also asks its gateway whether the publisher is running (SEE-155). The two
+     * are separate questions asked of the same gateway, and only the first of them used to be asked
+     * here — so an owner whose publisher had just come back could refresh, watch the fetch succeed,
+     * and still be told "Feed offline" until the next periodic read half a minute later. The
+     * presence read is not awaited: it is one small call about every feed on every gateway, not
+     * about this connection, and the row it corrects repaints from the manager's own state.
+     */
     fun refresh(id: String): Job? {
+        if (repository.connection(id)?.mode == ConnectionMode.GatewayFeed) refreshFeedStatus()
+        return fetch(id)
+    }
+
+    /** The fetch alone, for the callers that are not an owner asking for one. */
+    private fun fetch(id: String): Job? {
         if (id in _state.value.refreshing) return null
         _state.update { it.copy(refreshing = it.refreshing + id) }
         return viewModelScope.launch {
@@ -440,8 +465,15 @@ class ConnectionsViewModel(
 
     private fun closeDialog() = _state.update { it.copy(disconnect = null) }
 
+    /**
+     * Every connection fetched, on opening and on returning to the foreground.
+     *
+     * It fetches rather than refreshes: presence is asked for once per foregrounding by the status
+     * manager itself, and asking once per feed here would send the same read as many times as the
+     * owner has feeds (SEE-155).
+     */
     private fun refreshAll(): List<Job> =
-        repository.connections.value.filter { it.usable }.mapNotNull { refresh(it.id) }
+        repository.connections.value.filter { it.usable }.mapNotNull { fetch(it.id) }
 
     private fun confirmationFor(code: PairingCode, connections: List<Connection>) =
         Confirmation(
