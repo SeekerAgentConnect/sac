@@ -237,3 +237,17 @@ func TestNoSubscriberIsKnownHere(t *testing.T) {
 		}
 	}
 }
+
+// The Prediction demo is the public-feed example (SEE-156): anyone holding its reference may read
+// it. It compiles in nothing of the restricted-feed machinery — no access service, no
+// authentication endpoint, no authentication origin in its manifest — so a configuration mistake
+// cannot turn it into something else. The CopyTrading demo asserts the opposite.
+func TestThisDemoIsAPublicFeed(t *testing.T) {
+	for path, source := range shipped(t) {
+		for _, word := range []string{"publisher-support/access\"", "AuthOrigin", "ManualApproval"} {
+			if strings.Contains(source, word) {
+				t.Fatalf("%s names %q: the Prediction demo is the public feed", path, word)
+			}
+		}
+	}
+}

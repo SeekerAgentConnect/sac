@@ -40,7 +40,10 @@ type Gateway struct {
 // RunGateway starts one and registers this template with it. Every opt-in test here needs exactly
 // this, so it is written once: a difference between two tests' gateways would be a difference
 // nobody meant.
-func RunGateway(t *testing.T, binary, label string) Gateway {
+//
+// register is passed to `feed-gatewayctl register` as it is, which is how a test registers a
+// restricted feed: `--access restricted --auth-origin <origin>` (SEE-156).
+func RunGateway(t *testing.T, binary, label string, register ...string) Gateway {
 	t.Helper()
 	control := os.Getenv("SEEKERVAULT_FEED_GATEWAYCTL")
 	if control == "" {
@@ -57,8 +60,8 @@ func RunGateway(t *testing.T, binary, label string) Gateway {
 
 	// Registering a publisher is a local act with no network surface at all, so the test does what
 	// an operator does: it runs the tool.
-	registered, err := exec.Command(control, "register", "--database", database,
-		"--server", ServerID, "--label", label).CombinedOutput()
+	registered, err := exec.Command(control, append([]string{"register", "--database", database,
+		"--server", ServerID, "--label", label}, register...)...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("feed-gatewayctl register: %v\n%s", err, registered)
 	}
@@ -175,4 +178,31 @@ func WaitFor(t *testing.T, address string) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("%s never answered", address)
+}
+
+// Read calls one FeedService method over plain JSON, the way ReadFeed does, and answers the status
+// and the body without judging either — for the restricted-feed tests, where a refusal is the
+// answer being tested (SEE-156).
+func Read(t *testing.T, origin, method string, body map[string]any) (int, string) {
+	t.Helper()
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequest(http.MethodPost,
+		origin+"/seekervault.gateway.v1.FeedService/"+method, bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	answer, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = answer.Body.Close() }()
+	contents, err := io.ReadAll(answer.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return answer.StatusCode, string(contents)
 }

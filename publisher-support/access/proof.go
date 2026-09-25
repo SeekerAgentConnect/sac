@@ -192,3 +192,6 @@ func encode58(raw []byte) string {
 	}
 	return string(digits)
 }
+
+// Address is a wallet key written as the base58 address a wallet app shows.
+func Address(key ed25519.PublicKey) string { return encode58(key) }
