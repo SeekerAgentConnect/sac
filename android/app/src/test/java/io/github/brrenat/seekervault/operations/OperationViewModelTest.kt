@@ -4,6 +4,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityOutcome
+import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.connections.Inbox
+import io.github.brrenat.seekervault.inbox.PendingItem
+import io.github.brrenat.seekervault.inbox.pendingItems
 import io.github.brrenat.seekervault.jupiter.JupiterException
 import io.github.brrenat.seekervault.jupiter.JupiterProblem
 import io.github.brrenat.seekervault.jupiter.JupiterSwap
@@ -27,6 +31,16 @@ import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.instrumentOf
+import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.GATEWAY
+import io.github.brrenat.seekervault.servers.PluginRequirement
+import io.github.brrenat.seekervault.servers.SERVER_A
+import io.github.brrenat.seekervault.servers.SERVER_B
+import io.github.brrenat.seekervault.servers.SERVER_PROTOCOL
+import io.github.brrenat.seekervault.servers.ServerManifest
+import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.ServerReference
+import io.github.brrenat.seekervault.servers.channelFor
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SendResult
@@ -104,6 +118,35 @@ class OperationViewModelTest {
         }
     }
 
+    /** What Home counts as waiting and the Inbox lists, derived the way the app derives it. */
+    private fun waiting(model: OperationViewModel): List<PendingItem> =
+        pendingItems(Inbox(), model.state.value.records, model::standing)
+
+    /** A second publisher's feed on the same phone, so a removal is shown to be about one. */
+    private fun otherFeed(): Connection =
+        Connection(
+            id = OTHER_CONNECTION,
+            label = "Another trader",
+            serverUrl = GATEWAY,
+            serverId = SERVER_A,
+            deviceName = "",
+            pairedAt = Instant.EPOCH,
+            hasCredential = false,
+            mode = ConnectionMode.GatewayFeed,
+            server =
+                ServerRecord.Known(
+                    ServerManifest(
+                        serverId = SERVER_A,
+                        protocolVersion = SERVER_PROTOCOL,
+                        settingsRevision = 1,
+                        mode = ConnectionMode.GatewayFeed,
+                        reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_A)),
+                        required = listOf(PluginRequirement(JUPITER_SWAP, 1..1)),
+                        environments = setOf(PluginEnvironment.Production),
+                    )
+                ),
+        )
+
     @Test
     fun saysNothingIsKnownUntilTheStoredProposalsHaveBeenRead() {
         // An earlier run of the app: one signal read off the feed and kept on this phone.
@@ -130,6 +173,63 @@ class OperationViewModelTest {
 
         assertTrue(model.state.value.loaded)
         assertEquals(1, model.state.value.records.size)
+    }
+
+    /**
+     * SEE-154. The owner removes a feed while signals it delivered are still waiting for them.
+     *
+     * The documented retention is that a feed's proposals go with the feed
+     * (docs/wiki/shared-proposals.md#retention), and the screens say so at once: what a removed
+     * feed delivered stops being counted as waiting on Home, stops being listed in the Inbox under
+     * a source that is gone, and a review of one of them closes. The connections here are the only
+     * thing that changes — the store still holds the records, which is the stricter case: the list
+     * read before the removal is exactly what used to be counted until a restart.
+     */
+    @Test
+    fun removingAFeedTakesItsWaitingSignalsWithIt() {
+        val phone = phone()
+        val other = otherFeed()
+        phone.connections.value = listOf(phone.connection, other)
+        val model = runBlocking {
+            phone.adapter.answerConnected(owner, chains = listOf(WalletNetwork.Mainnet.chain))
+            phone.wallet.load()
+            phone.wallet.connect(WalletNetwork.Mainnet)
+            phone.feed.answersByChannel =
+                mapOf(
+                    channelFor(SERVER_B) to listOf(swapProposal()),
+                    channelFor(SERVER_A) to
+                        listOf(
+                            swapProposal()
+                                .toBuilder()
+                                .setServerId(SERVER_A)
+                                .setChannel(channelFor(SERVER_A))
+                                .build()
+                        ),
+                )
+            phone.viewModel().also {
+                it.refresh(CONNECTION)
+                it.refresh(OTHER_CONNECTION)
+                it.open(CONNECTION, PROPOSAL)
+            }
+        }
+        assertEquals(
+            listOf(CONNECTION, OTHER_CONNECTION).sorted(),
+            waiting(model).map { it.connectionId }.sorted(),
+        )
+        assertNotNull(model.review.value)
+
+        // Remove, as the connection sheet does: the connection is no longer on this phone.
+        phone.connections.value = listOf(other)
+
+        assertEquals(listOf(OTHER_CONNECTION), waiting(model).map { it.connectionId })
+        assertEquals(listOf(OTHER_CONNECTION), model.state.value.records.map { it.connectionId })
+        assertNull(model.review.value)
+
+        // And the last one, so nothing is left counted with no feed behind it at all.
+        phone.connections.value = emptyList()
+
+        assertTrue(waiting(model).isEmpty())
+        assertTrue(model.state.value.records.isEmpty())
     }
 
     @Test
@@ -736,5 +836,9 @@ class OperationViewModelTest {
             emptyList<Triple<ByteString, SelectedWallet, String>>(),
             phone.adapter.sendings,
         )
+    }
+
+    private companion object {
+        const val OTHER_CONNECTION = "d5f6e2b4-4c60-4167-9b50-8d3ebb4f6a92"
     }
 }

@@ -204,8 +204,12 @@ cluster.
 
 The proposals of a feed go when the feed does, in the same place its answers and its rules already
 do (`ConnectionRepository.remove`). A removal that happened while the app was closed is cleaned up
-on the next `ProposalRepository.load`. **The Activity records outlive both**: what this phone did is
-worth keeping after the connection that proposed it is gone.
+on the next `ProposalRepository.load`. A removal the owner is watching takes effect at once, without
+waiting for either: what the screens read is the held proposals against the connections as they are
+now (`OperationViewModel`), so a removed feed's signals stop being counted as waiting on Home and
+stop being listed in the Inbox under a source that is gone, and a review of one of them closes
+(SEE-154). **The Activity records outlive both**: what this phone did is worth keeping after the
+connection that proposed it is gone.
 
 ## Where it is kept
 
