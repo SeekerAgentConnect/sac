@@ -238,6 +238,7 @@ func TestThisDemoIsARestrictedFeed(t *testing.T) {
 	for _, expected := range []string{
 		"access.ManualApproval{}", "access.NewGuard(", "Guard: guard.Check",
 		"AuthOrigin:  restricted.AuthOrigin", "devices.Handler(", "Access:      devices",
+		"mux.Handle(\"/access/\", authenticating)",
 	} {
 		if !strings.Contains(source, expected) {
 			t.Fatalf("cmd/copytrading/main.go no longer contains %q: the CopyTrading demo must run "+

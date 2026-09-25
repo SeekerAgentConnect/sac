@@ -205,19 +205,30 @@ func run(log *slog.Logger) error {
 				"serves both, and different when it uses separate read and publisher listeners")
 	}
 
+	authenticating := devices.Handler(access.Limits{PerHour: restricted.ChallengesPerHour})
+	published := api.New(api.Plan{
+		Documents:   documents,
+		Drainer:     drainer,
+		Kind:        kind,
+		Settings:    description,
+		Token:       settings.APIToken,
+		Log:         log,
+		Now:         time.Now,
+		CreateLimit: settings.CreateLimit,
+		Access:      devices,
+	}).Handler()
+	// Without a listener of its own, the authentication endpoint is served beside the API: /access/
+	// is public and signature-checked, /v1/ stays behind the token.
+	routes := published
+	if restricted.AuthAddress == "" {
+		mux := http.NewServeMux()
+		mux.Handle("/access/", authenticating)
+		mux.Handle("/", published)
+		routes = mux
+	}
 	service := &http.Server{
-		Addr: settings.APIAddress,
-		Handler: api.New(api.Plan{
-			Documents:   documents,
-			Drainer:     drainer,
-			Kind:        kind,
-			Settings:    description,
-			Token:       settings.APIToken,
-			Log:         log,
-			Now:         time.Now,
-			CreateLimit: settings.CreateLimit,
-			Access:      devices,
-		}).Handler(),
+		Addr:    settings.APIAddress,
+		Handler: routes,
 		// A slow-header client should not be able to hold a connection open indefinitely, and
 		// nothing here streams: a request is a bounded JSON document and an answer is another.
 		ReadHeaderTimeout: 10 * time.Second,
@@ -252,7 +263,7 @@ func run(log *slog.Logger) error {
 	// PUBLISHER_AUTH_ORIGIN, while the token-protected API above stays where it was.
 	authentication := &http.Server{
 		Addr:              restricted.AuthAddress,
-		Handler:           devices.Handler(access.Limits{PerHour: restricted.ChallengesPerHour}),
+		Handler:           authenticating,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -267,13 +278,18 @@ func run(log *slog.Logger) error {
 			failed <- err
 		}
 	}()
-	go func() {
-		log.Info("the authentication endpoint is listening", "address", restricted.AuthAddress,
-			"origin", restricted.AuthOrigin)
-		if err := authentication.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			failed <- err
-		}
-	}()
+	if restricted.AuthAddress != "" {
+		go func() {
+			log.Info("the authentication endpoint is listening", "address", restricted.AuthAddress,
+				"origin", restricted.AuthOrigin)
+			if err := authentication.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				failed <- err
+			}
+		}()
+	} else {
+		log.Info("the authentication endpoint is served beside the API",
+			"address", settings.APIAddress, "path", "/access/v1", "origin", restricted.AuthOrigin)
+	}
 
 	select {
 	case err := <-failed:
