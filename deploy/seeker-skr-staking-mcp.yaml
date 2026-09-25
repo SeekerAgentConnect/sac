@@ -61,7 +61,7 @@ services:
     registry_credentials: EV[1:HkQdhus/rY/IXfZpOmWqTzksU0Ju1MDh:3H9eSDV8UPor5LDovVDCyW6SVaw6h+diJ37tQMn+nqhhLur9p1Rpsq08HoQDK+QAas6hXkS/cW0gt84=]
     registry_type: DOCKER_HUB
     repository: seeker-agent-connect
-    tag: skr-staking-mcp-0.1.2
+    tag: skr-staking-mcp-0.1.3
   instance_count: 1
   instance_size_slug: apps-s-1vcpu-0.5gb
   name: seeker-skr-staking-mcp
