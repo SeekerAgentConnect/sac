@@ -46,6 +46,9 @@ The **Live test** button on Connections opens the Stage 1 live-test screen, whic
 | Connected. Pending requests: N. | The last refresh reached the sidecar. | Nothing |
 | Not checked yet. | No refresh since pairing. | Tap **Refresh**. |
 | Couldn't reach the server. | The sidecar isn't running, or the phone can't reach its address. | Start the sidecar. Over USB, run `adb reverse` again after reconnecting the cable. |
+| No live updates · N pending | The server answers, but advertises no live updates. Refresh works; new requests appear when you refresh. | Nothing. The server's operator can turn live updates on. |
+| Upgrade for live updates · N pending | The server answers, but its sidecar is too old for live updates. | Upgrade the sidecar. Refresh works meanwhile; pairing again does not help. |
+| Live updates unavailable · N pending | The server advertises a live-update address this build can't use. | Check the sidecar's live-update configuration. Refresh works meanwhile. |
 | The server's certificate isn't trusted, or it's for another host name. | TLS failed. | Use a trusted HTTPS endpoint whose certificate matches the address. |
 | This build allows plain HTTP only to 127.0.0.1. | A plain HTTP address that isn't loopback, or a release build. | Use HTTPS. |
 | The server no longer accepts this phone. Pair again to reconnect. | The sidecar revoked the connection: `pnpm pair revoke`, another pairing, or a reset database. The app deleted the credential. | Pair again, then remove the old connection. |

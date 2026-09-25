@@ -435,3 +435,20 @@
 - **Prove a regression test is one.** Each of the six new cases was run against the unfixed
   sources first; all six failed, and the full module was run on both sides so the 39 failures this
   host has without `pnpm install` could be shown to be identical rather than assumed to be.
+
+## A 200 is only evidence about the path you asked for
+
+- **Probe a deployed route by its real procedure path, and check the status against a path that
+  cannot exist** (SEE-155). The deployed gateway answers 200 to *any* unknown path from a
+  catch-all, so a probe with a misspelled package name "proved" `GetFeedStatus` was deployed when
+  the real path still answered 404. A control request to a nonsense path is what tells you whether
+  a 200 means anything.
+- **A "fails before the fix" claim is a measurement, not a summary.** The first draft of the
+  SEE-155 changelog said twelve regressions across three modules fail on the base; the twelve were
+  all Android, the Go ones had not been run on the base at all, and the gateway test passes there
+  by design because it pins existing behaviour. Run each claimed regression on the base, count what
+  actually failed, and name the tests that are pins rather than regressions.
+- **A UI poll must read the element it means.** Twice in one run a `grep -A` on the uiautomator
+  dump read the row's initials or the first matching row instead of the live one, and reported
+  minutes of nothing. Key the read on the row's own label and check it once by hand before timing
+  anything with it.

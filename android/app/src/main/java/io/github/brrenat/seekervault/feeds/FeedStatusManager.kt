@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** What the phone last heard about each feed's own publisher, by connection id (SEE-150). */
@@ -63,6 +64,12 @@ class FeedStatusManager(
     private val sleep: suspend (Long) -> Unit = { delay(it) },
     private val jitter: (Long) -> Long = { (it * Random.nextDouble(0.75, 1.25)).toLong() },
     ownerScope: CoroutineScope? = null,
+    /**
+     * Called inside [publish]'s critical section, after a read has claimed the channels it may
+     * write and before it writes them. Production passes nothing; a test holds a thread here to
+     * prove that a second read cannot publish past a first one while it is in there (SEE-155).
+     */
+    private val whilePublishing: () -> Unit = {},
 ) {
     private val scope = ownerScope ?: CoroutineScope(SupervisorJob() + dispatcher)
     private val _state = MutableStateFlow(FeedStatusState())
@@ -72,6 +79,37 @@ class FeedStatusManager(
     private var session = 0L
     private var foregroundJob: Job? = null
     private var closingJob: Job? = null
+
+    /**
+     * Which read is the newest for each channel, so an answer that overtook a later one is dropped
+     * rather than published (SEE-155).
+     *
+     * A manual refresh and the periodic pass are two reads of the same gateway in flight at once,
+     * and nothing makes them finish in the order they started: a refresh sent second over a warm
+     * connection lands first, and the poll's older answer would then overwrite it with whatever the
+     * gateway said a moment earlier. That is not a stale row for one tick — the state it overwrites
+     * is the fresher one, so a publisher that just came back is shown offline again.
+     *
+     * [reads] is stamped when a gateway's read starts; [applied] is the newest stamp already
+     * published, per gateway *and channel*. Per channel rather than per gateway because a read does
+     * not succeed or fail as a whole: with a thirty-third feed the channels are asked for in
+     * batches, so a newer read can answer for thirty-two of them and have the batch holding the
+     * thirty-third refused. A gateway-wide stamp let that newer read speak for a channel it never
+     * read, and the older read that did get an answer for it was then dropped — leaving that one
+     * feed stale until a pass in which both reads happened to succeed. A read now claims only the
+     * channels it actually read, and every other channel is still the older read's to answer.
+     *
+     * Entries are not pruned when a feed is removed: [reads] only ever counts up, so a stale entry
+     * can never hold back a later read, while dropping one could let a read still in flight publish
+     * over a newer answer. The map is bounded by the channels this phone has held in a session.
+     *
+     * Both are guarded by [lifecycleLock] because a refresh runs on a coroutine of its own.
+     */
+    private var reads = 0L
+    private val applied = mutableMapOf<Pair<String, String>, Long>()
+
+    /** The manual read in flight, so two taps in a row are one read. */
+    private var refreshJob: Job? = null
 
     /**
      * Start asking. Idempotent on the same terms [ForegroundFeedManager.onForeground] is: a
@@ -119,8 +157,16 @@ class FeedStatusManager(
      * wait.
      */
     fun refresh() {
-        val current = synchronized(lifecycleLock) { session }
-        scope.launch { once(current, feedsByGateway(connections.value)) }
+        val current =
+            synchronized(lifecycleLock) {
+                // One refresh at a time. An owner pulling twice, or a screen that refreshes each
+                // of its feeds, should cost one read of each gateway and not one per tap: the
+                // answer in flight is the answer they are waiting for.
+                if (refreshJob?.isActive == true) return
+                session
+            }
+        val job = scope.launch { once(current, feedsByGateway(connections.value)) }
+        synchronized(lifecycleLock) { refreshJob = job }
     }
 
     private fun isCurrent(expected: Long) = synchronized(lifecycleLock) { session == expected }
@@ -145,40 +191,125 @@ class FeedStatusManager(
     }
 
     /**
-     * One read per gateway, and the answers folded into the state together.
+     * One pass over every gateway: each one's channels read in batches, and each one's answers
+     * folded into the state as they arrive.
      *
      * A gateway that fails leaves its own feeds as they were rather than marking them offline. An
      * unreachable gateway is a thing the owner is already told about, by the row's own
      * connectivity, and claiming its publishers have stopped would be this phone inventing a
-     * verdict it was never given — the same conflation from the other direction.
+     * verdict it was never given — the same conflation from the other direction. One gateway
+     * failing is also not the next one's business: the loop moves on to it either way.
      */
     private suspend fun once(current: Long, known: Map<String, Map<String, String>>) {
         for ((gatewayUrl, feeds) in known) {
             if (!isCurrent(current)) return
-            val answered =
+            val stamp = synchronized(lifecycleLock) { ++reads }
+            val read = read(current, gatewayUrl, feeds.values.distinct()) ?: return
+            if (!isCurrent(current)) return
+            publish(gatewayUrl, stamp, feeds, read)
+        }
+        // A connection the owner removed stops being an answer about anything. The live list is
+        // read again here rather than taken from `known`, which is a snapshot from before the
+        // calls: a feed removed while this pass was in flight would otherwise stay in the state
+        // until the pass after next.
+        if (isCurrent(current)) {
+            val live = feedsByGateway(connections.value).values.flatMap { it.keys }.toSet()
+            _state.update { it.copy(feeds = it.feeds.filterKeys { id -> id in live }) }
+        }
+    }
+
+    /**
+     * One gateway's channels, asked for in batches of [MOST_CHANNELS] (SEE-155).
+     *
+     * The gateway refuses a read naming more channels than that, and a phone holding a thirty-third
+     * feed used to send all of them in one request and have the whole read refused — which left
+     * every feed on that gateway stale, on every poll, for ever. Splitting is the fix, and
+     * truncating is not: a phone that asked about its first thirty-two feeds would report nothing
+     * about the rest while looking like it had.
+     *
+     * A batch that fails takes only its own channels out of the answer. The others are published,
+     * and the channels in the failed batch keep whatever they had, for the reason a whole failed
+     * gateway does: this phone was not told those publishers had stopped, and saying so would be
+     * inventing a verdict.
+     *
+     * Null means the pass was overtaken and nothing should be published at all.
+     */
+    private suspend fun read(current: Long, gatewayUrl: String, channels: List<String>): Read? {
+        val answered = mutableMapOf<String, FeedAvailability>()
+        val asked = mutableSetOf<String>()
+        for (batch in channels.chunked(MOST_CHANNELS)) {
+            if (!isCurrent(current)) return null
+            val part =
                 try {
-                    statuses.statuses(gatewayUrl, feeds.values.distinct())
+                    statuses.statuses(gatewayUrl, batch)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: GatewayException) {
                     continue
                 }
-            if (!isCurrent(current)) return
-            _state.value =
-                _state.value.copy(
-                    feeds =
-                        _state.value.feeds +
-                            feeds.mapValues { (_, channel) ->
-                                answered[channel] ?: FeedAvailability.Unknown
-                            }
-                )
+            asked += batch
+            answered += part
         }
-        // A connection the owner removed stops being an answer about anything.
-        if (isCurrent(current)) {
-            val live = known.values.flatMap { it.keys }.toSet()
-            _state.value = _state.value.copy(feeds = _state.value.feeds.filterKeys { it in live })
+        return Read(answered = answered, asked = asked)
+    }
+
+    /**
+     * Fold one gateway's answer into the state, for every channel no later read has answered for
+     * already.
+     *
+     * Two things are checked against the present rather than against the snapshot the read started
+     * from: [stamp], so an overtaken answer is dropped, and the connection list, so a feed the
+     * owner removed mid-read is not written back in by the answer that was already on its way.
+     *
+     * Claiming the channels and writing them happen under one hold of [lifecycleLock], because on
+     * [Dispatchers.IO] these two reads are two threads and not two turns of one loop. Checking the
+     * stamp under the lock and then writing outside it left the window the stamp exists to close:
+     * the older read passes the check, is descheduled, the newer read passes its own check and
+     * publishes, and then the older one resumes and writes its staler answer over the top. The
+     * state write is one [MutableStateFlow] update and touches nothing that takes this lock, so
+     * holding it across the write costs the two reads of one gateway their overlap and nothing
+     * else.
+     */
+    private fun publish(
+        gatewayUrl: String,
+        stamp: Long,
+        feeds: Map<String, String>,
+        read: Read,
+    ) {
+        // A read whose every batch failed has nothing to say, so it claims no channel either:
+        // otherwise a refresh that failed fast would drop the periodic read that was still out
+        // and did get an answer, and the row would stay stale for another interval.
+        if (read.asked.isEmpty()) return
+        val live = feedsByGateway(connections.value)[gatewayUrl].orEmpty()
+        synchronized(lifecycleLock) {
+            // Only the channels this read read, and only where nothing newer has answered for them
+            // yet. A channel another read has already claimed is that read's to answer, whether or
+            // not this one still names a feed on it.
+            val mine =
+                read.asked.filterTo(mutableSetOf()) { stamp > (applied[gatewayUrl to it] ?: 0L) }
+            if (mine.isEmpty()) return
+            for (channel in mine) applied[gatewayUrl to channel] = stamp
+            whilePublishing()
+            val fresh =
+                feeds
+                    .filter { (id, channel) -> live[id] == channel && channel in mine }
+                    .mapValues { (_, channel) ->
+                        read.answered[channel] ?: FeedAvailability.Unknown
+                    }
+            if (fresh.isEmpty()) return
+            _state.update { it.copy(feeds = it.feeds + fresh) }
         }
     }
+
+    /**
+     * One gateway's answer: what it said, and which channels it was actually asked about — which
+     * are not the same set, because a channel a gateway does not host is left out of an answer and
+     * a channel in a failed batch was never asked at all. Only the second set may be written.
+     */
+    private class Read(
+        val answered: Map<String, FeedAvailability>,
+        val asked: Set<String>,
+    )
 
     /** The feeds this phone holds, as gateway origin to (connection id to channel). */
     private fun feedsByGateway(all: List<Connection>): Map<String, Map<String, String>> =
@@ -193,5 +324,14 @@ class FeedStatusManager(
          * watching a feed die and being told about it a minute later than the gateway knew.
          */
         const val INTERVAL_MILLIS = 30_000L
+
+        /**
+         * The most channels one read may name, which is the gateway's own bound
+         * (feed-gateway/internal/gateway.MostStatusChannels). It is duplicated rather than derived
+         * because there is nothing to derive it from on a phone: the number is part of the API's
+         * contract, and a gateway that lowered it would refuse the batch, which is a failed batch
+         * and not a failed gateway.
+         */
+        const val MOST_CHANNELS = 32
     }
 }
