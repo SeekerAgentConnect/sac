@@ -154,10 +154,21 @@ class OperationViewModel(
             // "not read yet". Anything that treats a new record as an arrival — the foreground
             // banners (SEE-147) — would otherwise announce the whole stored feed on a cold start.
             combine(proposals.proposals, proposals.loaded, connections) { held, loaded, live ->
+                    val feeds = live.filter { it.mode == ConnectionMode.GatewayFeed }
+                    // A proposal is only ever held under the feed it arrived on, and a feed the
+                    // owner removed takes its proposals with it — `ConnectionRepository.remove`
+                    // deletes them, and `ProposalRepository.publish` reads only what a live feed
+                    // owns. But the list in memory was read before the removal and is re-derived
+                    // on the next publish, so the same rule is applied here, where the held
+                    // proposals meet the connections as they are now: what a removed feed
+                    // delivered stops counting as waiting for the owner and stops being listed
+                    // under a source that is gone, rather than lingering until a restart
+                    // (SEE-154, docs/wiki/shared-proposals.md#retention).
+                    val present = feeds.mapTo(mutableSetOf(), Connection::id)
                     OperationsUiState(
                         loaded = loaded,
-                        records = held,
-                        feeds = live.filter { it.mode == ConnectionMode.GatewayFeed },
+                        records = held.filter { it.connectionId in present },
+                        feeds = feeds,
                     )
                 }
                 .collect { fresh ->
