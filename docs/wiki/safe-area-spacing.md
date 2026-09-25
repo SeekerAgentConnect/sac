@@ -45,8 +45,21 @@ inside the surface, not around it.
 
 ```kotlin
 // ui/SeekerComponents.kt, SheetLayer
-.windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))
-    .padding(bottom = spacing.xl)
+val navigationBarInset = WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
+if (chrome) {
+    Surface(...) {
+        Column(Modifier.windowInsetsPadding(navigationBarInset).padding(bottom = spacing.xl)) { ... }
+    }
+} else {
+    Box {
+        Box(Modifier.windowInsetsPadding(navigationBarInset)) { content() }
+        Spacer(
+            Modifier.align(Alignment.BottomCenter)
+                .background(sheetSurface)
+                .windowInsetsPadding(navigationBarInset)
+        )
+    }
+}
 ```
 
 `:designsystem`'s `SheetScaffold` is deliberately left alone, for the reason the banner's placement
@@ -55,6 +68,15 @@ against a window would put a simulated navigation bar into its own Roborazzi ref
 exactly what happened when it was tried, and is not what a design golden should record.
 `windowInsetsPadding` consumes what it applies, so nothing nested inside can pad for the same bar a
 second time.
+
+Some review sheets ask the host to draw their chrome; library sheets such as Connection details use
+`SheetScaffold` and draw their own. SEE-150 put the inset inside the host-chrome branch, so it
+covered the first kind but silently skipped the second. `SheetLayer` now applies the same live inset
+to both paths. Host-chromed sheets keep the host's 16dp gap; library-chromed sheets keep their own
+existing bottom padding and append an inset-height spacer in the same sheet colour. Applying the
+inset at the host's measurement boundary reduces the height available to the library content, so a
+tall scroll-capped sheet cannot consume the safe area first. The surface still reaches behind the
+system bar.
 
 The surface still runs to the bottom edge — a sheet that stopped above the navigation bar would show
 a strip of the screen beneath it — and what is *on* the surface stops above the gesture area or the
@@ -74,9 +96,10 @@ from the sheet's last line to the bottom of the screen:
 | Gesture | 24dp | 40dp (24 + 16) |
 | Three-button | 48dp | 64dp (48 + 16) |
 
-A sheet built from `SheetScaffold` adds its own body padding on top of that, as it always did. Both
-navigation modes are covered because they are the two heights that matter; nothing reads the *mode*,
-only the inset, so a third height works without being enumerated.
+The regression test also mounts a `SheetScaffold` the way Connection details is mounted, changes its
+inset from 24dp to 48dp while it is open, and observes its existing 24dp body gap grow from 48dp to
+72dp. Nothing reads the *mode*, only the live inset, so a third height works without being
+enumerated.
 
 ## Why no reference image moved
 
