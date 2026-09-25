@@ -193,9 +193,14 @@ func TestThisDemoSaysItsSignalsAreItsCallers(t *testing.T) {
 	}
 }
 
-// Nothing here knows a subscriber. A phone reads this demo's documents from the gateway and never
-// reaches this process at all, so the vocabulary of a bound device or a returned outcome is
-// vocabulary this module's code may not carry.
+// Nothing here knows what a subscriber did. A phone reads this demo's documents from the gateway
+// and never reports back, so the vocabulary of a returned outcome is vocabulary this module's code
+// may not carry.
+//
+// Since SEE-156 this demo's feed is restricted, so it does know which wallets and devices it
+// admitted — deciding that is its job, and the shared library (publisher-support/access) holds that
+// state behind its own API. What stays forbidden here is the rest: an owner's decision about a
+// signal, an execution result, and a device binding in the retired gateway-private sense.
 //
 // The words are deliberately the unambiguous ones. "amount" and "signature" are not among them,
 // because a trader types an amount into this publisher's own API and the operator UI signs its own
@@ -217,6 +222,26 @@ func TestNoSubscriberIsKnownHere(t *testing.T) {
 						path, word, trimmed)
 				}
 			}
+		}
+	}
+}
+
+// The shipped CopyTrading demo is the restricted-feed example (SEE-156), and that is compiled in
+// rather than configured: its main builds the access service with the operator's manual approval,
+// guards every publication on the gateway confirming the restriction, and serves the
+// authentication endpoint. The Prediction demo is the public one and asserts the opposite.
+func TestThisDemoIsARestrictedFeed(t *testing.T) {
+	source, ok := shipped(t)["cmd/copytrading/main.go"]
+	if !ok {
+		t.Fatal("cmd/copytrading/main.go is missing")
+	}
+	for _, expected := range []string{
+		"access.ManualApproval{}", "access.NewGuard(", "Guard: guard.Check",
+		"AuthOrigin:  restricted.AuthOrigin", "devices.Handler(", "Access:      devices",
+	} {
+		if !strings.Contains(source, expected) {
+			t.Fatalf("cmd/copytrading/main.go no longer contains %q: the CopyTrading demo must run "+
+				"restricted (docs/wiki/restricted-feeds.md)", expected)
 		}
 	}
 }

@@ -46,6 +46,8 @@ button.secondary { background: #222; }
 .flash { padding: 10px 12px; border-radius: 8px; margin: 0 0 12px; }
 .ok { background: #14351f; }
 .bad { background: #3a1515; }
+.warn { color: #f0b429; }
+code { word-break: break-all; }
 .ref { font-family: ui-monospace, monospace; font-size: 0.85rem; word-break: break-all;
   width: 100%; }
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
@@ -92,14 +94,14 @@ const homeHTML = `
 <div class="bar">
   <div>
     <h1>CopyTrading trader</h1>
-    <p class="muted">Signed in as {{.Name}}. Environment {{.Environment}}. Create a sandbox swap; each owner chooses their own amount in SAC.</p>
+    <p class="muted">Signed in as {{.Name}}. Environment {{.Environment}}. Create a sandbox swap; each owner chooses their own amount in SAC. <a href="{{.Path}}/devices">Devices · feed access</a></p>
   </div>
   <form method="post" action="{{.Path}}/logout"><button class="secondary" type="submit">Log out</button></form>
 </div>
 {{if .Error}}<p class="flash bad">{{.Error}}</p>{{end}}
 {{if .Message}}<p class="flash ok">{{.Message}}</p>{{end}}
 <div class="card">
-  <p>Shared feed reference — add this in SAC. It carries no secret.</p>
+  <p>Feed reference — add this in SAC. It carries no secret and grants nothing: this feed is restricted, so each device is verified and then waits for your approval on the Devices page.</p>
   <input class="ref" readonly value="{{.Reference}}" aria-label="Feed reference">
 </div>
 <div class="card">
