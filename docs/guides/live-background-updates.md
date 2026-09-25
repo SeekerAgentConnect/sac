@@ -94,6 +94,7 @@ With one pending request visible:
 1. Rotate, switch among root screens, open request details, and return. The sidecar still has one logical stream.
 2. Press Home and return repeatedly. Each true background transition closes the stream; each return reconciles and opens one replacement.
 3. Disable and enable the active network, or disconnect and restore both `adb reverse` mappings. The app shows reconnecting/unreachable for that sidecar while another remains live. Retry delay is exponential and capped at 30 seconds.
+   The interruption must end on its own: within one retry delay of the network returning the row goes live again, without a Retry tap, a restart, or a new pairing, and anything the sidecar stored while the phone was away arrives with it. A row that stays unreachable while unary calls from the same phone succeed is a defect, not an outage (SEE-152).
 4. Start a real wallet approval and return from the wallet. The foreground stream is lifecycle state, not a wallet executor: the wallet is asked once, and return only reconciles the already-recorded outcome.
 5. Remove one connection. Its stream closes and does not reconnect; its sync cache is deleted. Other connections remain live and Activity keeps the owner's record.
 
@@ -131,6 +132,7 @@ Start at the boundary that failed:
 
 - Main endpoint: `curl -s http://127.0.0.1:8080/healthz` and `adb reverse --list`.
 - Update endpoint: confirm the sidecar advertised the expected HTTP/2 URL, reverse its port too, and look for an open/closed stream pair. An HTTP/1-only proxy cannot carry `Subscribe`.
+- A connection that never comes back while its neighbours do: the phone has stopped watching it rather than failed to reach it. Nothing starts another owner for a connection while it stays paired, so what to look for is an owner that ended — `Unsupported` or `Revoked` published for something that is neither, or an exception that left the loop. `FAILED_PRECONDITION` is the one to read carefully: the sidecar answers it both for a protocol it will not speak and for a snapshot the phone has to replace, and only the transport's own classification separates them (SEE-152).
 - Authentication/revocation: `pnpm pair status`; a revoked connection must be paired again.
 - Version mismatch: upgrade the sidecar and leave manual **Refresh** available. Do not relabel an unsupported protocol as a network outage.
 - Scheduling: inspect JobScheduler, device-idle state, package stopped state, and WorkManager log lines above. A deferred eligible run is normal Android behavior.

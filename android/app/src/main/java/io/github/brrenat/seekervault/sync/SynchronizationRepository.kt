@@ -25,6 +25,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -193,7 +194,21 @@ class SynchronizationRepository(
                         }
             }
         if (!leader) {
-            val outcome = active.result.await()
+            val outcome =
+                try {
+                    active.result.await()
+                } catch (e: CancellationException) {
+                    // The run this call joined was abandoned by its own caller — a Retry whose
+                    // screen closed, a worker whose job ended. That cancels the shared result, and
+                    // inheriting it would end a caller that is still perfectly alive. The
+                    // foreground owner is one such caller, and nothing starts another one while the
+                    // connection stays paired, so it would stop watching for good (SEE-152).
+                    currentCoroutineContext().ensureActive()
+                    coordinator.control.withLock {
+                        if (coordinator.active === active) coordinator.active = null
+                    }
+                    return synchronize(connectionId, subscriptionCursor)
+                }
             if (
                 subscriptionCursor.isEmpty() ||
                     active.barrier == subscriptionCursor ||
