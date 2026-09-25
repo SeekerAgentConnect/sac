@@ -54,6 +54,7 @@ import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
+import io.github.brrenat.seekervault.sync.UpdateAvailability
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
@@ -478,6 +479,12 @@ private fun Connection.toHomeServerState(
         revokedAt != null ||
             (mode == ConnectionMode.Direct && !hasCredential) ||
             liveState == ForegroundConnectionState.Revoked
+    // Live updates this server does not offer, which is not the same as a server that cannot be
+    // reached (SEE-155). The unary API answered — that is how the phone learned there is no update
+    // listener, or that the one advertised is not usable — so refresh works, the pairing is intact,
+    // and there is nothing here to retry or to pair again. It reads as reachable, and the line says
+    // which of the three it is, in the detail screen's own words.
+    val unsupported = (liveState as? ForegroundConnectionState.Unsupported)?.availability
     val unreachable =
         !disconnected &&
             (support?.executable == false ||
@@ -485,7 +492,11 @@ private fun Connection.toHomeServerState(
                 feedState is FeedListenerState.Refused ||
                 feedState is FeedListenerState.Reconnecting ||
                 liveState is ForegroundConnectionState.Unreachable ||
-                liveState is ForegroundConnectionState.Unsupported ||
+                // Unknown and Available are not states the phone reaches this way: they mean
+                // discovery has not finished or did finish, neither of which is "unsupported". If
+                // one ever arrives here it is a failure like any other, and is shown as one.
+                unsupported == UpdateAvailability.Unknown ||
+                unsupported == UpdateAvailability.Available ||
                 (mode == ConnectionMode.Direct &&
                     liveState == null &&
                     lastCheck?.outcome?.let { it != CheckOutcome.Ok } == true))
@@ -522,6 +533,14 @@ private fun Connection.toHomeServerState(
                     mode == ConnectionMode.GatewayFeed &&
                         availability == FeedAvailability.Offline ->
                         "${HomeCopy.FeedOffline} · $currentPending pending"
+                    // Reachable, refreshable, and not streaming. Three words for what the detail
+                    // screen says in a sentence, because a row has one line (SEE-155).
+                    unsupported == UpdateAvailability.NotConfigured ->
+                        "${HomeCopy.NoLiveUpdates} · $currentPending pending"
+                    unsupported == UpdateAvailability.UpgradeRequired ->
+                        "${HomeCopy.UpgradeForLiveUpdates} · $currentPending pending"
+                    unsupported == UpdateAvailability.Incompatible ->
+                        "${HomeCopy.LiveUpdatesUnusable} · $currentPending pending"
                     mode == ConnectionMode.Direct && lastCheck?.morePending == true ->
                         "Connected · more than $currentPending pending"
                     else -> "Connected · $currentPending pending"
@@ -620,6 +639,15 @@ object HomeCopy {
      * readable is on the connection's own screen, where there is room for it.
      */
     const val FeedOffline = "Feed offline"
+    /**
+     * Live updates the paired server does not offer (SEE-155). The server itself is reachable — the
+     * unary API is how the phone found out — so none of these is "Couldn't reach the server", and
+     * none of them is a reason to pair again. Each is the short form of the sentence the connection
+     * screen shows, where there is room to say what to do about it.
+     */
+    const val NoLiveUpdates = "No live updates"
+    const val UpgradeForLiveUpdates = "Upgrade for live updates"
+    const val LiveUpdatesUnusable = "Live updates unavailable"
     const val ServerInitial = "S"
 }
 

@@ -147,32 +147,31 @@ doctl apps logs 70848a26-9237-4e17-991d-845fb9f3665f agent-connect --type run --
 doctl apps logs a7aba189-c59f-4e0b-a0b0-0ccd8442036b copytrading --type run --tail 50      # signals demo
 ```
 
-## Known issues (last checked 2026-09-24 23:27 UTC, SEE-151)
+## Known issues (last checked 2026-09-25 12:44 UTC, SEE-155)
 
-The earlier note that live push never stays up no longer holds. On the build at `4b6797a` a direct
-MCP request appeared within about ten seconds of being stored, and the CopyTrading feed's sheet read
-"Live updates connected." throughout. What is true:
+SEE-151's three defects are fixed and were re-checked on the emulator: a direct connection
+recovers its stream after airplane mode without re-pairing ([SEE-152]), sheets clear the
+three-button bar ([SEE-153]), and removing a connection clears its items ([SEE-154]). What is
+still true:
 
-- **A direct connection never recovers its stream after a network interruption** ([SEE-152]).
-  The row sticks at "Couldn't reach the server" while unary calls from the same phone still reach
-  that server; **Retry** and app restarts don't clear it, and only re-pairing does, which cancels
-  whatever requests the server was holding. Cycle airplane mode and you will reproduce it.
-- **An opened sheet's last action sits under the three-button navigation bar** ([SEE-153]).
-  Gesture navigation is fine.
-- **Removing a connection leaves its items in the Inbox and in Home's count** ([SEE-154]).
 - **Firebase isn't configured in this debug build** (`Default FirebaseApp failed to initialize`),
   so there is no background push, no notification channel, and no `POST_NOTIFICATIONS` prompt.
-  Adding `android/app/google-services.json` (`docs/guides/firebase.md`) is the whole fix; the
-  gateway and seeker-mcp already hold their sending credentials.
-- **The deployed servers are behind the repository.** The gateway answers 404 to
-  `FeedService.GetFeedStatus`, and the staking server's startup log has no `live updates are …`
-  line, so SEE-150's feed presence and staking live updates can't be exercised until those images
-  are rebuilt from a commit that contains them.
+  Adding `android/app/google-services.json` (`docs/guides/firebase.md`) is the whole fix on the
+  phone side; the gateway and seeker-mcp already hold their sending credentials.
+- **The deployed servers are behind the repository.** The gateway (`gateway-0.1.7`) answers 404
+  to `POST /seekervault.gateway.v1.FeedService/GetFeedStatus`, and the staking server
+  (`skr-staking-mcp-0.1.2`) advertises no live updates and has no relay configured. Probe with the
+  real procedure path: the gateway answers 200 to an unknown path. Until those images are rebuilt,
+  feed presence can only be tried against a local gateway built from the repository, reached with
+  `adb reverse` — debug builds allow plain HTTP to `127.0.0.1` only. SEE-155's run shows how.
 - **Every staking tool needs a wallet**, including the read-only `get_staking_status`; a wallet-less
   phone gets `WALLET_NOT_CONNECTED`, so no staking item can be made to reach the app on the emulator.
+- **The first feed-presence read after a cold start comes one poll interval late** (about 30–40 s);
+  foregrounding from the background reads at once. Recorded as an observation, not yet a ticket.
 
-The full run behind these, with commands, a scenario matrix and screenshots, is in
-[`emulator-e2e-see151.md`](emulator-e2e-see151.md).
+The runs behind these, with commands, scenario matrices and screenshots, are
+[`emulator-e2e-see151.md`](emulator-e2e-see151.md) (the first, on an earlier build) and
+[`emulator-e2e-see155.md`](emulator-e2e-see155.md) (the integrated PR #66 build).
 
 [SEE-152]: https://linear.app/seekeragentwallet/issue/SEE-152
 [SEE-153]: https://linear.app/seekeragentwallet/issue/SEE-153

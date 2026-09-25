@@ -277,6 +277,196 @@ class FeedStatusManagerTest {
         assertEquals(emptyList<Pair<String, List<String>>>(), gateway.asked)
     }
 
+    // Batching (SEE-155). The gateway refuses a read naming more than thirty-two channels, and the
+    // manager used to send every channel in one request — so an owner's thirty-third feed cost them
+    // the presence of all the others, on that gateway, on every poll, for good.
+
+    /** Thirty-two is the bound, so thirty-two is still one call. */
+    @Test
+    fun thirtyTwoFeedsAreStillOneRead() = runTest {
+        feeds.value = manyFeeds(32)
+        val status = manager(backgroundScope)
+
+        status.onForeground()
+        runCurrent()
+
+        assertEquals(1, gateway.asked.size)
+        assertEquals(32, gateway.asked.single().second.size)
+    }
+
+    /**
+     * And the thirty-third is a second call rather than the end of presence on that gateway. Every
+     * feed gets its own answer, including the ones in the second batch.
+     */
+    @Test
+    fun theThirtyThirdFeedIsAskedAboutInASecondBatch() = runTest {
+        feeds.value = manyFeeds(33)
+        (1..33).forEach { index ->
+            gateway.answers[channelFor(serverIdOf(index))] =
+                if (index % 2 == 0) FeedAvailability.Offline else FeedAvailability.Online
+        }
+        val status = manager(backgroundScope)
+
+        status.onForeground()
+        runCurrent()
+
+        assertEquals(listOf(32, 1), gateway.asked.map { it.second.size })
+        // Nothing was truncated: the two batches together are exactly the feeds the owner holds.
+        assertEquals((1..33).map { channelFor(serverIdOf(it)) }.toSet(), gateway.everAsked())
+        // Mixed answers, each one its own feed's.
+        (1..33).forEach { index ->
+            val expected = if (index % 2 == 0) FeedAvailability.Offline else FeedAvailability.Online
+            assertEquals(expected, status.state.value.availabilityOf("feed-$index"))
+        }
+    }
+
+    /** Sixty-five is three batches, and the last one holds the single feed that overflowed. */
+    @Test
+    fun sixtyFiveFeedsAreThreeBatches() = runTest {
+        feeds.value = manyFeeds(65)
+        (1..65).forEach { gateway.answers[channelFor(serverIdOf(it))] = FeedAvailability.Online }
+        val status = manager(backgroundScope)
+
+        status.onForeground()
+        runCurrent()
+
+        assertEquals(listOf(32, 32, 1), gateway.asked.map { it.second.size })
+        assertEquals((1..65).map { channelFor(serverIdOf(it)) }.toSet(), gateway.everAsked())
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf("feed-65"))
+    }
+
+    /**
+     * A batch that fails costs only its own feeds their fresh answer. The rest of the gateway is
+     * published, and the failed batch's feeds keep what they had — because this phone was not told
+     * those publishers had stopped, which is the same reason a whole failed gateway keeps its own.
+     */
+    @Test
+    fun aFailedBatchKeepsOnlyItsOwnFeedsAsTheyWere() = runTest {
+        feeds.value = manyFeeds(33)
+        (1..33).forEach { gateway.answers[channelFor(serverIdOf(it))] = FeedAvailability.Online }
+        val status = manager(backgroundScope)
+        status.onForeground()
+        runCurrent()
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf("feed-33"))
+
+        // The overflow batch alone now fails, and every publisher has meanwhile stopped.
+        gateway.failingChannels = setOf(channelFor(serverIdOf(33)))
+        (1..33).forEach { gateway.answers[channelFor(serverIdOf(it))] = FeedAvailability.Offline }
+        advanceTimeBy(30_001)
+        runCurrent()
+
+        assertEquals(FeedAvailability.Offline, status.state.value.availabilityOf("feed-1"))
+        assertEquals(FeedAvailability.Offline, status.state.value.availabilityOf("feed-32"))
+        // Not offline, and not unknown: unchanged.
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf("feed-33"))
+    }
+
+    /** A gateway needing several batches does not stop another gateway being read. */
+    @Test
+    fun batchingOneGatewayDoesNotStopAnother() = runTest {
+        feeds.value = manyFeeds(33) + feed(SERVER_B, gateway = OTHER_GATEWAY)
+        (1..33).forEach { gateway.answers[channelFor(serverIdOf(it))] = FeedAvailability.Online }
+        gateway.answers[channelFor(SERVER_B)] = FeedAvailability.Offline
+        gateway.failingChannels = setOf(channelFor(serverIdOf(1)))
+        val status = manager(backgroundScope)
+
+        status.onForeground()
+        runCurrent()
+
+        // The first gateway's first batch failed; its second still landed, and so did the other
+        // gateway's only one.
+        assertEquals(FeedAvailability.Unknown, status.state.value.availabilityOf("feed-1"))
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf("feed-33"))
+        assertEquals(FeedAvailability.Offline, status.state.value.availabilityOf(FEED_B))
+    }
+
+    // Ordering and removal, for the two reads that are now in flight at once (SEE-155).
+
+    /**
+     * A refresh and the periodic pass are two reads of one gateway, and nothing makes them land in
+     * the order they were sent. The older answer is dropped rather than published — otherwise a
+     * publisher that has just come back is shown as offline again by a read that predates it.
+     */
+    @Test
+    fun anOlderAnswerDoesNotOverwriteANewerOne() = runTest {
+        gateway.answers[channelFor(SERVER_A)] = FeedAvailability.Offline
+        // The poll's read is slow; the refresh sent after it is not.
+        gateway.takes = { call -> if (call == 1) 5_000L else 0L }
+        val status = manager(backgroundScope)
+
+        status.onForeground()
+        runCurrent()
+        // The gateway learns the publisher is back while the first read is still out.
+        gateway.answers[channelFor(SERVER_A)] = FeedAvailability.Online
+        status.refresh()
+        runCurrent()
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf(FEED_A))
+
+        // Now the first read answers, carrying what the gateway said before.
+        advanceTimeBy(5_001)
+        runCurrent()
+
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf(FEED_A))
+    }
+
+    /**
+     * The other side of that: a newer read that got no answer at all is not newer than anything. If
+     * it were, a refresh that failed fast would drop the periodic read still out — the only one
+     * that heard from the gateway — and the row would wait another interval for the truth.
+     */
+    @Test
+    fun aNewerReadThatFailedDoesNotDropAnOlderAnswer() = runTest {
+        gateway.answers[channelFor(SERVER_A)] = FeedAvailability.Online
+        // The poll's read is slow and will succeed; the refresh sent after it fails at once.
+        gateway.takes = { call -> if (call == 1) 5_000L else 0L }
+        val status = manager(backgroundScope)
+
+        status.onForeground()
+        runCurrent()
+        gateway.failing = GATEWAY
+        status.refresh()
+        runCurrent()
+        gateway.failing = null
+
+        advanceTimeBy(5_001)
+        runCurrent()
+
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf(FEED_A))
+    }
+
+    /** And a feed removed while a read was out is not written back in by that read's answer. */
+    @Test
+    fun aFeedRemovedWhileAReadIsInFlightIsNotReintroduced() = runTest {
+        feeds.value = listOf(feed(SERVER_A), feed(SERVER_B))
+        gateway.answers[channelFor(SERVER_A)] = FeedAvailability.Online
+        gateway.answers[channelFor(SERVER_B)] = FeedAvailability.Online
+        gateway.takes = { 5_000L }
+        val status = manager(backgroundScope)
+
+        status.onForeground()
+        runCurrent()
+        feeds.value = listOf(feed(SERVER_A))
+        runCurrent()
+        advanceTimeBy(5_001)
+        runCurrent()
+
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf(FEED_A))
+        assertEquals(FeedAvailability.Unknown, status.state.value.availabilityOf(FEED_B))
+    }
+
+    /** Two taps in a row are one read: the answer in flight is the answer the owner waits for. */
+    @Test
+    fun twoRefreshesInARowAreOneRead() = runTest {
+        gateway.takes = { 5_000L }
+        val status = manager(backgroundScope)
+
+        status.refresh()
+        status.refresh()
+        runCurrent()
+
+        assertEquals(1, gateway.asked.size)
+    }
+
     /**
      * A gateway that answers what it was not asked is the client's refusal, and it is not fatal
      * here.
@@ -291,19 +481,40 @@ class FeedStatusManagerTest {
         /** Thrown by calls to one gateway only. */
         var failing: String? = null
 
+        /**
+         * Thrown by a call that names any of these channels, so a test can fail one batch of
+         * several on a gateway that is otherwise answering (SEE-155).
+         */
+        var failingChannels: Set<String> = emptySet()
+
+        /**
+         * How long call number n takes, counting from one. It is what lets a test make one read
+         * overtake another, which is the race a stamp exists for.
+         */
+        var takes: (Int) -> Long = { 0L }
+
         override suspend fun statuses(
             gatewayUrl: String,
             channels: List<String>,
         ): Map<String, FeedAvailability> {
             asked += gatewayUrl to channels
+            // What the gateway held when it was asked, not when it answers: a slow call carries
+            // the older truth, which is exactly the thing that must not overwrite a newer one.
+            val held = answers.toMap()
+            takes(asked.size).takeIf { it > 0 }?.let { delay(it) }
             fail?.let { throw it }
             if (gatewayUrl == failing) {
                 throw GatewayException(GatewayException.Kind.Unreachable, "no route")
             }
-            return channels
-                .mapNotNull { channel -> answers[channel]?.let { channel to it } }
-                .toMap()
+            if (channels.any { it in failingChannels }) {
+                throw GatewayException(GatewayException.Kind.Unreachable, "no route")
+            }
+            return channels.mapNotNull { channel -> held[channel]?.let { channel to it } }.toMap()
         }
+
+        /** Every channel this gateway was ever asked about, over all the batches. */
+        fun everAsked(gatewayUrl: String = GATEWAY): Set<String> =
+            asked.filter { it.first == gatewayUrl }.flatMap { it.second }.toSet()
     }
 
     private companion object {
@@ -314,9 +525,16 @@ class FeedStatusManagerTest {
         const val FEED_A = "feed-a"
         const val FEED_B = "feed-b"
 
-        fun feed(serverId: String, gateway: String = GATEWAY) =
+        /** A run of feeds on one gateway, for the batching sizes the gateway's bound is about. */
+        fun manyFeeds(count: Int, gateway: String = GATEWAY): List<Connection> =
+            (1..count).map { index -> feed(serverIdOf(index), gateway, id = "feed-$index") }
+
+        /** A distinct, well-formed server id per index. */
+        fun serverIdOf(index: Int): String = "3f1b2c4d-5e6f-4a7b-8c9d-%012d".format(index)
+
+        fun feed(serverId: String, gateway: String = GATEWAY, id: String? = null) =
             Connection(
-                id = if (serverId == SERVER_A) FEED_A else FEED_B,
+                id = id ?: if (serverId == SERVER_A) FEED_A else FEED_B,
                 label = "A feed",
                 serverUrl = gateway,
                 serverId = serverId,

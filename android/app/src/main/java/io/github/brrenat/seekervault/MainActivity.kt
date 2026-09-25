@@ -60,6 +60,9 @@ class MainActivity : ComponentActivity() {
                     foregroundUpdates = app.foregroundUpdates.state,
                     foregroundFeeds = app.foregroundFeeds.state,
                     foregroundFeedStatus = app.foregroundFeedStatus.state,
+                    // The same manager, asked rather than listened to: a manual refresh of a feed
+                    // is an owner asking whether its publisher is running now (SEE-155).
+                    refreshFeedStatus = app.foregroundFeedStatus::refresh,
                     cleartextPermitted = app::isCleartextPermitted,
                     // The one registry for the process, so a server's requirements are matched
                     // against the same plugins here as when a request is reviewed (SEE-88).
