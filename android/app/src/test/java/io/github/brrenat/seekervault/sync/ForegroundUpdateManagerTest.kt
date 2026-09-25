@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.sync
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.connectrpc.Code
+import com.connectrpc.ConnectException
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
@@ -14,14 +16,18 @@ import io.github.brrenat.seekervault.update.v1.ServerReady
 import io.github.brrenat.seekervault.update.v1.SubscribeResponse
 import io.github.brrenat.seekervault.update.v1.SyncRequest
 import io.github.brrenat.seekervault.update.v1.SyncResponse
+import io.github.brrenat.seekervault.update.v1.SyncedRequest
 import java.io.File
+import java.io.IOException
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -216,6 +222,155 @@ class ForegroundUpdateManagerTest {
         assertEquals(ForegroundConnectionState.Live, fixture.manager.state.value.connections[A])
     }
 
+    // SEE-152. A direct connection that stopped recovering after an interruption had not lost the
+    // server: it had lost its owner. Every case below ends ownership in `maintainConnection`, and
+    // `ownConnections` starts an owner only when the connection *list* changes, so the row froze on
+    // whatever was published last and nothing but a new pairing brought it back.
+
+    @Test
+    fun aStreamThatNeverBecomesReadyComesBackInsteadOfStrandingTheConnection() = runTest {
+        val fixture = fixture(A)
+        fixture.transport.silentHandshakes[A] = 1
+        fixture.manager.onForeground()
+        runCurrent()
+        assertEquals(1, fixture.transport.subscribeCalls[A])
+        assertEquals(
+            ForegroundConnectionState.Connecting,
+            fixture.manager.state.value.connections[A],
+        )
+
+        advanceTimeBy(30_001)
+        runCurrent()
+        assertEquals(
+            ForegroundConnectionState.Unreachable(CheckOutcome.Failed),
+            fixture.manager.state.value.connections[A],
+        )
+        assertTrue(fixture.transport.subscriptions.getValue(A).single().closed)
+
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(2, fixture.transport.subscribeCalls[A])
+        assertEquals(ForegroundConnectionState.Live, fixture.manager.state.value.connections[A])
+    }
+
+    @Test
+    fun anAbandonedCoalescedSnapshotDoesNotEndTheOwnersWatchOverTheConnection() = runTest {
+        val fixture = fixture(A)
+        val entered = CompletableDeferred<Unit>()
+        fixture.transport.beforeSync = { id, call ->
+            if (id == A && call == 1) {
+                entered.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        // A Retry whose screen closes, or a worker whose job ends, while the owner has joined its
+        // run: cancelling it must not cancel the owner along with it.
+        val abandoned = backgroundScope.launch { fixture.repository.synchronize(A) }
+        runCurrent()
+        assertTrue(entered.isCompleted)
+
+        fixture.manager.onForeground()
+        runCurrent()
+        assertEquals(
+            ForegroundConnectionState.Connecting,
+            fixture.manager.state.value.connections[A],
+        )
+
+        abandoned.cancel()
+        runCurrent()
+        assertEquals(ForegroundConnectionState.Live, fixture.manager.state.value.connections[A])
+        assertEquals(2, fixture.transport.syncCalls[A])
+        assertEquals(1, fixture.transport.subscribeCalls[A])
+    }
+
+    @Test
+    fun anUnclassifiedSnapshotFailureIsRetriedInsteadOfEndingTheOwner() = runTest {
+        val fixture = fixture(A)
+        fixture.transport.syncCrashes[A] = 1
+        fixture.manager.onForeground()
+        runCurrent()
+        assertEquals(
+            ForegroundConnectionState.Unreachable(CheckOutcome.Failed),
+            fixture.manager.state.value.connections[A],
+        )
+
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(ForegroundConnectionState.Live, fixture.manager.state.value.connections[A])
+        assertEquals(1, fixture.transport.subscribeCalls[A])
+    }
+
+    @Test
+    fun anInvalidSnapshotReconnectsInsteadOfBeingReadAsAnOutdatedSidecar() = runTest {
+        val fixture = fixture(A)
+        fixture.manager.onForeground()
+        runCurrent()
+        val first = fixture.transport.subscriptions.getValue(A).single()
+
+        // FAILED_PRECONDITION is the sidecar's answer both for a protocol it will not speak and for
+        // a snapshot this phone has to replace. Only the second is recoverable, and the code alone
+        // cannot tell them apart — the transport's own classification can.
+        first.fail(
+            UpdateTransportException(
+                UpdateTransportException.Kind.SnapshotInvalid,
+                "the snapshot expired",
+                ConnectException(Code.FAILED_PRECONDITION),
+            )
+        )
+        runCurrent()
+        assertEquals(
+            ForegroundConnectionState.Unreachable(CheckOutcome.Failed),
+            fixture.manager.state.value.connections[A],
+        )
+
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(2, fixture.transport.subscribeCalls[A])
+        assertEquals(ForegroundConnectionState.Live, fixture.manager.state.value.connections[A])
+    }
+
+    @Test
+    fun anInterruptionEndsWithTheStreamBackAndWhatArrivedDuringItSynchronised() = runTest {
+        val fixture = fixture(A)
+        fixture.manager.onForeground()
+        runCurrent()
+        assertEquals(ForegroundConnectionState.Live, fixture.manager.state.value.connections[A])
+        val live = fixture.transport.subscriptions.getValue(A).single()
+
+        // Networking off. The stream dies and every call fails for as long as it stays off.
+        fixture.transport.offline = true
+        live.fail(IOException("the network went away"))
+        runCurrent()
+        advanceTimeBy(120_000)
+        runCurrent()
+        assertEquals(
+            ForegroundConnectionState.Unreachable(CheckOutcome.Unreachable),
+            fixture.manager.state.value.connections[A],
+        )
+
+        // The agent publishes a request while the phone cannot hear it, so the sidecar can no
+        // longer replay from where this phone stopped.
+        fixture.transport.snapshots[A] = listOf(waiting(A, REQUEST))
+        fixture.transport.resume[A] = ResumeDisposition.RESUME_DISPOSITION_FULL_SYNC_REQUIRED
+        // The first stream after an interruption is the one that is opened through a route that
+        // has forgotten this phone: it is accepted and then says nothing at all.
+        fixture.transport.silentHandshakes[A] = 1
+
+        // Networking back on. Nothing else happens: no re-pairing, no new connection.
+        fixture.transport.offline = false
+        advanceTimeBy(30_001)
+        runCurrent()
+        advanceTimeBy(30_001)
+        runCurrent()
+        advanceTimeBy(30_001)
+        runCurrent()
+        assertEquals(ForegroundConnectionState.Live, fixture.manager.state.value.connections[A])
+        assertEquals(
+            listOf(REQUEST),
+            fixture.host.applied.getValue(A).pending.map { it.ref.requestId },
+        )
+    }
+
     private fun TestScope.fixture(vararg ids: String): Fixture {
         val connections = MutableStateFlow<List<Connection>>(emptyList())
         val host = FakeHost()
@@ -237,7 +392,7 @@ class ForegroundUpdateManagerTest {
         val connections: MutableStateFlow<List<Connection>>,
         val host: FakeHost,
         val transport: FakeTransport,
-        repository: SynchronizationRepository,
+        val repository: SynchronizationRepository,
         dispatcher: CoroutineDispatcher,
         ownerScope: kotlinx.coroutines.CoroutineScope,
     ) {
@@ -307,6 +462,10 @@ class ForegroundUpdateManagerTest {
         val subscribeFailures = mutableMapOf<String, UpdateTransportException>()
         val resume = mutableMapOf<String, ResumeDisposition>()
         val subscriptions = mutableMapOf<String, MutableList<FakeSubscription>>()
+        val syncCrashes = mutableMapOf<String, Int>()
+        val snapshots = mutableMapOf<String, List<ActionRequest>>()
+        val silentHandshakes = mutableMapOf<String, Int>()
+        var offline = false
         var beforeSync: suspend (String, Int) -> Unit = { _, _ -> }
 
         override suspend fun discover(
@@ -324,18 +483,29 @@ class ForegroundUpdateManagerTest {
             val call = syncCalls.getOrDefault(id, 0) + 1
             syncCalls[id] = call
             val failures = syncFailures.getOrDefault(id, 0)
-            if (failures > 0) {
-                syncFailures[id] = failures - 1
+            if (offline || failures > 0) {
+                if (failures > 0) syncFailures[id] = failures - 1
                 throw UpdateTransportException(
                     UpdateTransportException.Kind.Unreachable,
                     "offline",
                 )
+            }
+            val crashes = syncCrashes.getOrDefault(id, 0)
+            if (crashes > 0) {
+                syncCrashes[id] = crashes - 1
+                // Nothing the repository classifies: the shape of a defect rather than an outage.
+                throw IllegalStateException("the snapshot reader broke")
             }
             beforeSync(id, call)
             return SyncResponse.newBuilder()
                 .setConnectionId(id)
                 .setServerInstanceId("instance-$id")
                 .setSnapshotCursor("cursor-$call")
+                .addAllRequests(
+                    snapshots[id].orEmpty().map { request ->
+                        SyncedRequest.newBuilder().setRequest(request).setRevision(1).build()
+                    }
+                )
                 .build()
         }
 
@@ -347,10 +517,22 @@ class ForegroundUpdateManagerTest {
             serverInstanceId: String,
         ): UpdateSubscription {
             subscribeFailures[connectionId]?.let { throw it }
+            if (offline) {
+                throw UpdateTransportException(
+                    UpdateTransportException.Kind.Unreachable,
+                    "offline",
+                )
+            }
             subscribeCalls[connectionId] = subscribeCalls.getOrDefault(connectionId, 0) + 1
             val disposition = resume[connectionId] ?: ResumeDisposition.RESUME_DISPOSITION_REPLAYING
             return FakeSubscription(connectionId).also { stream ->
                 subscriptions.getOrPut(connectionId) { mutableListOf() } += stream
+                val silent = silentHandshakes.getOrDefault(connectionId, 0)
+                if (silent > 0) {
+                    // Accepted, and then nothing: the sidecar never answers the subscribe.
+                    silentHandshakes[connectionId] = silent - 1
+                    return@also
+                }
                 stream.send(ready(connectionId, disposition, resumeCursor.ifEmpty { "barrier" }))
                 if (disposition == ResumeDisposition.RESUME_DISPOSITION_REPLAYING) {
                     stream.send(replayComplete(connectionId, resumeCursor))
@@ -367,6 +549,11 @@ class ForegroundUpdateManagerTest {
 
         fun send(response: SubscribeResponse) {
             channel.trySend(response).getOrThrow()
+        }
+
+        /** Ends the stream the way a transport failure does, with the reason it failed for. */
+        fun fail(cause: Throwable) {
+            channel.close(cause)
         }
 
         override suspend fun heartbeat(sequence: Long, appliedCursor: String, sentAt: Instant) {
@@ -416,6 +603,14 @@ class ForegroundUpdateManagerTest {
                 .setCursor(cursor)
                 .setReplayComplete(ReplayComplete.newBuilder().setThroughCursor(cursor))
                 .build()
+
+        /** One unchanging request, so a repeated snapshot page is the same page. */
+        fun waiting(id: String, requestId: String) =
+            FakeConnectionGateway.request(
+                id,
+                requestId,
+                createdAt = Instant.parse("2026-09-24T23:07:52Z"),
+            )
 
         fun changed(id: String, requestId: String, revision: Long, cursor: String) =
             SubscribeResponse.newBuilder()

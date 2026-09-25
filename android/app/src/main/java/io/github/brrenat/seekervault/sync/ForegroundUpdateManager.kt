@@ -22,7 +22,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,7 +33,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Live transport state. It is separate from the last successful durable synchronization. */
 sealed interface ForegroundConnectionState {
@@ -177,7 +179,13 @@ class ForegroundUpdateManager(
                 else ForegroundConnectionState.Reconnecting(attempt),
                 currentSession,
             )
-            val outcome = synchronization.synchronize(connectionId)
+            val outcome =
+                try {
+                    synchronization.synchronize(connectionId)
+                } catch (e: Throwable) {
+                    rethrowOwnCancellation(e)
+                    SynchronizeOutcome.Failed(failureOf(e))
+                }
             when (outcome) {
                 is SynchronizeOutcome.Legacy -> {
                     setStatus(
@@ -208,24 +216,9 @@ class ForegroundUpdateManager(
             val registered =
                 try {
                     synchronization.openStream(connectionId)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: UpdateTransportException) {
-                    if (e.kind == UpdateTransportException.Kind.Unauthenticated) {
-                        synchronization.revoke(connectionId)
-                        setStatus(connectionId, ForegroundConnectionState.Revoked, currentSession)
-                        return
-                    }
-                    if (e.kind == UpdateTransportException.Kind.UpgradeRequired) {
-                        setStatus(
-                            connectionId,
-                            ForegroundConnectionState.Unsupported(
-                                UpdateAvailability.UpgradeRequired
-                            ),
-                            currentSession,
-                        )
-                        return
-                    }
+                } catch (e: Throwable) {
+                    rethrowOwnCancellation(e)
+                    if (stopOnActionable(connectionId, e, currentSession)) return
                     openingFailure = e
                     null
                 }
@@ -247,8 +240,6 @@ class ForegroundUpdateManager(
             try {
                 runStream(connectionId, registered, currentSession)
                 attempt = 0
-            } catch (e: CancellationException) {
-                throw e
             } catch (e: StreamRevokedException) {
                 setStatus(connectionId, ForegroundConnectionState.Revoked, currentSession)
                 return
@@ -260,44 +251,8 @@ class ForegroundUpdateManager(
                 )
                 return
             } catch (e: Throwable) {
-                if (
-                    (e as? UpdateTransportException)?.kind ==
-                        UpdateTransportException.Kind.Unauthenticated
-                ) {
-                    synchronization.revoke(connectionId)
-                    setStatus(connectionId, ForegroundConnectionState.Revoked, currentSession)
-                    return
-                }
-                if (
-                    (e as? UpdateTransportException)?.kind ==
-                        UpdateTransportException.Kind.UpgradeRequired
-                ) {
-                    setStatus(
-                        connectionId,
-                        ForegroundConnectionState.Unsupported(UpdateAvailability.UpgradeRequired),
-                        currentSession,
-                    )
-                    return
-                }
-                when (connectCode(e)) {
-                    Code.UNAUTHENTICATED -> {
-                        synchronization.revoke(connectionId)
-                        setStatus(connectionId, ForegroundConnectionState.Revoked, currentSession)
-                        return
-                    }
-                    Code.UNIMPLEMENTED,
-                    Code.FAILED_PRECONDITION -> {
-                        setStatus(
-                            connectionId,
-                            ForegroundConnectionState.Unsupported(
-                                UpdateAvailability.UpgradeRequired
-                            ),
-                            currentSession,
-                        )
-                        return
-                    }
-                    else -> Unit
-                }
+                rethrowOwnCancellation(e)
+                if (stopOnActionable(connectionId, e, currentSession)) return
                 setStatus(
                     connectionId,
                     ForegroundConnectionState.Unreachable(failureOf(e)),
@@ -321,15 +276,18 @@ class ForegroundUpdateManager(
         currentSession: Long,
     ): Unit = coroutineScope {
         val subscription = registered.subscription
+        // A bounded wait, not a cancellation: a sidecar that accepts the stream and then says
+        // nothing is an ordinary outage — the shape a connection coming back through a router that
+        // has forgotten it takes — and the owner has to come back from it like any other (SEE-152).
         val first =
-            withTimeout(HANDSHAKE_TIMEOUT_MILLIS) {
+            withTimeoutOrNull(HANDSHAKE_TIMEOUT_MILLIS) {
                 val received = subscription.responses.receiveCatching()
                 if (received.isClosed) {
                     throw received.exceptionOrNull()
                         ?: IOException("update stream ended before ready")
                 }
                 received.getOrThrow()
-            }
+            } ?: throw IOException("the update stream never became ready")
         validateEnvelope(connectionId, first)
         require(first.eventCase == SubscribeResponse.EventCase.READY) {
             "the first update response was not ready"
@@ -517,6 +475,63 @@ class ForegroundUpdateManager(
         val base = min(MAX_BACKOFF_MILLIS, BASE_BACKOFF_MILLIS * (1L shl exponent))
         return jitter(base).coerceIn(0L, MAX_BACKOFF_MILLIS)
     }
+
+    /**
+     * Rethrows only this owner's own cancellation.
+     *
+     * Everything else arriving as a [CancellationException] came from inside — a bounded wait
+     * expiring, or a coalesced synchronization whose own caller went away and cancelled the result
+     * this owner was waiting on. Letting one of those out ends the owner, and [ownConnections]
+     * starts owners only when the connection *list* changes, so nothing would ever start another
+     * one: the row keeps rendering whatever was published last and only a new pairing recovers it
+     * (SEE-152).
+     */
+    private suspend fun rethrowOwnCancellation(error: Throwable) {
+        if (error is CancellationException) currentCoroutineContext().ensureActive()
+    }
+
+    /**
+     * Publishes the answer a failure calls for when it is one the owner cannot retry its way out
+     * of, and says whether it did. Everything else is an outage and belongs in the retry loop.
+     */
+    private suspend fun stopOnActionable(
+        connectionId: String,
+        error: Throwable,
+        currentSession: Long,
+    ): Boolean =
+        when (actionableKind(error)) {
+            UpdateTransportException.Kind.Unauthenticated -> {
+                synchronization.revoke(connectionId)
+                setStatus(connectionId, ForegroundConnectionState.Revoked, currentSession)
+                true
+            }
+            UpdateTransportException.Kind.UpgradeRequired -> {
+                setStatus(
+                    connectionId,
+                    ForegroundConnectionState.Unsupported(UpdateAvailability.UpgradeRequired),
+                    currentSession,
+                )
+                true
+            }
+            else -> false
+        }
+
+    /**
+     * The one kind a failure has to be acted on rather than retried, or null when it is an outage.
+     *
+     * The transport's own classification wins, because a status code alone cannot say what
+     * `FAILED_PRECONDITION` meant: the sidecar answers it both for a protocol it will not speak and
+     * for a snapshot or cursor this phone has to replace, and reading the second as the first
+     * retired a healthy connection for the rest of the session (SEE-152). A bare code reaches here
+     * only from a throwable the transport never classified, where `UNIMPLEMENTED` is unambiguous.
+     */
+    private fun actionableKind(error: Throwable): UpdateTransportException.Kind? =
+        (error as? UpdateTransportException)?.kind
+            ?: when (connectCode(error)) {
+                Code.UNAUTHENTICATED -> UpdateTransportException.Kind.Unauthenticated
+                Code.UNIMPLEMENTED -> UpdateTransportException.Kind.UpgradeRequired
+                else -> null
+            }
 
     private fun failureOf(error: Throwable): CheckOutcome =
         when ((error as? UpdateTransportException)?.kind) {
