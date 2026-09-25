@@ -10,12 +10,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.RssFeed
-import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +36,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 
+/**
+ * How the sheet is laid out in its host.
+ *
+ * [Unrolled] is the comparison canvas the previews capture: every section one after another with no
+ * scroll container. [Pinned] is what a phone presents: the grabber and title stay at the top, the
+ * decision stays at the bottom, and only the body between them scrolls (SEE-158).
+ */
+enum class ReviewSheetLayout {
+    Unrolled,
+    Pinned,
+}
+
 enum class ReviewSheetSublineStyle {
     Plain,
     Mono,
@@ -44,7 +56,8 @@ enum class ReviewSheetSublineStyle {
 sealed interface ReviewSheetHeaderChip {
     data object Signal : ReviewSheetHeaderChip
 
-    data class Feed(val name: String) : ReviewSheetHeaderChip
+    /** The connection the signal arrived on, in its own stored colour when it has one. */
+    data class Feed(val name: String, val colour: SourceColour? = null) : ReviewSheetHeaderChip
 
     data class Environment(
         val value: EnvChipEnvironment,
@@ -70,6 +83,8 @@ data class ReviewSheetWarning(
 data class ReviewSheetVerdict(
     val warnings: List<ReviewSheetWarning> = emptyList(),
     val additionalContext: String? = null,
+    /** Replaces the counted heading, e.g. "Outside rules · no rules set". */
+    val heading: String? = null,
 )
 
 data class ReviewSheetDailySpend(
@@ -90,7 +105,19 @@ data class ReviewSheetFactRow(
     val label: String,
     val value: String,
     val valueStyle: FactRowValueStyle = FactRowValueStyle.Plain,
+    /** The full value a tap copies, when the row offers one; [value] may be shortened. */
+    val copyValue: String? = null,
 )
+
+/** The quoted operation: rows once a quote exists, or the line saying what one will show. */
+data class ReviewSheetTerms(
+    val rows: List<TermsCardRow>,
+    val emptyText: String? = null,
+    val kind: TermsCardKind = TermsCardKind.Swap,
+)
+
+/** A quote that is no longer current, and the action that fetches a fresh one. */
+data class ReviewSheetStaleQuote(val message: String, val actionLabel: String)
 
 data class ReviewSheetNote(val label: String, val body: String)
 
@@ -118,6 +145,14 @@ data class ReviewSheetState(
     val secondaryAction: ReviewSheetAction,
     val footerCaption: String,
     val sublineStyle: ReviewSheetSublineStyle = ReviewSheetSublineStyle.Plain,
+    /** What went differently from the ordinary review: an outcome, a failure, a refusal. */
+    val statusBlocks: List<ReviewSheetInfoBlock> = emptyList(),
+    val staleQuote: ReviewSheetStaleQuote? = null,
+    val terms: ReviewSheetTerms? = null,
+    /** Null keeps the confirmation inside the sheet; a value hands it to the caller. */
+    val confirmationChecked: Boolean? = null,
+    /** False hides the decision footer entirely, for a request that can no longer be acted on. */
+    val actionsShown: Boolean = true,
 )
 
 /**
@@ -134,16 +169,21 @@ fun ReviewSheet(
     onChoose: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    layout: ReviewSheetLayout = ReviewSheetLayout.Unrolled,
+    onCopy: (String) -> Unit = {},
+    onConfirmedChange: (Boolean) -> Unit = {},
+    onRefreshQuote: () -> Unit = {},
 ) {
     val hasWarnings = state.verdict.warnings.isNotEmpty()
     require(!hasWarnings || state.confirmationCheckbox != null) {
         "A warning verdict needs confirmation copy"
     }
     val requiresConfirmation = state.confirmationCheckbox != null
-    var confirmed by
+    var confirmedHere by
         rememberSaveable(state.title, state.headline, state.confirmationCheckbox) {
             mutableStateOf(false)
         }
+    val confirmed = state.confirmationChecked ?: confirmedHere
     val primaryEnabled = state.primaryAction.enabled && (!requiresConfirmation || confirmed)
     val surface = sheetStackSurfaceColor()
     val ink = sheetStackContentColor()
@@ -160,7 +200,13 @@ fun ReviewSheet(
             ReviewSheetTitle(title = state.title, onClose = onClose)
             Column(
                 modifier =
-                    Modifier.fillMaxWidth()
+                    when (layout) {
+                            ReviewSheetLayout.Unrolled -> Modifier
+                            ReviewSheetLayout.Pinned ->
+                                Modifier.weight(1f, fill = false)
+                                    .verticalScroll(rememberScrollState())
+                        }
+                        .fillMaxWidth()
                         .padding(
                             start = SeekerTheme.spacing.xl,
                             top = SeekerTheme.spacing.xs,
@@ -173,6 +219,7 @@ fun ReviewSheet(
                 state.sandboxNotice?.let {
                     NoticeCard(kind = NoticeCardKind.Sandbox, message = it)
                 }
+                state.statusBlocks.forEach { ReviewSheetInfoBlock(it) }
                 state.yourPart?.let {
                     OwnerInputCard(
                         kind = it.kind,
@@ -195,11 +242,28 @@ fun ReviewSheet(
                         },
                     onRulesClick = onRules,
                     additionalContext = state.verdict.additionalContext,
+                    heading = state.verdict.heading,
                 )
+                state.staleQuote?.let {
+                    NoticeCard(
+                        kind = NoticeCardKind.StaleQuote,
+                        message = it.message,
+                        actionLabel = it.actionLabel,
+                        onAction = onRefreshQuote,
+                    )
+                }
+                state.terms?.let {
+                    TermsCard(rows = it.rows, kind = it.kind, emptyText = it.emptyText)
+                }
                 state.dailySpend?.let { ReviewSheetDailySpend(it) }
                 state.infoBlocks.forEach { ReviewSheetInfoBlock(it) }
-                state.factRows.forEach {
-                    FactRow(label = it.label, value = it.value, valueStyle = it.valueStyle)
+                state.factRows.forEach { row ->
+                    FactRow(
+                        label = row.label,
+                        value = row.value,
+                        valueStyle = row.valueStyle,
+                        onClick = row.copyValue?.let { copy -> { onCopy(copy) } },
+                    )
                 }
                 state.note?.let { ReviewSheetNote(it) }
                 Text(
@@ -209,54 +273,61 @@ fun ReviewSheet(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Column(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .padding(
-                            start = SeekerTheme.spacing.xl,
-                            top = SeekerTheme.spacing.lg,
-                            end = SeekerTheme.spacing.xl,
-                            bottom = SeekerTheme.spacing.xxl,
-                        ),
-                verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus),
-            ) {
-                state.confirmationCheckbox?.let { label ->
-                    CheckRow(
-                        label = label,
-                        state = if (confirmed) CheckRowState.Checked else CheckRowState.Unchecked,
-                        onStateChange = { confirmed = it == CheckRowState.Checked },
-                        contentKind = CheckRowContentKind.WarningAcknowledgement,
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+            if (state.actionsShown)
+                Column(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(
+                                start = SeekerTheme.spacing.xl,
+                                top = SeekerTheme.spacing.lg,
+                                end = SeekerTheme.spacing.xl,
+                                bottom = SeekerTheme.spacing.xxl,
+                            ),
+                    verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus),
                 ) {
-                    SeekerButton(
-                        label = state.primaryAction.label,
-                        onClick = onPrimary,
-                        variant =
-                            if (primaryEnabled) SeekerButtonVariant.Filled
-                            else SeekerButtonVariant.Disabled,
-                        size = SeekerButtonSize.Lg,
-                        modifier = Modifier.weight(1f),
-                    )
-                    SeekerButton(
-                        label = state.secondaryAction.label,
-                        onClick = onSecondary,
-                        variant =
-                            if (state.secondaryAction.enabled) SeekerButtonVariant.Neutral
-                            else SeekerButtonVariant.Disabled,
-                        size = SeekerButtonSize.Lg,
+                    state.confirmationCheckbox?.let { label ->
+                        CheckRow(
+                            label = label,
+                            state =
+                                if (confirmed) CheckRowState.Checked else CheckRowState.Unchecked,
+                            onStateChange = {
+                                val checked = it == CheckRowState.Checked
+                                confirmedHere = checked
+                                onConfirmedChange(checked)
+                            },
+                            contentKind = CheckRowContentKind.WarningAcknowledgement,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+                    ) {
+                        SeekerButton(
+                            label = state.primaryAction.label,
+                            onClick = onPrimary,
+                            variant =
+                                if (primaryEnabled) SeekerButtonVariant.Filled
+                                else SeekerButtonVariant.Disabled,
+                            size = SeekerButtonSize.Lg,
+                            modifier = Modifier.weight(1f),
+                        )
+                        SeekerButton(
+                            label = state.secondaryAction.label,
+                            onClick = onSecondary,
+                            variant =
+                                if (state.secondaryAction.enabled) SeekerButtonVariant.Neutral
+                                else SeekerButtonVariant.Disabled,
+                            size = SeekerButtonSize.Lg,
+                        )
+                    }
+                    Text(
+                        text = state.footerCaption,
+                        modifier =
+                            Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.spacing.xs),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Text(
-                    text = state.footerCaption,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.spacing.xs),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
         }
     }
 }
@@ -323,7 +394,13 @@ private fun ReviewSheetHeader(state: ReviewSheetState) {
                 originChips.forEach { ReviewSheetHeaderChip(it) }
             }
         }
-        Text(text = state.headline, style = MaterialTheme.typography.displayLarge)
+        Text(
+            text = state.headline,
+            style =
+                MaterialTheme.typography.displayLarge.let {
+                    it.copy(lineHeight = it.fontSize * ReviewSheetHeadlineLineHeight)
+                },
+        )
         Text(
             text =
                 if (state.sublineStyle == ReviewSheetSublineStyle.Mono) {
@@ -358,7 +435,8 @@ private fun ReviewSheetHeader(state: ReviewSheetState) {
 private fun ReviewSheetHeaderChip(chip: ReviewSheetHeaderChip) {
     when (chip) {
         ReviewSheetHeaderChip.Signal -> ReviewSignalChip()
-        is ReviewSheetHeaderChip.Feed -> SourceChip(chip.name, size = SourceChipSize.Compact)
+        is ReviewSheetHeaderChip.Feed ->
+            SourceChip(chip.name, colour = chip.colour, size = SourceChipSize.Compact)
         is ReviewSheetHeaderChip.Environment -> EnvChip(chip.value, chip.verbosity)
         is ReviewSheetHeaderChip.Network -> NetworkChip(chip.value)
     }
@@ -411,10 +489,10 @@ private fun ReviewSheetDailySpendRow(row: ReviewSheetDailySpendRow) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = if (over) Icons.Outlined.WarningAmber else Icons.Outlined.CheckCircle,
+            imageVector = row.state.icon(),
             contentDescription = null,
             modifier = Modifier.size(SeekerTheme.spacing.xxl),
-            tint = contentColor,
+            tint = row.state.iconTint(),
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -431,13 +509,7 @@ private fun ReviewSheetDailySpendRow(row: ReviewSheetDailySpendRow) {
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        ScopeChip(
-            source =
-                when (row.scope) {
-                    DailyLimitRowScope.Global -> ScopeChipSource.Global
-                    DailyLimitRowScope.Connection -> ScopeChipSource.Connection
-                }
-        )
+        ScopeChip(source = row.scope.chipSource())
     }
 }
 
@@ -490,6 +562,7 @@ private fun ReviewSheetNote(note: ReviewSheetNote) {
 }
 
 private const val ReviewSheetHeaderHeightUnits = 2
+private const val ReviewSheetHeadlineLineHeight = 1.1f
 
 /** Compose wraps at words by default; the design's identifiers use CSS `word-break: break-all`. */
 private fun String.breakAnywhere(): String =

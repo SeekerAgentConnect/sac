@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.designsystem
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,6 +35,8 @@ fun FactRow(
     value: String,
     valueStyle: FactRowValueStyle,
     modifier: Modifier = Modifier,
+    /** A tap on the whole row, e.g. to copy the full value a shortened one stands for. */
+    onClick: (() -> Unit)? = null,
 ) {
     val labelModifier =
         if (valueStyle == FactRowValueStyle.MonoWrap && label.any { it.isWhitespace() }) {
@@ -47,6 +50,10 @@ fun FactRow(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(SeekerTheme.radii.lg))
                 .background(SeekerTheme.colors.surface1)
+                .then(
+                    if (onClick == null) Modifier
+                    else Modifier.clickable(onClickLabel = "Copy", onClick = onClick)
+                )
                 .semantics(mergeDescendants = true) {}
                 .padding(
                     horizontal = SeekerTheme.spacing.xl,

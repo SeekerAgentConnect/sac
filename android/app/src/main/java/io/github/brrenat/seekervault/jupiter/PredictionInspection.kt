@@ -10,6 +10,7 @@ import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
 import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
 import io.github.brrenat.seekervault.plugins.actions.WRAPPED_SOL
+import io.github.brrenat.seekervault.plugins.actions.depositUnit
 import io.github.brrenat.seekervault.solana.ResolvedTransaction
 import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.solana.resolveLookups
@@ -373,28 +374,22 @@ private fun details(
     resolved: ResolvedTransaction,
 ): List<PluginFact> {
     val units = terms.depositDecimals
+    // Every amount of money carries its unit (SEE-158). The fee is the provider's own figure in
+    // dollars, which it settles in the stake token, so it is shown in the stake token too.
+    val unit = terms.depositUnit()
+    fun money(baseUnits: ULong): String = "${formatBaseUnits(baseUnits, units)} $unit"
     val facts =
         mutableListOf(
             PluginFact(
                 if (placed.yes) R.string.jupiter_fact_side_yes else R.string.jupiter_fact_side_no,
                 placed.contractsMicro.let { formatBaseUnits(it, CONTRACT_DECIMALS) },
             ),
-            PluginFact(R.string.jupiter_fact_stake, formatBaseUnits(placed.cost, units)),
-            PluginFact(
-                R.string.jupiter_fact_payout,
-                formatBaseUnits(placed.payout, units),
-            ),
-            PluginFact(
-                R.string.jupiter_fact_max_price,
-                formatBaseUnits(placed.maxPrice, units),
-            ),
+            PluginFact(R.string.jupiter_fact_stake, money(placed.cost)),
+            PluginFact(R.string.jupiter_fact_payout, money(placed.payout)),
+            PluginFact(R.string.jupiter_fact_max_price, money(placed.maxPrice)),
         )
     if (order.totalFeeUsd > 0UL) {
-        facts +=
-            PluginFact(
-                R.string.jupiter_fact_provider_fee,
-                formatBaseUnits(order.totalFeeUsd, units),
-            )
+        facts += PluginFact(R.string.jupiter_fact_provider_fee, money(order.totalFeeUsd))
     }
     val budget = resolved.transaction.instructions.size
     facts += PluginFact(R.string.jupiter_fact_instructions, budget.toString())

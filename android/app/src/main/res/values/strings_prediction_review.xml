@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The prediction review sheet and its stacked side-and-stake sheet (SEE-158). -->
+<resources>
+    <string name="prediction_review_title">Prediction</string>
+    <string name="prediction_review_provider">%1$s Prediction</string>
+    <!-- Provider, market, closing time. -->
+    <string name="prediction_review_subline">%1$s, market %2$s, closing %3$s. The side and the stake are yours.</string>
+    <!-- Amount with its unit, and the side. -->
+    <string name="prediction_review_stake_on">%1$s on %2$s</string>
+    <string name="prediction_review_amount">%1$s %2$s</string>
+
+    <string name="prediction_sandbox_notice">Sandbox. Everything above is real — the live market, the exact transaction and this phone’s reading of it. The last step is not: no funds will move, nothing is signed and nothing is sent.</string>
+    <string name="prediction_review_check">The market, its prices and its rules were read on this phone. Nothing here was taken from the publisher on trust, and neither the side nor the stake comes from the signal.</string>
+    <string name="prediction_review_terms_empty">Choose a side and a stake and this phone fetches a quote, then shows the contracts, the cost and the payout it was checked against.</string>
+    <string name="prediction_review_terms_fetching">Fetching a quote for your side and stake, and reading the transaction it comes back as on this phone.</string>
+    <string name="prediction_review_stale">This quote has run out. Nothing can be approved from it; fetch a fresh one and read it again.</string>
+    <string name="prediction_review_refresh">Refresh quote</string>
+    <string name="prediction_review_findings">What this phone found in the transaction</string>
+    <string name="prediction_review_not_prepared">Nothing was prepared</string>
+
+    <!-- Fact rows. -->
+    <string name="prediction_fact_from">From</string>
+    <string name="prediction_fact_provider">Provider</string>
+    <string name="prediction_fact_action">Action</string>
+    <string name="prediction_fact_event">Event</string>
+    <string name="prediction_fact_market">Market</string>
+    <string name="prediction_fact_asset">Asset</string>
+    <string name="prediction_fact_asset_mint">Asset mint</string>
+    <string name="prediction_fact_asset_decimals">Asset decimals</string>
+    <string name="prediction_fact_least_deposit">Least deposit</string>
+    <string name="prediction_fact_most_deposit">Most deposit</string>
+    <string name="prediction_fact_wallet">Wallet</string>
+    <string name="prediction_fact_payer">Wallet · paid and signed by</string>
+    <string name="prediction_fact_receives">Received by</string>
+    <string name="prediction_fact_proposal">Proposal</string>
+    <string name="prediction_fact_publisher">Publisher</string>
+    <string name="prediction_fact_revision">Revision</string>
+
+    <string name="prediction_review_note_label">The publisher’s note · not verified</string>
+
+    <!-- The verdict, in the design's own pattern. -->
+    <string name="prediction_verdict_no_rules">Outside rules · no rules set</string>
+    <string name="prediction_verdict_pending">Reading your rules</string>
+    <string name="prediction_rule_global">Global rule</string>
+    <string name="prediction_rule_connection">Connection rule</string>
+    <string name="prediction_rule_none">No rule configured</string>
+    <string name="prediction_acknowledge_one">I have read the warning and want to approve anyway</string>
+    <string name="prediction_acknowledge_many">I have read the warnings and want to approve anyway</string>
+    <string name="prediction_daily_title_sandbox">Daily spend if this ran in production</string>
+
+    <!-- The footer. -->
+    <string name="prediction_approve">Approve and stake</string>
+    <string name="prediction_simulate">Simulate the stake</string>
+    <string name="prediction_dismiss">Dismiss</string>
+    <string name="prediction_dismiss_note">Dismissing keeps the decision on this phone. %1$s is never told either way.</string>
+
+    <!-- The stacked side-and-stake sheet. -->
+    <string name="prediction_params_title">Your side and stake</string>
+    <string name="prediction_params_use">Use these</string>
+    <string name="prediction_params_help">In this asset’s own units. Nothing is rounded.</string>
+    <string name="prediction_params_note">How much to stake is yours alone. It stays on this phone: the publisher and the shared gateway are never told the amount, your wallet, or whether you acted.</string>
+    <string name="prediction_params_too_little">At least %1$s.</string>
+    <string name="prediction_params_too_much">At most %1$s.</string>
+</resources>

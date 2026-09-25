@@ -45,7 +45,9 @@ fun Segmented(
 ) {
     val expectedCount = if (count == SegmentedCount.Two) 2 else 3
     require(options.size == expectedCount) { "$count requires $expectedCount options" }
-    require(selectedIndex in options.indices) { "selectedIndex must identify an option" }
+    require(selectedIndex == SegmentedNoSelection || selectedIndex in options.indices) {
+        "selectedIndex must identify an option, or be SegmentedNoSelection"
+    }
     if (usage == SegmentedUsage.RuleMode) {
         require(count == SegmentedCount.Two) { "RuleMode requires two options" }
     }
@@ -100,6 +102,9 @@ fun Segmented(
         }
     }
 }
+
+/** A segmented control nothing has been picked in yet, e.g. a market side with no default. */
+const val SegmentedNoSelection = -1
 
 private const val SegmentedDarkMode = Configuration.UI_MODE_NIGHT_YES
 

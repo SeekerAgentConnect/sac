@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
@@ -61,6 +62,11 @@ data class RequestTileModel(
     val footerText: String? = null,
     /** The connection's stored marker. Null keeps the source-name hash used by captured tiles. */
     val sourceColour: SourceColour? = null,
+    /**
+     * Nothing failed, but no rules applied: the tile says "Outside rules", as the review does,
+     * instead of reading as within them (SEE-158).
+     */
+    val outsideRules: Boolean = false,
 )
 
 @Composable
@@ -119,6 +125,7 @@ fun RequestTile(
             kind = kind,
             text = model.footerText ?: kind.effect(),
             warningCount = model.warningCount,
+            outsideRules = model.outsideRules,
             centred = centred,
             secondaryColor = tileColors.secondary,
         )
@@ -206,7 +213,9 @@ private fun RequestTileHeadline(
                 text = model.headline(kind),
                 color = contentColor,
                 maxLines = 1,
-                overflow = TextOverflow.Clip,
+                // A signal's title is words, and words end in an ellipsis rather than being cut
+                // through a glyph. Amounts and byte counts stay clipped: they are sized to fit.
+                overflow = if (kind.isSignal()) TextOverflow.Ellipsis else TextOverflow.Clip,
                 softWrap = false,
                 style = kind.headlineStyle(),
             )
@@ -234,6 +243,7 @@ private fun RequestTileFooter(
     kind: RequestTileKind,
     text: String,
     warningCount: Int,
+    outsideRules: Boolean,
     centred: Boolean,
     secondaryColor: Color,
 ) {
@@ -251,7 +261,12 @@ private fun RequestTileFooter(
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = null),
         )
         VerdictPill(
-            verdict = if (warningCount > 0) VerdictPillVerdict.Warning else VerdictPillVerdict.Ok,
+            verdict =
+                when {
+                    warningCount > 0 -> VerdictPillVerdict.Warning
+                    outsideRules -> VerdictPillVerdict.OutsideRules
+                    else -> VerdictPillVerdict.Ok
+                },
             warningCount = warningCount.takeIf { it > 0 },
             context = if (centred) VerdictPillContext.OnTile else VerdictPillContext.Standard,
         )
@@ -299,7 +314,8 @@ private fun RequestTileKind.headlineStyle() =
     when (this) {
         RequestTileKind.Acknowledgement -> MaterialTheme.typography.headlineMedium
         RequestTileKind.PredictionSignal,
-        RequestTileKind.SwapSignal -> MaterialTheme.typography.headlineSmall
+        RequestTileKind.SwapSignal ->
+            SeekerTheme.typography.screenTitle.copy(fontWeight = FontWeight.Normal)
         RequestTileKind.SignatureRequest,
         RequestTileKind.Transfer -> MaterialTheme.typography.headlineLarge
     }.let { style -> style.copy(lineHeight = style.fontSize * RequestTileHeadlineLineHeight) }

@@ -100,7 +100,7 @@ val PredictionChoiceProblem.message: Int
         when (this) {
             PredictionChoiceProblem.NoOutcome -> R.string.action_choice_no_outcome
             PredictionChoiceProblem.BadOutcome -> R.string.action_choice_bad_outcome
-            PredictionChoiceProblem.NoDeposit -> R.string.action_choice_no_amount
+            PredictionChoiceProblem.NoDeposit -> R.string.action_choice_no_stake
             PredictionChoiceProblem.TooLittle -> R.string.action_choice_stake_too_little
             PredictionChoiceProblem.TooMuch -> R.string.action_choice_too_much
         }

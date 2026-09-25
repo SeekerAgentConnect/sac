@@ -35,6 +35,7 @@ import io.github.brrenat.seekervault.connections.HomeRouteCallbacks
 import io.github.brrenat.seekervault.connections.InboxSummary
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.signMessage
+import io.github.brrenat.seekervault.connections.sourceColour
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.SheetMotion
 import io.github.brrenat.seekervault.inbox.InboxRoute
@@ -57,8 +58,12 @@ import io.github.brrenat.seekervault.notifications.InAppNotifications
 import io.github.brrenat.seekervault.notifications.RequestNotificationPermission
 import io.github.brrenat.seekervault.operations.OperationViewModel
 import io.github.brrenat.seekervault.operations.OperationsUiState
+import io.github.brrenat.seekervault.operations.PredictionParametersSheet
+import io.github.brrenat.seekervault.operations.PredictionReviewScreen
+import io.github.brrenat.seekervault.operations.PredictionReviewSource
 import io.github.brrenat.seekervault.operations.ProposalReviewScreen
 import io.github.brrenat.seekervault.operations.requiresWalletHandoff
+import io.github.brrenat.seekervault.operations.reviewedAsPrediction
 import io.github.brrenat.seekervault.policy.PolicyAddressKind
 import io.github.brrenat.seekervault.policy.PolicyAddressLibraryScreen
 import io.github.brrenat.seekervault.policy.PolicyAsset
@@ -221,6 +226,27 @@ fun SeekerVaultApp(
                     ?: io.github.brrenat.seekervault.proposals.ProposalStanding.Expired
             },
         )
+    // The same reading of the owner's rules a signal's review makes when it opens, so its tile's
+    // chip and the review's verdict card agree (SEE-158).
+    val signalAssessments =
+        remember(
+            commonPending,
+            policyState.stored,
+            globalPolicyState.stored,
+            walletState.wallet,
+            openOperation?.assessment,
+        ) {
+            commonPending
+                .filterIsInstance<PendingItem.Signal>()
+                .mapNotNull { item ->
+                    operations?.assessment(item.connectionId, item.requestId)?.let {
+                        RequestKey(item.connectionId, item.requestId) to it
+                    }
+                }
+                .toMap()
+        }
+    // Rules edited from a review's verdict are read again by the review they were edited over.
+    LaunchedEffect(policyState.stored, globalPolicyState.stored) { operations?.reload() }
     val rootModifier =
         Modifier.navigationBarsPadding()
             .then(if (sheets.isNotEmpty()) Modifier.clearAndSetSemantics {} else Modifier)
@@ -244,6 +270,7 @@ fun SeekerVaultApp(
                     inboxSummary = InboxSummary(commonPending.size, toSend),
                     wallet = walletState.wallet,
                     requestAssessments = inboxState.assessments,
+                    signalAssessments = signalAssessments,
                     pendingItems = commonPending,
                     callbacks =
                         HomeRouteCallbacks(
@@ -342,7 +369,8 @@ fun SeekerVaultApp(
                     onDismiss = pop,
                     onPeekClick = { requestPopTo(index + 1) },
                     chrome =
-                        sheetRoute is AppSheet.RequestReview ||
+                        (sheetRoute is AppSheet.RequestReview &&
+                            !predictionSheet(sheetRoute.identity, operationsState.records)) ||
                             (sheetRoute is AppSheet.ConnectionRules &&
                                 !policyState.readyForLibrarySheet(sheetRoute.connectionId)) ||
                             (sheetRoute is AppSheet.GlobalRules &&
@@ -486,6 +514,30 @@ fun SeekerVaultApp(
                                 LaunchedEffect(activeRoute.connectionId) {
                                     policy.open(activeRoute.connectionId)
                                 }
+                            }
+                        }
+                        is AppSheet.OwnerInput -> {
+                            val open = openOperation?.takeIf {
+                                it.connectionId == activeRoute.identity.connectionId &&
+                                    it.proposalId == activeRoute.identity.requestId
+                            }
+                            if (operations == null || open == null) {
+                                RequestGoneScreen(onBack = pop)
+                            } else {
+                                PredictionParametersSheet(
+                                    review = open,
+                                    onUse = { values ->
+                                        // What was chosen replaces the old choice, and the review
+                                        // quotes again from it at once: "Use these" is the
+                                        // re-quote (SEE-158).
+                                        values.forEach { (key, value) ->
+                                            operations.choose(key, value)
+                                        }
+                                        operations.prepare()
+                                        pop()
+                                    },
+                                    onClose = pop,
+                                )
                             }
                         }
                         is AppSheet.RequestReview ->
@@ -655,6 +707,38 @@ private fun RequestReviewRoute(
                         onBack()
                     }
                 }
+            } else if (open.record.reviewedAsPrediction) {
+                val connection = state.connections.firstOrNull { it.id == identity.connectionId }
+                PredictionReviewScreen(
+                    review = open,
+                    source =
+                        PredictionReviewSource(
+                            name = connection?.label.orEmpty(),
+                            colour = connection?.colour?.sourceColour(),
+                        ),
+                    wallet = walletState.wallet,
+                    now = Instant.now(),
+                    onOwnerInput = { navigator.openOwnerInput(identity) },
+                    onPrepare = operations::prepare,
+                    onApprove = {
+                        if (open.requiresWalletHandoff) {
+                            navigator.openWalletHandoff(identity, WalletHandoffKind.Operation)
+                        } else {
+                            operations.approve(walletState.wallet)
+                        }
+                    },
+                    onDismiss = {
+                        // Dismiss finishes the review, as the design's footer says it does.
+                        operations.dismiss(identity.connectionId, identity.requestId)
+                        onBack()
+                    },
+                    onAcknowledge = operations::acknowledge,
+                    onRules = { navigator.openConnectionRules(identity.connectionId) },
+                    onBack = {
+                        operations.close()
+                        onBack()
+                    },
+                )
             } else {
                 val linkContext = LocalContext.current
                 ProposalReviewScreen(
@@ -804,6 +888,18 @@ private fun WalletHandoffRoute(
         }
     }
 }
+
+/** Whether a review route shows the design's prediction sheet, which draws its own chrome. */
+private fun predictionSheet(
+    identity: ReviewIdentity,
+    records: List<io.github.brrenat.seekervault.proposals.ProposalRecord>,
+): Boolean =
+    identity is ReviewIdentity.Signal &&
+        records.any {
+            it.connectionId == identity.connectionId &&
+                it.key.proposalId == identity.requestId &&
+                it.reviewedAsPrediction
+        }
 
 private fun PolicyAsset.routeId(): String = "${network.number}:${mint.orEmpty()}"
 

@@ -79,6 +79,35 @@ class AppNavigationTest {
     }
 
     @Test
+    fun aSignalReviewStacksItsOwnerInputAndItsConnectionRules() {
+        val identity = ReviewIdentity.Signal(CONNECTION, REQUEST)
+        val navigator = AppNavigator()
+
+        assertTrue(navigator.openReview(identity))
+        assertFalse(navigator.openOwnerInput(ReviewIdentity.Signal(CONNECTION, OTHER_REQUEST)))
+        assertTrue(navigator.openOwnerInput(identity))
+        assertEquals(
+            listOf(AppSheet.RequestReview(identity), AppSheet.OwnerInput(identity)),
+            navigator.state.sheets,
+        )
+        assertEquals(
+            navigator.state,
+            decodeNavigationState(encodeNavigationState(navigator.state)),
+        )
+        assertTrue(navigator.back())
+
+        // `[review, rules]` from the verdict's Rules, for the connection the review came from.
+        assertFalse(navigator.openConnectionRules(OTHER_CONNECTION))
+        assertTrue(navigator.openConnectionRules(CONNECTION))
+        assertEquals(
+            listOf(AppSheet.RequestReview(identity), AppSheet.ConnectionRules(CONNECTION)),
+            navigator.state.sheets,
+        )
+        assertTrue(navigator.back())
+        assertEquals(AppSheet.RequestReview(identity), navigator.state.sheets.single())
+    }
+
+    @Test
     fun childEditorsRequireRulesForTheSameConnection() {
         val navigator = AppNavigator()
 
