@@ -32,14 +32,14 @@ services:
     value: https://seeker-gateway-sg8g3.ondigitalocean.app
   - key: PUBLISHER_ENVIRONMENT
     scope: RUN_AND_BUILD_TIME
-    value: sandbox
+    value: production
   - key: PUBLISHER_DISPLAY_NAME
     scope: RUN_AND_BUILD_TIME
     value: Polymarket
   - key: BROADCAST_CREDENTIAL
     scope: RUN_AND_BUILD_TIME
     type: SECRET
-    value: EV[1:wSPmOkbLaCiKQDUtWp7wDTr4H3QWGlrR:21+waer+7tFf5RaKb4m/V/0fT3W2KHZ4EYOzrkS6BbAbrpdjSQt6io9A1VJhBGsIlV0At8v+bIMGrVY=]
+    value: EV[1:VysHCmtMmmmnBa5z2ASOA3CXKo5mZnhp:oc6iNj721fZG+m3Nl2I9HZMignnYAz01+vrHXwLqConAH+opZabAry4yp/EAeN+pvei1nsY2UJklK0c=]
   - key: PUBLISHER_API_TOKEN
     scope: RUN_AND_BUILD_TIME
     type: SECRET
@@ -49,7 +49,7 @@ services:
     value: 0.0.0.0:8092
   - key: PUBLISHER_DATABASE_PATH
     scope: RUN_AND_BUILD_TIME
-    value: /data/prediction.db
+    value: /data/prediction-production.db
   - key: PREDICTION_SOURCE
     scope: RUN_AND_BUILD_TIME
     value: polymarket
