@@ -50,7 +50,7 @@ import (
 
 // Version is the schema this build writes and reads. A file from a later version is refused rather
 // than guessed at, and a file from an earlier one is brought forward (see [steps]).
-const Version = 3
+const Version = 4
 
 var (
 	// ErrNewerSchema is returned by Open when the file was written by a later version.
@@ -172,7 +172,7 @@ func (s *Store) Close() error {
 // one module with one file format. A publisher who has been running the first template since Stage
 // 7.1 opens their database with a newer build and keeps their signals: refusing it, or quietly
 // creating a second file beside it, would both lose the outbox that makes a restart safe.
-var steps = []string{schemaV1, schemaV2, schemaV3}
+var steps = []string{schemaV1, schemaV2, schemaV3, schemaV4}
 
 const schemaV1 = `
 -- Whose file this is. One row, and it is checked on every open: a database is a publisher's
