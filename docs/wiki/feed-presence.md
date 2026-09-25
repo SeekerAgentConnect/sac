@@ -136,8 +136,14 @@ A **manual refresh** of a feed — opening its connection screen, or its refresh
 a presence read at once, through `ConnectionsViewModel.refresh`, so an owner whose publisher has just
 come back is not told "Feed offline" until the next poll (SEE-155). It does not move the periodic
 timer. Because that allows two reads of one gateway in flight at once, each read is stamped when it
-starts and an answer is published only if no newer read of that gateway has landed first. A feed the
-owner removed while a read was out is not written back in by its answer. Opening the app fetches
+starts and an answer for a channel is published only if no newer read has answered for that channel
+first. The stamp is per channel, not per gateway, because a read does not succeed or fail as a whole:
+a newer read answered for thirty-two channels and refused for the thirty-third has heard nothing about
+that one, so the older read that did hear about it is still the best thing known and publishes it.
+Claiming a channel and writing it happen under one lock, because the periodic read and the refresh are
+two threads and not two turns of one loop: checking the stamp and then writing outside the lock let
+the older read write after the newer one had published. A feed the owner removed while a read was out
+is not written back in by its answer. Opening the app fetches
 every connection without also asking presence once per feed: the manager already reads on
 foregrounding.
 

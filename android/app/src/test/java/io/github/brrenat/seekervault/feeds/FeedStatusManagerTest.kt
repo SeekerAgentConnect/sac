@@ -9,14 +9,22 @@ import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -410,6 +418,79 @@ class FeedStatusManagerTest {
     }
 
     /**
+     * The same race, on the threads it actually happens on (SEE-155).
+     *
+     * The test above runs both reads on one test dispatcher, which never descheduled a read part
+     * way through publishing its answer — and that is exactly where the hole was. On
+     * [kotlinx.coroutines.Dispatchers.IO] the two reads are two threads: the older one checked its
+     * stamp, was descheduled before writing, the newer one checked its own stamp and published, and
+     * then the older one woke up and wrote its staler answer over the top. The stamp was read under
+     * a lock the write was not.
+     *
+     * So the interleaving is arranged rather than hoped for. [whilePublishing] holds the older read
+     * between claiming its channel and writing it, for as long as it takes the newer answer to
+     * land. Under the fix the newer read cannot get in there — it waits for the lock, the hold
+     * times out, and the answers land oldest first — so what is asserted is what the owner sees:
+     * the newest answer, last.
+     */
+    @Test
+    fun anOlderAnswerCannotOverwriteANewerOneOnAnotherThread() {
+        val threads = Executors.newFixedThreadPool(6)
+        val scope = CoroutineScope(SupervisorJob() + threads.asCoroutineDispatcher())
+        try {
+            val watching = CountDownLatch(1)
+            val holding = CountDownLatch(1)
+            val newerLanded = CountDownLatch(1)
+            gateway.answers[channelFor(SERVER_A)] = FeedAvailability.Offline
+            val status =
+                FeedStatusManager(
+                    connections = feeds,
+                    statuses = gateway,
+                    sleep = { delay(it) },
+                    jitter = { it },
+                    ownerScope = scope,
+                    whilePublishing = {
+                        // Only the first read to get this far, which is the poll's and so the older
+                        // one. It waits for the newer answer; a second is long enough for the newer
+                        // read to publish if anything lets it, and the fix is that nothing does.
+                        if (holding.count > 0) {
+                            holding.countDown()
+                            newerLanded.await(1, TimeUnit.SECONDS)
+                        }
+                    },
+                )
+            scope.launch {
+                status.state.collect { state ->
+                    watching.countDown()
+                    if (state.availabilityOf(FEED_A) == FeedAvailability.Online) {
+                        newerLanded.countDown()
+                    }
+                }
+            }
+            assertTrue("nothing was watching the state", watching.await(5, TimeUnit.SECONDS))
+
+            status.onForeground()
+            assertTrue(
+                "the older read never reached its publication",
+                holding.await(5, TimeUnit.SECONDS),
+            )
+            // The gateway has meanwhile learned the publisher is back, and the refresh reads that
+            // while the older read is still inside its own publication.
+            gateway.answers[channelFor(SERVER_A)] = FeedAvailability.Online
+            scope.launch { status.refresh() }
+
+            assertTrue("the newer answer never landed", newerLanded.await(10, TimeUnit.SECONDS))
+            // The older read is released the moment the newer answer lands, so this is the window
+            // it would have overwritten it in.
+            Thread.sleep(500)
+            assertEquals(FeedAvailability.Online, status.state.value.availabilityOf(FEED_A))
+        } finally {
+            scope.cancel()
+            threads.shutdownNow()
+        }
+    }
+
+    /**
      * The other side of that: a newer read that got no answer at all is not newer than anything. If
      * it were, a refresh that failed fast would drop the periodic read still out — the only one
      * that heard from the gateway — and the row would wait another interval for the truth.
@@ -432,6 +513,53 @@ class FeedStatusManagerTest {
         runCurrent()
 
         assertEquals(FeedAvailability.Online, status.state.value.availabilityOf(FEED_A))
+    }
+
+    /**
+     * A read does not succeed or fail as a whole, so neither does its claim on a gateway (SEE-155).
+     *
+     * With a thirty-third feed one gateway is two batches, and a newer read can be answered for the
+     * first thirty-two channels and refused for the thirty-third. It has heard nothing about that
+     * channel — so an older read that did hear about it is still the best thing known, and there is
+     * no reason for that one feed to sit stale. What the newer read did read stays its own.
+     */
+    @Test
+    fun aNewerReadsFailedBatchLeavesItsChannelsToTheOlderRead() = runTest {
+        feeds.value = manyFeeds(33)
+        (1..33).forEach { gateway.answers[channelFor(serverIdOf(it))] = FeedAvailability.Offline }
+        // The poll's first batch is slow, so its second is asked for after the refresh has been and
+        // gone; the refresh's own batches are not.
+        gateway.takes = { call -> if (call == 1) 5_000L else 0L }
+        // And the overflow batch — feed thirty-three's, alone on it — is the one the gateway
+        // refuses
+        // while the refresh is reading.
+        gateway.failingChannels = setOf(channelFor(serverIdOf(33)))
+        val status = manager(backgroundScope)
+
+        status.onForeground()
+        runCurrent()
+        // Every publisher comes back while the poll's first batch is still out. The refresh hears
+        // that for the first thirty-two channels and is refused for the thirty-third.
+        (1..33).forEach { gateway.answers[channelFor(serverIdOf(it))] = FeedAvailability.Online }
+        status.refresh()
+        runCurrent()
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf("feed-1"))
+        assertEquals(FeedAvailability.Unknown, status.state.value.availabilityOf("feed-33"))
+
+        // Now the poll's batches finish. It was refused nothing, and its second batch is the only
+        // thing anybody has heard about feed thirty-three.
+        gateway.failingChannels = emptySet()
+        advanceTimeBy(5_001)
+        runCurrent()
+
+        // The newer answer stands where the newer read actually had one: the poll read the first
+        // thirty-two channels before the publishers came back and must not put them back to
+        // offline.
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf("feed-1"))
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf("feed-32"))
+        // And feed thirty-three is answered rather than kept stale by a read that never asked about
+        // it.
+        assertEquals(FeedAvailability.Online, status.state.value.availabilityOf("feed-33"))
     }
 
     /** And a feed removed while a read was out is not written back in by that read's answer. */

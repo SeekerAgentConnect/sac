@@ -64,6 +64,12 @@ class FeedStatusManager(
     private val sleep: suspend (Long) -> Unit = { delay(it) },
     private val jitter: (Long) -> Long = { (it * Random.nextDouble(0.75, 1.25)).toLong() },
     ownerScope: CoroutineScope? = null,
+    /**
+     * Called inside [publish]'s critical section, after a read has claimed the channels it may
+     * write and before it writes them. Production passes nothing; a test holds a thread here to
+     * prove that a second read cannot publish past a first one while it is in there (SEE-155).
+     */
+    private val whilePublishing: () -> Unit = {},
 ) {
     private val scope = ownerScope ?: CoroutineScope(SupervisorJob() + dispatcher)
     private val _state = MutableStateFlow(FeedStatusState())
@@ -75,7 +81,7 @@ class FeedStatusManager(
     private var closingJob: Job? = null
 
     /**
-     * Which read of a gateway is the newest, so an answer that overtook a later one is dropped
+     * Which read is the newest for each channel, so an answer that overtook a later one is dropped
      * rather than published (SEE-155).
      *
      * A manual refresh and the periodic pass are two reads of the same gateway in flight at once,
@@ -85,11 +91,22 @@ class FeedStatusManager(
      * is the fresher one, so a publisher that just came back is shown offline again.
      *
      * [reads] is stamped when a gateway's read starts; [applied] is the newest stamp already
-     * published for that gateway. Both are guarded by [lifecycleLock] because a refresh runs on a
-     * coroutine of its own.
+     * published, per gateway *and channel*. Per channel rather than per gateway because a read does
+     * not succeed or fail as a whole: with a thirty-third feed the channels are asked for in
+     * batches, so a newer read can answer for thirty-two of them and have the batch holding the
+     * thirty-third refused. A gateway-wide stamp let that newer read speak for a channel it never
+     * read, and the older read that did get an answer for it was then dropped — leaving that one
+     * feed stale until a pass in which both reads happened to succeed. A read now claims only the
+     * channels it actually read, and every other channel is still the older read's to answer.
+     *
+     * Entries are not pruned when a feed is removed: [reads] only ever counts up, so a stale entry
+     * can never hold back a later read, while dropping one could let a read still in flight publish
+     * over a newer answer. The map is bounded by the channels this phone has held in a session.
+     *
+     * Both are guarded by [lifecycleLock] because a refresh runs on a coroutine of its own.
      */
     private var reads = 0L
-    private val applied = mutableMapOf<String, Long>()
+    private val applied = mutableMapOf<Pair<String, String>, Long>()
 
     /** The manual read in flight, so two taps in a row are one read. */
     private var refreshJob: Job? = null
@@ -237,12 +254,21 @@ class FeedStatusManager(
     }
 
     /**
-     * Fold one gateway's answer into the state, unless a later read of the same gateway has already
-     * landed.
+     * Fold one gateway's answer into the state, for every channel no later read has answered for
+     * already.
      *
      * Two things are checked against the present rather than against the snapshot the read started
      * from: [stamp], so an overtaken answer is dropped, and the connection list, so a feed the
      * owner removed mid-read is not written back in by the answer that was already on its way.
+     *
+     * Claiming the channels and writing them happen under one hold of [lifecycleLock], because on
+     * [Dispatchers.IO] these two reads are two threads and not two turns of one loop. Checking the
+     * stamp under the lock and then writing outside it left the window the stamp exists to close:
+     * the older read passes the check, is descheduled, the newer read passes its own check and
+     * publishes, and then the older one resumes and writes its staler answer over the top. The
+     * state write is one [MutableStateFlow] update and touches nothing that takes this lock, so
+     * holding it across the write costs the two reads of one gateway their overlap and nothing
+     * else.
      */
     private fun publish(
         gatewayUrl: String,
@@ -250,21 +276,29 @@ class FeedStatusManager(
         feeds: Map<String, String>,
         read: Read,
     ) {
-        // A read whose every batch failed has nothing to say, so it does not claim the gateway
-        // either: otherwise a refresh that failed fast would drop the periodic read that was
-        // still out and did get an answer, and the row would stay stale for another interval.
+        // A read whose every batch failed has nothing to say, so it claims no channel either:
+        // otherwise a refresh that failed fast would drop the periodic read that was still out
+        // and did get an answer, and the row would stay stale for another interval.
         if (read.asked.isEmpty()) return
-        synchronized(lifecycleLock) {
-            if (stamp <= (applied[gatewayUrl] ?: 0L)) return
-            applied[gatewayUrl] = stamp
-        }
         val live = feedsByGateway(connections.value)[gatewayUrl].orEmpty()
-        val fresh =
-            feeds
-                .filter { (id, channel) -> live[id] == channel && channel in read.asked }
-                .mapValues { (_, channel) -> read.answered[channel] ?: FeedAvailability.Unknown }
-        if (fresh.isEmpty()) return
-        _state.update { it.copy(feeds = it.feeds + fresh) }
+        synchronized(lifecycleLock) {
+            // Only the channels this read read, and only where nothing newer has answered for them
+            // yet. A channel another read has already claimed is that read's to answer, whether or
+            // not this one still names a feed on it.
+            val mine =
+                read.asked.filterTo(mutableSetOf()) { stamp > (applied[gatewayUrl to it] ?: 0L) }
+            if (mine.isEmpty()) return
+            for (channel in mine) applied[gatewayUrl to channel] = stamp
+            whilePublishing()
+            val fresh =
+                feeds
+                    .filter { (id, channel) -> live[id] == channel && channel in mine }
+                    .mapValues { (_, channel) ->
+                        read.answered[channel] ?: FeedAvailability.Unknown
+                    }
+            if (fresh.isEmpty()) return
+            _state.update { it.copy(feeds = it.feeds + fresh) }
+        }
     }
 
     /**
