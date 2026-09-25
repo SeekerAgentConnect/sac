@@ -63,6 +63,13 @@ func swap() signals.Signal {
 // A publisher cannot lose a subscriber's financial history because it never has one: it does not
 // learn who reads its channel, and what each owner picks stays on the device that picked it
 // (SEE-89, docs/security.md).
+//
+// Restricted feeds (SEE-156) are the one deliberate exception, and it is confined to four tables:
+// a restricted feed's publisher decides who may read, so it records the wallet that proved itself,
+// the device key that wallet bound, the decision, the invitation and the gateway grant. Those
+// tables may name a wallet and a device; they still may not name anything an owner did with a
+// signal — no amount, no result, no transaction, no decision about a signal — and the signal tables
+// keep the whole list below.
 func TestNothingAboutASubscriberHasAColumn(t *testing.T) {
 	documents := opened(t)
 	ctx := context.Background()
@@ -88,10 +95,17 @@ func TestNothingAboutASubscriberHasAColumn(t *testing.T) {
 	// discovery keeps (SEE-96). Naming them here rather than counting them is the point — a table
 	// added by a migration has to be added to this line, which is where somebody reads what a
 	// publisher holds.
-	expected := "deployment,discovery,idempotency,manifest,market,signal"
+	expected := "access_challenge,access_device,access_grant,access_invitation," +
+		"deployment,discovery,idempotency,manifest,market,signal"
 	if strings.Join(tables, ",") != expected {
 		t.Fatalf("the tables are %v, expected %s", tables, expected)
 	}
+	// What an access table may name that a signal table may not: the wallet that proved itself,
+	// the device it bound, the operator's decision about access, and the invitation's own token —
+	// a one-use capability for that device, never a push registration (fcm and push stay
+	// forbidden everywhere).
+	accessMay := map[string]bool{"wallet": true, "device": true, "decision": true,
+		"subscriber": true, "approved": true, "approval": true, "token": true}
 
 	// Every word that would mean this template had started keeping something that is not its own.
 	forbidden := []string{
@@ -111,6 +125,9 @@ func TestNothingAboutASubscriberHasAColumn(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, word := range forbidden {
+				if strings.HasPrefix(table, "access_") && accessMay[word] {
+					continue
+				}
 				if strings.Contains(column, word) {
 					t.Fatalf("%s.%s: a publisher holds no %s. Nothing about a subscriber may "+
 						"have a column here (docs/security.md)", table, column, word)
