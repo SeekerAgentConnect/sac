@@ -626,6 +626,17 @@ private fun SheetLayer(
     content: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxWidth()) {
+        // The sheet surface runs to the bottom edge, behind the gesture area or the navigation
+        // buttons, and what is on it stops above them with a gap (SEE-150): the last line of a
+        // review is read, not hidden under the home indicator.
+        //
+        // The host owns this and `:designsystem` does not, for the reason the banner's placement
+        // moved here too: a sheet component is window-agnostic presentation, every sheet the app
+        // pushes goes through this one layer, and a design-system component that measured itself
+        // against a window would put a simulated navigation bar into its own reference capture.
+        // `windowInsetsPadding` also consumes what it applies, so nothing inside can pad for the
+        // same bar twice.
+        val navigationBarInset = WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
         if (chrome) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -639,22 +650,8 @@ private fun SheetLayer(
                 shadowElevation = SeekerTheme.dimensions.dp0,
                 tonalElevation = SeekerTheme.dimensions.dp0,
             ) {
-                // The surface runs to the bottom edge, behind the gesture area or the navigation
-                // buttons, and what is on it stops above them with a gap (SEE-150): the last line
-                // of a review is read, not hidden under the home indicator.
-                //
-                // The host owns this and `:designsystem` does not, for the reason the banner's
-                // placement moved here too: a sheet component is window-agnostic presentation,
-                // every
-                // sheet the app pushes goes through this one layer, and a design-system component
-                // that measured itself against a window would put a simulated navigation bar into
-                // its own reference capture. `windowInsetsPadding` also consumes what it applies,
-                // so
-                // nothing inside can pad for the same bar twice.
                 Column(
-                    Modifier.windowInsetsPadding(
-                            WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
-                        )
+                    Modifier.windowInsetsPadding(navigationBarInset)
                         .padding(bottom = SeekerTheme.spacing.xl)
                 ) {
                     Box(
@@ -676,7 +673,20 @@ private fun SheetLayer(
                 }
             }
         } else {
-            content()
+            // Library sheets draw their own chrome, but the app host still owns their live window
+            // inset. Applying it to the content's measurement boundary guarantees a tall sheet
+            // cannot consume the height first. The sibling spacer paints only the inset area, so
+            // the system bar keeps the sheet colour without filling the library's rounded top
+            // corners (SEE-150, SEE-153).
+            Box(Modifier.fillMaxWidth()) {
+                Box(Modifier.fillMaxWidth().windowInsetsPadding(navigationBarInset)) { content() }
+                Spacer(
+                    Modifier.align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(sheetStackSurfaceColor())
+                        .windowInsetsPadding(navigationBarInset)
+                )
+            }
         }
         if (peek != null) {
             Box(
