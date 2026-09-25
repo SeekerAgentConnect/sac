@@ -8,6 +8,7 @@
   <tr><th>Server ID</th><td><code class="id">{{$p.ServerID}}</code>
       <button class="copy" type="button" data-copy="{{$p.ServerID}}">Copy</button></td></tr>
   <tr><th>Enabled</th><td><span class="state">{{$p.Capabilities}}</span></td></tr>
+  <tr><th>Readers</th><td>{{$p.AccessSentence}}</td></tr>
   <tr><th>Channel</th><td>{{if $p.Publishing}}<code class="id">{{$p.Channel}}</code>
       <button class="copy" type="button" data-copy="{{$p.Channel}}">Copy</button>
       {{else}}<span class="sub">no public feed: this server is not enabled for publishing</span>{{end}}</td></tr>

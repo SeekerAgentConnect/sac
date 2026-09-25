@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,6 +129,28 @@ func New(options Options) (*Broker, error) {
 // StreamChannel is the broker's name for a channel of the protocol's.
 func (b *Broker) StreamChannel(channel string) string { return channelPrefix + channel }
 
+// RestrictedStreamChannel is the broker's name for a restricted channel at one access epoch
+// (SEE-156). The suffix is what a revocation moves: the gateway publishes only on the current
+// epoch's name, so a listener attached under an earlier one — however it got there — receives
+// nothing more, and the broker never has to be asked to close anybody's connection.
+func (b *Broker) RestrictedStreamChannel(channel string, epoch uint64) string {
+	return RestrictedStreamChannel(channel, epoch)
+}
+
+// RestrictedStreamChannel is the naming rule itself, for a caller that has no broker.
+func RestrictedStreamChannel(channel string, epoch uint64) string {
+	return channelPrefix + channel + ".e" + strconv.FormatUint(epoch, 10)
+}
+
+// streamFor is where one delivery is published: the channel's public name, or its restricted name
+// at the epoch the delivery was built for.
+func (b *Broker) streamFor(delivery dispatch.Delivery) string {
+	if delivery.Restricted {
+		return RestrictedStreamChannel(delivery.Channel, delivery.Epoch)
+	}
+	return b.StreamChannel(delivery.Channel)
+}
+
 // MostChannels is how many channels one ticket may grant.
 func (b *Broker) MostChannels() int { return b.channels }
 
@@ -144,7 +167,7 @@ func (b *Broker) Dispatch(ctx context.Context, delivery dispatch.Delivery) error
 			delivery.Channel, len(delivery.Event), MostPayloadBytes)
 	}
 	body, err := json.Marshal(publication{
-		Channel: b.StreamChannel(delivery.Channel),
+		Channel: b.streamFor(delivery),
 		Data:    base64.StdEncoding.EncodeToString(delivery.Event),
 		Key:     IdempotencyKey(delivery),
 	})
@@ -194,6 +217,12 @@ func (b *Broker) Dispatch(ctx context.Context, delivery dispatch.Delivery) error
 // guarantee of uniqueness; what makes a duplicate harmless is the phone's revision-ordered apply
 // (SEE-89), and that is the part nothing depends on configuration for.
 func IdempotencyKey(delivery dispatch.Delivery) string {
+	if delivery.Restricted {
+		// A restricted channel's publication at another epoch is on another stream name, and is a
+		// different publication however similar its document.
+		return fmt.Sprintf("%s/%s/%s/%d/e%d",
+			delivery.Channel, delivery.Kind, delivery.ProposalID, delivery.Revision, delivery.Epoch)
+	}
 	return fmt.Sprintf("%s/%s/%s/%d",
 		delivery.Channel, delivery.Kind, delivery.ProposalID, delivery.Revision)
 }

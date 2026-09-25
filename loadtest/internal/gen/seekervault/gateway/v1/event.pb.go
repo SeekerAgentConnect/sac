@@ -67,6 +67,7 @@ type FeedEvent struct {
 	//	*FeedEvent_Manifest
 	//	*FeedEvent_Proposal
 	//	*FeedEvent_Request
+	//	*FeedEvent_AccessChanged
 	Document      isFeedEvent_Document `protobuf_oneof:"document"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -143,6 +144,15 @@ func (x *FeedEvent) GetRequest() *v2.Request {
 	return nil
 }
 
+func (x *FeedEvent) GetAccessChanged() *AccessChanged {
+	if x != nil {
+		if x, ok := x.Document.(*FeedEvent_AccessChanged); ok {
+			return x.AccessChanged
+		}
+	}
+	return nil
+}
+
 type isFeedEvent_Document interface {
 	isFeedEvent_Document()
 }
@@ -165,24 +175,75 @@ type FeedEvent_Request struct {
 	Request *v2.Request `protobuf:"bytes,4,opt,name=request,proto3,oneof"`
 }
 
+type FeedEvent_AccessChanged struct {
+	// A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+	// will carry nothing more. It is published once, on the stream name that is being retired, and
+	// it is not a document and not a statement about any listener. A listener that receives it
+	// asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+	// to know this case reads the snapshot, which checks the same grant.
+	AccessChanged *AccessChanged `protobuf:"bytes,5,opt,name=access_changed,json=accessChanged,proto3,oneof"`
+}
+
 func (*FeedEvent_Manifest) isFeedEvent_Document() {}
 
 func (*FeedEvent_Proposal) isFeedEvent_Document() {}
 
 func (*FeedEvent_Request) isFeedEvent_Document() {}
 
+func (*FeedEvent_AccessChanged) isFeedEvent_Document() {}
+
+// AccessChanged carries nothing: which grant was revoked is the publisher's business, and every
+// listener on the channel receives the same event.
+type AccessChanged struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccessChanged) Reset() {
+	*x = AccessChanged{}
+	mi := &file_seekervault_gateway_v1_event_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccessChanged) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccessChanged) ProtoMessage() {}
+
+func (x *AccessChanged) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_event_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccessChanged.ProtoReflect.Descriptor instead.
+func (*AccessChanged) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_event_proto_rawDescGZIP(), []int{1}
+}
+
 var File_seekervault_gateway_v1_event_proto protoreflect.FileDescriptor
 
 const file_seekervault_gateway_v1_event_proto_rawDesc = "" +
 	"\n" +
-	"\"seekervault/gateway/v1/event.proto\x12\x16seekervault.gateway.v1\x1a&seekervault/proposal/v1/proposal.proto\x1a$seekervault/request/v2/request.proto\x1a$seekervault/server/v1/manifest.proto\"\xf6\x01\n" +
+	"\"seekervault/gateway/v1/event.proto\x12\x16seekervault.gateway.v1\x1a&seekervault/proposal/v1/proposal.proto\x1a$seekervault/request/v2/request.proto\x1a$seekervault/server/v1/manifest.proto\"\xc6\x02\n" +
 	"\tFeedEvent\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12C\n" +
 	"\bmanifest\x18\x02 \x01(\v2%.seekervault.server.v1.ServerManifestH\x00R\bmanifest\x12?\n" +
 	"\bproposal\x18\x03 \x01(\v2!.seekervault.proposal.v1.ProposalH\x00R\bproposal\x12;\n" +
-	"\arequest\x18\x04 \x01(\v2\x1f.seekervault.request.v2.RequestH\x00R\arequestB\n" +
+	"\arequest\x18\x04 \x01(\v2\x1f.seekervault.request.v2.RequestH\x00R\arequest\x12N\n" +
+	"\x0eaccess_changed\x18\x05 \x01(\v2%.seekervault.gateway.v1.AccessChangedH\x00R\raccessChangedB\n" +
 	"\n" +
-	"\bdocumentB\xff\x01\n" +
+	"\bdocument\"\x0f\n" +
+	"\rAccessChangedB\xff\x01\n" +
 	"\x1acom.seekervault.gateway.v1B\n" +
 	"EventProtoP\x01Z[github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
@@ -198,22 +259,24 @@ func file_seekervault_gateway_v1_event_proto_rawDescGZIP() []byte {
 	return file_seekervault_gateway_v1_event_proto_rawDescData
 }
 
-var file_seekervault_gateway_v1_event_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_seekervault_gateway_v1_event_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_seekervault_gateway_v1_event_proto_goTypes = []any{
 	(*FeedEvent)(nil),         // 0: seekervault.gateway.v1.FeedEvent
-	(*v1.ServerManifest)(nil), // 1: seekervault.server.v1.ServerManifest
-	(*v11.Proposal)(nil),      // 2: seekervault.proposal.v1.Proposal
-	(*v2.Request)(nil),        // 3: seekervault.request.v2.Request
+	(*AccessChanged)(nil),     // 1: seekervault.gateway.v1.AccessChanged
+	(*v1.ServerManifest)(nil), // 2: seekervault.server.v1.ServerManifest
+	(*v11.Proposal)(nil),      // 3: seekervault.proposal.v1.Proposal
+	(*v2.Request)(nil),        // 4: seekervault.request.v2.Request
 }
 var file_seekervault_gateway_v1_event_proto_depIdxs = []int32{
-	1, // 0: seekervault.gateway.v1.FeedEvent.manifest:type_name -> seekervault.server.v1.ServerManifest
-	2, // 1: seekervault.gateway.v1.FeedEvent.proposal:type_name -> seekervault.proposal.v1.Proposal
-	3, // 2: seekervault.gateway.v1.FeedEvent.request:type_name -> seekervault.request.v2.Request
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	2, // 0: seekervault.gateway.v1.FeedEvent.manifest:type_name -> seekervault.server.v1.ServerManifest
+	3, // 1: seekervault.gateway.v1.FeedEvent.proposal:type_name -> seekervault.proposal.v1.Proposal
+	4, // 2: seekervault.gateway.v1.FeedEvent.request:type_name -> seekervault.request.v2.Request
+	1, // 3: seekervault.gateway.v1.FeedEvent.access_changed:type_name -> seekervault.gateway.v1.AccessChanged
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_gateway_v1_event_proto_init() }
@@ -225,6 +288,7 @@ func file_seekervault_gateway_v1_event_proto_init() {
 		(*FeedEvent_Manifest)(nil),
 		(*FeedEvent_Proposal)(nil),
 		(*FeedEvent_Request)(nil),
+		(*FeedEvent_AccessChanged)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -232,7 +296,7 @@ func file_seekervault_gateway_v1_event_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_gateway_v1_event_proto_rawDesc), len(file_seekervault_gateway_v1_event_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

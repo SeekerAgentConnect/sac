@@ -2,8 +2,11 @@ syntax = "proto3";
 
 // How a publisher publishes (SEE-90, docs/wiki/feed-gateway.md).
 //
-// A developer's server uses this authenticated API to publish public feed documents. A feed
-// publisher maintains no connection to any phone and learns nothing about who is subscribed.
+// A developer's server uses this authenticated API to publish feed documents. A public feed's
+// publisher maintains no connection to any phone and learns nothing about who is subscribed. A
+// restricted feed's publisher (SEE-156) decides which devices may read and tells the gateway here,
+// with the same credential and only for its own channel: the gateway enforces what it is told and
+// never learns why — no wallet, no person, only opaque references a publisher chose.
 //
 // It is authenticated, and the credential is the whole of the grant: it says which server the
 // caller publishes as, and every document is checked against that rather than against anything the
@@ -49,6 +52,22 @@ service PublisherService {
   // nothing to publish calls this on the interval the answer names. A publisher that stops calling
   // is shown offline once the gateway's presence window passes.
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  // What access policy the gateway enforces for the caller's feed (SEE-156). A restricted
+  // publisher asks before it publishes anything, and publishes nothing unless the answer is
+  // restricted: a gateway too old to know the method, or one that registered the feed as public,
+  // must never be handed a restricted feed's documents to serve to anyone.
+  rpc DescribeAccess(DescribeAccessRequest) returns (DescribeAccessResponse);
+  // Grant one approved device access to the caller's own restricted channel, or renew a grant it
+  // already holds (SEE-156). Idempotent: the same grant again extends it to the lifetime asked for,
+  // within the gateway's bound. A revoked grant is never renewed, and a grant another publisher
+  // holds is never touched.
+  rpc GrantAccess(GrantAccessRequest) returns (GrantAccessResponse);
+  // Revoke grants on the caller's own channel (SEE-156). Final: a revoked grant's session is
+  // refused from then on — reads, pages, tickets, renewals and push — and the channel's stream
+  // name moves, so a listener already attached stops receiving anything on the one it holds.
+  // Revoking a grant that is already revoked is answered as done; one the caller does not hold is
+  // refused and changes nothing.
+  rpc RevokeAccess(RevokeAccessRequest) returns (RevokeAccessResponse);
 }
 
 // What became of a publication. Both answers mean the gateway holds what the caller sent; they
@@ -70,6 +89,10 @@ message PublishManifestResponse {
   PublishStatus status = 1;
   // The revision the gateway now holds, which is the one that was sent.
   uint64 settings_revision = 2;
+  // The access the gateway stamped on the manifest it holds (SEE-156). Absent from a gateway that
+  // predates restricted feeds, which a restricted publisher reads as "this gateway will not
+  // enforce me" and stops.
+  seekervault.server.v1.FeedAccess access = 3;
 }
 
 message PublishRequestRequest {
@@ -129,4 +152,45 @@ message HeartbeatResponse {
   // How often, at most, the gateway expects a check-in. A publisher that goes three intervals
   // without any authenticated call is shown offline.
   uint32 interval_seconds = 1;
+}
+
+message DescribeAccessRequest {}
+
+message DescribeAccessResponse {
+  // The policy and authentication origin the operator registered for the caller's feed.
+  seekervault.server.v1.FeedAccess access = 1;
+  // The longest a grant may run without renewal: the bound on how long a device keeps access when
+  // its publisher cannot reach the gateway to revoke it.
+  uint32 most_grant_seconds = 2;
+}
+
+message GrantAccessRequest {
+  // The grant's identity, a lowercase UUID the publisher minted. It is what a revocation names.
+  string grant_id = 1;
+  // An opaque, publisher-scoped reference to whoever the publisher approved, 1 to 64 printable
+  // ASCII characters. The gateway stores it, never interprets it, and never learns what it stands
+  // for; it exists so a publisher can recognise its own grants in the operator's view.
+  string subscriber_ref = 2;
+  // An opaque reference to the approved device, under the same rules.
+  string device_ref = 3;
+  // SHA-256 of the session the publisher handed the device: the gateway never holds the session
+  // itself, so its database cannot be replayed as access.
+  bytes session_digest = 4;
+  // How long this grant runs before it must be renewed, at most DescribeAccessResponse's bound.
+  uint32 lifetime_seconds = 5;
+}
+
+message GrantAccessResponse {
+  // How long the grant now runs, which may be less than was asked.
+  uint32 lifetime_seconds = 1;
+}
+
+message RevokeAccessRequest {
+  // The grants to revoke, 1 to 64, all on the caller's channel.
+  repeated string grant_ids = 1;
+}
+
+message RevokeAccessResponse {
+  // How many of them this call revoked; the rest were already revoked.
+  uint32 revoked = 1;
 }

@@ -263,9 +263,10 @@ func TestNoProviderIsNamedInTheGateway(t *testing.T) {
 	}
 }
 
-// The live schema is public-feed state only. The retired v2 definitions remain in the migration
-// chain, so this checks the database after all migrations rather than matching source text.
-func TestTheStoreKeepsOnlyPublicFeedState(t *testing.T) {
+// The live schema is feed state only: public documents, and since SEE-156 the grants a restricted
+// feed's publisher registered. The retired v2 definitions remain in the migration chain, so this
+// checks the database after all migrations rather than matching source text.
+func TestTheStoreKeepsOnlyFeedState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "broadcast.db")
 	documents, err := sqlite.Open(path)
 	if err != nil {
@@ -303,9 +304,17 @@ func TestTheStoreKeepsOnlyPublicFeedState(t *testing.T) {
 	// column here for a request, an approval, a signature, a result, a wallet, an amount or
 	// anything an owner decided, and a phone woken through this relay goes and reads its own
 	// server for all of that.
+	//
+	// access_grant is SEE-156's restricted feeds. One row per device a publisher approved for its
+	// own channel: the grant's identity, two references the publisher chose and the gateway never
+	// interprets, the SHA-256 of the session the device presents, when it runs until, and whether
+	// it was revoked — plus where that grant's hints go. It is the least that enforcing a
+	// publisher's decision takes. There is no wallet, no address, no signature, no device name and
+	// no decision in it: the publisher saw those and kept them, and a public feed never writes a
+	// row here at all.
 	expected := []string{
-		"channel_sequence", "manifest", "notice", "proposal", "publisher", "publisher_credential",
-		"relay_binding", "relay_installation",
+		"access_grant", "channel_sequence", "manifest", "notice", "proposal", "publisher",
+		"publisher_credential", "relay_binding", "relay_installation",
 	}
 	if fmt.Sprint(names) != fmt.Sprint(expected) {
 		t.Fatalf("the store holds %v, expected %v", names, expected)
@@ -323,18 +332,26 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			"manifest", "unchanged", "settings_revision",
 			// The common snapshot and point read. They deliberately repeat the proposal methods'
 			// cursor shape while clients migrate; both are read-only views of the same rows.
-			"channel", "page_size", "page_token", "known_snapshot_sequence",
+			//
+			// Each read carries a `session` since SEE-156: the opaque value a restricted feed's
+			// publisher handed a device it approved. It names nobody — the gateway holds only its
+			// digest, against a grant whose references the publisher chose — and a public feed
+			// ignores it.
+			"channel", "page_size", "page_token", "known_snapshot_sequence", "session",
 			"requests", "next_page_token", "snapshot_sequence", "unchanged",
-			"channel", "request_id",
+			"channel", "request_id", "session",
 			"request",
-			"channel", "page_size", "page_token", "known_snapshot_sequence",
+			"channel", "page_size", "page_token", "known_snapshot_sequence", "session",
 			"proposals", "next_page_token", "snapshot_sequence", "unchanged",
-			"channel", "proposal_id",
+			"channel", "proposal_id", "session",
 			"proposal",
 			// A listener's grant (SEE-91): the channels asked for, the ticket, the channels
 			// granted with the broker's name for each, and how long it lasts. Nothing that
-			// identifies the listener, which is the whole reason this list is pinned.
-			"channels",
+			// identifies the listener, which is the whole reason this list is pinned. A restricted
+			// channel's session travels beside its channel (SEE-156), and the ticket itself still
+			// says nothing about who holds it.
+			"channels", "sessions",
+			"channel", "session",
 			"ticket", "channels", "lifetime_seconds",
 			"channel", "stream_channel",
 			// Where hints about a channel arrive (SEE-92): the channels asked about, the topics
@@ -350,16 +367,26 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			// phone is the answer to every phone. The verdict is an enum with three named values,
 			// not a free field, so the whole of what a gateway may say about a publisher is
 			// "online", "offline" or nothing.
-			"channels",
+			"channels", "sessions",
 			"statuses",
 			"channel", "availability",
+			// Where a restricted channel's hints go for one approved device (SEE-156): the channel,
+			// the session of the grant it belongs to, and the device's push target. The target is
+			// routing data kept against that grant and dropped with it — the one thing a hint to a
+			// device instead of a topic cannot do without.
+			"channel", "session", "push_target",
 		},
 		// What a subscriber receives (SEE-91): a sequence the gateway counted and a document a
 		// publisher published. A field here would be a field every listener on the channel sees.
-		"event.proto": {"sequence", "manifest", "proposal", "request"},
+		//
+		// access_changed (SEE-156) is an empty message on a retired restricted stream name: every
+		// listener on it receives the same one, and it says nothing about whose grant ended.
+		"event.proto": {"sequence", "manifest", "proposal", "request", "access_changed"},
 		"publish.proto": {
 			"manifest",
-			"status", "settings_revision",
+			// The access the gateway stamped on the stored manifest (SEE-156), so a restricted
+			// publisher can tell a gateway that enforces it from one that never heard of it.
+			"status", "settings_revision", "access",
 			"request",
 			"status", "revision", "snapshot_sequence",
 			"request_id", "revision",
@@ -373,6 +400,15 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			// number, how often to call again. Nothing here names a host, an address or a port, so
 			// no check-in can tell this gateway where to reach anybody.
 			"interval_seconds",
+			// Restricted feeds (SEE-156). A publisher asks which policy is enforced for it, grants a
+			// device it approved and revokes it. What the gateway is told is a grant ID, two opaque
+			// references, a session's digest and a lifetime — never a wallet, a signature, a device
+			// name or the reason for the decision.
+			"access", "most_grant_seconds",
+			"grant_id", "subscriber_ref", "device_ref", "session_digest", "lifetime_seconds",
+			"lifetime_seconds",
+			"grant_ids",
+			"revoked",
 		},
 		"problem.proto": {"problem", "field", "held_revision"},
 	} {

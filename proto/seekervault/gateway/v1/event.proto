@@ -52,5 +52,15 @@ message FeedEvent {
     // The common document. Protocol-1 proposal events remain readable during migration; a
     // protocol-2 publisher emits this form and all clients apply it through the same revision gate.
     seekervault.request.v2.Request request = 4;
+    // A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+    // will carry nothing more. It is published once, on the stream name that is being retired, and
+    // it is not a document and not a statement about any listener. A listener that receives it
+    // asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+    // to know this case reads the snapshot, which checks the same grant.
+    AccessChanged access_changed = 5;
   }
 }
+
+// AccessChanged carries nothing: which grant was revoked is the publisher's business, and every
+// listener on the channel receives the same event.
+message AccessChanged {}

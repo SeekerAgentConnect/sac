@@ -78,6 +78,7 @@ func (f *Feed) GetFeedStatus(
 	fresh := f.now().Add(-f.window)
 	seen := make(map[string]bool, len(asked))
 	statuses := make([]*gatewayv1.FeedStatus, 0, len(asked))
+	sessions := sessionsOf(request.Msg.GetSessions())
 	for _, channel := range asked {
 		serverID := rules.ServerOf(channel)
 		if serverID == "" {
@@ -87,11 +88,16 @@ func (f *Feed) GetFeedStatus(
 			continue
 		}
 		seen[channel] = true
-		known, err := f.storage.PublisherExists(ctx, serverID)
+		access, known, err := f.accessOf(ctx, serverID)
 		if err != nil {
 			return nil, internal(err)
 		}
 		if !known {
+			continue
+		}
+		// Whether a restricted feed's publisher is running is part of the feed, and is answered
+		// only to a device that may read it (SEE-156).
+		if _, denied := f.admit(ctx, serverID, access, sessions[channel]); denied != nil {
 			continue
 		}
 		at, err := f.storage.PublisherLastSeen(ctx, serverID)

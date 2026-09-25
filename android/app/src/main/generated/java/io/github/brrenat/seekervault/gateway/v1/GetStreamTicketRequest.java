@@ -16,6 +16,7 @@ public  final class GetStreamTicketRequest extends
     GetStreamTicketRequestOrBuilder {
   private GetStreamTicketRequest() {
     channels_ = emptyProtobufList();
+    sessions_ = emptyProtobufList();
   }
   public static final int CHANNELS_FIELD_NUMBER = 1;
   private com.google.protobuf.Internal.ProtobufList<java.lang.String> channels_;
@@ -162,6 +163,166 @@ public  final class GetStreamTicketRequest extends
     checkByteStringIsUtf8(value);
     ensureChannelsIsMutable();
     channels_.add(value.toStringUtf8());
+  }
+
+  public static final int SESSIONS_FIELD_NUMBER = 2;
+  private com.google.protobuf.Internal.ProtobufList<io.github.brrenat.seekervault.gateway.v1.ChannelSession> sessions_;
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  @java.lang.Override
+  public java.util.List<io.github.brrenat.seekervault.gateway.v1.ChannelSession> getSessionsList() {
+    return sessions_;
+  }
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  public java.util.List<? extends io.github.brrenat.seekervault.gateway.v1.ChannelSessionOrBuilder> 
+      getSessionsOrBuilderList() {
+    return sessions_;
+  }
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  @java.lang.Override
+  public int getSessionsCount() {
+    return sessions_.size();
+  }
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  @java.lang.Override
+  public io.github.brrenat.seekervault.gateway.v1.ChannelSession getSessions(int index) {
+    return sessions_.get(index);
+  }
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  public io.github.brrenat.seekervault.gateway.v1.ChannelSessionOrBuilder getSessionsOrBuilder(
+      int index) {
+    return sessions_.get(index);
+  }
+  private void ensureSessionsIsMutable() {
+    com.google.protobuf.Internal.ProtobufList<io.github.brrenat.seekervault.gateway.v1.ChannelSession> tmp = sessions_;
+    if (!tmp.isModifiable()) {
+      sessions_ =
+          com.google.protobuf.GeneratedMessageLite.mutableCopy(tmp);
+     }
+  }
+
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  private void setSessions(
+      int index, io.github.brrenat.seekervault.gateway.v1.ChannelSession value) {
+    java.util.Objects.requireNonNull(value);
+    ensureSessionsIsMutable();
+    sessions_.set(index, value);
+  }
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  private void addSessions(io.github.brrenat.seekervault.gateway.v1.ChannelSession value) {
+    java.util.Objects.requireNonNull(value);
+    ensureSessionsIsMutable();
+    sessions_.add(value);
+  }
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  private void addSessions(
+      int index, io.github.brrenat.seekervault.gateway.v1.ChannelSession value) {
+    java.util.Objects.requireNonNull(value);
+    ensureSessionsIsMutable();
+    sessions_.add(index, value);
+  }
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  private void addAllSessions(
+      java.lang.Iterable<? extends io.github.brrenat.seekervault.gateway.v1.ChannelSession> values) {
+    ensureSessionsIsMutable();
+    com.google.protobuf.AbstractMessageLite.addAll(
+        values, sessions_);
+  }
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  private void clearSessions() {
+    sessions_ = emptyProtobufList();
+  }
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  private void removeSessions(int index) {
+    ensureSessionsIsMutable();
+    sessions_.remove(index);
   }
 
   public static io.github.brrenat.seekervault.gateway.v1.GetStreamTicketRequest parseFrom(
@@ -407,6 +568,180 @@ public  final class GetStreamTicketRequest extends
       return this;
     }
 
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    @java.lang.Override
+    public java.util.List<io.github.brrenat.seekervault.gateway.v1.ChannelSession> getSessionsList() {
+      return java.util.Collections.unmodifiableList(
+          instance.getSessionsList());
+    }
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    @java.lang.Override
+    public int getSessionsCount() {
+      return instance.getSessionsCount();
+    }/**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    @java.lang.Override
+    public io.github.brrenat.seekervault.gateway.v1.ChannelSession getSessions(int index) {
+      return instance.getSessions(index);
+    }
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    public Builder setSessions(
+        int index, io.github.brrenat.seekervault.gateway.v1.ChannelSession value) {
+      copyOnWrite();
+      instance.setSessions(index, value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    public Builder setSessions(
+        int index, io.github.brrenat.seekervault.gateway.v1.ChannelSession.Builder builderForValue) {
+      copyOnWrite();
+      instance.setSessions(index,
+          builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    public Builder addSessions(io.github.brrenat.seekervault.gateway.v1.ChannelSession value) {
+      copyOnWrite();
+      instance.addSessions(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    public Builder addSessions(
+        int index, io.github.brrenat.seekervault.gateway.v1.ChannelSession value) {
+      copyOnWrite();
+      instance.addSessions(index, value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    public Builder addSessions(
+        io.github.brrenat.seekervault.gateway.v1.ChannelSession.Builder builderForValue) {
+      copyOnWrite();
+      instance.addSessions(builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    public Builder addSessions(
+        int index, io.github.brrenat.seekervault.gateway.v1.ChannelSession.Builder builderForValue) {
+      copyOnWrite();
+      instance.addSessions(index,
+          builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    public Builder addAllSessions(
+        java.lang.Iterable<? extends io.github.brrenat.seekervault.gateway.v1.ChannelSession> values) {
+      copyOnWrite();
+      instance.addAllSessions(values);
+      return this;
+    }
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    public Builder clearSessions() {
+      copyOnWrite();
+      instance.clearSessions();
+      return this;
+    }
+    /**
+     * <pre>
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * </pre>
+     *
+     * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+     */
+    public Builder removeSessions(int index) {
+      copyOnWrite();
+      instance.removeSessions(index);
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.gateway.v1.GetStreamTicketRequest)
   }
   @java.lang.Override
@@ -424,9 +759,12 @@ public  final class GetStreamTicketRequest extends
       case BUILD_MESSAGE_INFO: {
           java.lang.Object[] objects = new java.lang.Object[] {
             "channels_",
+            "sessions_",
+            io.github.brrenat.seekervault.gateway.v1.ChannelSession.class,
           };
           java.lang.String info =
-              "\u0000\u0001\u0000\u0000\u0001\u0001\u0001\u0000\u0001\u0000\u0001\u021a";
+              "\u0000\u0002\u0000\u0000\u0001\u0002\u0002\u0000\u0002\u0000\u0001\u021a\u0002\u001b" +
+              "";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

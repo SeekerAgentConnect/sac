@@ -24,6 +24,7 @@ public  final class GatewayFeed extends
     gatewayUrl_ = "";
     channel_ = "";
   }
+  private int bitField0_;
   public static final int GATEWAY_URL_FIELD_NUMBER = 1;
   private java.lang.String gatewayUrl_;
   /**
@@ -166,6 +167,93 @@ public  final class GatewayFeed extends
     checkByteStringIsUtf8(value);
     channel_ = value.toStringUtf8();
 
+  }
+
+  public static final int ACCESS_FIELD_NUMBER = 3;
+  private io.github.brrenat.seekervault.server.v1.FeedAccess access_;
+  /**
+   * <pre>
+   * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+   * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+   * what it was. The gateway writes this field from the operator's registration of the publisher
+   * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+   * public by leaving it out, and a feed reference cannot supply it.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+   */
+  @java.lang.Override
+  public boolean hasAccess() {
+    return ((bitField0_ & 0x00000001) != 0);
+  }
+  /**
+   * <pre>
+   * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+   * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+   * what it was. The gateway writes this field from the operator's registration of the publisher
+   * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+   * public by leaving it out, and a feed reference cannot supply it.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+   */
+  @java.lang.Override
+  public io.github.brrenat.seekervault.server.v1.FeedAccess getAccess() {
+    return access_ == null ? io.github.brrenat.seekervault.server.v1.FeedAccess.getDefaultInstance() : access_;
+  }
+  /**
+   * <pre>
+   * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+   * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+   * what it was. The gateway writes this field from the operator's registration of the publisher
+   * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+   * public by leaving it out, and a feed reference cannot supply it.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+   */
+  private void setAccess(io.github.brrenat.seekervault.server.v1.FeedAccess value) {
+    java.util.Objects.requireNonNull(value);
+    access_ = value;
+    bitField0_ |= 0x00000001;
+  }
+  /**
+   * <pre>
+   * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+   * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+   * what it was. The gateway writes this field from the operator's registration of the publisher
+   * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+   * public by leaving it out, and a feed reference cannot supply it.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+   */
+  @java.lang.SuppressWarnings("ReferenceEquality")
+  private void mergeAccess(io.github.brrenat.seekervault.server.v1.FeedAccess value) {
+    java.util.Objects.requireNonNull(value);
+    if (access_ != null &&
+        access_ != io.github.brrenat.seekervault.server.v1.FeedAccess.getDefaultInstance()) {
+      access_ =
+        io.github.brrenat.seekervault.server.v1.FeedAccess.newBuilder(access_).mergeFrom(value).buildPartial();
+    } else {
+      access_ = value;
+    }
+    bitField0_ |= 0x00000001;
+  }
+  /**
+   * <pre>
+   * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+   * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+   * what it was. The gateway writes this field from the operator's registration of the publisher
+   * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+   * public by leaving it out, and a feed reference cannot supply it.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+   */
+  private void clearAccess() {
+    access_ = null;
+    bitField0_ = (bitField0_ & ~0x00000001);
   }
 
   public static io.github.brrenat.seekervault.server.v1.GatewayFeed parseFrom(
@@ -419,6 +507,101 @@ public  final class GatewayFeed extends
       return this;
     }
 
+    /**
+     * <pre>
+     * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+     * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+     * what it was. The gateway writes this field from the operator's registration of the publisher
+     * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+     * public by leaving it out, and a feed reference cannot supply it.
+     * </pre>
+     *
+     * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+     */
+    @java.lang.Override
+    public boolean hasAccess() {
+      return instance.hasAccess();
+    }
+    /**
+     * <pre>
+     * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+     * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+     * what it was. The gateway writes this field from the operator's registration of the publisher
+     * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+     * public by leaving it out, and a feed reference cannot supply it.
+     * </pre>
+     *
+     * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+     */
+    @java.lang.Override
+    public io.github.brrenat.seekervault.server.v1.FeedAccess getAccess() {
+      return instance.getAccess();
+    }
+    /**
+     * <pre>
+     * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+     * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+     * what it was. The gateway writes this field from the operator's registration of the publisher
+     * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+     * public by leaving it out, and a feed reference cannot supply it.
+     * </pre>
+     *
+     * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+     */
+    public Builder setAccess(io.github.brrenat.seekervault.server.v1.FeedAccess value) {
+      copyOnWrite();
+      instance.setAccess(value);
+      return this;
+      }
+    /**
+     * <pre>
+     * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+     * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+     * what it was. The gateway writes this field from the operator's registration of the publisher
+     * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+     * public by leaving it out, and a feed reference cannot supply it.
+     * </pre>
+     *
+     * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+     */
+    public Builder setAccess(
+        io.github.brrenat.seekervault.server.v1.FeedAccess.Builder builderForValue) {
+      copyOnWrite();
+      instance.setAccess(builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+     * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+     * what it was. The gateway writes this field from the operator's registration of the publisher
+     * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+     * public by leaving it out, and a feed reference cannot supply it.
+     * </pre>
+     *
+     * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+     */
+    public Builder mergeAccess(io.github.brrenat.seekervault.server.v1.FeedAccess value) {
+      copyOnWrite();
+      instance.mergeAccess(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+     * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+     * what it was. The gateway writes this field from the operator's registration of the publisher
+     * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+     * public by leaving it out, and a feed reference cannot supply it.
+     * </pre>
+     *
+     * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+     */
+    public Builder clearAccess() {  copyOnWrite();
+      instance.clearAccess();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.server.v1.GatewayFeed)
   }
   @java.lang.Override
@@ -435,12 +618,14 @@ public  final class GatewayFeed extends
       }
       case BUILD_MESSAGE_INFO: {
           java.lang.Object[] objects = new java.lang.Object[] {
+            "bitField0_",
             "gatewayUrl_",
             "channel_",
+            "access_",
           };
           java.lang.String info =
-              "\u0000\u0002\u0000\u0000\u0001\u0002\u0002\u0000\u0000\u0000\u0001\u0208\u0002\u0208" +
-              "";
+              "\u0000\u0003\u0000\u0001\u0001\u0003\u0003\u0000\u0000\u0000\u0001\u0208\u0002\u0208" +
+              "\u0003\u1009\u0000";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

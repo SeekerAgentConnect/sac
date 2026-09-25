@@ -8,10 +8,16 @@ import com.connectrpc.Headers
 import com.connectrpc.ResponseMessage
 
 /**
- *  FeedService is the read-only client API. It is unauthenticated on purpose: a feed is a
- *  broadcast, its reference can be printed in a README, and holding one grants nothing. What the
- *  gateway learns from a read is which channel someone is interested in, which is the minimum a
- *  subscription can be made of.
+ *  FeedService is the read-only client API. It is unauthenticated on purpose for a public feed: a
+ *  feed is a broadcast, its reference can be printed in a README, and holding one grants nothing.
+ *  What the gateway learns from a read is which channel someone is interested in, which is the
+ *  minimum a subscription can be made of.
+ *
+ *  A restricted feed (SEE-156) answers the manifest to anyone — it is the onboarding metadata a
+ *  phone needs to know where to prove itself — and answers every other method only with a session
+ *  from a live grant for that channel: every page of a snapshot, every point read, the legacy
+ *  proposal views, a stream ticket and its renewal, a topic and a presence answer. There is no
+ *  anonymous fallback for an old client, and no method here that skips the check.
  */
 public interface FeedServiceClientInterface {
   /**
@@ -90,4 +96,18 @@ public interface FeedServiceClientInterface {
    *  changes nothing.
    */
   public suspend fun getFeedStatus(request: GetFeedStatusRequest, headers: Headers = emptyMap()): ResponseMessage<GetFeedStatusResponse>
+
+  /**
+   *  Where this gateway's relay sends a restricted channel's hints for one approved device
+   *  (SEE-156).
+   *
+   *  A restricted channel has no public topic: a topic anyone may join would announce every signal
+   *  to devices the publisher never approved. So the hint goes to each approved device's own push
+   *  target instead, and this is how a device names it — under the session its grant was issued
+   *  with, so only a device holding a live grant can register one, and only for that grant. An
+   *  empty target clears it. A revoked or expired grant stops receiving hints the moment it stops
+   *  being live, and a hint that was already queued grants nothing: every read it prompts is checked
+   *  again.
+   */
+  public suspend fun setFeedPushTarget(request: SetFeedPushTargetRequest, headers: Headers = emptyMap()): ResponseMessage<SetFeedPushTargetResponse>
 }

@@ -233,9 +233,11 @@ func TestReadingAFeedWritesNothingDown(t *testing.T) {
 	}
 	sort.Strings(tables)
 	// Reading a public feed still writes nothing anywhere, the relay's own tables included: a feed
-	// read never touches them, and nothing in them is reachable from the feed API at all.
-	expected := "[channel_sequence manifest notice proposal publisher publisher_credential " +
-		"relay_binding relay_installation]"
+	// read never touches them, and nothing in them is reachable from the feed API at all. The same
+	// holds for access_grant (SEE-156): a restricted read looks a grant up and records nothing, which
+	// restricted_test.go checks on its own.
+	expected := "[access_grant channel_sequence manifest notice proposal publisher " +
+		"publisher_credential relay_binding relay_installation]"
 	if fmt.Sprint(tables) != expected {
 		t.Fatalf("the store holds %v, expected %s", tables, expected)
 	}

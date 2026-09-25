@@ -59,11 +59,14 @@ func (f *Feed) GetFeedTopics(
 			continue
 		}
 		seen[channel] = true
-		known, err := f.storage.PublisherExists(ctx, serverID)
+		access, known, err := f.accessOf(ctx, serverID)
 		if err != nil {
 			return nil, internal(err)
 		}
-		if !known {
+		// A restricted channel has no public topic (SEE-156): a topic anyone may join would tell
+		// devices the publisher never approved that it published. Its hints go to each approved
+		// device's own target instead (SetFeedPushTarget).
+		if !known || access.Restricted() {
 			continue
 		}
 		topic := f.topics.Topic(channel)

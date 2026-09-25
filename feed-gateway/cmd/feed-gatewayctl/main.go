@@ -16,8 +16,10 @@
 // the sidecar does with a phone's credential. Losing one means rotating it, not recovering it.
 //
 //	feed-gatewayctl register --server <uuid> --label <note> [--host <url>] [--for publish|relay|both]
+//	                         [--access public|restricted --auth-origin <https origin>]
 //	feed-gatewayctl rotate   --server <uuid> [--label <note>] [--for publish|relay]
 //	feed-gatewayctl capabilities --server <uuid> --for publish|relay|both|none
+//	feed-gatewayctl access   --server <uuid> --access public|restricted [--auth-origin <https origin>]
 //	feed-gatewayctl revoke   --credential <id>
 //	feed-gatewayctl revoke   --server <uuid> --all
 //	feed-gatewayctl list     [--server <uuid>]
@@ -41,6 +43,7 @@ import (
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/admin"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/config"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/credential"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
@@ -89,6 +92,9 @@ const usage = `feed-gatewayctl manages the publishers a feed gateway accepts.
   rotate   --server <uuid> [--label <note>] [--for publish|relay]
                                               add a second credential, so the first can be retired
   capabilities --server <uuid> --for publish|relay|both|none
+  access   --server <uuid> --access public|restricted [--auth-origin <origin>]
+                                              who may read a feed, and where its subscribers
+                                              prove who they are (SEE-156)
                                               enable or disable what a server may do
   revoke   --credential <id>                  end one credential
   revoke   --server <uuid> --all              end every credential a server holds
@@ -171,6 +177,10 @@ func run(arguments []string, out io.Writer) error {
 		"with password: the administrator password to hash; omitted, it is read from stdin")
 	capability := flags.String("for", "",
 		"publish, relay, both or none: what a registration may do, or what a credential is for")
+	policy := flags.String("access", "",
+		"public or restricted: who may read the feed (SEE-156); omitted, register makes it public")
+	authOrigin := flags.String("auth-origin", "",
+		"with --access restricted: the HTTPS origin where the feed's subscribers prove who they are")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -196,6 +206,22 @@ func run(arguments []string, out io.Writer) error {
 	now := time.Now()
 
 	switch command {
+	case "access":
+		if !rules.IsID(*serverID) {
+			return fmt.Errorf("--server must be a lowercase UUID")
+		}
+		access, err := accessOf(*policy, *authOrigin, true)
+		if err != nil {
+			return err
+		}
+		if err := documents.SetAccess(ctx, *serverID, access); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s is now %s\n", *serverID, describeAccess(access))
+		fmt.Fprint(out, "Every stream name issued under the old policy is retired. The publisher "+
+			"should publish its\nmanifest again so the policy it states matches this one.\n")
+		return nil
+
 	case "capabilities":
 		if !rules.IsID(*serverID) {
 			return fmt.Errorf("--server must be a lowercase UUID")
@@ -248,9 +274,13 @@ func run(arguments []string, out io.Writer) error {
 			if !publishing {
 				first = storage.Relaying
 			}
+			access, accessErr := accessOf(*policy, *authOrigin, false)
+			if accessErr != nil {
+				return accessErr
+			}
 			issued, err = documents.Register(ctx, storage.Registration{
 				ServerID: *serverID, Label: note, Host: recorded,
-				Publishing: publishing, Relaying: relaying,
+				Publishing: publishing, Relaying: relaying, Access: access,
 			}, first, hash, now)
 			if errors.Is(err, storage.ErrPublisherExists) {
 				return fmt.Errorf("%s is already registered; use `rotate --server %s` to add a "+
@@ -258,11 +288,16 @@ func run(arguments []string, out io.Writer) error {
 			}
 			if err == nil {
 				fmt.Fprintf(out, "capabilities %s\n", enabled(publishing, relaying))
+				fmt.Fprintf(out, "access      %s\n", describeAccess(access))
 			}
 		} else {
 			if strings.TrimSpace(*host) != "" {
 				return fmt.Errorf("--host belongs to `register`: rotation adds a credential and " +
 					"changes nothing else about a server")
+			}
+			if *policy != "" || *authOrigin != "" {
+				return fmt.Errorf("--access belongs to `register` and `access`: rotation adds a " +
+					"credential and changes nothing else about a server")
 			}
 			for_, capErr := credentialFor(*capability)
 			if capErr != nil {
@@ -365,6 +400,10 @@ func run(arguments []string, out io.Writer) error {
 			if publisher.Host != "" {
 				fmt.Fprintf(out, "%*s  host %s\n", len(publisher.ServerID), "", publisher.Host)
 			}
+			if publisher.Access.Restricted() {
+				fmt.Fprintf(out, "%*s  %s, %d live grant(s)\n", len(publisher.ServerID), "",
+					describeAccess(publisher.Access), publisher.Grants)
+			}
 		}
 		return nil
 
@@ -418,4 +457,38 @@ func hashPassword(given string, out io.Writer) error {
 		"it is configured.\nKeep the password itself in a password manager: it cannot be "+
 		"recovered from this.\n")
 	return nil
+}
+
+// accessOf reads --access and --auth-origin. A restricted feed must name the origin its subscribers
+// authenticate with, validated as strictly as the gateway's own public origin — it is the one
+// address a phone will send a wallet proof to, and the phone trusts it because this registration
+// vouches for it (SEE-156). A public feed names none. On `access` the policy is required; on
+// `register` omitting it is public, which is what every registration was before.
+func accessOf(policy, origin string, required bool) (storage.Access, error) {
+	switch policy {
+	case "":
+		if required {
+			return storage.Access{}, fmt.Errorf("--access must be public or restricted")
+		}
+		fallthrough
+	case "public":
+		if strings.TrimSpace(origin) != "" {
+			return storage.Access{}, fmt.Errorf("--auth-origin belongs to a restricted feed")
+		}
+		return storage.Access{Policy: storage.PublicAccess}, nil
+	case "restricted":
+		written, err := config.Origin(strings.TrimSpace(origin))
+		if err != nil {
+			return storage.Access{}, fmt.Errorf("--auth-origin %v", err)
+		}
+		return storage.Access{Policy: storage.RestrictedAccess, AuthOrigin: written}, nil
+	}
+	return storage.Access{}, fmt.Errorf("--access must be public or restricted")
+}
+
+func describeAccess(access storage.Access) string {
+	if access.Restricted() {
+		return "restricted, authenticated at " + access.AuthOrigin
+	}
+	return "public"
 }

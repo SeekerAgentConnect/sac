@@ -59,6 +59,10 @@ type Config struct {
 	// is derived rather than configured, so no operator can set one shorter than the interval and
 	// leave every feed permanently offline.
 	Heartbeat time.Duration
+	// The longest a restricted feed's grant may run without its publisher renewing it (SEE-156).
+	// It is the bound on how long a device keeps access when its publisher cannot reach this
+	// gateway to revoke it, and the gateway shortens any longer grant to it.
+	MostGrant time.Duration
 	// Reads per second and the burst above it, per remote address.
 	ReadRate  float64
 	ReadBurst int
@@ -214,7 +218,11 @@ const (
 	// Half a minute between check-ins, so a feed whose publisher stopped reads as offline within
 	// about ninety seconds. It is a bounded cost the gateway can state: one tiny write per
 	// publisher per interval, and only from a publisher that had nothing else to say.
-	DefaultHeartbeat    = 30 * time.Second
+	DefaultHeartbeat = 30 * time.Second
+	// A day. A publisher renews well inside it (publisher-support/access renews at a third of what
+	// it asked for), so a gateway that loses its publisher for an afternoon does not cut approved
+	// devices off, and one that never hears again stops admitting them within a day.
+	DefaultMostGrant    = 24 * time.Hour
 	DefaultReadRate     = 20
 	DefaultReadBurst    = 60
 	DefaultPublishRate  = 2
@@ -309,6 +317,7 @@ func Load(lookup Lookup) (*Config, []string) {
 		Retention:        DefaultRetention,
 		MaxProposals:     DefaultMaxProposals,
 		Heartbeat:        DefaultHeartbeat,
+		MostGrant:        DefaultMostGrant,
 		ReadRate:         DefaultReadRate,
 		ReadBurst:        DefaultReadBurst,
 		PublishRate:      DefaultPublishRate,
@@ -354,6 +363,8 @@ func Load(lookup Lookup) (*Config, []string) {
 	// the range are shorter than a minute's granularity could say.
 	config.Heartbeat = time.Duration(number("BROADCAST_HEARTBEAT_SECONDS",
 		DefaultHeartbeat.Seconds(), 5, 3600)) * time.Second
+	config.MostGrant = time.Duration(number("BROADCAST_MAX_GRANT_HOURS",
+		DefaultMostGrant.Hours(), 1, 24*30)) * time.Hour
 	config.ReadRate = number("BROADCAST_READ_RATE", DefaultReadRate, 0.1, 10000)
 	config.ReadBurst = int(number("BROADCAST_READ_BURST", DefaultReadBurst, 1, 100000))
 	config.PublishRate = number("BROADCAST_PUBLISH_RATE", DefaultPublishRate, 0.1, 10000)

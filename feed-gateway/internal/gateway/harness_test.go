@@ -41,6 +41,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/sqlite"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/stream"
 )
 
 // The two publishers every test has available, and the proposals they publish. They are the
@@ -110,9 +111,26 @@ type grantor struct {
 	lifetime time.Duration
 	most     int
 	fail     error
+	// The bound each grant was asked for (SEE-156): zero for a ticket of public channels only.
+	within []time.Duration
 }
 
 func (g *grantor) StreamChannel(channel string) string { return "feed:" + channel }
+
+func (g *grantor) RestrictedStreamChannel(channel string, epoch uint64) string {
+	return stream.RestrictedStreamChannel(channel, epoch)
+}
+
+func (g *grantor) GrantWithin(channels []string, at time.Time, most time.Duration) (string, time.Duration, error) {
+	g.mutex.Lock()
+	g.within = append(g.within, most)
+	g.mutex.Unlock()
+	token, lifetime, err := g.Grant(channels, at)
+	if most > 0 && most < lifetime {
+		lifetime = most
+	}
+	return token, lifetime, err
+}
 
 func (g *grantor) MostChannels() int { return g.most }
 
@@ -168,12 +186,21 @@ type pusher struct {
 type push struct {
 	target        string
 	timeSensitive bool
+	// feed is a restricted feed's hint (SEE-156) rather than a direct server's invalidation.
+	feed bool
 }
 
 func (p *pusher) Send(_ context.Context, target string, timeSensitive bool) (relay.Outcome, error) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	p.sent = append(p.sent, push{target: target, timeSensitive: timeSensitive})
+	return p.outcome, p.fail
+}
+
+func (p *pusher) SendFeedHint(_ context.Context, target string, timeSensitive bool) (relay.Outcome, error) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.sent = append(p.sent, push{target: target, timeSensitive: timeSensitive, feed: true})
 	return p.outcome, p.fail
 }
 

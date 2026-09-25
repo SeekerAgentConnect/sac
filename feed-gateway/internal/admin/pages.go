@@ -152,6 +152,20 @@ type PublisherRow struct {
 	// What the relay holds for this server: counts and instants, never a target, a handle or an
 	// installation identity.
 	Relay storage.RelayStatus
+
+	// Who may read the feed (SEE-156), and how many devices a restricted one admits right now: a
+	// count, never a list of anyone. Set with feed-gatewayctl access.
+	Access storage.Access
+	Grants int
+}
+
+// AccessSentence says who may read this feed.
+func (p PublisherRow) AccessSentence() string {
+	if p.Access.Restricted() {
+		return fmt.Sprintf("Restricted: approved devices only (%d live grant(s)); subscribers "+
+			"authenticate at %s", p.Grants, p.Access.AuthOrigin)
+	}
+	return "Public: anyone holding the feed reference"
 }
 
 // Capabilities is the sentence about what this server is allowed to do at all. It is the
@@ -479,6 +493,8 @@ func (s *Server) row(ctx context.Context, publisher storage.Publisher) (Publishe
 		ActiveRelay: publisher.ActiveRelay,
 		Publishing:  publisher.Publishing,
 		Relaying:    publisher.Relaying,
+		Access:      publisher.Access,
+		Grants:      publisher.Grants,
 	}
 	if row.Relay, err = s.options.Store.RelayStatus(ctx, publisher.ServerID); err != nil {
 		return row, err

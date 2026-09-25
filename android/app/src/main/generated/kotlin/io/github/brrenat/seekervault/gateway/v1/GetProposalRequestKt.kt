@@ -62,6 +62,31 @@ public object GetProposalRequestKt {
     public fun clearProposalId() {
       _builder.clearProposalId()
     }
+
+    /**
+     * ```
+     * A restricted channel's session (SEE-156). Ignored for a public channel.
+     * ```
+     *
+     * `string session = 3 [json_name = "session"];`
+     */
+    public var session: kotlin.String
+      @kotlin.jvm.JvmName("getSession")
+        get() = _builder.session
+      @kotlin.jvm.JvmName("setSession")
+        set(value) {
+        _builder.session = value
+      }
+    /**
+     * ```
+     * A restricted channel's session (SEE-156). Ignored for a public channel.
+     * ```
+     *
+     * `string session = 3 [json_name = "session"];`
+     */
+    public fun clearSession() {
+      _builder.clearSession()
+    }
   }
 }
 public inline fun io.github.brrenat.seekervault.gateway.v1.GetProposalRequest.copy(block: `io.github.brrenat.seekervault.gateway.v1`.GetProposalRequestKt.Dsl.() -> kotlin.Unit): io.github.brrenat.seekervault.gateway.v1.GetProposalRequest =

@@ -96,6 +96,31 @@ public object ListRequestsRequestKt {
     public fun clearKnownSnapshotSequence() {
       _builder.clearKnownSnapshotSequence()
     }
+
+    /**
+     * ```
+     * A restricted channel's session (SEE-156), on every page. Ignored for a public channel.
+     * ```
+     *
+     * `string session = 5 [json_name = "session"];`
+     */
+    public var session: kotlin.String
+      @kotlin.jvm.JvmName("getSession")
+        get() = _builder.session
+      @kotlin.jvm.JvmName("setSession")
+        set(value) {
+        _builder.session = value
+      }
+    /**
+     * ```
+     * A restricted channel's session (SEE-156), on every page. Ignored for a public channel.
+     * ```
+     *
+     * `string session = 5 [json_name = "session"];`
+     */
+    public fun clearSession() {
+      _builder.clearSession()
+    }
   }
 }
 public inline fun io.github.brrenat.seekervault.gateway.v1.ListRequestsRequest.copy(block: `io.github.brrenat.seekervault.gateway.v1`.ListRequestsRequestKt.Dsl.() -> kotlin.Unit): io.github.brrenat.seekervault.gateway.v1.ListRequestsRequest =

@@ -18,16 +18,27 @@ syntax = "proto3";
 // quantity someone chose, a decision they made, or anything they signed, and a Go boundary test
 // reads this proto and fails if the field set changes or a forbidden word appears in it — so a
 // field that could carry any of it has to be argued for in that test first.
+//
+// Restricted feeds (SEE-156) add exactly one thing a reader presents: a `session`, an opaque bearer
+// value the feed's publisher handed an approved device. It names no wallet and no person — the
+// gateway holds only its digest, against an opaque grant the publisher registered — and a public
+// feed never asks for one (docs/wiki/restricted-feeds.md).
 package seekervault.gateway.v1;
 
 import "seekervault/proposal/v1/proposal.proto";
 import "seekervault/request/v2/request.proto";
 import "seekervault/server/v1/manifest.proto";
 
-// FeedService is the read-only client API. It is unauthenticated on purpose: a feed is a
-// broadcast, its reference can be printed in a README, and holding one grants nothing. What the
-// gateway learns from a read is which channel someone is interested in, which is the minimum a
-// subscription can be made of.
+// FeedService is the read-only client API. It is unauthenticated on purpose for a public feed: a
+// feed is a broadcast, its reference can be printed in a README, and holding one grants nothing.
+// What the gateway learns from a read is which channel someone is interested in, which is the
+// minimum a subscription can be made of.
+//
+// A restricted feed (SEE-156) answers the manifest to anyone — it is the onboarding metadata a
+// phone needs to know where to prove itself — and answers every other method only with a session
+// from a live grant for that channel: every page of a snapshot, every point read, the legacy
+// proposal views, a stream ticket and its renewal, a topic and a presence answer. There is no
+// anonymous fallback for an old client, and no method here that skips the check.
 service FeedService {
   // The manifest the publisher registered: what contract it speaks, which client plugins its
   // operations need, which environments it serves, and the channel it publishes on. The phone
@@ -84,6 +95,17 @@ service FeedService {
   // Like a ticket and a topic, the answer is about channels and never about the caller, and asking
   // changes nothing.
   rpc GetFeedStatus(GetFeedStatusRequest) returns (GetFeedStatusResponse);
+  // Where this gateway's relay sends a restricted channel's hints for one approved device
+  // (SEE-156).
+  //
+  // A restricted channel has no public topic: a topic anyone may join would announce every signal
+  // to devices the publisher never approved. So the hint goes to each approved device's own push
+  // target instead, and this is how a device names it — under the session its grant was issued
+  // with, so only a device holding a live grant can register one, and only for that grant. An
+  // empty target clears it. A revoked or expired grant stops receiving hints the moment it stops
+  // being live, and a hint that was already queued grants nothing: every read it prompts is checked
+  // again.
+  rpc SetFeedPushTarget(SetFeedPushTargetRequest) returns (SetFeedPushTargetResponse);
 }
 
 message GetServerManifestRequest {
@@ -112,6 +134,8 @@ message ListRequestsRequest {
   uint32 page_size = 2;
   string page_token = 3;
   uint64 known_snapshot_sequence = 4;
+  // A restricted channel's session (SEE-156), on every page. Ignored for a public channel.
+  string session = 5;
 }
 
 message ListRequestsResponse {
@@ -124,6 +148,8 @@ message ListRequestsResponse {
 message GetRequestRequest {
   string channel = 1;
   string request_id = 2;
+  // A restricted channel's session (SEE-156). Ignored for a public channel.
+  string session = 3;
 }
 
 message GetRequestResponse {
@@ -145,6 +171,9 @@ message ListProposalsRequest {
   // trip for a phone that is up to date, on the connection of someone paying for it by the
   // megabyte.
   uint64 known_snapshot_sequence = 4;
+  // A restricted channel's session (SEE-156), on every page: a walk that began with access does
+  // not keep it after a revocation. Ignored for a public channel.
+  string session = 5;
 }
 
 message ListProposalsResponse {
@@ -169,6 +198,8 @@ message ListProposalsResponse {
 message GetProposalRequest {
   string channel = 1;
   string proposal_id = 2;
+  // A restricted channel's session (SEE-156). Ignored for a public channel.
+  string session = 3;
 }
 
 message GetProposalResponse {
@@ -180,6 +211,16 @@ message GetStreamTicketRequest {
   // reference for. Asking for none is refused; asking for more than the gateway grants at once is
   // refused with how many it allows, because a bound nobody can see is a bound nobody can respect.
   repeated string channels = 1;
+  // The session for each restricted channel among them (SEE-156). A restricted channel without a
+  // live one is absent from the grant, like a channel this gateway does not host; a public channel
+  // needs none, and a session offered for one is ignored.
+  repeated ChannelSession sessions = 2;
+}
+
+// ChannelSession is the session a caller holds for one restricted channel (SEE-156).
+message ChannelSession {
+  string channel = 1;
+  string session = 2;
 }
 
 message GetStreamTicketResponse {
@@ -191,11 +232,13 @@ message GetStreamTicketResponse {
   // for. A channel this gateway does not serve is **absent rather than fatal**: a phone holding one
   // stale feed reference keeps the stream for its others, and learns which one was not granted by
   // comparing what it asked with what it got. A malformed channel is refused outright, because that
-  // is a caller's mistake rather than a fact about the gateway.
+  // is a caller's mistake rather than a fact about the gateway. A restricted channel without a live
+  // session is absent the same way (SEE-156), and the caller finds out why by reading it.
   repeated StreamChannel channels = 2;
   // How long the ticket is good for. A duration rather than an instant, so a phone whose clock
   // disagrees with the gateway's still renews at the right time — and renewing is ordinary: the
-  // stream ends when the ticket expires, and the listener asks for another.
+  // stream ends when the ticket expires, and the listener asks for another. A ticket that includes
+  // a restricted channel lasts no longer than the shortest of its grants (SEE-156).
   uint32 lifetime_seconds = 3;
 }
 
@@ -207,6 +250,11 @@ message GetStreamTicketResponse {
 // transport's, and it is opaque — it exists so the broker's own namespaces can scope history,
 // recovery and permissions to these channels and nothing else, without the protocol having to know
 // that the broker has namespaces at all.
+//
+// For a restricted channel (SEE-156) the stream name also carries the channel's access epoch,
+// which the gateway moves on every revocation. A listener still holding an older name — a revoked
+// device replaying an old ticket, say — is attached to a stream nothing is published on any more,
+// so revocation does not depend on the broker closing anybody's connection.
 message StreamChannel {
   string channel = 1;
   string stream_channel = 2;
@@ -222,7 +270,9 @@ message GetFeedTopicsRequest {
 message GetFeedTopicsResponse {
   // One entry per channel this gateway both hosts and relays, in the order they were asked for. A
   // channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-  // is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+  // is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+  // restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+  // approved devices through SetFeedPushTarget instead.
   repeated FeedTopic topics = 1;
 }
 
@@ -243,6 +293,9 @@ message GetFeedStatusRequest {
   // reference for. The same bounds as a ticket's: none is refused, and more than the gateway
   // answers at once is refused with the bound.
   repeated string channels = 1;
+  // The session for each restricted channel among them (SEE-156). A restricted channel without a
+  // live one is absent from the answer.
+  repeated ChannelSession sessions = 2;
 }
 
 message GetFeedStatusResponse {
@@ -268,3 +321,16 @@ enum FeedAvailability {
   // last published is still served, and nothing new will arrive until it is back.
   FEED_AVAILABILITY_OFFLINE = 2;
 }
+
+message SetFeedPushTargetRequest {
+  // The restricted channel, "server/<server_id>".
+  string channel = 1;
+  // The session of the grant the target belongs to.
+  string session = 2;
+  // The device's push registration, or empty to stop hints for this grant. It is routing data and
+  // nothing else: it is kept against the grant, used only to send that grant's hints, and dropped
+  // with it.
+  string push_target = 3;
+}
+
+message SetFeedPushTargetResponse {}

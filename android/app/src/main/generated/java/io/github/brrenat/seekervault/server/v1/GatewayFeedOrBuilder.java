@@ -53,4 +53,31 @@ public interface GatewayFeedOrBuilder extends
    */
   com.google.protobuf.ByteString
       getChannelBytes();
+
+  /**
+   * <pre>
+   * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+   * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+   * what it was. The gateway writes this field from the operator's registration of the publisher
+   * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+   * public by leaving it out, and a feed reference cannot supply it.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+   * @return Whether the access field is set.
+   */
+  boolean hasAccess();
+  /**
+   * <pre>
+   * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+   * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+   * what it was. The gateway writes this field from the operator's registration of the publisher
+   * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+   * public by leaving it out, and a feed reference cannot supply it.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.FeedAccess access = 3 [json_name = "access"];</code>
+   * @return The access.
+   */
+  io.github.brrenat.seekervault.server.v1.FeedAccess getAccess();
 }

@@ -17,6 +17,7 @@ public  final class GetProposalRequest extends
   private GetProposalRequest() {
     channel_ = "";
     proposalId_ = "";
+    session_ = "";
   }
   public static final int CHANNEL_FIELD_NUMBER = 1;
   private java.lang.String channel_;
@@ -109,6 +110,73 @@ public  final class GetProposalRequest extends
       com.google.protobuf.ByteString value) {
     checkByteStringIsUtf8(value);
     proposalId_ = value.toStringUtf8();
+
+  }
+
+  public static final int SESSION_FIELD_NUMBER = 3;
+  private java.lang.String session_;
+  /**
+   * <pre>
+   * A restricted channel's session (SEE-156). Ignored for a public channel.
+   * </pre>
+   *
+   * <code>string session = 3 [json_name = "session"];</code>
+   * @return The session.
+   */
+  @java.lang.Override
+  public java.lang.String getSession() {
+    return session_;
+  }
+  /**
+   * <pre>
+   * A restricted channel's session (SEE-156). Ignored for a public channel.
+   * </pre>
+   *
+   * <code>string session = 3 [json_name = "session"];</code>
+   * @return The bytes for session.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getSessionBytes() {
+    return com.google.protobuf.ByteString.copyFromUtf8(session_);
+  }
+  /**
+   * <pre>
+   * A restricted channel's session (SEE-156). Ignored for a public channel.
+   * </pre>
+   *
+   * <code>string session = 3 [json_name = "session"];</code>
+   * @param value The session to set.
+   */
+  private void setSession(
+      java.lang.String value) {
+    java.util.Objects.requireNonNull(value);
+
+    session_ = value;
+  }
+  /**
+   * <pre>
+   * A restricted channel's session (SEE-156). Ignored for a public channel.
+   * </pre>
+   *
+   * <code>string session = 3 [json_name = "session"];</code>
+   */
+  private void clearSession() {
+
+    session_ = getDefaultInstance().getSession();
+  }
+  /**
+   * <pre>
+   * A restricted channel's session (SEE-156). Ignored for a public channel.
+   * </pre>
+   *
+   * <code>string session = 3 [json_name = "session"];</code>
+   * @param value The bytes for session to set.
+   */
+  private void setSessionBytes(
+      com.google.protobuf.ByteString value) {
+    checkByteStringIsUtf8(value);
+    session_ = value.toStringUtf8();
 
   }
 
@@ -307,6 +375,75 @@ public  final class GetProposalRequest extends
       return this;
     }
 
+    /**
+     * <pre>
+     * A restricted channel's session (SEE-156). Ignored for a public channel.
+     * </pre>
+     *
+     * <code>string session = 3 [json_name = "session"];</code>
+     * @return The session.
+     */
+    @java.lang.Override
+    public java.lang.String getSession() {
+      return instance.getSession();
+    }
+    /**
+     * <pre>
+     * A restricted channel's session (SEE-156). Ignored for a public channel.
+     * </pre>
+     *
+     * <code>string session = 3 [json_name = "session"];</code>
+     * @return The bytes for session.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getSessionBytes() {
+      return instance.getSessionBytes();
+    }
+    /**
+     * <pre>
+     * A restricted channel's session (SEE-156). Ignored for a public channel.
+     * </pre>
+     *
+     * <code>string session = 3 [json_name = "session"];</code>
+     * @param value The session to set.
+     * @return This builder for chaining.
+     */
+    public Builder setSession(
+        java.lang.String value) {
+      copyOnWrite();
+      instance.setSession(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * A restricted channel's session (SEE-156). Ignored for a public channel.
+     * </pre>
+     *
+     * <code>string session = 3 [json_name = "session"];</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearSession() {
+      copyOnWrite();
+      instance.clearSession();
+      return this;
+    }
+    /**
+     * <pre>
+     * A restricted channel's session (SEE-156). Ignored for a public channel.
+     * </pre>
+     *
+     * <code>string session = 3 [json_name = "session"];</code>
+     * @param value The bytes for session to set.
+     * @return This builder for chaining.
+     */
+    public Builder setSessionBytes(
+        com.google.protobuf.ByteString value) {
+      copyOnWrite();
+      instance.setSessionBytes(value);
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.gateway.v1.GetProposalRequest)
   }
   @java.lang.Override
@@ -325,10 +462,11 @@ public  final class GetProposalRequest extends
           java.lang.Object[] objects = new java.lang.Object[] {
             "channel_",
             "proposalId_",
+            "session_",
           };
           java.lang.String info =
-              "\u0000\u0002\u0000\u0000\u0001\u0002\u0002\u0000\u0000\u0000\u0001\u0208\u0002\u0208" +
-              "";
+              "\u0000\u0003\u0000\u0000\u0001\u0003\u0003\u0000\u0000\u0000\u0001\u0208\u0002\u0208" +
+              "\u0003\u0208";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {
