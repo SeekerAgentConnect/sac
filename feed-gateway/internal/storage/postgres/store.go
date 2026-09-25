@@ -69,7 +69,7 @@ import (
 // The lineage is this implementation's own and starts at 1. It is not SQLite's version 5 renamed:
 // nothing has ever migrated between the two, and a Postgres database is created at the shape the
 // current release needs rather than by replaying five years of somebody else's history.
-const Version = 2
+const Version = 3
 
 // Schema is the namespace every statement in this package qualifies. It is deliberately not
 // public: see the package comment.
@@ -233,6 +233,8 @@ func (s *Store) migrate(ctx context.Context) error {
 				migration = schemaV1
 			case 2:
 				migration = schemaV2
+			case 3:
+				migration = schemaV3
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -379,6 +381,31 @@ ALTER TABLE ` + Schema + `.relay_binding        ENABLE ROW LEVEL SECURITY;
 // No ENABLE ROW LEVEL SECURITY here: that is per table, and this adds none.
 const schemaV2 = `
 ALTER TABLE ` + Schema + `.publisher ADD COLUMN last_seen_at_ms BIGINT;
+`
+
+// schemaV3 is restricted feeds (SEE-156), the same columns and table the SQLite store adds at its
+// version 7, where the reasoning is written out. The new table is sealed like every other one.
+const schemaV3 = `
+ALTER TABLE ` + Schema + `.publisher ADD COLUMN access_policy TEXT NOT NULL DEFAULT 'public';
+ALTER TABLE ` + Schema + `.publisher ADD COLUMN auth_origin TEXT NOT NULL DEFAULT '';
+ALTER TABLE ` + Schema + `.publisher ADD COLUMN access_epoch BIGINT NOT NULL DEFAULT 0;
+
+CREATE TABLE ` + Schema + `.access_grant (
+  grant_id       TEXT PRIMARY KEY,
+  server_id      TEXT NOT NULL REFERENCES ` + Schema + `.publisher(server_id) ON DELETE CASCADE,
+  subscriber_ref TEXT NOT NULL,
+  device_ref     TEXT NOT NULL,
+  session_digest BYTEA NOT NULL UNIQUE,
+  created_at_ms  BIGINT NOT NULL,
+  renewed_at_ms  BIGINT NOT NULL,
+  expires_at_ms  BIGINT NOT NULL,
+  revoked_at_ms  BIGINT,
+  push_target    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX access_grant_by_server ON ` + Schema + `.access_grant(server_id);
+CREATE INDEX access_grant_by_expiry ON ` + Schema + `.access_grant(expires_at_ms);
+
+ALTER TABLE ` + Schema + `.access_grant ENABLE ROW LEVEL SECURITY;
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

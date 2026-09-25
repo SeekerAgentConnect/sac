@@ -13,9 +13,11 @@
 // MCP and serve no RequestService.
 //
 // A manifest is bounded declarative data and nothing else. There is no field here that installs
-// code, asks for a permission, carries a policy, or names a wallet endpoint, and there is no
-// field that could grow into one: what the phone will do with a server is decided by the build it
-// is running and by the owner, never by the document.
+// code, asks for a permission, or names a wallet endpoint, and there is no field that could grow
+// into one: what the phone will do with a server is decided by the build it is running and by the
+// owner, never by the document. The one policy a feed manifest carries is who may read it
+// (GatewayFeed.access, SEE-156), and that is stamped by the gateway from the operator's
+// registration rather than taken from the publisher's own claim.
 
 import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
@@ -181,6 +183,17 @@ export declare type GatewayFeed = Message<"seekervault.server.v1.GatewayFeed"> &
    * @generated from field: string channel = 2;
    */
   channel: string;
+
+  /**
+   * Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+   * what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+   * what it was. The gateway writes this field from the operator's registration of the publisher
+   * and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+   * public by leaving it out, and a feed reference cannot supply it.
+   *
+   * @generated from field: seekervault.server.v1.FeedAccess access = 3;
+   */
+  access?: FeedAccess | undefined;
 };
 
 /**
@@ -188,6 +201,37 @@ export declare type GatewayFeed = Message<"seekervault.server.v1.GatewayFeed"> &
  * Use `create(GatewayFeedSchema)` to create a new message.
  */
 export declare const GatewayFeedSchema: GenMessage<GatewayFeed>;
+
+/**
+ * FeedAccess is a feed's access policy, and where a restricted feed's subscriber proves who they
+ * are (SEE-156).
+ *
+ * @generated from message seekervault.server.v1.FeedAccess
+ */
+export declare type FeedAccess = Message<"seekervault.server.v1.FeedAccess"> & {
+  /**
+   * @generated from field: seekervault.server.v1.FeedAccessPolicy policy = 1;
+   */
+  policy: FeedAccessPolicy;
+
+  /**
+   * For a restricted feed, the publisher's registered authentication origin: an absolute HTTPS
+   * origin with no path, query, user info or fragment (loopback HTTP only where the platform allows
+   * cleartext, which is development builds). The gateway's operator registered it together with the
+   * publisher's credential and the gateway refuses a manifest naming another, so the phone sends a
+   * wallet proof only to an origin the gateway vouches for — never to one a link supplied. Empty
+   * for a public feed.
+   *
+   * @generated from field: string auth_origin = 2;
+   */
+  authOrigin: string;
+};
+
+/**
+ * Describes the message seekervault.server.v1.FeedAccess.
+ * Use `create(FeedAccessSchema)` to create a new message.
+ */
+export declare const FeedAccessSchema: GenMessage<FeedAccess>;
 
 /**
  * PluginRequirement is one bundled plugin a server's operations need, named by the stable ID the
@@ -294,4 +338,40 @@ export enum ServerEnvironment {
  * Describes the enum seekervault.server.v1.ServerEnvironment.
  */
 export declare const ServerEnvironmentSchema: GenEnum<ServerEnvironment>;
+
+/**
+ * Who may read a feed.
+ *
+ * @generated from enum seekervault.server.v1.FeedAccessPolicy
+ */
+export enum FeedAccessPolicy {
+  /**
+   * Never written. A client reads an absent FeedAccess as public, because that is what every
+   * manifest before SEE-156 meant; it reads an unspecified or unknown policy as one it does not
+   * support, never as public.
+   *
+   * @generated from enum value: FEED_ACCESS_POLICY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Anyone holding the feed reference may read it: the broadcast every feed was before SEE-156.
+   *
+   * @generated from enum value: FEED_ACCESS_POLICY_PUBLIC = 1;
+   */
+  PUBLIC = 1,
+
+  /**
+   * Only a device the publisher approved may read it. Every read, page, stream ticket, topic and
+   * presence answer for the channel needs a live grant's session; there is no anonymous fallback.
+   *
+   * @generated from enum value: FEED_ACCESS_POLICY_RESTRICTED = 2;
+   */
+  RESTRICTED = 2,
+}
+
+/**
+ * Describes the enum seekervault.server.v1.FeedAccessPolicy.
+ */
+export declare const FeedAccessPolicySchema: GenEnum<FeedAccessPolicy>;
 

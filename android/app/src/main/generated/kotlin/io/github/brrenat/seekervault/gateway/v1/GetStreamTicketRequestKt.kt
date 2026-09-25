@@ -140,7 +140,120 @@ public object GetStreamTicketRequestKt {
 @kotlin.jvm.JvmName("setChannels")
     public fun com.google.protobuf.kotlin.DslList<kotlin.String, ChannelsProxy>.clear() {
       _builder.clearChannels()
-    }}
+    }
+    /**
+     * An uninstantiable, behaviorless type to represent the field in
+     * generics.
+     */
+    @kotlin.OptIn(com.google.protobuf.kotlin.OnlyForUseByGeneratedProtoCode::class)
+    public class SessionsProxy private constructor() : com.google.protobuf.kotlin.DslProxy()
+    /**
+     * ```
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * ```
+     *
+     * `repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];`
+     */
+     public val sessions: com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.gateway.v1.ChannelSession, SessionsProxy>
+      @kotlin.jvm.JvmSynthetic
+  get() = com.google.protobuf.kotlin.DslList(
+        _builder.sessionsList
+      )
+    /**
+     * ```
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * ```
+     *
+     * `repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];`
+     * @param value The sessions to add.
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("addSessions")
+    public fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.gateway.v1.ChannelSession, SessionsProxy>.add(value: io.github.brrenat.seekervault.gateway.v1.ChannelSession) {
+      _builder.addSessions(value)
+    }
+    /**
+     * ```
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * ```
+     *
+     * `repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];`
+     * @param value The sessions to add.
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("plusAssignSessions")
+    @Suppress("NOTHING_TO_INLINE")
+    public inline operator fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.gateway.v1.ChannelSession, SessionsProxy>.plusAssign(value: io.github.brrenat.seekervault.gateway.v1.ChannelSession) {
+      add(value)
+    }
+    /**
+     * ```
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * ```
+     *
+     * `repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];`
+     * @param values The sessions to add.
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("addAllSessions")
+    public fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.gateway.v1.ChannelSession, SessionsProxy>.addAll(values: kotlin.collections.Iterable<io.github.brrenat.seekervault.gateway.v1.ChannelSession>) {
+      _builder.addAllSessions(values)
+    }
+    /**
+     * ```
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * ```
+     *
+     * `repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];`
+     * @param values The sessions to add.
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("plusAssignAllSessions")
+    @Suppress("NOTHING_TO_INLINE")
+    public inline operator fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.gateway.v1.ChannelSession, SessionsProxy>.plusAssign(values: kotlin.collections.Iterable<io.github.brrenat.seekervault.gateway.v1.ChannelSession>) {
+      addAll(values)
+    }
+    /**
+     * ```
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * ```
+     *
+     * `repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];`
+     * @param index The index to set the value at.
+     * @param value The sessions to set.
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("setSessions")
+    public operator fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.gateway.v1.ChannelSession, SessionsProxy>.set(index: kotlin.Int, value: io.github.brrenat.seekervault.gateway.v1.ChannelSession) {
+      _builder.setSessions(index, value)
+    }
+    /**
+     * ```
+     * The session for each restricted channel among them (SEE-156). A restricted channel without a
+     * live one is absent from the grant, like a channel this gateway does not host; a public channel
+     * needs none, and a session offered for one is ignored.
+     * ```
+     *
+     * `repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];`
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("clearSessions")
+    public fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.gateway.v1.ChannelSession, SessionsProxy>.clear() {
+      _builder.clearSessions()
+    }
+  }
 }
 public inline fun io.github.brrenat.seekervault.gateway.v1.GetStreamTicketRequest.copy(block: `io.github.brrenat.seekervault.gateway.v1`.GetStreamTicketRequestKt.Dsl.() -> kotlin.Unit): io.github.brrenat.seekervault.gateway.v1.GetStreamTicketRequest =
   `io.github.brrenat.seekervault.gateway.v1`.GetStreamTicketRequestKt.Dsl._create(this.toBuilder()).apply { block() }._build()

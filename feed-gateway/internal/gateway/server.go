@@ -18,6 +18,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/dispatch"
 	gatewayv1connect "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1/gatewayv1connect"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/pushrelay"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/relay"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 )
 
@@ -73,14 +74,28 @@ func Build(
 	log *slog.Logger,
 	now func() time.Time,
 ) *Gateway {
+	// A restricted feed's hints (SEE-156) go to approved devices one at a time, with the relay's own
+	// credential, so they exist exactly when the relay does. They join the fan-out here rather than
+	// in main so that no deployment can relay a public feed's hints and forget the restricted ones.
+	var restricted *relay.Restricted
+	if hinter, ok := devices.(interface {
+		SendFeedHint(context.Context, string, bool) (relay.Outcome, error)
+	}); ok {
+		restricted = &relay.Restricted{Targets: from, Send: hinter.SendFeedHint, Log: log, Now: now}
+		to = dispatch.Fan{to, *restricted}
+	}
 	drainer := dispatch.New(from, to, log, now)
 
 	// The read side. No authentication — a feed is a broadcast — and a limit per caller so that
 	// one of them cannot spend the store's time.
 	reads := NewLimiter(settings.ReadRate, settings.ReadBurst, now)
 	readMux := http.NewServeMux()
+	feed := NewFeed(from, now, grants, topics, PresenceWindow(settings.Heartbeat))
+	if restricted != nil {
+		feed.WithPushTargets(from)
+	}
 	readMux.Handle(gatewayv1connect.NewFeedServiceHandler(
-		NewFeed(from, now, grants, topics, PresenceWindow(settings.Heartbeat)),
+		feed,
 		connect.WithReadMaxBytes(MostBytes),
 		connect.WithCodec(strictJSON{}),
 		connect.WithInterceptors(
@@ -135,7 +150,18 @@ func Build(
 	publishes := NewLimiter(settings.PublishRate, settings.PublishBurst, now)
 	publishMux := http.NewServeMux()
 	publishMux.Handle(gatewayv1connect.NewPublisherServiceHandler(
-		NewPublisher(from, settings.PublicURL, settings.MaxProposals, settings.Heartbeat, now, drainer.Wake),
+		NewPublisher(from, settings.PublicURL, settings.MaxProposals, settings.Heartbeat, now, drainer.Wake).
+			WithAccess(Access{
+				Store:     from,
+				Read:      from.Access,
+				MostGrant: settings.MostGrant,
+				Wake:      drainer.Wake,
+				Revoked: func(targets []storage.PushTarget) {
+					if restricted != nil {
+						go restricted.Revoked(targets)
+					}
+				},
+			}),
 		connect.WithReadMaxBytes(MostBytes),
 		connect.WithCodec(strictJSON{}),
 		connect.WithInterceptors(
@@ -371,6 +397,16 @@ func (g *Gateway) sweep(ctx context.Context) {
 			g.log.Warn("relay sweep failed", "error", err)
 		case ended > 0:
 			g.log.Info("relay swept abandoned grants", "removed", ended)
+		}
+		// Restricted grants that ended — revoked, or expired without renewal — are kept for the
+		// retention window, so a late renewal of a revoked one is refused by name, and then
+		// forgotten (SEE-156).
+		forgotten, err := g.storage.SweepGrants(ctx, at.Add(-g.config.Retention))
+		switch {
+		case err != nil && ctx.Err() == nil:
+			g.log.Warn("grant sweep failed", "error", err)
+		case forgotten > 0:
+			g.log.Info("grant sweep forgot ended grants", "removed", forgotten)
 		}
 		select {
 		case <-ctx.Done():

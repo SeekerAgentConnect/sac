@@ -45,6 +45,10 @@ type NoticeKind string
 const (
 	ManifestNotice NoticeKind = "manifest"
 	ProposalNotice NoticeKind = "proposal"
+	// AccessNotice retires a restricted channel's stream name after a revocation (SEE-156). Its
+	// ProposalID and Revision both carry the access epoch being retired, so every retired name gets
+	// its own notice and two revocations in a row cannot collapse into one that skips a name.
+	AccessNotice NoticeKind = "access"
 )
 
 // Notice is one durable, pending fan-out. It carries an identity rather than document bytes so a
@@ -70,6 +74,9 @@ type PublicationTx interface {
 	Request(context.Context, string, string) (*StoredRequest, error)
 	Proposal(context.Context, string, string) (*StoredProposal, error)
 	Count(context.Context, string) (int, error)
+	// Access is the publisher's access policy as this transaction sees it, so a manifest is stamped
+	// with the policy that is in force when it is stored (SEE-156).
+	Access(context.Context, string) (Access, error)
 	PutManifest(context.Context, *serverv1.ServerManifest, time.Time) (uint64, error)
 	PutRequest(context.Context, *requestv2.Request, time.Time) (uint64, error)
 	PutProposal(context.Context, *proposalv1.Proposal, time.Time) (uint64, error)
@@ -82,10 +89,16 @@ type PublicationStore interface {
 	Write(context.Context, func(PublicationTx) error) error
 }
 
-// FeedStore is the authoritative, read-only public-feed view. Reads must not create subscriber or
-// cursor state.
+// FeedStore is the authoritative, read-only feed view. Reads must not create subscriber or cursor
+// state: a restricted read looks a grant up and writes nothing down (SEE-156).
 type FeedStore interface {
 	PublisherExists(context.Context, string) (bool, error)
+	// Access is a registered publisher's access policy, or ErrNoPublisher.
+	Access(context.Context, string) (Access, error)
+	// GrantFor is the grant on this server's channel whose session hashes to the digest, or nil. It
+	// is scoped to the server in the same statement, so a session issued for one channel can never
+	// read another.
+	GrantFor(context.Context, string, []byte) (*Grant, error)
 	Manifest(context.Context, string) (*StoredManifest, error)
 	Request(context.Context, string, string) (*StoredRequest, error)
 	RequestPage(context.Context, string, string, int) ([]*StoredRequest, error)
@@ -131,6 +144,9 @@ type OutboxStore interface {
 	Pending(context.Context) (int, error)
 	Manifest(context.Context, string) (*StoredManifest, error)
 	Request(context.Context, string, string) (*StoredRequest, error)
+	// Access is read when a notice is sent rather than when it was written, so a delivery goes to
+	// the channel's stream name as it stands now (SEE-156).
+	Access(context.Context, string) (Access, error)
 }
 
 // MaintenanceStore owns local retention only; it does not change the public channel sequence.
@@ -140,6 +156,10 @@ type MaintenanceStore interface {
 	// unpaired while offline cannot leave a grant behind indefinitely, because nothing has to
 	// happen for one to end (SEE-144).
 	SweepRelay(context.Context, RelayRetention) (int64, error)
+	// SweepGrants forgets grants that ended — revoked or expired — before the instant given. A
+	// grant is kept that long after it ends so a late renewal of a revoked grant is still refused
+	// by name rather than by absence (SEE-156).
+	SweepGrants(context.Context, time.Time) (int64, error)
 }
 
 // GatewayStore is the focused set the running gateway composes. Close and filesystem ownership
@@ -152,6 +172,7 @@ type GatewayStore interface {
 	OutboxStore
 	MaintenanceStore
 	RelayStore
+	AccessStore
 }
 
 // Publisher and Credential are the non-secret records the operator's surfaces show. Neither
@@ -175,6 +196,10 @@ type Publisher struct {
 	// next call without revoking anything or restarting the gateway.
 	Publishing bool
 	Relaying   bool
+	// Access is who may read this publisher's feed, as the operator registered it (SEE-156), and
+	// Grants how many of its grants are live right now. A count and never a list of anyone.
+	Access Access
+	Grants int
 }
 
 type Credential struct {
@@ -218,6 +243,9 @@ type Registration struct {
 	// channel anyone reads (SEE-144).
 	Publishing bool
 	Relaying   bool
+	// Access is the feed's access policy. The zero value is public, which is what every
+	// registration made before SEE-156 is.
+	Access Access
 }
 
 var (
@@ -246,6 +274,13 @@ type PublisherAdminStore interface {
 	// makes the same ones work. That is what makes "disable relay" a switch an operator can flip
 	// back, and revocation the thing that cannot be undone.
 	SetCapabilities(context.Context, string, bool, bool) error
+	// SetAccess is the operator choosing who may read a feed, and where its subscribers prove who
+	// they are (SEE-156). Moving a feed between policies moves its stream name too, so a listener
+	// admitted under the old policy stops receiving anything on the name it holds.
+	SetAccess(context.Context, string, Access) error
+	// Grants lists one publisher's grants, newest first, for the operator's view: opaque
+	// references and instants, never a session and never a push target.
+	Grants(context.Context, string) ([]Grant, error)
 	Forget(context.Context, string, string) error
 	Publishers(context.Context) ([]Publisher, error)
 	Publisher(context.Context, string) (*Publisher, error)
@@ -420,4 +455,116 @@ type RelayBindingRequest struct {
 	HandleHash []byte
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
+}
+
+// --- restricted feeds (SEE-156) -----------------------------------------------
+
+// AccessPolicy is who may read a feed.
+type AccessPolicy string
+
+const (
+	// PublicAccess is the broadcast every feed was before SEE-156, and the zero value's meaning.
+	PublicAccess AccessPolicy = "public"
+	// RestrictedAccess is a feed only devices its publisher approved may read.
+	RestrictedAccess AccessPolicy = "restricted"
+)
+
+// Access is a registered feed's access policy.
+type Access struct {
+	Policy AccessPolicy
+	// AuthOrigin is where a restricted feed's subscribers prove who they are, as the operator
+	// registered it. Empty for a public feed.
+	AuthOrigin string
+	// Epoch counts the restricted channel's stream names. It moves on every revocation and on every
+	// change of policy, so a listener attached under an earlier one hears nothing more.
+	Epoch uint64
+}
+
+// Restricted says whether the feed needs a grant to read. Anything but an explicit restricted
+// policy is public, because an empty policy is what a registration made before SEE-156 holds.
+func (a Access) Restricted() bool { return a.Policy == RestrictedAccess }
+
+// Valid says whether an access policy is one the gateway knows. A restricted feed must name the
+// origin its subscribers authenticate with, and a public one must not name any.
+func (a Access) Valid() bool {
+	switch a.Policy {
+	case PublicAccess, "":
+		return a.AuthOrigin == ""
+	case RestrictedAccess:
+		return a.AuthOrigin != ""
+	}
+	return false
+}
+
+// Grant is one approved device's access to one restricted channel, as the gateway holds it: the
+// publisher's opaque references, when it runs until, and whether it was revoked. There is no
+// wallet, no person and no session here — only the session's digest is stored, and it is not part
+// of this record.
+type Grant struct {
+	GrantID       string
+	ServerID      string
+	SubscriberRef string
+	DeviceRef     string
+	CreatedAt     time.Time
+	RenewedAt     time.Time
+	ExpiresAt     time.Time
+	RevokedAt     *time.Time
+	// HasPushTarget says whether the device registered where its hints go; the target itself is
+	// read only by the relay (AccessStore.PushTargets).
+	HasPushTarget bool
+}
+
+// Live says whether the grant admits a reader at this instant.
+func (g Grant) Live(at time.Time) bool { return g.RevokedAt == nil && at.Before(g.ExpiresAt) }
+
+// GrantRequest is a publisher granting or renewing one device's access to its own channel.
+type GrantRequest struct {
+	GrantID       string
+	ServerID      string
+	SubscriberRef string
+	DeviceRef     string
+	SessionDigest []byte
+	At            time.Time
+	ExpiresAt     time.Time
+}
+
+// PushTarget is where one grant's hints go. Only the relay reads it.
+type PushTarget struct {
+	GrantID string
+	Target  string
+}
+
+var (
+	// ErrNotRestricted is a grant for a feed whose policy is not restricted.
+	ErrNotRestricted = errors.New("the feed is not restricted")
+	// ErrNoGrant is a grant the caller does not hold: never granted, or another publisher's.
+	ErrNoGrant = errors.New("no such grant")
+	// ErrGrantRevoked is a renewal of a grant that was revoked. Revocation is final.
+	ErrGrantRevoked = errors.New("the grant was revoked")
+	// ErrGrantMismatch is a renewal that names the same grant with a different session or device:
+	// a grant's binding never moves.
+	ErrGrantMismatch = errors.New("the grant is bound to another session")
+)
+
+// AccessStore is the restricted-feed boundary (SEE-156): the publisher's writes, and the relay's
+// reads of where hints go.
+type AccessStore interface {
+	// PutGrant creates a grant, or renews one the same publisher holds with the same binding. It
+	// refuses a feed that is not restricted, a grant another publisher holds, a revoked grant and a
+	// binding that moved, and never shortens a grant.
+	PutGrant(context.Context, GrantRequest) (Grant, error)
+	// RevokeGrants ends the named grants on the server's own channel and answers how many it
+	// revoked now, plus the push targets they held so a best-effort hint can tell those devices to
+	// look. When it revokes any, it moves the channel's epoch and writes the AccessNotice that
+	// retires the old stream name, in the same transaction. A name the server does not hold is
+	// ErrNoGrant and nothing is revoked.
+	RevokeGrants(context.Context, string, []string, time.Time) (int, []PushTarget, error)
+	// SetPushTarget registers where a live grant's hints go, found by its session's digest on the
+	// server's channel. An empty target clears it. ErrNoGrant when no live grant matches.
+	SetPushTarget(context.Context, string, []byte, string, time.Time) error
+	// PushTargets is every live grant's target on the server's channel.
+	PushTargets(context.Context, string, time.Time) ([]PushTarget, error)
+	// PushTargetRejected clears a target the push endpoint said is finished, if it is still the
+	// one that failed.
+	PushTargetRejected(context.Context, string, string) error
 }

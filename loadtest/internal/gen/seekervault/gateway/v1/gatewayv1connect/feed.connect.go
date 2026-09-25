@@ -20,6 +20,11 @@
 // quantity someone chose, a decision they made, or anything they signed, and a Go boundary test
 // reads this proto and fails if the field set changes or a forbidden word appears in it — so a
 // field that could carry any of it has to be argued for in that test first.
+//
+// Restricted feeds (SEE-156) add exactly one thing a reader presents: a `session`, an opaque bearer
+// value the feed's publisher handed an approved device. It names no wallet and no person — the
+// gateway holds only its digest, against an opaque grant the publisher registered — and a public
+// feed never asks for one (docs/wiki/restricted-feeds.md).
 package gatewayv1connect
 
 import (
@@ -73,6 +78,9 @@ const (
 	// FeedServiceGetFeedStatusProcedure is the fully-qualified name of the FeedService's GetFeedStatus
 	// RPC.
 	FeedServiceGetFeedStatusProcedure = "/seekervault.gateway.v1.FeedService/GetFeedStatus"
+	// FeedServiceSetFeedPushTargetProcedure is the fully-qualified name of the FeedService's
+	// SetFeedPushTarget RPC.
+	FeedServiceSetFeedPushTargetProcedure = "/seekervault.gateway.v1.FeedService/SetFeedPushTarget"
 )
 
 // FeedServiceClient is a client for the seekervault.gateway.v1.FeedService service.
@@ -132,6 +140,17 @@ type FeedServiceClient interface {
 	// Like a ticket and a topic, the answer is about channels and never about the caller, and asking
 	// changes nothing.
 	GetFeedStatus(context.Context, *connect.Request[v1.GetFeedStatusRequest]) (*connect.Response[v1.GetFeedStatusResponse], error)
+	// Where this gateway's relay sends a restricted channel's hints for one approved device
+	// (SEE-156).
+	//
+	// A restricted channel has no public topic: a topic anyone may join would announce every signal
+	// to devices the publisher never approved. So the hint goes to each approved device's own push
+	// target instead, and this is how a device names it — under the session its grant was issued
+	// with, so only a device holding a live grant can register one, and only for that grant. An
+	// empty target clears it. A revoked or expired grant stops receiving hints the moment it stops
+	// being live, and a hint that was already queued grants nothing: every read it prompts is checked
+	// again.
+	SetFeedPushTarget(context.Context, *connect.Request[v1.SetFeedPushTargetRequest]) (*connect.Response[v1.SetFeedPushTargetResponse], error)
 }
 
 // NewFeedServiceClient constructs a client for the seekervault.gateway.v1.FeedService service. By
@@ -193,6 +212,12 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("GetFeedStatus")),
 			connect.WithClientOptions(opts...),
 		),
+		setFeedPushTarget: connect.NewClient[v1.SetFeedPushTargetRequest, v1.SetFeedPushTargetResponse](
+			httpClient,
+			baseURL+FeedServiceSetFeedPushTargetProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("SetFeedPushTarget")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -206,6 +231,7 @@ type feedServiceClient struct {
 	getStreamTicket   *connect.Client[v1.GetStreamTicketRequest, v1.GetStreamTicketResponse]
 	getFeedTopics     *connect.Client[v1.GetFeedTopicsRequest, v1.GetFeedTopicsResponse]
 	getFeedStatus     *connect.Client[v1.GetFeedStatusRequest, v1.GetFeedStatusResponse]
+	setFeedPushTarget *connect.Client[v1.SetFeedPushTargetRequest, v1.SetFeedPushTargetResponse]
 }
 
 // GetServerManifest calls seekervault.gateway.v1.FeedService.GetServerManifest.
@@ -246,6 +272,11 @@ func (c *feedServiceClient) GetFeedTopics(ctx context.Context, req *connect.Requ
 // GetFeedStatus calls seekervault.gateway.v1.FeedService.GetFeedStatus.
 func (c *feedServiceClient) GetFeedStatus(ctx context.Context, req *connect.Request[v1.GetFeedStatusRequest]) (*connect.Response[v1.GetFeedStatusResponse], error) {
 	return c.getFeedStatus.CallUnary(ctx, req)
+}
+
+// SetFeedPushTarget calls seekervault.gateway.v1.FeedService.SetFeedPushTarget.
+func (c *feedServiceClient) SetFeedPushTarget(ctx context.Context, req *connect.Request[v1.SetFeedPushTargetRequest]) (*connect.Response[v1.SetFeedPushTargetResponse], error) {
+	return c.setFeedPushTarget.CallUnary(ctx, req)
 }
 
 // FeedServiceHandler is an implementation of the seekervault.gateway.v1.FeedService service.
@@ -305,6 +336,17 @@ type FeedServiceHandler interface {
 	// Like a ticket and a topic, the answer is about channels and never about the caller, and asking
 	// changes nothing.
 	GetFeedStatus(context.Context, *connect.Request[v1.GetFeedStatusRequest]) (*connect.Response[v1.GetFeedStatusResponse], error)
+	// Where this gateway's relay sends a restricted channel's hints for one approved device
+	// (SEE-156).
+	//
+	// A restricted channel has no public topic: a topic anyone may join would announce every signal
+	// to devices the publisher never approved. So the hint goes to each approved device's own push
+	// target instead, and this is how a device names it — under the session its grant was issued
+	// with, so only a device holding a live grant can register one, and only for that grant. An
+	// empty target clears it. A revoked or expired grant stops receiving hints the moment it stops
+	// being live, and a hint that was already queued grants nothing: every read it prompts is checked
+	// again.
+	SetFeedPushTarget(context.Context, *connect.Request[v1.SetFeedPushTargetRequest]) (*connect.Response[v1.SetFeedPushTargetResponse], error)
 }
 
 // NewFeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -362,6 +404,12 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("GetFeedStatus")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceSetFeedPushTargetHandler := connect.NewUnaryHandler(
+		FeedServiceSetFeedPushTargetProcedure,
+		svc.SetFeedPushTarget,
+		connect.WithSchema(feedServiceMethods.ByName("SetFeedPushTarget")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/seekervault.gateway.v1.FeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FeedServiceGetServerManifestProcedure:
@@ -380,6 +428,8 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceGetFeedTopicsHandler.ServeHTTP(w, r)
 		case FeedServiceGetFeedStatusProcedure:
 			feedServiceGetFeedStatusHandler.ServeHTTP(w, r)
+		case FeedServiceSetFeedPushTargetProcedure:
+			feedServiceSetFeedPushTargetHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -419,4 +469,8 @@ func (UnimplementedFeedServiceHandler) GetFeedTopics(context.Context, *connect.R
 
 func (UnimplementedFeedServiceHandler) GetFeedStatus(context.Context, *connect.Request[v1.GetFeedStatusRequest]) (*connect.Response[v1.GetFeedStatusResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.GetFeedStatus is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) SetFeedPushTarget(context.Context, *connect.Request[v1.SetFeedPushTargetRequest]) (*connect.Response[v1.SetFeedPushTargetResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.SetFeedPushTarget is not implemented"))
 }

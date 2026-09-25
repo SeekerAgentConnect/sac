@@ -13,9 +13,11 @@
 // MCP and serve no RequestService.
 //
 // A manifest is bounded declarative data and nothing else. There is no field here that installs
-// code, asks for a permission, carries a policy, or names a wallet endpoint, and there is no
-// field that could grow into one: what the phone will do with a server is decided by the build it
-// is running and by the owner, never by the document.
+// code, asks for a permission, or names a wallet endpoint, and there is no field that could grow
+// into one: what the phone will do with a server is decided by the build it is running and by the
+// owner, never by the document. The one policy a feed manifest carries is who may read it
+// (GatewayFeed.access, SEE-156), and that is stamped by the gateway from the operator's
+// registration rather than taken from the publisher's own claim.
 
 import { enumDesc, fileDesc, messageDesc, tsEnum } from "@bufbuild/protobuf/codegenv2";
 
@@ -23,7 +25,7 @@ import { enumDesc, fileDesc, messageDesc, tsEnum } from "@bufbuild/protobuf/code
  * Describes the file seekervault/server/v1/manifest.proto.
  */
 export const file_seekervault_server_v1_manifest = /*@__PURE__*/
-  fileDesc("CiRzZWVrZXJ2YXVsdC9zZXJ2ZXIvdjEvbWFuaWZlc3QucHJvdG8SFXNlZWtlcnZhdWx0LnNlcnZlci52MSK2AwoOU2VydmVyTWFuaWZlc3QSEQoJc2VydmVyX2lkGAEgASgJEhgKEHByb3RvY29sX3ZlcnNpb24YAiABKA0SGQoRc2V0dGluZ3NfcmV2aXNpb24YAyABKAQSMwoEbW9kZRgEIAEoDjIlLnNlZWtlcnZhdWx0LnNlcnZlci52MS5Db25uZWN0aW9uTW9kZRJCChByZXF1aXJlZF9wbHVnaW5zGAUgAygLMiguc2Vla2VydmF1bHQuc2VydmVyLnYxLlBsdWdpblJlcXVpcmVtZW50Ej4KDGVudmlyb25tZW50cxgGIAMoDjIoLnNlZWtlcnZhdWx0LnNlcnZlci52MS5TZXJ2ZXJFbnZpcm9ubWVudBIUCgxkaXNwbGF5X25hbWUYByABKAkSNQoGZGlyZWN0GAggASgLMiMuc2Vla2VydmF1bHQuc2VydmVyLnYxLkRpcmVjdFNlcnZlckgAEjIKBGZlZWQYCSABKAsyIi5zZWVrZXJ2YXVsdC5zZXJ2ZXIudjEuR2F0ZXdheUZlZWRIAEILCglyZWZlcmVuY2VKBAgKEAtSD2dhdGV3YXlfcHJpdmF0ZSIbCgxEaXJlY3RTZXJ2ZXISCwoDdXJsGAEgASgJIjMKC0dhdGV3YXlGZWVkEhMKC2dhdGV3YXlfdXJsGAEgASgJEg8KB2NoYW5uZWwYAiABKAkiUgoRUGx1Z2luUmVxdWlyZW1lbnQSEQoJcGx1Z2luX2lkGAEgASgJEhQKDG1pbl9jb250cmFjdBgCIAEoDRIUCgxtYXhfY29udHJhY3QYAyABKA0qlgEKDkNvbm5lY3Rpb25Nb2RlEh8KG0NPTk5FQ1RJT05fTU9ERV9VTlNQRUNJRklFRBAAEhoKFkNPTk5FQ1RJT05fTU9ERV9ESVJFQ1QQARIgChxDT05ORUNUSU9OX01PREVfR0FURVdBWV9GRUVEEAIiBAgDEAMqH0NPTk5FQ1RJT05fTU9ERV9HQVRFV0FZX1BSSVZBVEUqegoRU2VydmVyRW52aXJvbm1lbnQSIgoeU0VSVkVSX0VOVklST05NRU5UX1VOU1BFQ0lGSUVEEAASIQodU0VSVkVSX0VOVklST05NRU5UX1BST0RVQ1RJT04QARIeChpTRVJWRVJfRU5WSVJPTk1FTlRfU0FOREJPWBACYgZwcm90bzM");
+  fileDesc("CiRzZWVrZXJ2YXVsdC9zZXJ2ZXIvdjEvbWFuaWZlc3QucHJvdG8SFXNlZWtlcnZhdWx0LnNlcnZlci52MSK2AwoOU2VydmVyTWFuaWZlc3QSEQoJc2VydmVyX2lkGAEgASgJEhgKEHByb3RvY29sX3ZlcnNpb24YAiABKA0SGQoRc2V0dGluZ3NfcmV2aXNpb24YAyABKAQSMwoEbW9kZRgEIAEoDjIlLnNlZWtlcnZhdWx0LnNlcnZlci52MS5Db25uZWN0aW9uTW9kZRJCChByZXF1aXJlZF9wbHVnaW5zGAUgAygLMiguc2Vla2VydmF1bHQuc2VydmVyLnYxLlBsdWdpblJlcXVpcmVtZW50Ej4KDGVudmlyb25tZW50cxgGIAMoDjIoLnNlZWtlcnZhdWx0LnNlcnZlci52MS5TZXJ2ZXJFbnZpcm9ubWVudBIUCgxkaXNwbGF5X25hbWUYByABKAkSNQoGZGlyZWN0GAggASgLMiMuc2Vla2VydmF1bHQuc2VydmVyLnYxLkRpcmVjdFNlcnZlckgAEjIKBGZlZWQYCSABKAsyIi5zZWVrZXJ2YXVsdC5zZXJ2ZXIudjEuR2F0ZXdheUZlZWRIAEILCglyZWZlcmVuY2VKBAgKEAtSD2dhdGV3YXlfcHJpdmF0ZSIbCgxEaXJlY3RTZXJ2ZXISCwoDdXJsGAEgASgJImYKC0dhdGV3YXlGZWVkEhMKC2dhdGV3YXlfdXJsGAEgASgJEg8KB2NoYW5uZWwYAiABKAkSMQoGYWNjZXNzGAMgASgLMiEuc2Vla2VydmF1bHQuc2VydmVyLnYxLkZlZWRBY2Nlc3MiWgoKRmVlZEFjY2VzcxI3CgZwb2xpY3kYASABKA4yJy5zZWVrZXJ2YXVsdC5zZXJ2ZXIudjEuRmVlZEFjY2Vzc1BvbGljeRITCgthdXRoX29yaWdpbhgCIAEoCSJSChFQbHVnaW5SZXF1aXJlbWVudBIRCglwbHVnaW5faWQYASABKAkSFAoMbWluX2NvbnRyYWN0GAIgASgNEhQKDG1heF9jb250cmFjdBgDIAEoDSqWAQoOQ29ubmVjdGlvbk1vZGUSHwobQ09OTkVDVElPTl9NT0RFX1VOU1BFQ0lGSUVEEAASGgoWQ09OTkVDVElPTl9NT0RFX0RJUkVDVBABEiAKHENPTk5FQ1RJT05fTU9ERV9HQVRFV0FZX0ZFRUQQAiIECAMQAyofQ09OTkVDVElPTl9NT0RFX0dBVEVXQVlfUFJJVkFURSp6ChFTZXJ2ZXJFbnZpcm9ubWVudBIiCh5TRVJWRVJfRU5WSVJPTk1FTlRfVU5TUEVDSUZJRUQQABIhCh1TRVJWRVJfRU5WSVJPTk1FTlRfUFJPRFVDVElPThABEh4KGlNFUlZFUl9FTlZJUk9OTUVOVF9TQU5EQk9YEAIqeAoQRmVlZEFjY2Vzc1BvbGljeRIiCh5GRUVEX0FDQ0VTU19QT0xJQ1lfVU5TUEVDSUZJRUQQABIdChlGRUVEX0FDQ0VTU19QT0xJQ1lfUFVCTElDEAESIQodRkVFRF9BQ0NFU1NfUE9MSUNZX1JFU1RSSUNURUQQAmIGcHJvdG8z");
 
 /**
  * Describes the message seekervault.server.v1.ServerManifest.
@@ -47,11 +49,18 @@ export const GatewayFeedSchema = /*@__PURE__*/
   messageDesc(file_seekervault_server_v1_manifest, 2);
 
 /**
+ * Describes the message seekervault.server.v1.FeedAccess.
+ * Use `create(FeedAccessSchema)` to create a new message.
+ */
+export const FeedAccessSchema = /*@__PURE__*/
+  messageDesc(file_seekervault_server_v1_manifest, 3);
+
+/**
  * Describes the message seekervault.server.v1.PluginRequirement.
  * Use `create(PluginRequirementSchema)` to create a new message.
  */
 export const PluginRequirementSchema = /*@__PURE__*/
-  messageDesc(file_seekervault_server_v1_manifest, 3);
+  messageDesc(file_seekervault_server_v1_manifest, 4);
 
 /**
  * Describes the enum seekervault.server.v1.ConnectionMode.
@@ -81,4 +90,18 @@ export const ServerEnvironmentSchema = /*@__PURE__*/
  */
 export const ServerEnvironment = /*@__PURE__*/
   tsEnum(ServerEnvironmentSchema);
+
+/**
+ * Describes the enum seekervault.server.v1.FeedAccessPolicy.
+ */
+export const FeedAccessPolicySchema = /*@__PURE__*/
+  enumDesc(file_seekervault_server_v1_manifest, 2);
+
+/**
+ * Who may read a feed.
+ *
+ * @generated from enum seekervault.server.v1.FeedAccessPolicy
+ */
+export const FeedAccessPolicy = /*@__PURE__*/
+  tsEnum(FeedAccessPolicySchema);
 

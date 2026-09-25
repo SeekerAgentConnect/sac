@@ -335,6 +335,85 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;</code>
    */
   GATEWAY_PROBLEM_OTHER_ENVIRONMENT(34),
+  /**
+   * <pre>
+   * --- Restricted feeds (SEE-156) -------------------------------------------
+   * Numbered after the retired range above, which stays retired: none of these reuses a number or
+   * a meaning that range carried (docs/wiki/restricted-feeds.md).
+   *
+   * The channel is restricted and the call carried no session, or one this gateway does not hold
+   * for that channel. One code for both, so a caller learns nothing about sessions it does not
+   * hold; the phone answers it by asking the publisher for access, never by reading anonymously.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_ACCESS_REQUIRED = 47;</code>
+   */
+  GATEWAY_PROBLEM_ACCESS_REQUIRED(47),
+  /**
+   * <pre>
+   * The session was granted for this channel and the publisher revoked it. Final: the same
+   * session will never be accepted again, and only a new approval can grant another.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_ACCESS_REVOKED = 48;</code>
+   */
+  GATEWAY_PROBLEM_ACCESS_REVOKED(48),
+  /**
+   * <pre>
+   * The session's grant ran out without being renewed — the bound on how long access outlives a
+   * publisher the gateway cannot hear from. Not final: a publisher that still approves the device
+   * renews the same grant, and the session works again.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_ACCESS_EXPIRED = 49;</code>
+   */
+  GATEWAY_PROBLEM_ACCESS_EXPIRED(49),
+  /**
+   * <pre>
+   * A publisher's manifest claims an access policy or authentication origin other than the one
+   * its operator registered. A restricted feed cannot be published as public by omission, and a
+   * public one cannot point phones at an origin nobody registered.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_ACCESS_MISMATCH = 50;</code>
+   */
+  GATEWAY_PROBLEM_ACCESS_MISMATCH(50),
+  /**
+   * <pre>
+   * A grant call from a publisher whose feed is not restricted. Access to a public feed is not a
+   * thing this gateway records.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_NOT_RESTRICTED = 51;</code>
+   */
+  GATEWAY_PROBLEM_NOT_RESTRICTED(51),
+  /**
+   * <pre>
+   * A grant the caller does not hold: never granted, or granted by another publisher. One code
+   * for both, so a publisher cannot probe another publisher's grants — and a cross-publisher
+   * revocation changes nothing.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_NO_SUCH_GRANT = 52;</code>
+   */
+  GATEWAY_PROBLEM_NO_SUCH_GRANT(52),
+  /**
+   * <pre>
+   * A renewal of a grant this gateway already revoked. A revocation is final at the gateway, so a
+   * late or replayed renewal can never bring access back.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_GRANT_REVOKED = 53;</code>
+   */
+  GATEWAY_PROBLEM_GRANT_REVOKED(53),
+  /**
+   * <pre>
+   * A grant whose identity, references, session digest or lifetime is not well formed.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_BAD_GRANT = 54;</code>
+   */
+  GATEWAY_PROBLEM_BAD_GRANT(54),
   UNRECOGNIZED(-1),
   ;
 
@@ -657,6 +736,85 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;</code>
    */
   public static final int GATEWAY_PROBLEM_OTHER_ENVIRONMENT_VALUE = 34;
+  /**
+   * <pre>
+   * --- Restricted feeds (SEE-156) -------------------------------------------
+   * Numbered after the retired range above, which stays retired: none of these reuses a number or
+   * a meaning that range carried (docs/wiki/restricted-feeds.md).
+   *
+   * The channel is restricted and the call carried no session, or one this gateway does not hold
+   * for that channel. One code for both, so a caller learns nothing about sessions it does not
+   * hold; the phone answers it by asking the publisher for access, never by reading anonymously.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_ACCESS_REQUIRED = 47;</code>
+   */
+  public static final int GATEWAY_PROBLEM_ACCESS_REQUIRED_VALUE = 47;
+  /**
+   * <pre>
+   * The session was granted for this channel and the publisher revoked it. Final: the same
+   * session will never be accepted again, and only a new approval can grant another.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_ACCESS_REVOKED = 48;</code>
+   */
+  public static final int GATEWAY_PROBLEM_ACCESS_REVOKED_VALUE = 48;
+  /**
+   * <pre>
+   * The session's grant ran out without being renewed — the bound on how long access outlives a
+   * publisher the gateway cannot hear from. Not final: a publisher that still approves the device
+   * renews the same grant, and the session works again.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_ACCESS_EXPIRED = 49;</code>
+   */
+  public static final int GATEWAY_PROBLEM_ACCESS_EXPIRED_VALUE = 49;
+  /**
+   * <pre>
+   * A publisher's manifest claims an access policy or authentication origin other than the one
+   * its operator registered. A restricted feed cannot be published as public by omission, and a
+   * public one cannot point phones at an origin nobody registered.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_ACCESS_MISMATCH = 50;</code>
+   */
+  public static final int GATEWAY_PROBLEM_ACCESS_MISMATCH_VALUE = 50;
+  /**
+   * <pre>
+   * A grant call from a publisher whose feed is not restricted. Access to a public feed is not a
+   * thing this gateway records.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_NOT_RESTRICTED = 51;</code>
+   */
+  public static final int GATEWAY_PROBLEM_NOT_RESTRICTED_VALUE = 51;
+  /**
+   * <pre>
+   * A grant the caller does not hold: never granted, or granted by another publisher. One code
+   * for both, so a publisher cannot probe another publisher's grants — and a cross-publisher
+   * revocation changes nothing.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_NO_SUCH_GRANT = 52;</code>
+   */
+  public static final int GATEWAY_PROBLEM_NO_SUCH_GRANT_VALUE = 52;
+  /**
+   * <pre>
+   * A renewal of a grant this gateway already revoked. A revocation is final at the gateway, so a
+   * late or replayed renewal can never bring access back.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_GRANT_REVOKED = 53;</code>
+   */
+  public static final int GATEWAY_PROBLEM_GRANT_REVOKED_VALUE = 53;
+  /**
+   * <pre>
+   * A grant whose identity, references, session digest or lifetime is not well formed.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_BAD_GRANT = 54;</code>
+   */
+  public static final int GATEWAY_PROBLEM_BAD_GRANT_VALUE = 54;
 
 
   @java.lang.Override
@@ -714,6 +872,14 @@ public enum GatewayProblem
       case 32: return GATEWAY_PROBLEM_TOO_MANY_CHANNELS;
       case 33: return GATEWAY_PROBLEM_NO_PUSH;
       case 34: return GATEWAY_PROBLEM_OTHER_ENVIRONMENT;
+      case 47: return GATEWAY_PROBLEM_ACCESS_REQUIRED;
+      case 48: return GATEWAY_PROBLEM_ACCESS_REVOKED;
+      case 49: return GATEWAY_PROBLEM_ACCESS_EXPIRED;
+      case 50: return GATEWAY_PROBLEM_ACCESS_MISMATCH;
+      case 51: return GATEWAY_PROBLEM_NOT_RESTRICTED;
+      case 52: return GATEWAY_PROBLEM_NO_SUCH_GRANT;
+      case 53: return GATEWAY_PROBLEM_GRANT_REVOKED;
+      case 54: return GATEWAY_PROBLEM_BAD_GRANT;
       default: return null;
     }
   }

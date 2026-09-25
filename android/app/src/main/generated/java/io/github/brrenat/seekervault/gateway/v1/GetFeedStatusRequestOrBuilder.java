@@ -58,4 +58,33 @@ public interface GetFeedStatusRequestOrBuilder extends
    */
   com.google.protobuf.ByteString
       getChannelsBytes(int index);
+
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the answer.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  java.util.List<io.github.brrenat.seekervault.gateway.v1.ChannelSession> 
+      getSessionsList();
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the answer.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  io.github.brrenat.seekervault.gateway.v1.ChannelSession getSessions(int index);
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the answer.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  int getSessionsCount();
 }

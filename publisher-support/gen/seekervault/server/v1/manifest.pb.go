@@ -15,9 +15,11 @@
 // MCP and serve no RequestService.
 //
 // A manifest is bounded declarative data and nothing else. There is no field here that installs
-// code, asks for a permission, carries a policy, or names a wallet endpoint, and there is no
-// field that could grow into one: what the phone will do with a server is decided by the build it
-// is running and by the owner, never by the document.
+// code, asks for a permission, or names a wallet endpoint, and there is no field that could grow
+// into one: what the phone will do with a server is decided by the build it is running and by the
+// owner, never by the document. The one policy a feed manifest carries is who may read it
+// (GatewayFeed.access, SEE-156), and that is stamped by the gateway from the operator's
+// registration rather than taken from the publisher's own claim.
 
 package serverv1
 
@@ -144,6 +146,62 @@ func (x ServerEnvironment) Number() protoreflect.EnumNumber {
 // Deprecated: Use ServerEnvironment.Descriptor instead.
 func (ServerEnvironment) EnumDescriptor() ([]byte, []int) {
 	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{1}
+}
+
+// Who may read a feed.
+type FeedAccessPolicy int32
+
+const (
+	// Never written. A client reads an absent FeedAccess as public, because that is what every
+	// manifest before SEE-156 meant; it reads an unspecified or unknown policy as one it does not
+	// support, never as public.
+	FeedAccessPolicy_FEED_ACCESS_POLICY_UNSPECIFIED FeedAccessPolicy = 0
+	// Anyone holding the feed reference may read it: the broadcast every feed was before SEE-156.
+	FeedAccessPolicy_FEED_ACCESS_POLICY_PUBLIC FeedAccessPolicy = 1
+	// Only a device the publisher approved may read it. Every read, page, stream ticket, topic and
+	// presence answer for the channel needs a live grant's session; there is no anonymous fallback.
+	FeedAccessPolicy_FEED_ACCESS_POLICY_RESTRICTED FeedAccessPolicy = 2
+)
+
+// Enum value maps for FeedAccessPolicy.
+var (
+	FeedAccessPolicy_name = map[int32]string{
+		0: "FEED_ACCESS_POLICY_UNSPECIFIED",
+		1: "FEED_ACCESS_POLICY_PUBLIC",
+		2: "FEED_ACCESS_POLICY_RESTRICTED",
+	}
+	FeedAccessPolicy_value = map[string]int32{
+		"FEED_ACCESS_POLICY_UNSPECIFIED": 0,
+		"FEED_ACCESS_POLICY_PUBLIC":      1,
+		"FEED_ACCESS_POLICY_RESTRICTED":  2,
+	}
+)
+
+func (x FeedAccessPolicy) Enum() *FeedAccessPolicy {
+	p := new(FeedAccessPolicy)
+	*p = x
+	return p
+}
+
+func (x FeedAccessPolicy) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (FeedAccessPolicy) Descriptor() protoreflect.EnumDescriptor {
+	return file_seekervault_server_v1_manifest_proto_enumTypes[2].Descriptor()
+}
+
+func (FeedAccessPolicy) Type() protoreflect.EnumType {
+	return &file_seekervault_server_v1_manifest_proto_enumTypes[2]
+}
+
+func (x FeedAccessPolicy) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use FeedAccessPolicy.Descriptor instead.
+func (FeedAccessPolicy) EnumDescriptor() ([]byte, []int) {
+	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{2}
 }
 
 // ServerManifest is one server's current, complete statement about itself. Everything the phone
@@ -380,7 +438,13 @@ type GatewayFeed struct {
 	// The channel this server publishes on. A publisher may name only its own: the channel is
 	// "server/<server_id>" for the server_id above, so a manifest cannot claim another publisher's
 	// audience, and the gateway enforces the same rule when it accepts a publication (SEE-90).
-	Channel       string `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"`
+	Channel string `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"`
+	// Who may read this feed (SEE-156, docs/wiki/restricted-feeds.md). Absent means public, which is
+	// what every manifest published before SEE-156 says, so a public feed's manifest is byte for byte
+	// what it was. The gateway writes this field from the operator's registration of the publisher
+	// and refuses a manifest that claims anything else, so a publisher cannot make its own feed
+	// public by leaving it out, and a feed reference cannot supply it.
+	Access        *FeedAccess `protobuf:"bytes,3,opt,name=access,proto3" json:"access,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -429,6 +493,73 @@ func (x *GatewayFeed) GetChannel() string {
 	return ""
 }
 
+func (x *GatewayFeed) GetAccess() *FeedAccess {
+	if x != nil {
+		return x.Access
+	}
+	return nil
+}
+
+// FeedAccess is a feed's access policy, and where a restricted feed's subscriber proves who they
+// are (SEE-156).
+type FeedAccess struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Policy FeedAccessPolicy       `protobuf:"varint,1,opt,name=policy,proto3,enum=seekervault.server.v1.FeedAccessPolicy" json:"policy,omitempty"`
+	// For a restricted feed, the publisher's registered authentication origin: an absolute HTTPS
+	// origin with no path, query, user info or fragment (loopback HTTP only where the platform allows
+	// cleartext, which is development builds). The gateway's operator registered it together with the
+	// publisher's credential and the gateway refuses a manifest naming another, so the phone sends a
+	// wallet proof only to an origin the gateway vouches for — never to one a link supplied. Empty
+	// for a public feed.
+	AuthOrigin    string `protobuf:"bytes,2,opt,name=auth_origin,json=authOrigin,proto3" json:"auth_origin,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FeedAccess) Reset() {
+	*x = FeedAccess{}
+	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FeedAccess) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FeedAccess) ProtoMessage() {}
+
+func (x *FeedAccess) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FeedAccess.ProtoReflect.Descriptor instead.
+func (*FeedAccess) Descriptor() ([]byte, []int) {
+	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *FeedAccess) GetPolicy() FeedAccessPolicy {
+	if x != nil {
+		return x.Policy
+	}
+	return FeedAccessPolicy_FEED_ACCESS_POLICY_UNSPECIFIED
+}
+
+func (x *FeedAccess) GetAuthOrigin() string {
+	if x != nil {
+		return x.AuthOrigin
+	}
+	return ""
+}
+
 // PluginRequirement is one bundled plugin a server's operations need, named by the stable ID the
 // plugin declares (PluginDescriptor.id), such as "jupiter.swap".
 type PluginRequirement struct {
@@ -448,7 +579,7 @@ type PluginRequirement struct {
 
 func (x *PluginRequirement) Reset() {
 	*x = PluginRequirement{}
-	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[3]
+	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -460,7 +591,7 @@ func (x *PluginRequirement) String() string {
 func (*PluginRequirement) ProtoMessage() {}
 
 func (x *PluginRequirement) ProtoReflect() protoreflect.Message {
-	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[3]
+	mi := &file_seekervault_server_v1_manifest_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -473,7 +604,7 @@ func (x *PluginRequirement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PluginRequirement.ProtoReflect.Descriptor instead.
 func (*PluginRequirement) Descriptor() ([]byte, []int) {
-	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{3}
+	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *PluginRequirement) GetPluginId() string {
@@ -515,11 +646,17 @@ const file_seekervault_server_v1_manifest_proto_rawDesc = "" +
 	"\treferenceJ\x04\b\n" +
 	"\x10\vR\x0fgateway_private\" \n" +
 	"\fDirectServer\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\"H\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\"\x83\x01\n" +
 	"\vGatewayFeed\x12\x1f\n" +
 	"\vgateway_url\x18\x01 \x01(\tR\n" +
 	"gatewayUrl\x12\x18\n" +
-	"\achannel\x18\x02 \x01(\tR\achannel\"v\n" +
+	"\achannel\x18\x02 \x01(\tR\achannel\x129\n" +
+	"\x06access\x18\x03 \x01(\v2!.seekervault.server.v1.FeedAccessR\x06access\"n\n" +
+	"\n" +
+	"FeedAccess\x12?\n" +
+	"\x06policy\x18\x01 \x01(\x0e2'.seekervault.server.v1.FeedAccessPolicyR\x06policy\x12\x1f\n" +
+	"\vauth_origin\x18\x02 \x01(\tR\n" +
+	"authOrigin\"v\n" +
 	"\x11PluginRequirement\x12\x1b\n" +
 	"\tplugin_id\x18\x01 \x01(\tR\bpluginId\x12!\n" +
 	"\fmin_contract\x18\x02 \x01(\rR\vminContract\x12!\n" +
@@ -531,7 +668,11 @@ const file_seekervault_server_v1_manifest_proto_rawDesc = "" +
 	"\x11ServerEnvironment\x12\"\n" +
 	"\x1eSERVER_ENVIRONMENT_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dSERVER_ENVIRONMENT_PRODUCTION\x10\x01\x12\x1e\n" +
-	"\x1aSERVER_ENVIRONMENT_SANDBOX\x10\x02B\xfb\x01\n" +
+	"\x1aSERVER_ENVIRONMENT_SANDBOX\x10\x02*x\n" +
+	"\x10FeedAccessPolicy\x12\"\n" +
+	"\x1eFEED_ACCESS_POLICY_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19FEED_ACCESS_POLICY_PUBLIC\x10\x01\x12!\n" +
+	"\x1dFEED_ACCESS_POLICY_RESTRICTED\x10\x02B\xfb\x01\n" +
 	"\x19com.seekervault.server.v1B\rManifestProtoP\x01ZYgithub.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1;serverv1\xa2\x02\x03SSX\xaa\x02\x15Seekervault.Server.V1\xca\x02\x15Seekervault\\Server\\V1\xe2\x02!Seekervault\\Server\\V1\\GPBMetadata\xea\x02\x17Seekervault::Server::V1b\x06proto3"
 
 var (
@@ -546,27 +687,31 @@ func file_seekervault_server_v1_manifest_proto_rawDescGZIP() []byte {
 	return file_seekervault_server_v1_manifest_proto_rawDescData
 }
 
-var file_seekervault_server_v1_manifest_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_seekervault_server_v1_manifest_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_seekervault_server_v1_manifest_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_seekervault_server_v1_manifest_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_seekervault_server_v1_manifest_proto_goTypes = []any{
 	(ConnectionMode)(0),       // 0: seekervault.server.v1.ConnectionMode
 	(ServerEnvironment)(0),    // 1: seekervault.server.v1.ServerEnvironment
-	(*ServerManifest)(nil),    // 2: seekervault.server.v1.ServerManifest
-	(*DirectServer)(nil),      // 3: seekervault.server.v1.DirectServer
-	(*GatewayFeed)(nil),       // 4: seekervault.server.v1.GatewayFeed
-	(*PluginRequirement)(nil), // 5: seekervault.server.v1.PluginRequirement
+	(FeedAccessPolicy)(0),     // 2: seekervault.server.v1.FeedAccessPolicy
+	(*ServerManifest)(nil),    // 3: seekervault.server.v1.ServerManifest
+	(*DirectServer)(nil),      // 4: seekervault.server.v1.DirectServer
+	(*GatewayFeed)(nil),       // 5: seekervault.server.v1.GatewayFeed
+	(*FeedAccess)(nil),        // 6: seekervault.server.v1.FeedAccess
+	(*PluginRequirement)(nil), // 7: seekervault.server.v1.PluginRequirement
 }
 var file_seekervault_server_v1_manifest_proto_depIdxs = []int32{
 	0, // 0: seekervault.server.v1.ServerManifest.mode:type_name -> seekervault.server.v1.ConnectionMode
-	5, // 1: seekervault.server.v1.ServerManifest.required_plugins:type_name -> seekervault.server.v1.PluginRequirement
+	7, // 1: seekervault.server.v1.ServerManifest.required_plugins:type_name -> seekervault.server.v1.PluginRequirement
 	1, // 2: seekervault.server.v1.ServerManifest.environments:type_name -> seekervault.server.v1.ServerEnvironment
-	3, // 3: seekervault.server.v1.ServerManifest.direct:type_name -> seekervault.server.v1.DirectServer
-	4, // 4: seekervault.server.v1.ServerManifest.feed:type_name -> seekervault.server.v1.GatewayFeed
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	4, // 3: seekervault.server.v1.ServerManifest.direct:type_name -> seekervault.server.v1.DirectServer
+	5, // 4: seekervault.server.v1.ServerManifest.feed:type_name -> seekervault.server.v1.GatewayFeed
+	6, // 5: seekervault.server.v1.GatewayFeed.access:type_name -> seekervault.server.v1.FeedAccess
+	2, // 6: seekervault.server.v1.FeedAccess.policy:type_name -> seekervault.server.v1.FeedAccessPolicy
+	7, // [7:7] is the sub-list for method output_type
+	7, // [7:7] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_server_v1_manifest_proto_init() }
@@ -583,8 +728,8 @@ func file_seekervault_server_v1_manifest_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_server_v1_manifest_proto_rawDesc), len(file_seekervault_server_v1_manifest_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   4,
+			NumEnums:      3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

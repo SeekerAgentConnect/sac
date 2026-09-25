@@ -23,7 +23,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -36,7 +38,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -49,7 +53,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -62,7 +68,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -75,7 +83,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -96,7 +106,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -111,7 +123,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -125,7 +139,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -140,7 +156,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -155,7 +173,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -167,7 +187,9 @@ public  final class GetFeedTopicsResponse extends
    * <pre>
    * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
    * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-   * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+   * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+   * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+   * approved devices through SetFeedPushTarget instead.
    * </pre>
    *
    * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -278,7 +300,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -292,7 +316,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -304,7 +330,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -317,7 +345,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -332,7 +362,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -348,7 +380,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -362,7 +396,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -377,7 +413,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -392,7 +430,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -408,7 +448,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -423,7 +465,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>
@@ -437,7 +481,9 @@ public  final class GetFeedTopicsResponse extends
      * <pre>
      * One entry per channel this gateway both hosts and relays, in the order they were asked for. A
      * channel that is well formed but not hosted here is **absent rather than fatal**, exactly as it
-     * is in a grant: a phone holding one stale feed reference keeps the hints for its others.
+     * is in a grant: a phone holding one stale feed reference keeps the hints for its others. A
+     * restricted channel is always absent (SEE-156): it has no public topic, and its hints go to
+     * approved devices through SetFeedPushTarget instead.
      * </pre>
      *
      * <code>repeated .seekervault.gateway.v1.FeedTopic topics = 1 [json_name = "topics"];</code>

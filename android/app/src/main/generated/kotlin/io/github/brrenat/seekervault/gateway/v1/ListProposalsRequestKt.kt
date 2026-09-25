@@ -140,6 +140,33 @@ public object ListProposalsRequestKt {
     public fun clearKnownSnapshotSequence() {
       _builder.clearKnownSnapshotSequence()
     }
+
+    /**
+     * ```
+     * A restricted channel's session (SEE-156), on every page: a walk that began with access does
+     * not keep it after a revocation. Ignored for a public channel.
+     * ```
+     *
+     * `string session = 5 [json_name = "session"];`
+     */
+    public var session: kotlin.String
+      @kotlin.jvm.JvmName("getSession")
+        get() = _builder.session
+      @kotlin.jvm.JvmName("setSession")
+        set(value) {
+        _builder.session = value
+      }
+    /**
+     * ```
+     * A restricted channel's session (SEE-156), on every page: a walk that began with access does
+     * not keep it after a revocation. Ignored for a public channel.
+     * ```
+     *
+     * `string session = 5 [json_name = "session"];`
+     */
+    public fun clearSession() {
+      _builder.clearSession()
+    }
   }
 }
 public inline fun io.github.brrenat.seekervault.gateway.v1.ListProposalsRequest.copy(block: `io.github.brrenat.seekervault.gateway.v1`.ListProposalsRequestKt.Dsl.() -> kotlin.Unit): io.github.brrenat.seekervault.gateway.v1.ListProposalsRequest =

@@ -4,8 +4,11 @@
 
 // How a publisher publishes (SEE-90, docs/wiki/feed-gateway.md).
 //
-// A developer's server uses this authenticated API to publish public feed documents. A feed
-// publisher maintains no connection to any phone and learns nothing about who is subscribed.
+// A developer's server uses this authenticated API to publish feed documents. A public feed's
+// publisher maintains no connection to any phone and learns nothing about who is subscribed. A
+// restricted feed's publisher (SEE-156) decides which devices may read and tells the gateway here,
+// with the same credential and only for its own channel: the gateway enforces what it is told and
+// never learns why — no wallet, no person, only opaque references a publisher chose.
 //
 // It is authenticated, and the credential is the whole of the grant: it says which server the
 // caller publishes as, and every document is checked against that rather than against anything the
@@ -68,6 +71,15 @@ const (
 	// PublisherServiceHeartbeatProcedure is the fully-qualified name of the PublisherService's
 	// Heartbeat RPC.
 	PublisherServiceHeartbeatProcedure = "/seekervault.gateway.v1.PublisherService/Heartbeat"
+	// PublisherServiceDescribeAccessProcedure is the fully-qualified name of the PublisherService's
+	// DescribeAccess RPC.
+	PublisherServiceDescribeAccessProcedure = "/seekervault.gateway.v1.PublisherService/DescribeAccess"
+	// PublisherServiceGrantAccessProcedure is the fully-qualified name of the PublisherService's
+	// GrantAccess RPC.
+	PublisherServiceGrantAccessProcedure = "/seekervault.gateway.v1.PublisherService/GrantAccess"
+	// PublisherServiceRevokeAccessProcedure is the fully-qualified name of the PublisherService's
+	// RevokeAccess RPC.
+	PublisherServiceRevokeAccessProcedure = "/seekervault.gateway.v1.PublisherService/RevokeAccess"
 )
 
 // PublisherServiceClient is a client for the seekervault.gateway.v1.PublisherService service.
@@ -94,6 +106,22 @@ type PublisherServiceClient interface {
 	// nothing to publish calls this on the interval the answer names. A publisher that stops calling
 	// is shown offline once the gateway's presence window passes.
 	Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error)
+	// What access policy the gateway enforces for the caller's feed (SEE-156). A restricted
+	// publisher asks before it publishes anything, and publishes nothing unless the answer is
+	// restricted: a gateway too old to know the method, or one that registered the feed as public,
+	// must never be handed a restricted feed's documents to serve to anyone.
+	DescribeAccess(context.Context, *connect.Request[v1.DescribeAccessRequest]) (*connect.Response[v1.DescribeAccessResponse], error)
+	// Grant one approved device access to the caller's own restricted channel, or renew a grant it
+	// already holds (SEE-156). Idempotent: the same grant again extends it to the lifetime asked for,
+	// within the gateway's bound. A revoked grant is never renewed, and a grant another publisher
+	// holds is never touched.
+	GrantAccess(context.Context, *connect.Request[v1.GrantAccessRequest]) (*connect.Response[v1.GrantAccessResponse], error)
+	// Revoke grants on the caller's own channel (SEE-156). Final: a revoked grant's session is
+	// refused from then on — reads, pages, tickets, renewals and push — and the channel's stream
+	// name moves, so a listener already attached stops receiving anything on the one it holds.
+	// Revoking a grant that is already revoked is answered as done; one the caller does not hold is
+	// refused and changes nothing.
+	RevokeAccess(context.Context, *connect.Request[v1.RevokeAccessRequest]) (*connect.Response[v1.RevokeAccessResponse], error)
 }
 
 // NewPublisherServiceClient constructs a client for the seekervault.gateway.v1.PublisherService
@@ -143,6 +171,24 @@ func NewPublisherServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(publisherServiceMethods.ByName("Heartbeat")),
 			connect.WithClientOptions(opts...),
 		),
+		describeAccess: connect.NewClient[v1.DescribeAccessRequest, v1.DescribeAccessResponse](
+			httpClient,
+			baseURL+PublisherServiceDescribeAccessProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("DescribeAccess")),
+			connect.WithClientOptions(opts...),
+		),
+		grantAccess: connect.NewClient[v1.GrantAccessRequest, v1.GrantAccessResponse](
+			httpClient,
+			baseURL+PublisherServiceGrantAccessProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("GrantAccess")),
+			connect.WithClientOptions(opts...),
+		),
+		revokeAccess: connect.NewClient[v1.RevokeAccessRequest, v1.RevokeAccessResponse](
+			httpClient,
+			baseURL+PublisherServiceRevokeAccessProcedure,
+			connect.WithSchema(publisherServiceMethods.ByName("RevokeAccess")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -154,6 +200,9 @@ type publisherServiceClient struct {
 	publishProposal *connect.Client[v1.PublishProposalRequest, v1.PublishProposalResponse]
 	cancelProposal  *connect.Client[v1.CancelProposalRequest, v1.CancelProposalResponse]
 	heartbeat       *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
+	describeAccess  *connect.Client[v1.DescribeAccessRequest, v1.DescribeAccessResponse]
+	grantAccess     *connect.Client[v1.GrantAccessRequest, v1.GrantAccessResponse]
+	revokeAccess    *connect.Client[v1.RevokeAccessRequest, v1.RevokeAccessResponse]
 }
 
 // PublishManifest calls seekervault.gateway.v1.PublisherService.PublishManifest.
@@ -186,6 +235,21 @@ func (c *publisherServiceClient) Heartbeat(ctx context.Context, req *connect.Req
 	return c.heartbeat.CallUnary(ctx, req)
 }
 
+// DescribeAccess calls seekervault.gateway.v1.PublisherService.DescribeAccess.
+func (c *publisherServiceClient) DescribeAccess(ctx context.Context, req *connect.Request[v1.DescribeAccessRequest]) (*connect.Response[v1.DescribeAccessResponse], error) {
+	return c.describeAccess.CallUnary(ctx, req)
+}
+
+// GrantAccess calls seekervault.gateway.v1.PublisherService.GrantAccess.
+func (c *publisherServiceClient) GrantAccess(ctx context.Context, req *connect.Request[v1.GrantAccessRequest]) (*connect.Response[v1.GrantAccessResponse], error) {
+	return c.grantAccess.CallUnary(ctx, req)
+}
+
+// RevokeAccess calls seekervault.gateway.v1.PublisherService.RevokeAccess.
+func (c *publisherServiceClient) RevokeAccess(ctx context.Context, req *connect.Request[v1.RevokeAccessRequest]) (*connect.Response[v1.RevokeAccessResponse], error) {
+	return c.revokeAccess.CallUnary(ctx, req)
+}
+
 // PublisherServiceHandler is an implementation of the seekervault.gateway.v1.PublisherService
 // service.
 type PublisherServiceHandler interface {
@@ -211,6 +275,22 @@ type PublisherServiceHandler interface {
 	// nothing to publish calls this on the interval the answer names. A publisher that stops calling
 	// is shown offline once the gateway's presence window passes.
 	Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error)
+	// What access policy the gateway enforces for the caller's feed (SEE-156). A restricted
+	// publisher asks before it publishes anything, and publishes nothing unless the answer is
+	// restricted: a gateway too old to know the method, or one that registered the feed as public,
+	// must never be handed a restricted feed's documents to serve to anyone.
+	DescribeAccess(context.Context, *connect.Request[v1.DescribeAccessRequest]) (*connect.Response[v1.DescribeAccessResponse], error)
+	// Grant one approved device access to the caller's own restricted channel, or renew a grant it
+	// already holds (SEE-156). Idempotent: the same grant again extends it to the lifetime asked for,
+	// within the gateway's bound. A revoked grant is never renewed, and a grant another publisher
+	// holds is never touched.
+	GrantAccess(context.Context, *connect.Request[v1.GrantAccessRequest]) (*connect.Response[v1.GrantAccessResponse], error)
+	// Revoke grants on the caller's own channel (SEE-156). Final: a revoked grant's session is
+	// refused from then on — reads, pages, tickets, renewals and push — and the channel's stream
+	// name moves, so a listener already attached stops receiving anything on the one it holds.
+	// Revoking a grant that is already revoked is answered as done; one the caller does not hold is
+	// refused and changes nothing.
+	RevokeAccess(context.Context, *connect.Request[v1.RevokeAccessRequest]) (*connect.Response[v1.RevokeAccessResponse], error)
 }
 
 // NewPublisherServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -256,6 +336,24 @@ func NewPublisherServiceHandler(svc PublisherServiceHandler, opts ...connect.Han
 		connect.WithSchema(publisherServiceMethods.ByName("Heartbeat")),
 		connect.WithHandlerOptions(opts...),
 	)
+	publisherServiceDescribeAccessHandler := connect.NewUnaryHandler(
+		PublisherServiceDescribeAccessProcedure,
+		svc.DescribeAccess,
+		connect.WithSchema(publisherServiceMethods.ByName("DescribeAccess")),
+		connect.WithHandlerOptions(opts...),
+	)
+	publisherServiceGrantAccessHandler := connect.NewUnaryHandler(
+		PublisherServiceGrantAccessProcedure,
+		svc.GrantAccess,
+		connect.WithSchema(publisherServiceMethods.ByName("GrantAccess")),
+		connect.WithHandlerOptions(opts...),
+	)
+	publisherServiceRevokeAccessHandler := connect.NewUnaryHandler(
+		PublisherServiceRevokeAccessProcedure,
+		svc.RevokeAccess,
+		connect.WithSchema(publisherServiceMethods.ByName("RevokeAccess")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/seekervault.gateway.v1.PublisherService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PublisherServicePublishManifestProcedure:
@@ -270,6 +368,12 @@ func NewPublisherServiceHandler(svc PublisherServiceHandler, opts ...connect.Han
 			publisherServiceCancelProposalHandler.ServeHTTP(w, r)
 		case PublisherServiceHeartbeatProcedure:
 			publisherServiceHeartbeatHandler.ServeHTTP(w, r)
+		case PublisherServiceDescribeAccessProcedure:
+			publisherServiceDescribeAccessHandler.ServeHTTP(w, r)
+		case PublisherServiceGrantAccessProcedure:
+			publisherServiceGrantAccessHandler.ServeHTTP(w, r)
+		case PublisherServiceRevokeAccessProcedure:
+			publisherServiceRevokeAccessHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -301,4 +405,16 @@ func (UnimplementedPublisherServiceHandler) CancelProposal(context.Context, *con
 
 func (UnimplementedPublisherServiceHandler) Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.Heartbeat is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) DescribeAccess(context.Context, *connect.Request[v1.DescribeAccessRequest]) (*connect.Response[v1.DescribeAccessResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.DescribeAccess is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) GrantAccess(context.Context, *connect.Request[v1.GrantAccessRequest]) (*connect.Response[v1.GrantAccessResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.GrantAccess is not implemented"))
+}
+
+func (UnimplementedPublisherServiceHandler) RevokeAccess(context.Context, *connect.Request[v1.RevokeAccessRequest]) (*connect.Response[v1.RevokeAccessResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.PublisherService.RevokeAccess is not implemented"))
 }

@@ -186,3 +186,39 @@ func TestTheNamespaceIsTheOneTheBrokerIsConfiguredWith(t *testing.T) {
 		t.Fatalf("a channel is named %q", got)
 	}
 }
+
+// A ticket carrying a restricted channel lasts no longer than the grant behind it (SEE-156), and it
+// is still anonymous: the bound changes when it ends, never what it says about the listener.
+func TestARestrictedTicketEndsWithItsGrantAndStaysAnonymous(t *testing.T) {
+	broker := grantor(t)
+	restricted := broker.RestrictedStreamChannel(channelA, 3)
+	token, lifetime, err := broker.GrantWithin([]string{restricted}, minted, 90*time.Second+300*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lifetime != 90*time.Second {
+		t.Fatalf("the grant lasts %v", lifetime)
+	}
+	_, claims := parts(t, "the-token-key", token)
+	if claims["sub"] != "" || int64(claims["exp"].(float64)) != minted.Add(90*time.Second).Unix() {
+		t.Fatalf("the claims are %v", claims)
+	}
+	// A bound longer than the broker's own lifetime does not extend it.
+	if _, lifetime, _ := broker.GrantWithin([]string{restricted}, minted, 24*time.Hour); lifetime != 30*time.Minute {
+		t.Fatalf("a long bound stretched the ticket to %v", lifetime)
+	}
+}
+
+// A restricted channel's stream name is never the public one, and moves with the epoch — which is
+// the whole mechanism by which a revocation silences a listener that is already attached.
+func TestARestrictedStreamNameMovesWithItsEpoch(t *testing.T) {
+	broker := grantor(t)
+	public := broker.StreamChannel(channelA)
+	first, second := broker.RestrictedStreamChannel(channelA, 1), broker.RestrictedStreamChannel(channelA, 2)
+	if first == public || second == public || first == second {
+		t.Fatalf("names: %q %q %q", public, first, second)
+	}
+	if !strings.HasPrefix(first, "feed:") {
+		t.Fatalf("a restricted name left the broker's namespace: %q", first)
+	}
+}

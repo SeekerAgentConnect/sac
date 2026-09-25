@@ -188,6 +188,11 @@ func (r *Relay) MostTopics() int { return MostTopics }
 // somebody else's service was down. So every outcome here is logged and swallowed, and the one
 // thing a hint is allowed to affect is whether a phone wakes up slightly sooner.
 func (r *Relay) Dispatch(ctx context.Context, delivery dispatch.Delivery) error {
+	if delivery.Restricted {
+		// A restricted channel has no public topic (SEE-156). Its hints go to approved devices one
+		// at a time, through Restricted, and never here.
+		return nil
+	}
 	topic := r.Topic(delivery.Channel)
 	if topic == "" {
 		// Not reachable from a publication the gateway accepted, and not silent if it ever is: a

@@ -34,6 +34,7 @@ public  final class FeedEvent extends
     MANIFEST(2),
     PROPOSAL(3),
     REQUEST(4),
+    ACCESS_CHANGED(5),
     DOCUMENT_NOT_SET(0);
     private final int value;
     private DocumentCase(int value) {
@@ -52,6 +53,7 @@ public  final class FeedEvent extends
         case 2: return MANIFEST;
         case 3: return PROPOSAL;
         case 4: return REQUEST;
+        case 5: return ACCESS_CHANGED;
         case 0: return DOCUMENT_NOT_SET;
         default: return null;
       }
@@ -343,6 +345,96 @@ public  final class FeedEvent extends
    */
   private void clearRequest() {
     if (documentCase_ == 4) {
+      documentCase_ = 0;
+      document_ = null;
+    }
+  }
+
+  public static final int ACCESS_CHANGED_FIELD_NUMBER = 5;
+  /**
+   * <pre>
+   * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+   * will carry nothing more. It is published once, on the stream name that is being retired, and
+   * it is not a document and not a statement about any listener. A listener that receives it
+   * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+   * to know this case reads the snapshot, which checks the same grant.
+   * </pre>
+   *
+   * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+   */
+  @java.lang.Override
+  public boolean hasAccessChanged() {
+    return documentCase_ == 5;
+  }
+  /**
+   * <pre>
+   * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+   * will carry nothing more. It is published once, on the stream name that is being retired, and
+   * it is not a document and not a statement about any listener. A listener that receives it
+   * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+   * to know this case reads the snapshot, which checks the same grant.
+   * </pre>
+   *
+   * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+   */
+  @java.lang.Override
+  public io.github.brrenat.seekervault.gateway.v1.AccessChanged getAccessChanged() {
+    if (documentCase_ == 5) {
+       return (io.github.brrenat.seekervault.gateway.v1.AccessChanged) document_;
+    }
+    return io.github.brrenat.seekervault.gateway.v1.AccessChanged.getDefaultInstance();
+  }
+  /**
+   * <pre>
+   * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+   * will carry nothing more. It is published once, on the stream name that is being retired, and
+   * it is not a document and not a statement about any listener. A listener that receives it
+   * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+   * to know this case reads the snapshot, which checks the same grant.
+   * </pre>
+   *
+   * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+   */
+  private void setAccessChanged(io.github.brrenat.seekervault.gateway.v1.AccessChanged value) {
+    java.util.Objects.requireNonNull(value);
+    document_ = value;
+    documentCase_ = 5;
+  }
+  /**
+   * <pre>
+   * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+   * will carry nothing more. It is published once, on the stream name that is being retired, and
+   * it is not a document and not a statement about any listener. A listener that receives it
+   * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+   * to know this case reads the snapshot, which checks the same grant.
+   * </pre>
+   *
+   * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+   */
+  private void mergeAccessChanged(io.github.brrenat.seekervault.gateway.v1.AccessChanged value) {
+    java.util.Objects.requireNonNull(value);
+    if (documentCase_ == 5 &&
+        document_ != io.github.brrenat.seekervault.gateway.v1.AccessChanged.getDefaultInstance()) {
+      document_ = io.github.brrenat.seekervault.gateway.v1.AccessChanged.newBuilder((io.github.brrenat.seekervault.gateway.v1.AccessChanged) document_)
+          .mergeFrom(value).buildPartial();
+    } else {
+      document_ = value;
+    }
+    documentCase_ = 5;
+  }
+  /**
+   * <pre>
+   * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+   * will carry nothing more. It is published once, on the stream name that is being retired, and
+   * it is not a document and not a statement about any listener. A listener that receives it
+   * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+   * to know this case reads the snapshot, which checks the same grant.
+   * </pre>
+   *
+   * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+   */
+  private void clearAccessChanged() {
+    if (documentCase_ == 5) {
       documentCase_ = 0;
       document_ = null;
     }
@@ -754,6 +846,102 @@ public  final class FeedEvent extends
       return this;
     }
 
+    /**
+     * <pre>
+     * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+     * will carry nothing more. It is published once, on the stream name that is being retired, and
+     * it is not a document and not a statement about any listener. A listener that receives it
+     * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+     * to know this case reads the snapshot, which checks the same grant.
+     * </pre>
+     *
+     * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+     */
+    @java.lang.Override
+    public boolean hasAccessChanged() {
+      return instance.hasAccessChanged();
+    }
+    /**
+     * <pre>
+     * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+     * will carry nothing more. It is published once, on the stream name that is being retired, and
+     * it is not a document and not a statement about any listener. A listener that receives it
+     * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+     * to know this case reads the snapshot, which checks the same grant.
+     * </pre>
+     *
+     * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+     */
+    @java.lang.Override
+    public io.github.brrenat.seekervault.gateway.v1.AccessChanged getAccessChanged() {
+      return instance.getAccessChanged();
+    }
+    /**
+     * <pre>
+     * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+     * will carry nothing more. It is published once, on the stream name that is being retired, and
+     * it is not a document and not a statement about any listener. A listener that receives it
+     * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+     * to know this case reads the snapshot, which checks the same grant.
+     * </pre>
+     *
+     * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+     */
+    public Builder setAccessChanged(io.github.brrenat.seekervault.gateway.v1.AccessChanged value) {
+      copyOnWrite();
+      instance.setAccessChanged(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+     * will carry nothing more. It is published once, on the stream name that is being retired, and
+     * it is not a document and not a statement about any listener. A listener that receives it
+     * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+     * to know this case reads the snapshot, which checks the same grant.
+     * </pre>
+     *
+     * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+     */
+    public Builder setAccessChanged(
+        io.github.brrenat.seekervault.gateway.v1.AccessChanged.Builder builderForValue) {
+      copyOnWrite();
+      instance.setAccessChanged(builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+     * will carry nothing more. It is published once, on the stream name that is being retired, and
+     * it is not a document and not a statement about any listener. A listener that receives it
+     * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+     * to know this case reads the snapshot, which checks the same grant.
+     * </pre>
+     *
+     * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+     */
+    public Builder mergeAccessChanged(io.github.brrenat.seekervault.gateway.v1.AccessChanged value) {
+      copyOnWrite();
+      instance.mergeAccessChanged(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+     * will carry nothing more. It is published once, on the stream name that is being retired, and
+     * it is not a document and not a statement about any listener. A listener that receives it
+     * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+     * to know this case reads the snapshot, which checks the same grant.
+     * </pre>
+     *
+     * <code>.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];</code>
+     */
+    public Builder clearAccessChanged() {
+      copyOnWrite();
+      instance.clearAccessChanged();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.gateway.v1.FeedEvent)
   }
   @java.lang.Override
@@ -776,10 +964,11 @@ public  final class FeedEvent extends
             io.github.brrenat.seekervault.server.v1.ServerManifest.class,
             io.github.brrenat.seekervault.proposal.v1.Proposal.class,
             io.github.brrenat.seekervault.request.v2.Request.class,
+            io.github.brrenat.seekervault.gateway.v1.AccessChanged.class,
           };
           java.lang.String info =
-              "\u0000\u0004\u0001\u0000\u0001\u0004\u0004\u0000\u0000\u0000\u0001\u0003\u0002<\u0000" +
-              "\u0003<\u0000\u0004<\u0000";
+              "\u0000\u0005\u0001\u0000\u0001\u0005\u0005\u0000\u0000\u0000\u0001\u0003\u0002<\u0000" +
+              "\u0003<\u0000\u0004<\u0000\u0005<\u0000";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

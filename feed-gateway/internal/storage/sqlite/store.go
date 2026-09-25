@@ -59,7 +59,7 @@ import (
 // Version is the schema this build writes and reads. There is one, and a file from a later version
 // is refused rather than guessed at: an old binary reading a new file could silently ignore a
 // column that a rule depends on.
-const Version = 6
+const Version = 7
 
 // ErrNewerSchema is returned by Open when the file was written by a later version of the gateway.
 var ErrNewerSchema = errors.New("the database was written by a newer gateway")
@@ -198,6 +198,8 @@ func (s *Store) migrate(ctx context.Context) error {
 				migration = schemaV5
 			case 6:
 				migration = schemaV6
+			case 7:
+				migration = schemaV7
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -507,6 +509,51 @@ CREATE INDEX relay_binding_by_expiry ON relay_binding(expires_at_ms);
 // one registered server.
 const schemaV6 = `
 ALTER TABLE publisher ADD COLUMN last_seen_at_ms INTEGER;
+`
+
+// Version 7 is restricted feeds (SEE-156): who may read a feed, and which approved devices may.
+//
+// # The policy
+//
+// Three columns on the registration, because a policy is one more fact the operator records about
+// a publisher. Every registration that already exists becomes exactly what it was — public, with no
+// authentication origin — so migrating changes no feed's behaviour. The epoch counts a restricted
+// channel's stream names and moves on every revocation (internal/gateway/access.go).
+//
+// # Grants
+//
+// One row per approved device, written by the publisher over its authenticated API and scoped to
+// its own server. It is the least a gateway needs to enforce a publisher's decision: the grant's
+// identity, two references the publisher chose and the gateway never interprets, the SHA-256 of the
+// session the device presents — never the session itself — and when the grant runs until. There is
+// no wallet, no address, no signature, no device name and no decision here: the publisher saw all
+// of that and kept it; the gateway enforces the outcome.
+//
+// push_target is the one value that cannot be a hash, for the reason relay_installation.target
+// cannot: delivery needs it. It is routing data for this grant only, set under the grant's own
+// session, never returned by a read outside the relay, and gone when the grant is swept.
+//
+// A revoked grant is kept, not deleted, until the sweep: a renewal that arrives after a revocation
+// is refused by name, which is what makes revocation final rather than a race.
+const schemaV7 = `
+ALTER TABLE publisher ADD COLUMN access_policy TEXT NOT NULL DEFAULT 'public';
+ALTER TABLE publisher ADD COLUMN auth_origin TEXT NOT NULL DEFAULT '';
+ALTER TABLE publisher ADD COLUMN access_epoch INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE access_grant (
+  grant_id       TEXT PRIMARY KEY,
+  server_id      TEXT NOT NULL REFERENCES publisher(server_id) ON DELETE CASCADE,
+  subscriber_ref TEXT NOT NULL,
+  device_ref     TEXT NOT NULL,
+  session_digest BLOB NOT NULL UNIQUE,
+  created_at_ms  INTEGER NOT NULL,
+  renewed_at_ms  INTEGER NOT NULL,
+  expires_at_ms  INTEGER NOT NULL,
+  revoked_at_ms  INTEGER,
+  push_target    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX access_grant_by_server ON access_grant(server_id);
+CREATE INDEX access_grant_by_expiry ON access_grant(expires_at_ms);
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

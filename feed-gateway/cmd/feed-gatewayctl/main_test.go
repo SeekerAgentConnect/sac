@@ -253,3 +253,51 @@ func TestThePasswordCommandPrintsAHashAndNothingElse(t *testing.T) {
 		t.Fatalf("a short password answered %v", err)
 	}
 }
+
+// A restricted feed is registered with the origin its subscribers authenticate at, and that origin
+// is held to the same rule as the gateway's own (SEE-156): it is the one address a phone sends a
+// wallet proof to because this registration vouches for it.
+func TestARestrictedFeedIsRegisteredWithItsAuthenticationOrigin(t *testing.T) {
+	database := filepath.Join(t.TempDir(), "broadcast.db")
+	printed := command(t, "register", "--database", database, "--server", publisher,
+		"--label", "copy trading", "--access", "restricted",
+		"--auth-origin", "https://Auth.Example.com/")
+	if !strings.Contains(printed, "restricted, authenticated at https://auth.example.com") {
+		t.Fatalf("register did not say the feed is restricted:\n%s", printed)
+	}
+	documents, err := sqlite.Open(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := documents.Access(context.Background(), publisher)
+	_ = documents.Close()
+	if err != nil || !access.Restricted() || access.AuthOrigin != "https://auth.example.com" {
+		t.Fatalf("stored %+v (%v)", access, err)
+	}
+	if listed := command(t, "list", "--database", database); !strings.Contains(listed, "0 live grant(s)") {
+		t.Fatalf("the list does not show the policy:\n%s", listed)
+	}
+
+	for _, arguments := range [][]string{
+		{"--access", "restricted"},
+		{"--access", "restricted", "--auth-origin", "http://auth.example.com"},
+		{"--access", "restricted", "--auth-origin", "https://auth.example.com/login"},
+		{"--access", "public", "--auth-origin", "https://auth.example.com"},
+		{"--access", "secret"},
+	} {
+		refuses(t, append([]string{"register", "--database", filepath.Join(t.TempDir(), "x.db"),
+			"--server", publisher, "--label", "x"}, arguments...)...)
+	}
+
+	command(t, "access", "--database", database, "--server", publisher, "--access", "public")
+	documents, err = sqlite.Open(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = documents.Close() }()
+	if access, err := documents.Access(context.Background(), publisher); err != nil || access.Restricted() {
+		t.Fatalf("switching to public left %+v (%v)", access, err)
+	}
+	refuses(t, "access", "--database", database, "--server", publisher)
+	refuses(t, "rotate", "--database", database, "--server", publisher, "--access", "restricted")
+}

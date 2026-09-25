@@ -237,6 +237,10 @@ func bearer(request *http.Request) string {
 //
 // It is the sidecar's own rule (invalidFcmTokenReason), repeated here because both ends hold the
 // same string and neither trusts the other about it. The refusal never repeats the value.
+// ValidTarget is the shape a push target must have, for a caller outside this package that records
+// one — a restricted feed's grant (SEE-156).
+func ValidTarget(target string) bool { return validTarget(target) }
+
 func validTarget(target string) bool {
 	if len(target) == 0 || len(target) > MostTargetBytes {
 		return false

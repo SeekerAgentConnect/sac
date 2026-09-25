@@ -58,4 +58,36 @@ public interface GetStreamTicketRequestOrBuilder extends
    */
   com.google.protobuf.ByteString
       getChannelsBytes(int index);
+
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  java.util.List<io.github.brrenat.seekervault.gateway.v1.ChannelSession> 
+      getSessionsList();
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  io.github.brrenat.seekervault.gateway.v1.ChannelSession getSessions(int index);
+  /**
+   * <pre>
+   * The session for each restricted channel among them (SEE-156). A restricted channel without a
+   * live one is absent from the grant, like a channel this gateway does not host; a public channel
+   * needs none, and a session offered for one is ignored.
+   * </pre>
+   *
+   * <code>repeated .seekervault.gateway.v1.ChannelSession sessions = 2 [json_name = "sessions"];</code>
+   */
+  int getSessionsCount();
 }

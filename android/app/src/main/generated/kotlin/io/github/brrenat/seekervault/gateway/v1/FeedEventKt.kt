@@ -189,6 +189,54 @@ public object FeedEventKt {
     public fun hasRequest(): kotlin.Boolean {
       return _builder.hasRequest()
     }
+
+    /**
+     * ```
+     * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+     * will carry nothing more. It is published once, on the stream name that is being retired, and
+     * it is not a document and not a statement about any listener. A listener that receives it
+     * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+     * to know this case reads the snapshot, which checks the same grant.
+     * ```
+     *
+     * `.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];`
+     */
+    public var accessChanged: io.github.brrenat.seekervault.gateway.v1.AccessChanged
+      @kotlin.jvm.JvmName("getAccessChanged")
+        get() = _builder.accessChanged
+      @kotlin.jvm.JvmName("setAccessChanged")
+        set(value) {
+        _builder.accessChanged = value
+      }
+    /**
+     * ```
+     * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+     * will carry nothing more. It is published once, on the stream name that is being retired, and
+     * it is not a document and not a statement about any listener. A listener that receives it
+     * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+     * to know this case reads the snapshot, which checks the same grant.
+     * ```
+     *
+     * `.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];`
+     */
+    public fun clearAccessChanged() {
+      _builder.clearAccessChanged()
+    }
+    /**
+     * ```
+     * A restricted channel's access changed (SEE-156): a grant was revoked, and this stream name
+     * will carry nothing more. It is published once, on the stream name that is being retired, and
+     * it is not a document and not a statement about any listener. A listener that receives it
+     * asks for a fresh ticket, and gets one only if its own grant is still live; a client too old
+     * to know this case reads the snapshot, which checks the same grant.
+     * ```
+     *
+     * `.seekervault.gateway.v1.AccessChanged access_changed = 5 [json_name = "accessChanged"];`
+     * @return Whether the accessChanged field is set.
+     */
+    public fun hasAccessChanged(): kotlin.Boolean {
+      return _builder.hasAccessChanged()
+    }
     public val documentCase: io.github.brrenat.seekervault.gateway.v1.FeedEvent.DocumentCase
     @kotlin.jvm.JvmName("getDocumentCase")
       get() = _builder.documentCase
@@ -209,4 +257,7 @@ public val io.github.brrenat.seekervault.gateway.v1.FeedEventOrBuilder.proposalO
 
 public val io.github.brrenat.seekervault.gateway.v1.FeedEventOrBuilder.requestOrNull: io.github.brrenat.seekervault.request.v2.Request?
   get() = if (hasRequest()) getRequest() else null
+
+public val io.github.brrenat.seekervault.gateway.v1.FeedEventOrBuilder.accessChangedOrNull: io.github.brrenat.seekervault.gateway.v1.AccessChanged?
+  get() = if (hasAccessChanged()) getAccessChanged() else null
 

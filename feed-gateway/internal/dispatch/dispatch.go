@@ -66,6 +66,11 @@ type Delivery struct {
 	// subscriber to this channel receives, and it holds a document the publisher published and a
 	// number the gateway counted — nothing about anyone reading it.
 	Event []byte
+	// Restricted says the channel is a restricted feed's (SEE-156), and Epoch which of its stream
+	// names this delivery goes to: the current one for a document, the retired one for the
+	// AccessNotice that retires it. A restricted delivery is never sent to a public topic.
+	Restricted bool
+	Epoch      uint64
 }
 
 // Dispatcher delivers to whatever is fanning out. SEE-91 implements it over Centrifugo; a test
@@ -233,6 +238,32 @@ func (d *Drainer) Drain(ctx context.Context) (int, error) {
 			Sequence:   notice.Sequence,
 			Event:      event,
 		}
+		// Where it goes is read now, like the document: a publication that waited through a
+		// revocation goes out under the channel's new stream name, never the retired one.
+		access, err := d.storage.Access(ctx, rules.ServerOf(notice.Channel))
+		if errors.Is(err, storage.ErrNoPublisher) {
+			if err := d.storage.NoticeDropped(ctx, notice.ID); err != nil {
+				return sent, err
+			}
+			continue
+		}
+		if err != nil {
+			return sent, err
+		}
+		if access.Restricted() {
+			delivery.Restricted = true
+			delivery.Epoch = access.Epoch
+			if notice.Kind == storage.AccessNotice {
+				delivery.Epoch = notice.Revision
+			}
+		} else if notice.Kind == storage.AccessNotice {
+			// The feed stopped being restricted before the notice went out. Its restricted names
+			// carry nothing any more either way.
+			if err := d.storage.NoticeDropped(ctx, notice.ID); err != nil {
+				return sent, err
+			}
+			continue
+		}
 		if err := d.dispatcher.Dispatch(ctx, delivery); err != nil {
 			due := d.now().Add(d.backoff(notice.Attempts))
 			if deferred := d.storage.NoticeDeferred(ctx, notice.ID, due); deferred != nil {
@@ -285,6 +316,13 @@ func (d *Drainer) event(ctx context.Context, notice storage.Notice) ([]byte, boo
 			wrapper.Document = &gatewayv1.FeedEvent_Proposal{Proposal: rules.ProposalFromRequest(request.Document)}
 		} else {
 			wrapper.Document = &gatewayv1.FeedEvent_Request{Request: request.Document}
+		}
+	case storage.AccessNotice:
+		// Not a document: the retired stream name's last word, telling whoever is still attached
+		// to ask for a new ticket (SEE-156). Nothing about which grant ended is in it.
+		wrapper = &gatewayv1.FeedEvent{
+			Sequence: notice.Sequence,
+			Document: &gatewayv1.FeedEvent_AccessChanged{AccessChanged: &gatewayv1.AccessChanged{}},
 		}
 	default:
 		return nil, false, fmt.Errorf("dispatch: unknown notice kind %q", notice.Kind)

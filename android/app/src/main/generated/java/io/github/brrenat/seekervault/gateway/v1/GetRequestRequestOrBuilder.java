@@ -33,4 +33,24 @@ public interface GetRequestRequestOrBuilder extends
    */
   com.google.protobuf.ByteString
       getRequestIdBytes();
+
+  /**
+   * <pre>
+   * A restricted channel's session (SEE-156). Ignored for a public channel.
+   * </pre>
+   *
+   * <code>string session = 3 [json_name = "session"];</code>
+   * @return The session.
+   */
+  java.lang.String getSession();
+  /**
+   * <pre>
+   * A restricted channel's session (SEE-156). Ignored for a public channel.
+   * </pre>
+   *
+   * <code>string session = 3 [json_name = "session"];</code>
+   * @return The bytes for session.
+   */
+  com.google.protobuf.ByteString
+      getSessionBytes();
 }

@@ -6,8 +6,11 @@
 
 // How a publisher publishes (SEE-90, docs/wiki/feed-gateway.md).
 //
-// A developer's server uses this authenticated API to publish public feed documents. A feed
-// publisher maintains no connection to any phone and learns nothing about who is subscribed.
+// A developer's server uses this authenticated API to publish feed documents. A public feed's
+// publisher maintains no connection to any phone and learns nothing about who is subscribed. A
+// restricted feed's publisher (SEE-156) decides which devices may read and tells the gateway here,
+// with the same credential and only for its own channel: the gateway enforces what it is told and
+// never learns why — no wallet, no person, only opaque references a publisher chose.
 //
 // It is authenticated, and the credential is the whole of the grant: it says which server the
 // caller publishes as, and every document is checked against that rather than against anything the
@@ -145,8 +148,12 @@ type PublishManifestResponse struct {
 	Status PublishStatus          `protobuf:"varint,1,opt,name=status,proto3,enum=seekervault.gateway.v1.PublishStatus" json:"status,omitempty"`
 	// The revision the gateway now holds, which is the one that was sent.
 	SettingsRevision uint64 `protobuf:"varint,2,opt,name=settings_revision,json=settingsRevision,proto3" json:"settings_revision,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// The access the gateway stamped on the manifest it holds (SEE-156). Absent from a gateway that
+	// predates restricted feeds, which a restricted publisher reads as "this gateway will not
+	// enforce me" and stops.
+	Access        *v1.FeedAccess `protobuf:"bytes,3,opt,name=access,proto3" json:"access,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PublishManifestResponse) Reset() {
@@ -191,6 +198,13 @@ func (x *PublishManifestResponse) GetSettingsRevision() uint64 {
 		return x.SettingsRevision
 	}
 	return 0
+}
+
+func (x *PublishManifestResponse) GetAccess() *v1.FeedAccess {
+	if x != nil {
+		return x.Access
+	}
+	return nil
 }
 
 type PublishRequestRequest struct {
@@ -716,16 +730,327 @@ func (x *HeartbeatResponse) GetIntervalSeconds() uint32 {
 	return 0
 }
 
+type DescribeAccessRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DescribeAccessRequest) Reset() {
+	*x = DescribeAccessRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DescribeAccessRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DescribeAccessRequest) ProtoMessage() {}
+
+func (x *DescribeAccessRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DescribeAccessRequest.ProtoReflect.Descriptor instead.
+func (*DescribeAccessRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{12}
+}
+
+type DescribeAccessResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The policy and authentication origin the operator registered for the caller's feed.
+	Access *v1.FeedAccess `protobuf:"bytes,1,opt,name=access,proto3" json:"access,omitempty"`
+	// The longest a grant may run without renewal: the bound on how long a device keeps access when
+	// its publisher cannot reach the gateway to revoke it.
+	MostGrantSeconds uint32 `protobuf:"varint,2,opt,name=most_grant_seconds,json=mostGrantSeconds,proto3" json:"most_grant_seconds,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *DescribeAccessResponse) Reset() {
+	*x = DescribeAccessResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DescribeAccessResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DescribeAccessResponse) ProtoMessage() {}
+
+func (x *DescribeAccessResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DescribeAccessResponse.ProtoReflect.Descriptor instead.
+func (*DescribeAccessResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *DescribeAccessResponse) GetAccess() *v1.FeedAccess {
+	if x != nil {
+		return x.Access
+	}
+	return nil
+}
+
+func (x *DescribeAccessResponse) GetMostGrantSeconds() uint32 {
+	if x != nil {
+		return x.MostGrantSeconds
+	}
+	return 0
+}
+
+type GrantAccessRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The grant's identity, a lowercase UUID the publisher minted. It is what a revocation names.
+	GrantId string `protobuf:"bytes,1,opt,name=grant_id,json=grantId,proto3" json:"grant_id,omitempty"`
+	// An opaque, publisher-scoped reference to whoever the publisher approved, 1 to 64 printable
+	// ASCII characters. The gateway stores it, never interprets it, and never learns what it stands
+	// for; it exists so a publisher can recognise its own grants in the operator's view.
+	SubscriberRef string `protobuf:"bytes,2,opt,name=subscriber_ref,json=subscriberRef,proto3" json:"subscriber_ref,omitempty"`
+	// An opaque reference to the approved device, under the same rules.
+	DeviceRef string `protobuf:"bytes,3,opt,name=device_ref,json=deviceRef,proto3" json:"device_ref,omitempty"`
+	// SHA-256 of the session the publisher handed the device: the gateway never holds the session
+	// itself, so its database cannot be replayed as access.
+	SessionDigest []byte `protobuf:"bytes,4,opt,name=session_digest,json=sessionDigest,proto3" json:"session_digest,omitempty"`
+	// How long this grant runs before it must be renewed, at most DescribeAccessResponse's bound.
+	LifetimeSeconds uint32 `protobuf:"varint,5,opt,name=lifetime_seconds,json=lifetimeSeconds,proto3" json:"lifetime_seconds,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GrantAccessRequest) Reset() {
+	*x = GrantAccessRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrantAccessRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrantAccessRequest) ProtoMessage() {}
+
+func (x *GrantAccessRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrantAccessRequest.ProtoReflect.Descriptor instead.
+func (*GrantAccessRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GrantAccessRequest) GetGrantId() string {
+	if x != nil {
+		return x.GrantId
+	}
+	return ""
+}
+
+func (x *GrantAccessRequest) GetSubscriberRef() string {
+	if x != nil {
+		return x.SubscriberRef
+	}
+	return ""
+}
+
+func (x *GrantAccessRequest) GetDeviceRef() string {
+	if x != nil {
+		return x.DeviceRef
+	}
+	return ""
+}
+
+func (x *GrantAccessRequest) GetSessionDigest() []byte {
+	if x != nil {
+		return x.SessionDigest
+	}
+	return nil
+}
+
+func (x *GrantAccessRequest) GetLifetimeSeconds() uint32 {
+	if x != nil {
+		return x.LifetimeSeconds
+	}
+	return 0
+}
+
+type GrantAccessResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// How long the grant now runs, which may be less than was asked.
+	LifetimeSeconds uint32 `protobuf:"varint,1,opt,name=lifetime_seconds,json=lifetimeSeconds,proto3" json:"lifetime_seconds,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GrantAccessResponse) Reset() {
+	*x = GrantAccessResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrantAccessResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrantAccessResponse) ProtoMessage() {}
+
+func (x *GrantAccessResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrantAccessResponse.ProtoReflect.Descriptor instead.
+func (*GrantAccessResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GrantAccessResponse) GetLifetimeSeconds() uint32 {
+	if x != nil {
+		return x.LifetimeSeconds
+	}
+	return 0
+}
+
+type RevokeAccessRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The grants to revoke, 1 to 64, all on the caller's channel.
+	GrantIds      []string `protobuf:"bytes,1,rep,name=grant_ids,json=grantIds,proto3" json:"grant_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeAccessRequest) Reset() {
+	*x = RevokeAccessRequest{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeAccessRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeAccessRequest) ProtoMessage() {}
+
+func (x *RevokeAccessRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeAccessRequest.ProtoReflect.Descriptor instead.
+func (*RevokeAccessRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *RevokeAccessRequest) GetGrantIds() []string {
+	if x != nil {
+		return x.GrantIds
+	}
+	return nil
+}
+
+type RevokeAccessResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// How many of them this call revoked; the rest were already revoked.
+	Revoked       uint32 `protobuf:"varint,1,opt,name=revoked,proto3" json:"revoked,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeAccessResponse) Reset() {
+	*x = RevokeAccessResponse{}
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeAccessResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeAccessResponse) ProtoMessage() {}
+
+func (x *RevokeAccessResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_publish_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeAccessResponse.ProtoReflect.Descriptor instead.
+func (*RevokeAccessResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_publish_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *RevokeAccessResponse) GetRevoked() uint32 {
+	if x != nil {
+		return x.Revoked
+	}
+	return 0
+}
+
 var File_seekervault_gateway_v1_publish_proto protoreflect.FileDescriptor
 
 const file_seekervault_gateway_v1_publish_proto_rawDesc = "" +
 	"\n" +
 	"$seekervault/gateway/v1/publish.proto\x12\x16seekervault.gateway.v1\x1a&seekervault/proposal/v1/proposal.proto\x1a$seekervault/request/v2/request.proto\x1a$seekervault/server/v1/manifest.proto\"[\n" +
 	"\x16PublishManifestRequest\x12A\n" +
-	"\bmanifest\x18\x01 \x01(\v2%.seekervault.server.v1.ServerManifestR\bmanifest\"\x85\x01\n" +
+	"\bmanifest\x18\x01 \x01(\v2%.seekervault.server.v1.ServerManifestR\bmanifest\"\xc0\x01\n" +
 	"\x17PublishManifestResponse\x12=\n" +
 	"\x06status\x18\x01 \x01(\x0e2%.seekervault.gateway.v1.PublishStatusR\x06status\x12+\n" +
-	"\x11settings_revision\x18\x02 \x01(\x04R\x10settingsRevision\"R\n" +
+	"\x11settings_revision\x18\x02 \x01(\x04R\x10settingsRevision\x129\n" +
+	"\x06access\x18\x03 \x01(\v2!.seekervault.server.v1.FeedAccessR\x06access\"R\n" +
 	"\x15PublishRequestRequest\x129\n" +
 	"\arequest\x18\x01 \x01(\v2\x1f.seekervault.request.v2.RequestR\arequest\"\xa0\x01\n" +
 	"\x16PublishRequestResponse\x12=\n" +
@@ -756,18 +1081,38 @@ const file_seekervault_gateway_v1_publish_proto_rawDesc = "" +
 	"\x11snapshot_sequence\x18\x03 \x01(\x04R\x10snapshotSequence\"\x12\n" +
 	"\x10HeartbeatRequest\">\n" +
 	"\x11HeartbeatResponse\x12)\n" +
-	"\x10interval_seconds\x18\x01 \x01(\rR\x0fintervalSeconds*h\n" +
+	"\x10interval_seconds\x18\x01 \x01(\rR\x0fintervalSeconds\"\x17\n" +
+	"\x15DescribeAccessRequest\"\x81\x01\n" +
+	"\x16DescribeAccessResponse\x129\n" +
+	"\x06access\x18\x01 \x01(\v2!.seekervault.server.v1.FeedAccessR\x06access\x12,\n" +
+	"\x12most_grant_seconds\x18\x02 \x01(\rR\x10mostGrantSeconds\"\xc7\x01\n" +
+	"\x12GrantAccessRequest\x12\x19\n" +
+	"\bgrant_id\x18\x01 \x01(\tR\agrantId\x12%\n" +
+	"\x0esubscriber_ref\x18\x02 \x01(\tR\rsubscriberRef\x12\x1d\n" +
+	"\n" +
+	"device_ref\x18\x03 \x01(\tR\tdeviceRef\x12%\n" +
+	"\x0esession_digest\x18\x04 \x01(\fR\rsessionDigest\x12)\n" +
+	"\x10lifetime_seconds\x18\x05 \x01(\rR\x0flifetimeSeconds\"@\n" +
+	"\x13GrantAccessResponse\x12)\n" +
+	"\x10lifetime_seconds\x18\x01 \x01(\rR\x0flifetimeSeconds\"2\n" +
+	"\x13RevokeAccessRequest\x12\x1b\n" +
+	"\tgrant_ids\x18\x01 \x03(\tR\bgrantIds\"0\n" +
+	"\x14RevokeAccessResponse\x12\x18\n" +
+	"\arevoked\x18\x01 \x01(\rR\arevoked*h\n" +
 	"\rPublishStatus\x12\x1e\n" +
 	"\x1aPUBLISH_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15PUBLISH_STATUS_STORED\x10\x01\x12\x1c\n" +
-	"\x18PUBLISH_STATUS_UNCHANGED\x10\x022\xac\x05\n" +
+	"\x18PUBLISH_STATUS_UNCHANGED\x10\x022\xf0\a\n" +
 	"\x10PublisherService\x12r\n" +
 	"\x0fPublishManifest\x12..seekervault.gateway.v1.PublishManifestRequest\x1a/.seekervault.gateway.v1.PublishManifestResponse\x12o\n" +
 	"\x0ePublishRequest\x12-.seekervault.gateway.v1.PublishRequestRequest\x1a..seekervault.gateway.v1.PublishRequestResponse\x12l\n" +
 	"\rCancelRequest\x12,.seekervault.gateway.v1.CancelRequestRequest\x1a-.seekervault.gateway.v1.CancelRequestResponse\x12r\n" +
 	"\x0fPublishProposal\x12..seekervault.gateway.v1.PublishProposalRequest\x1a/.seekervault.gateway.v1.PublishProposalResponse\x12o\n" +
 	"\x0eCancelProposal\x12-.seekervault.gateway.v1.CancelProposalRequest\x1a..seekervault.gateway.v1.CancelProposalResponse\x12`\n" +
-	"\tHeartbeat\x12(.seekervault.gateway.v1.HeartbeatRequest\x1a).seekervault.gateway.v1.HeartbeatResponseB\x81\x02\n" +
+	"\tHeartbeat\x12(.seekervault.gateway.v1.HeartbeatRequest\x1a).seekervault.gateway.v1.HeartbeatResponse\x12o\n" +
+	"\x0eDescribeAccess\x12-.seekervault.gateway.v1.DescribeAccessRequest\x1a..seekervault.gateway.v1.DescribeAccessResponse\x12f\n" +
+	"\vGrantAccess\x12*.seekervault.gateway.v1.GrantAccessRequest\x1a+.seekervault.gateway.v1.GrantAccessResponse\x12i\n" +
+	"\fRevokeAccess\x12+.seekervault.gateway.v1.RevokeAccessRequest\x1a,.seekervault.gateway.v1.RevokeAccessResponseB\x81\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\fPublishProtoP\x01Z[github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (
@@ -783,7 +1128,7 @@ func file_seekervault_gateway_v1_publish_proto_rawDescGZIP() []byte {
 }
 
 var file_seekervault_gateway_v1_publish_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_seekervault_gateway_v1_publish_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_seekervault_gateway_v1_publish_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_seekervault_gateway_v1_publish_proto_goTypes = []any{
 	(PublishStatus)(0),              // 0: seekervault.gateway.v1.PublishStatus
 	(*PublishManifestRequest)(nil),  // 1: seekervault.gateway.v1.PublishManifestRequest
@@ -798,38 +1143,53 @@ var file_seekervault_gateway_v1_publish_proto_goTypes = []any{
 	(*CancelProposalResponse)(nil),  // 10: seekervault.gateway.v1.CancelProposalResponse
 	(*HeartbeatRequest)(nil),        // 11: seekervault.gateway.v1.HeartbeatRequest
 	(*HeartbeatResponse)(nil),       // 12: seekervault.gateway.v1.HeartbeatResponse
-	(*v1.ServerManifest)(nil),       // 13: seekervault.server.v1.ServerManifest
-	(*v2.Request)(nil),              // 14: seekervault.request.v2.Request
-	(*v11.Proposal)(nil),            // 15: seekervault.proposal.v1.Proposal
+	(*DescribeAccessRequest)(nil),   // 13: seekervault.gateway.v1.DescribeAccessRequest
+	(*DescribeAccessResponse)(nil),  // 14: seekervault.gateway.v1.DescribeAccessResponse
+	(*GrantAccessRequest)(nil),      // 15: seekervault.gateway.v1.GrantAccessRequest
+	(*GrantAccessResponse)(nil),     // 16: seekervault.gateway.v1.GrantAccessResponse
+	(*RevokeAccessRequest)(nil),     // 17: seekervault.gateway.v1.RevokeAccessRequest
+	(*RevokeAccessResponse)(nil),    // 18: seekervault.gateway.v1.RevokeAccessResponse
+	(*v1.ServerManifest)(nil),       // 19: seekervault.server.v1.ServerManifest
+	(*v1.FeedAccess)(nil),           // 20: seekervault.server.v1.FeedAccess
+	(*v2.Request)(nil),              // 21: seekervault.request.v2.Request
+	(*v11.Proposal)(nil),            // 22: seekervault.proposal.v1.Proposal
 }
 var file_seekervault_gateway_v1_publish_proto_depIdxs = []int32{
-	13, // 0: seekervault.gateway.v1.PublishManifestRequest.manifest:type_name -> seekervault.server.v1.ServerManifest
+	19, // 0: seekervault.gateway.v1.PublishManifestRequest.manifest:type_name -> seekervault.server.v1.ServerManifest
 	0,  // 1: seekervault.gateway.v1.PublishManifestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	14, // 2: seekervault.gateway.v1.PublishRequestRequest.request:type_name -> seekervault.request.v2.Request
-	0,  // 3: seekervault.gateway.v1.PublishRequestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	0,  // 4: seekervault.gateway.v1.CancelRequestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	14, // 5: seekervault.gateway.v1.CancelRequestResponse.request:type_name -> seekervault.request.v2.Request
-	15, // 6: seekervault.gateway.v1.PublishProposalRequest.proposal:type_name -> seekervault.proposal.v1.Proposal
-	0,  // 7: seekervault.gateway.v1.PublishProposalResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	0,  // 8: seekervault.gateway.v1.CancelProposalResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
-	15, // 9: seekervault.gateway.v1.CancelProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
-	1,  // 10: seekervault.gateway.v1.PublisherService.PublishManifest:input_type -> seekervault.gateway.v1.PublishManifestRequest
-	3,  // 11: seekervault.gateway.v1.PublisherService.PublishRequest:input_type -> seekervault.gateway.v1.PublishRequestRequest
-	5,  // 12: seekervault.gateway.v1.PublisherService.CancelRequest:input_type -> seekervault.gateway.v1.CancelRequestRequest
-	7,  // 13: seekervault.gateway.v1.PublisherService.PublishProposal:input_type -> seekervault.gateway.v1.PublishProposalRequest
-	9,  // 14: seekervault.gateway.v1.PublisherService.CancelProposal:input_type -> seekervault.gateway.v1.CancelProposalRequest
-	11, // 15: seekervault.gateway.v1.PublisherService.Heartbeat:input_type -> seekervault.gateway.v1.HeartbeatRequest
-	2,  // 16: seekervault.gateway.v1.PublisherService.PublishManifest:output_type -> seekervault.gateway.v1.PublishManifestResponse
-	4,  // 17: seekervault.gateway.v1.PublisherService.PublishRequest:output_type -> seekervault.gateway.v1.PublishRequestResponse
-	6,  // 18: seekervault.gateway.v1.PublisherService.CancelRequest:output_type -> seekervault.gateway.v1.CancelRequestResponse
-	8,  // 19: seekervault.gateway.v1.PublisherService.PublishProposal:output_type -> seekervault.gateway.v1.PublishProposalResponse
-	10, // 20: seekervault.gateway.v1.PublisherService.CancelProposal:output_type -> seekervault.gateway.v1.CancelProposalResponse
-	12, // 21: seekervault.gateway.v1.PublisherService.Heartbeat:output_type -> seekervault.gateway.v1.HeartbeatResponse
-	16, // [16:22] is the sub-list for method output_type
-	10, // [10:16] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	20, // 2: seekervault.gateway.v1.PublishManifestResponse.access:type_name -> seekervault.server.v1.FeedAccess
+	21, // 3: seekervault.gateway.v1.PublishRequestRequest.request:type_name -> seekervault.request.v2.Request
+	0,  // 4: seekervault.gateway.v1.PublishRequestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
+	0,  // 5: seekervault.gateway.v1.CancelRequestResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
+	21, // 6: seekervault.gateway.v1.CancelRequestResponse.request:type_name -> seekervault.request.v2.Request
+	22, // 7: seekervault.gateway.v1.PublishProposalRequest.proposal:type_name -> seekervault.proposal.v1.Proposal
+	0,  // 8: seekervault.gateway.v1.PublishProposalResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
+	0,  // 9: seekervault.gateway.v1.CancelProposalResponse.status:type_name -> seekervault.gateway.v1.PublishStatus
+	22, // 10: seekervault.gateway.v1.CancelProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
+	20, // 11: seekervault.gateway.v1.DescribeAccessResponse.access:type_name -> seekervault.server.v1.FeedAccess
+	1,  // 12: seekervault.gateway.v1.PublisherService.PublishManifest:input_type -> seekervault.gateway.v1.PublishManifestRequest
+	3,  // 13: seekervault.gateway.v1.PublisherService.PublishRequest:input_type -> seekervault.gateway.v1.PublishRequestRequest
+	5,  // 14: seekervault.gateway.v1.PublisherService.CancelRequest:input_type -> seekervault.gateway.v1.CancelRequestRequest
+	7,  // 15: seekervault.gateway.v1.PublisherService.PublishProposal:input_type -> seekervault.gateway.v1.PublishProposalRequest
+	9,  // 16: seekervault.gateway.v1.PublisherService.CancelProposal:input_type -> seekervault.gateway.v1.CancelProposalRequest
+	11, // 17: seekervault.gateway.v1.PublisherService.Heartbeat:input_type -> seekervault.gateway.v1.HeartbeatRequest
+	13, // 18: seekervault.gateway.v1.PublisherService.DescribeAccess:input_type -> seekervault.gateway.v1.DescribeAccessRequest
+	15, // 19: seekervault.gateway.v1.PublisherService.GrantAccess:input_type -> seekervault.gateway.v1.GrantAccessRequest
+	17, // 20: seekervault.gateway.v1.PublisherService.RevokeAccess:input_type -> seekervault.gateway.v1.RevokeAccessRequest
+	2,  // 21: seekervault.gateway.v1.PublisherService.PublishManifest:output_type -> seekervault.gateway.v1.PublishManifestResponse
+	4,  // 22: seekervault.gateway.v1.PublisherService.PublishRequest:output_type -> seekervault.gateway.v1.PublishRequestResponse
+	6,  // 23: seekervault.gateway.v1.PublisherService.CancelRequest:output_type -> seekervault.gateway.v1.CancelRequestResponse
+	8,  // 24: seekervault.gateway.v1.PublisherService.PublishProposal:output_type -> seekervault.gateway.v1.PublishProposalResponse
+	10, // 25: seekervault.gateway.v1.PublisherService.CancelProposal:output_type -> seekervault.gateway.v1.CancelProposalResponse
+	12, // 26: seekervault.gateway.v1.PublisherService.Heartbeat:output_type -> seekervault.gateway.v1.HeartbeatResponse
+	14, // 27: seekervault.gateway.v1.PublisherService.DescribeAccess:output_type -> seekervault.gateway.v1.DescribeAccessResponse
+	16, // 28: seekervault.gateway.v1.PublisherService.GrantAccess:output_type -> seekervault.gateway.v1.GrantAccessResponse
+	18, // 29: seekervault.gateway.v1.PublisherService.RevokeAccess:output_type -> seekervault.gateway.v1.RevokeAccessResponse
+	21, // [21:30] is the sub-list for method output_type
+	12, // [12:21] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_gateway_v1_publish_proto_init() }
@@ -843,7 +1203,7 @@ func file_seekervault_gateway_v1_publish_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_gateway_v1_publish_proto_rawDesc), len(file_seekervault_gateway_v1_publish_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

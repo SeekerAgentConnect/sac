@@ -64,6 +64,20 @@ func codeOf(problem gatewayv1.GatewayProblem) connect.Code {
 		// Not an argument problem: the document is well formed and names something the caller has
 		// no claim on.
 		return connect.CodePermissionDenied
+	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_ACCESS_REQUIRED,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_ACCESS_REVOKED,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_ACCESS_EXPIRED:
+		// A restricted feed the caller may not read right now (SEE-156). The detail says which of
+		// the three, because the phone does something different for each; the code says only that
+		// the request was well formed and the answer is no.
+		return connect.CodePermissionDenied
+	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_ACCESS_MISMATCH,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NOT_RESTRICTED,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_GRANT_REVOKED:
+		// True of the call only while the registration and the grants are what they are.
+		return connect.CodeFailedPrecondition
+	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_GRANT:
+		return connect.CodeNotFound
 	case gatewayv1.GatewayProblem_GATEWAY_PROBLEM_STALE_REVISION,
 		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT,
 		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_CANCELLED,

@@ -45,4 +45,24 @@ public interface ListRequestsRequestOrBuilder extends
    * @return The knownSnapshotSequence.
    */
   long getKnownSnapshotSequence();
+
+  /**
+   * <pre>
+   * A restricted channel's session (SEE-156), on every page. Ignored for a public channel.
+   * </pre>
+   *
+   * <code>string session = 5 [json_name = "session"];</code>
+   * @return The session.
+   */
+  java.lang.String getSession();
+  /**
+   * <pre>
+   * A restricted channel's session (SEE-156), on every page. Ignored for a public channel.
+   * </pre>
+   *
+   * <code>string session = 5 [json_name = "session"];</code>
+   * @return The bytes for session.
+   */
+  com.google.protobuf.ByteString
+      getSessionBytes();
 }
