@@ -11,6 +11,7 @@ import java.security.KeyPairGenerator
 import java.security.Signature
 import java.security.interfaces.EdECPublicKey
 import java.time.Instant
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -50,7 +51,11 @@ class MwaWalletAdapterSessionTest {
                 ),
             // A session reaches the wallet, so the screen is never asked for here.
             sender = { null },
-            clients = { network -> FakeWalletClient(network).apply(wallet).also { opened += it } },
+            targets = FakeWalletTargets(),
+            io = Dispatchers.Unconfined,
+            clients = { network, target ->
+                FakeWalletClient(network, target).apply(wallet).also { opened += it }
+            },
         )
 
     private val transaction = ByteString.copyFrom(ByteArray(215) { (it * 5).toByte() })

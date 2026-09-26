@@ -18,6 +18,15 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
     /** Every sign-and-send: the exact transaction bytes, the wallet, and the authorization. */
     val sendings = mutableListOf<Triple<ByteString, SelectedWallet, String>>()
 
+    /** The wallet apps this phone is pretending to have (SEE-159). */
+    var installed = emptyList<InstalledWallet>()
+
+    /** Every route the phone aimed an interaction at, in order, connect and signing alike. */
+    val routes = mutableListOf<WalletRouting?>()
+
+    /** The association URI the wallet reports while it signs or sends. */
+    var reportedUriBase: String? = null
+
     private var nextSignature: (ByteString) -> SignResult = { SignResult.NoWallet }
     private var nextSend: (ByteString) -> SendResult = { SendResult.NoWallet }
 
@@ -46,15 +55,28 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
         authToken: String = "authorization-$address",
         label: String? = null,
         chains: List<String> = emptyList(),
-    ) = answer(WalletResult.Connected(WalletAccount(address, label, chains), authToken))
+        route: WalletRouting = WalletRouting.Untargeted,
+    ) = answer(WalletResult.Connected(WalletAccount(address, label, chains), authToken, route))
 
-    override suspend fun connect(network: WalletNetwork, authToken: String?): WalletResult {
+    override suspend fun installed(): List<InstalledWallet> = installed
+
+    override suspend fun connect(
+        network: WalletNetwork,
+        authToken: String?,
+        route: WalletRouting?,
+    ): WalletResult {
         connects += network to authToken
+        routes += route
         return next()
     }
 
-    override suspend fun disconnect(wallet: SelectedWallet, authToken: String) {
+    override suspend fun disconnect(
+        wallet: SelectedWallet,
+        authToken: String,
+        route: WalletRouting?,
+    ) {
         disconnects += authToken
+        routes += route
     }
 
     /** The next signing answers with [result], whatever it is asked to sign. */
@@ -73,10 +95,12 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
         message: ByteString,
         wallet: SelectedWallet,
         authToken: String,
+        route: WalletRouting?,
     ): SigningAnswer {
         signings += Triple(message, wallet, authToken)
+        routes += route
         beforeSigning()
-        return SigningAnswer(nextSignature(message), refreshedAuthorization)
+        return SigningAnswer(nextSignature(message), refreshedAuthorization, reportedUriBase)
     }
 
     /** The next sign-and-send answers with [result], whatever it is handed. */
@@ -93,9 +117,11 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
         transaction: ByteString,
         wallet: SelectedWallet,
         authToken: String,
+        route: WalletRouting?,
     ): SendingAnswer {
         sendings += Triple(transaction, wallet, authToken)
+        routes += route
         beforeSending()
-        return SendingAnswer(nextSend(transaction), refreshedAuthorization)
+        return SendingAnswer(nextSend(transaction), refreshedAuthorization, reportedUriBase)
     }
 }
