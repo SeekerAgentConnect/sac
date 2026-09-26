@@ -124,8 +124,8 @@ interface ExecutionProvider {
      * Two rules. A destination is built from something this provider validated, never from a
      * publisher's prose — a publisher may *name* one (SEE-157), and it counts for nothing until
      * this provider recognizes it as its own. And a destination that does not exist is not
-     * invented: a provider with no address for a thing gets no link to it, and says so by
-     * returning none (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
+     * invented: a provider with no address for a thing gets no link to it, and says so by returning
+     * none (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
      *
      * [references] are the identifiers this provider itself named for an operation that was already
      * submitted ([ActionInspection.references], kept in the owner's record). They are how a

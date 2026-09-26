@@ -15,8 +15,8 @@ import java.net.URISyntaxException
  * ## What this rule is, and what it is not
  *
  * It is the *shape* check: a bounded absolute URI, a scheme an app may claim, a host when the
- * scheme is one the web uses, and nothing that smuggles a second destination or a credential past
- * a reader. It says nothing about whose link it is.
+ * scheme is one the web uses, and nothing that smuggles a second destination or a credential past a
+ * reader. It says nothing about whose link it is.
  *
  * **Whose link it is belongs to the provider**, which is the half that matters and the half core
  * cannot do: a link that passes this rule and points somewhere other than the provider's own

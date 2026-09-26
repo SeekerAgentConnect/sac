@@ -24,6 +24,7 @@ import io.github.brrenat.seekervault.plugins.InspectedAction
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginDestination
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFinding
@@ -34,6 +35,7 @@ import io.github.brrenat.seekervault.plugins.actions.SwapTermNames
 import io.github.brrenat.seekervault.plugins.actions.swapInputs
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
+import io.github.brrenat.seekervault.proposals.binding
 import io.github.brrenat.seekervault.proposals.proposal
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.SelectedWallet
@@ -62,6 +64,7 @@ class ProposalScreensTest {
     private var prepares = 0
     private var approvals = 0
     private var dismissals = 0
+    private val opened = mutableListOf<Pair<String, String?>>()
 
     private val terms =
         SwapPayload(
@@ -162,9 +165,69 @@ class ProposalScreensTest {
                 onDismiss = { dismissals++ },
                 onAcknowledge = {},
                 onBack = {},
+                onOpenLink = { url, deepLink -> opened += url to deepLink },
             )
         }
     }
+
+    @Test
+    fun anExecutedOperationOffersEachDestinationItsProviderNamed() {
+        // What a History entry opens: the operation as it was executed, with somewhere to carry on
+        // (SEE-157). The screen is handed two addresses per destination and knows what neither of
+        // them is — there is nothing about any provider on it.
+        val market =
+            PluginDestination(R.string.jupiter_destination_market, "https://example.test/market/1")
+        val order =
+            PluginDestination(
+                R.string.jupiter_destination_order,
+                url = "https://example.test/orders",
+                deepLink = "venue://orders",
+            )
+        val execution = executed()
+        showReview(
+            review(prepared = true, standing = ProposalStanding.Executed(execution.outcome))
+                .copy(
+                    record = record().copy(execution = execution),
+                    destinations = listOf(market, order),
+                )
+        )
+
+        shown(OperationTags.AFTERWARDS)
+        val orderLabel = context.getString(R.string.jupiter_destination_order)
+        compose.onNodeWithTag(OperationTags.link(orderLabel)).performClick()
+
+        // The provider's own app link goes with it, so the opening can prefer the app; a
+        // destination with none passes null and is simply opened.
+        assertEquals(listOf("https://example.test/orders" to "venue://orders"), opened)
+        compose
+            .onNodeWithTag(
+                OperationTags.link(context.getString(R.string.jupiter_destination_market))
+            )
+            .performClick()
+        assertEquals("https://example.test/market/1" to null, opened.last())
+    }
+
+    /** One operation, already submitted, which is what a History entry is about. */
+    private fun executed(): io.github.brrenat.seekervault.proposals.ProposalExecution =
+        io.github.brrenat.seekervault.proposals.ProposalExecution(
+            binding =
+                binding(
+                    proposal = record().proposal,
+                    choice =
+                        ParameterChoice(
+                            mapOf(
+                                SwapParameterNames.INPUT_AMOUNT to
+                                    ParameterValue.Amount(2_500_000UL)
+                            )
+                        ),
+                ),
+            startedAt = now,
+            outcome =
+                io.github.brrenat.seekervault.proposals.ProposalOutcome.Submitted(
+                    com.google.protobuf.ByteString.copyFrom(ByteArray(64) { 7 })
+                ),
+            settledAt = now,
+        )
 
     @Test
     fun theListShowsWhatWasProposedAndWhereItStands() {
