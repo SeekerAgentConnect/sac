@@ -240,16 +240,22 @@ enum class NetworkChipNetwork {
 }
 
 @Composable
-fun NetworkChip(network: NetworkChipNetwork, modifier: Modifier = Modifier) {
+fun NetworkChip(
+    network: NetworkChipNetwork,
+    modifier: Modifier = Modifier,
+    /**
+     * Draws a test network in the sandbox orange rather than the neutral chip. The component
+     * reference keeps every network neutral; the prediction review flags devnet (SEE-158).
+     */
+    flagged: Boolean = false,
+) {
     val text =
         when (network) {
             NetworkChipNetwork.Devnet -> "Solana devnet"
             NetworkChipNetwork.Mainnet -> "Solana mainnet"
         }
 
-    // Only mainnet is the neutral chip. A test network is flagged in the same orange as sandbox,
-    // because both say "this is not your real money" (SEE-158).
-    val devnet = network == NetworkChipNetwork.Devnet
+    val devnet = flagged && network == NetworkChipNetwork.Devnet
     Box(
         modifier =
             modifier

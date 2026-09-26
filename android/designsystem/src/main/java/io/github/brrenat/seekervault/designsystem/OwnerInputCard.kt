@@ -73,7 +73,7 @@ fun OwnerInputCard(
             SeekerButton(
                 label =
                     if (state == OwnerInputCardState.Chosen) {
-                        "Change"
+                        kind.changeLabel()
                     } else {
                         kind.chooseLabel()
                     },
@@ -105,6 +105,13 @@ private fun OwnerInputCardKind.chooseLabel(): String =
     when (this) {
         OwnerInputCardKind.Swap -> "Choose an amount"
         OwnerInputCardKind.Prediction -> "Choose side and stake"
+    }
+
+/** A prediction's chosen part says "Change", as its review asks (SEE-158); a swap keeps "Edit". */
+private fun OwnerInputCardKind.changeLabel(): String =
+    when (this) {
+        OwnerInputCardKind.Swap -> "Edit"
+        OwnerInputCardKind.Prediction -> "Change"
     }
 
 private fun OwnerInputCardKind.description(): String =
