@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
+import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.designsystem.EmptyState
 import io.github.brrenat.seekervault.designsystem.EmptyStateScreen
 import io.github.brrenat.seekervault.designsystem.HomeRulesRow
@@ -386,6 +387,7 @@ fun homeScreenState(
                             it is PendingItem.Signal && it.connectionId == connection.id
                         },
                     support = connectionsState.support[connection.id],
+                    access = connectionsState.access[connection.id],
                     formatTime = formatTime,
                 )
             },
@@ -504,6 +506,12 @@ private fun Connection.toHomeServerState(
     availability: FeedAvailability,
     pending: Int,
     support: ServerSupport?,
+    /**
+     * Where this phone's access to a restricted feed stands (SEE-156), or null for a public one. It
+     * is read before anything about the transport: a device waiting for a publisher's decision is
+     * not a server that could not be reached, and offering to retry one is the wrong thing.
+     */
+    access: FeedAccessStore.Record?,
     formatTime: (Instant) -> String,
 ): HomeServerState {
     val liveState = directTransport(live)
@@ -533,53 +541,77 @@ private fun Connection.toHomeServerState(
                 (mode == ConnectionMode.Direct &&
                     liveState == null &&
                     lastCheck?.outcome?.let { it != CheckOutcome.Ok } == true))
+    // Access the publisher ended is the row's whole story: nothing on this phone is wrong, and
+    // nothing about the gateway is either (SEE-156). Waiting for a decision is not disconnected —
+    // it is the flow working — so it keeps the connected row and says what it is waiting for.
+    val accessEnded =
+        access?.state == FeedAccessStore.State.Rejected ||
+            access?.state == FeedAccessStore.State.Revoked ||
+            access?.state == FeedAccessStore.State.Expired
     val rowState =
         when {
+            accessEnded -> ServerRowState.Disconnected
             disconnected -> ServerRowState.Disconnected
             unreachable -> ServerRowState.Unreachable
             else -> ServerRowState.Connected
         }
+    val accessStatus =
+        when (access?.state) {
+            FeedAccessStore.State.Pending -> HomeCopy.AccessPending
+            FeedAccessStore.State.Approved -> HomeCopy.AccessApproved
+            FeedAccessStore.State.Rejected -> HomeCopy.AccessRejected
+            FeedAccessStore.State.Revoked -> HomeCopy.AccessRevoked
+            FeedAccessStore.State.Expired -> HomeCopy.AccessExpired
+            FeedAccessStore.State.Connected,
+            null -> null
+        }
     val status =
-        when (rowState) {
-            ServerRowState.Disconnected -> HomeCopy.Disconnected
-            ServerRowState.Unreachable ->
-                if (mode == ConnectionMode.GatewayFeed) {
-                    if (feedState is FeedListenerState.Reconnecting) {
-                        "${HomeCopy.Reconnecting} · $pending pending"
+        accessStatus
+            ?: when (rowState) {
+                ServerRowState.Disconnected -> HomeCopy.Disconnected
+                ServerRowState.Unreachable ->
+                    if (mode == ConnectionMode.GatewayFeed) {
+                        if (feedState is FeedListenerState.Reconnecting) {
+                            "${HomeCopy.Reconnecting} · $pending pending"
+                        } else {
+                            "${HomeCopy.Unreachable} · $pending pending"
+                        }
                     } else {
-                        "${HomeCopy.Unreachable} · $pending pending"
+                        lastCheck?.at?.let { "${HomeCopy.Unreachable} · ${formatTime(it)}" }
+                            ?: HomeCopy.Unreachable
                     }
-                } else {
-                    lastCheck?.at?.let { "${HomeCopy.Unreachable} · ${formatTime(it)}" }
-                        ?: HomeCopy.Unreachable
-                }
-            ServerRowState.Connected -> {
-                val currentPending =
-                    if (mode == ConnectionMode.GatewayFeed) pending else lastCheck?.pending ?: 0
-                when {
-                    // The row stays Connected — this phone's own connection to the gateway is fine,
-                    // and there is nothing here for the owner to retry — and the line says what is
-                    // actually wrong: the publisher has stopped, so the feed is readable and will
-                    // not
-                    // move (SEE-150). Unknown keeps the ordinary line, because not having been told
-                    // is not evidence of anything.
-                    mode == ConnectionMode.GatewayFeed &&
-                        availability == FeedAvailability.Offline ->
-                        "${HomeCopy.FeedOffline} · $currentPending pending"
-                    // Reachable, refreshable, and not streaming. Three words for what the detail
-                    // screen says in a sentence, because a row has one line (SEE-155).
-                    unsupported == UpdateAvailability.NotConfigured ->
-                        "${HomeCopy.NoLiveUpdates} · $currentPending pending"
-                    unsupported == UpdateAvailability.UpgradeRequired ->
-                        "${HomeCopy.UpgradeForLiveUpdates} · $currentPending pending"
-                    unsupported == UpdateAvailability.Incompatible ->
-                        "${HomeCopy.LiveUpdatesUnusable} · $currentPending pending"
-                    mode == ConnectionMode.Direct && lastCheck?.morePending == true ->
-                        "Connected · more than $currentPending pending"
-                    else -> "Connected · $currentPending pending"
+                ServerRowState.Connected -> {
+                    val currentPending =
+                        if (mode == ConnectionMode.GatewayFeed) pending else lastCheck?.pending ?: 0
+                    when {
+                        // The row stays Connected — this phone's own connection to the gateway is
+                        // fine,
+                        // and there is nothing here for the owner to retry — and the line says what
+                        // is
+                        // actually wrong: the publisher has stopped, so the feed is readable and
+                        // will
+                        // not
+                        // move (SEE-150). Unknown keeps the ordinary line, because not having been
+                        // told
+                        // is not evidence of anything.
+                        mode == ConnectionMode.GatewayFeed &&
+                            availability == FeedAvailability.Offline ->
+                            "${HomeCopy.FeedOffline} · $currentPending pending"
+                        // Reachable, refreshable, and not streaming. Three words for what the
+                        // detail
+                        // screen says in a sentence, because a row has one line (SEE-155).
+                        unsupported == UpdateAvailability.NotConfigured ->
+                            "${HomeCopy.NoLiveUpdates} · $currentPending pending"
+                        unsupported == UpdateAvailability.UpgradeRequired ->
+                            "${HomeCopy.UpgradeForLiveUpdates} · $currentPending pending"
+                        unsupported == UpdateAvailability.Incompatible ->
+                            "${HomeCopy.LiveUpdatesUnusable} · $currentPending pending"
+                        mode == ConnectionMode.Direct && lastCheck?.morePending == true ->
+                            "Connected · more than $currentPending pending"
+                        else -> "Connected · $currentPending pending"
+                    }
                 }
             }
-        }
     return HomeServerState(
         id = id,
         model =
@@ -682,6 +714,16 @@ object HomeCopy {
     const val NoLiveUpdates = "No live updates"
     const val UpgradeForLiveUpdates = "Upgrade for live updates"
     const val LiveUpdatesUnusable = "Live updates unavailable"
+
+    /**
+     * A restricted feed's access, as one line (SEE-156). The sentence that says what to do about
+     * each is on the connection's own screen, where there is room for it.
+     */
+    const val AccessPending = "Waiting for approval"
+    const val AccessApproved = "Approved · connecting"
+    const val AccessRejected = "Not approved"
+    const val AccessRevoked = "Access revoked"
+    const val AccessExpired = "Access expired"
     const val ServerInitial = "S"
 }
 

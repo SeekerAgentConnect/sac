@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.feeds.FeedAvailability
 import io.github.brrenat.seekervault.feeds.FeedListenerState
@@ -149,6 +150,14 @@ fun statusText(
      * gateway that does not answer is what the owner needs to hear about first.
      */
     availability: FeedAvailability = FeedAvailability.Unknown,
+    /**
+     * Where this phone's request to read a restricted feed stands (SEE-156), or null for a public
+     * feed and for one nothing has been asked of yet. It is said before anything about the
+     * transport, because it is the more basic fact: a device waiting for approval is not
+     * "unreachable", and telling the owner to wait for a connection that will never open is telling
+     * them the wrong thing to wait for.
+     */
+    access: FeedAccessStore.Record? = null,
 ): String {
     val check = connection.lastCheck
     val liveState = connection.directTransport(live)
@@ -163,6 +172,16 @@ fun statusText(
         support != null && !support.executable -> supportText(support)
         connection.mode == ConnectionMode.Direct && !connection.hasCredential ->
             stringResource(R.string.connection_status_credential_missing)
+        access?.state == FeedAccessStore.State.Pending ->
+            stringResource(R.string.connection_status_access_pending)
+        access?.state == FeedAccessStore.State.Approved ->
+            stringResource(R.string.connection_status_access_approved)
+        access?.state == FeedAccessStore.State.Rejected ->
+            stringResource(R.string.connection_status_access_rejected)
+        access?.state == FeedAccessStore.State.Revoked ->
+            stringResource(R.string.connection_status_access_revoked)
+        access?.state == FeedAccessStore.State.Expired ->
+            stringResource(R.string.connection_status_access_expired)
         feedState == FeedListenerState.Connecting ->
             stringResource(R.string.connection_status_connecting)
         feedState is FeedListenerState.Live && feedAvailability == FeedAvailability.Offline ->
@@ -208,13 +227,21 @@ fun hasProblem(
     support: ServerSupport? = null,
     feed: FeedListenerState? = null,
     availability: FeedAvailability = FeedAvailability.Unknown,
+    access: FeedAccessStore.Record? = null,
 ): Boolean {
     val liveState = connection.directTransport(live)
     val feedState = connection.feedTransport(feed)
     // A feed is not "usable" in the credential sense — it has no credential — so its problems are
     // the manifest this build cannot act on or the gateway listener actually failing (SEE-139).
     // Direct transport Revoked is ignored for feeds; feed listener state is ignored for Direct.
+    // Waiting for a decision is not a problem — it is the flow working. The three that end
+    // access are, and each of them needs the owner to do something (SEE-156).
+    val accessDenied =
+        access?.state == FeedAccessStore.State.Rejected ||
+            access?.state == FeedAccessStore.State.Revoked ||
+            access?.state == FeedAccessStore.State.Expired
     return connection.retirement != null ||
+        accessDenied ||
         (connection.mode == ConnectionMode.Direct && !connection.usable) ||
         support?.executable == false ||
         // A publisher that has stopped is the owner's business even though nothing on this phone is
@@ -310,6 +337,8 @@ fun feedReferenceProblemText(problem: FeedReferenceProblem): String =
             FeedReferenceProblem.BadGatewayUrl -> R.string.feed_reference_bad_gateway
             FeedReferenceProblem.InsecureGatewayUrl -> R.string.feed_reference_insecure_gateway
             FeedReferenceProblem.BadServerId -> R.string.feed_reference_bad_server_id
+            FeedReferenceProblem.BadAccess -> R.string.feed_reference_bad_access
+            FeedReferenceProblem.BadInvitation -> R.string.feed_reference_bad_invitation
         }
     )
 
@@ -365,7 +394,25 @@ fun messageText(message: ConnectionMessage): String =
             stringResource(R.string.message_disconnected, message.label)
         is ConnectionMessage.Removed -> stringResource(R.string.message_removed, message.label)
         is ConnectionMessage.Renamed -> stringResource(R.string.message_renamed, message.label)
+        is ConnectionMessage.AccessNotAsked -> accessProblemText(message.reason)
     }
+
+/**
+ * Why asking a restricted feed's publisher for access stopped short (SEE-156). Each one says what
+ * happened and, where there is one, what the owner can do about it — and each of them means nothing
+ * was sent and nothing changed.
+ */
+@Composable
+private fun accessProblemText(reason: AccessProblem): String =
+    stringResource(
+        when (reason) {
+            AccessProblem.NoWallet -> R.string.access_problem_no_wallet
+            AccessProblem.NotSigned -> R.string.access_problem_not_signed
+            AccessProblem.BadChallenge -> R.string.access_problem_bad_challenge
+            AccessProblem.Unreachable -> R.string.access_problem_unreachable
+            AccessProblem.Refused -> R.string.access_problem_refused
+        }
+    )
 
 @Composable
 fun formatInstant(instant: Instant): String =

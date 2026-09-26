@@ -9,6 +9,7 @@ import com.connectrpc.impl.ProtocolClient
 import com.connectrpc.okhttp.ConnectOkHttpClient
 import com.connectrpc.protocols.NetworkProtocol
 import com.connectrpc.simpleTimeouts
+import io.github.brrenat.seekervault.access.FeedSessions
 import io.github.brrenat.seekervault.connections.FeedGateway
 import io.github.brrenat.seekervault.connections.FeedManifest
 import io.github.brrenat.seekervault.connections.FeedSnapshot
@@ -16,6 +17,9 @@ import io.github.brrenat.seekervault.connections.GatewayException
 import io.github.brrenat.seekervault.connections.ProposalFeed
 import io.github.brrenat.seekervault.gateway.v1.FeedAvailability as WireAvailability
 import io.github.brrenat.seekervault.gateway.v1.FeedServiceClient
+import io.github.brrenat.seekervault.gateway.v1.GatewayErrorDetail
+import io.github.brrenat.seekervault.gateway.v1.GatewayProblem
+import io.github.brrenat.seekervault.gateway.v1.channelSession
 import io.github.brrenat.seekervault.gateway.v1.getFeedStatusRequest
 import io.github.brrenat.seekervault.gateway.v1.getFeedTopicsRequest
 import io.github.brrenat.seekervault.gateway.v1.getProposalRequest
@@ -23,6 +27,7 @@ import io.github.brrenat.seekervault.gateway.v1.getServerManifestRequest
 import io.github.brrenat.seekervault.gateway.v1.getStreamTicketRequest
 import io.github.brrenat.seekervault.gateway.v1.listProposalsRequest
 import io.github.brrenat.seekervault.gateway.v1.listRequestsRequest
+import io.github.brrenat.seekervault.gateway.v1.setFeedPushTargetRequest
 import io.github.brrenat.seekervault.proposal.v1.Proposal
 import io.github.brrenat.seekervault.request.v2.Request
 import io.github.brrenat.seekervault.servers.FeedReference
@@ -50,9 +55,23 @@ import okhttp3.OkHttpClient
  * It implements both seams the earlier stages left open ([FeedGateway] for settings, [ProposalFeed]
  * for the current proposals) plus [FeedTickets] and [FeedTopics], because they are one endpoint and
  * one client. The stream is next door and speaks a different protocol; this file never touches it.
+ *
+ * A restricted feed (SEE-156) is the one exception to "unauthenticated", and a narrow one: every
+ * call but the manifest carries the opaque session the feed's own publisher gave this device, taken
+ * from [sessions] by channel. It still says nothing about the phone — the gateway holds a digest of
+ * it against a grant the publisher registered — and a public feed carries none. When the gateway
+ * refuses one, the refusal goes back to [sessions] as a denial, so the record on the phone is what
+ * the gateway actually did rather than what the publisher last said.
  */
-class ConnectFeedGateway(private val httpClient: OkHttpClient) :
-    FeedGateway, ProposalFeed, FeedTickets, FeedTopics, FeedStatuses {
+class ConnectFeedGateway(
+    private val httpClient: OkHttpClient,
+    /**
+     * Where a restricted channel's session comes from. A supplier rather than a value because the
+     * access manager reads this gateway back for its push registration, and neither can be built
+     * before the other (SeekerVaultApplication).
+     */
+    private val sessions: () -> FeedSessions = { FeedSessions.None },
+) : FeedGateway, ProposalFeed, FeedTickets, FeedTopics, FeedStatuses {
 
     override suspend fun resolve(reference: FeedReference, knownRevision: Long): FeedManifest {
         val answer =
@@ -110,13 +129,16 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
         var sequence = 0L
         for (page in 0 until MAX_PAGES) {
             val answer =
-                call(reference.gatewayUrl) {
+                call(reference.gatewayUrl, reference.channel) {
                     it.listRequests(
                         listRequestsRequest {
                             channel = reference.channel
                             pageSize = PAGE_SIZE
                             pageToken = token
                             if (page == 0) knownSnapshotSequence = knownSequence
+                            // On every page: a walk that began with access does not keep it
+                            // after a revocation half way through (SEE-156).
+                            sessionFor(reference.channel)?.let { held -> session = held }
                         }
                     )
                 }
@@ -146,7 +168,7 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
         var sequence = 0L
         for (page in 0 until MAX_PAGES) {
             val answer =
-                call(reference.gatewayUrl) {
+                call(reference.gatewayUrl, reference.channel) {
                     it.listProposals(
                         listProposalsRequest {
                             channel = reference.channel
@@ -155,6 +177,7 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
                             // Only ever on the first page: a sequence is about the channel, not
                             // about a position in a walk.
                             if (page == 0) knownSnapshotSequence = knownSequence
+                            sessionFor(reference.channel)?.let { held -> session = held }
                         }
                     )
                 }
@@ -178,11 +201,12 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
     /** One proposal, for a phone that learned its ID from somewhere other than a page. */
     suspend fun proposal(reference: FeedReference, proposalId: String): Proposal {
         val answer =
-            call(reference.gatewayUrl) {
+            call(reference.gatewayUrl, reference.channel) {
                 it.getProposal(
                     getProposalRequest {
                         channel = reference.channel
                         this.proposalId = proposalId
+                        sessionFor(reference.channel)?.let { held -> session = held }
                     }
                 )
             }
@@ -196,7 +220,12 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
         val asked = channels.distinct()
         val answer =
             call(gatewayUrl) {
-                it.getStreamTicket(getStreamTicketRequest { this.channels += asked })
+                it.getStreamTicket(
+                    getStreamTicketRequest {
+                        this.channels += asked
+                        this.sessions += sessionsFor(asked)
+                    }
+                )
             }
         if (answer.ticket.isEmpty() || answer.channelsList.isEmpty()) {
             throw GatewayException(GatewayException.Kind.BadResponse, "an empty grant")
@@ -219,6 +248,11 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
 
     /**
      * Where hints about these feeds arrive (SEE-92).
+     *
+     * A restricted channel is always left out of the answer and carries no session (SEE-156): it
+     * has no public topic, because one anybody could join would announce every signal to devices
+     * the publisher never approved. Its hints go to each approved device's own target instead
+     * ([setPushTarget]).
      *
      * The same asymmetry as a ticket's, for the same reason: a channel the gateway does not name is
      * left out of the answer rather than fatal, and an answer naming a channel nobody asked about
@@ -266,7 +300,14 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
     ): Map<String, FeedAvailability> {
         val asked = channels.distinct()
         val answer =
-            call(gatewayUrl) { it.getFeedStatus(getFeedStatusRequest { this.channels += asked }) }
+            call(gatewayUrl) {
+                it.getFeedStatus(
+                    getFeedStatusRequest {
+                        this.channels += asked
+                        this.sessions += sessionsFor(asked)
+                    }
+                )
+            }
         return answer.statusesList.associate {
             if (it.channel !in asked) {
                 throw GatewayException(
@@ -280,6 +321,48 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
                     WireAvailability.FEED_AVAILABILITY_OFFLINE -> FeedAvailability.Offline
                     else -> FeedAvailability.Unknown
                 }
+        }
+    }
+
+    /**
+     * Where this device's hints for one restricted channel go (SEE-156).
+     *
+     * A restricted channel has no public topic — one anyone could join would announce every signal
+     * to devices the publisher never approved — so each approved device names its own target, under
+     * the session its grant was issued with. An empty [target] stops the hints.
+     */
+    suspend fun setPushTarget(
+        gatewayUrl: String,
+        channel: String,
+        session: String,
+        target: String,
+    ) {
+        call(gatewayUrl, channel) {
+            it.setFeedPushTarget(
+                setFeedPushTargetRequest {
+                    this.channel = channel
+                    this.session = session
+                    pushTarget = target
+                }
+            )
+        }
+    }
+
+    /** The session this phone holds for a restricted channel, or null for a public one. */
+    private fun sessionFor(channel: String): String? =
+        sessions().sessionFor(channel)?.takeIf { it.isNotEmpty() }
+
+    /**
+     * The sessions among [channels] that are restricted and held. A restricted channel without one
+     * is simply left out, and the gateway leaves it out of the answer in turn — which is the same
+     * shape as a channel this gateway does not host, and what the caller already handles.
+     */
+    private fun sessionsFor(channels: List<String>) = channels.mapNotNull { channel ->
+        sessionFor(channel)?.let {
+            channelSession {
+                this.channel = channel
+                session = it
+            }
         }
     }
 
@@ -300,6 +383,8 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
 
     private suspend fun <T> call(
         gatewayUrl: String,
+        /** The one restricted channel this call is about, when it is about one (SEE-156). */
+        channel: String = "",
         block: suspend (FeedServiceClient) -> ResponseMessage<T>,
     ): T {
         val response =
@@ -308,12 +393,31 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                throw classify(e)
+                throw denial(channel, classify(e))
             }
         return when (response) {
             is ResponseMessage.Success -> response.message
-            is ResponseMessage.Failure -> throw classify(response.cause)
+            is ResponseMessage.Failure -> throw denial(channel, classify(response.cause))
         }
+    }
+
+    /**
+     * Tells the access manager what the gateway just refused, and returns the failure unchanged.
+     *
+     * The gateway is the authority here, not the publisher: a phone whose publisher still says
+     * "approved" but whose reads are refused has lost access, and the record says so.
+     */
+    private fun denial(channel: String, failure: GatewayException): GatewayException {
+        if (channel.isEmpty()) return failure
+        val denial =
+            when (failure.kind) {
+                GatewayException.Kind.AccessRequired -> FeedSessions.Denial.Required
+                GatewayException.Kind.AccessRevoked -> FeedSessions.Denial.Revoked
+                GatewayException.Kind.AccessExpired -> FeedSessions.Denial.Expired
+                else -> return failure
+            }
+        sessions().denied(channel, denial)
+        return failure
     }
 
     private companion object {
@@ -335,6 +439,17 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
         fun classify(error: Throwable): GatewayException {
             val causes = generateSequence(error) { it.cause }.take(32).toList()
             val code = causes.firstNotNullOfOrNull { (it as? ConnectException)?.code }
+            // A restricted feed's three refusals all arrive as permission_denied, and only the
+            // detail tells them apart (SEE-156): the phone waits on one, gives up on another and
+            // asks the publisher to renew on the third. A detail this build cannot read leaves the
+            // refusal as Rejected, which is refused access either way and never access.
+            val access =
+                causes.filterIsInstance<ConnectException>().firstNotNullOfOrNull { exception ->
+                    runCatching { exception.unpackedDetails(GatewayErrorDetail::class) }
+                        .getOrNull()
+                        ?.firstOrNull()
+                        ?.problem
+                }
             val kind =
                 when {
                     causes.any {
@@ -349,6 +464,12 @@ class ConnectFeedGateway(private val httpClient: OkHttpClient) :
                     code == Code.UNAUTHENTICATED -> GatewayException.Kind.Unauthenticated
                     code == Code.UNIMPLEMENTED -> GatewayException.Kind.Unimplemented
                     code == Code.NOT_FOUND -> GatewayException.Kind.NotFound
+                    access == GatewayProblem.GATEWAY_PROBLEM_ACCESS_REQUIRED ->
+                        GatewayException.Kind.AccessRequired
+                    access == GatewayProblem.GATEWAY_PROBLEM_ACCESS_REVOKED ->
+                        GatewayException.Kind.AccessRevoked
+                    access == GatewayProblem.GATEWAY_PROBLEM_ACCESS_EXPIRED ->
+                        GatewayException.Kind.AccessExpired
                     code == Code.PERMISSION_DENIED || code == Code.INVALID_ARGUMENT ->
                         GatewayException.Kind.Rejected
                     code == Code.FAILED_PRECONDITION -> GatewayException.Kind.InvalidState

@@ -11,6 +11,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.designsystem.ConnectionColourOption
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailFact
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailRules
@@ -58,8 +59,12 @@ fun ConnectionDetailLibraryScreen(
      * being reachable itself (SEE-150).
      */
     availability: FeedAvailability = FeedAvailability.Unknown,
+    /**
+     * Where this phone's access to a restricted feed stands (SEE-156), or null for a public one.
+     */
+    access: FeedAccessStore.Record? = null,
 ) {
-    val problem = hasProblem(connection, live, support, feed, availability)
+    val problem = hasProblem(connection, live, support, feed, availability, access)
     val snackbar = remember { SnackbarHostState() }
     MessageEffect(message, snackbar, onMessageShown)
     var renaming by rememberSaveable { mutableStateOf(false) }
@@ -89,7 +94,8 @@ fun ConnectionDetailLibraryScreen(
                         },
                     status =
                         ConnectionDetailStatus(
-                            headline = statusText(connection, live, support, feed, availability),
+                            headline =
+                                statusText(connection, live, support, feed, availability, access),
                             supportingText =
                                 connection.lastCheck?.let { "Checked ${formatInstant(it.at)}" },
                             tone =
@@ -126,7 +132,28 @@ fun ConnectionDetailLibraryScreen(
                                 FactRowValueStyle.Plain,
                                 ConnectionsTags.field("deviceName"),
                             ),
-                        ),
+                        ) +
+                            // A restricted feed's access belongs to the wallet it was proven with
+                            // and to this installation, and both are worth showing: they are what
+                            // the publisher's Devices page lists this phone under (SEE-156).
+                            listOfNotNull(
+                                access?.let {
+                                    ConnectionDetailFact(
+                                        "Access wallet",
+                                        it.wallet,
+                                        FactRowValueStyle.MonoWrap,
+                                        ConnectionsTags.field("accessWallet"),
+                                    )
+                                },
+                                access?.let {
+                                    ConnectionDetailFact(
+                                        "This device there",
+                                        it.installation,
+                                        FactRowValueStyle.MonoWrap,
+                                        ConnectionsTags.field("accessInstallation"),
+                                    )
+                                },
+                            ),
                     rules =
                         if (connection.retirement != null) null
                         else

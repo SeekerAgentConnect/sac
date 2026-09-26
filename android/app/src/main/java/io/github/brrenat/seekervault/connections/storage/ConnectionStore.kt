@@ -15,6 +15,7 @@ import io.github.brrenat.seekervault.servers.MAX_REQUIRED_PLUGINS
 import io.github.brrenat.seekervault.servers.ManifestProblem
 import io.github.brrenat.seekervault.servers.PluginRequirement
 import io.github.brrenat.seekervault.servers.ServerManifest
+import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.manifest
 import java.io.File
