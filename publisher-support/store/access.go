@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"strings"
 	"time"
 )
 
@@ -743,11 +745,19 @@ func (s *Store) GrantsDue(ctx context.Context, at time.Time, limit int) ([]Acces
 
 // GrantSynced records that the gateway confirmed a grant's state at this revision. It is
 // conditional on the revision, so a revocation written while the grant was in flight stays pending.
-func (s *Store) GrantSynced(ctx context.Context, grantID string, revision uint64, at time.Time) error {
+// acknowledged is the expiry the gateway said it enforces: a gateway that caps a grant shorter than
+// this publisher asked for is believed, so the renewal is scheduled before the grant really runs
+// out. It only ever shortens the recorded expiry; the zero time leaves it as it is.
+func (s *Store) GrantSynced(ctx context.Context, grantID string, revision uint64, at, acknowledged time.Time) error {
+	shorter := int64(math.MaxInt64)
+	if !acknowledged.IsZero() {
+		shorter = milliseconds(acknowledged)
+	}
 	_, err := s.writer.ExecContext(ctx,
-		`UPDATE access_grant SET synced_revision = ?, attempts = 0, sync_error = '', synced_at_ms = ?
+		`UPDATE access_grant SET synced_revision = ?, attempts = 0, sync_error = '', synced_at_ms = ?,
+		        expires_at_ms = MIN(expires_at_ms, ?)
 		  WHERE grant_id = ? AND revision = ?`,
-		int64(revision), milliseconds(at), grantID, int64(revision))
+		int64(revision), milliseconds(at), shorter, grantID, int64(revision))
 	return err
 }
 
@@ -773,14 +783,23 @@ func (s *Store) GrantRevokedByGateway(ctx context.Context, grantID string, at ti
 	})
 }
 
-// Renew moves the expiry of every active grant that runs out within `before` to `until`, as a new
-// revision the syncer sends. It answers how many it renewed.
-func (s *Store) Renew(ctx context.Context, at time.Time, before time.Duration, until time.Time) (int, error) {
+// Renew moves the expiry of every active grant of the given devices that runs out within `before`
+// to `until`, as a new revision the syncer sends. Only the devices named are renewed: a device whose
+// eligibility could not be checked keeps the expiry it has. It answers how many it renewed.
+func (s *Store) Renew(ctx context.Context, at time.Time, before time.Duration, until time.Time, deviceIDs []string) (int, error) {
+	if len(deviceIDs) == 0 {
+		return 0, nil
+	}
+	arguments := []any{milliseconds(until), milliseconds(at), milliseconds(at.Add(before))}
+	for _, id := range deviceIDs {
+		arguments = append(arguments, id)
+	}
 	outcome, err := s.writer.ExecContext(ctx,
 		`UPDATE access_grant SET expires_at_ms = ?, revision = revision + 1, due_at_ms = ?
 		  WHERE state = 'active' AND expires_at_ms < ? AND synced_revision >= revision
-		    AND device_id IN (SELECT device_id FROM access_device WHERE state = 'approved')`,
-		milliseconds(until), milliseconds(at), milliseconds(at.Add(before)))
+		    AND device_id IN (SELECT device_id FROM access_device WHERE state = 'approved')
+		    AND device_id IN (?`+strings.Repeat(", ?", len(deviceIDs)-1)+`)`,
+		arguments...)
 	if err != nil {
 		return 0, fmt.Errorf("renew grants: %w", err)
 	}

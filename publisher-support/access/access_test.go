@@ -59,6 +59,8 @@ type fakeGateway struct {
 	fail     error
 	access   gateway.Access
 	describe error
+	// most is BROADCAST_MAX_GRANT_HOURS: a grant asked for longer is granted this long.
+	most time.Duration
 }
 
 func newFakeGateway() *fakeGateway {
@@ -85,6 +87,9 @@ func (f *fakeGateway) GrantAccess(_ context.Context, grant gateway.Grant) (time.
 	}
 	f.grants++
 	f.granted[grant.ID] = grant
+	if f.most > 0 && grant.Lifetime > f.most {
+		return f.most, nil
+	}
 	return grant.Lifetime, nil
 }
 
@@ -717,15 +722,22 @@ func TestGrantsAreRenewedOnlyWhileApproved(t *testing.T) {
 type rule struct {
 	mutex    sync.Mutex
 	decision Decision
+	fail     error
+	asked    int
 }
 
 func (r *rule) Decide(context.Context, Subject) (Decision, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	return r.decision, nil
+	r.asked++
+	return r.decision, r.fail
 }
 
 func (r *rule) set(decision Decision) { r.mutex.Lock(); r.decision = decision; r.mutex.Unlock() }
+
+func (r *rule) failWith(err error) { r.mutex.Lock(); r.fail = err; r.mutex.Unlock() }
+
+func (r *rule) questions() int { r.mutex.Lock(); defer r.mutex.Unlock(); return r.asked }
 
 func TestAnEligibilityRuleDecidesInsteadOfTheOperator(t *testing.T) {
 	entitled := &rule{decision: Eligible}
@@ -764,6 +776,84 @@ func TestAnEligibilityRuleDecidesInsteadOfTheOperator(t *testing.T) {
 	entitled.set(Ineligible)
 	if _, err := f.redeem(r, late.Invitation.Token); problemCode(t, err) != "not_approved" {
 		t.Fatalf("an ineligible device redeemed: %v", err)
+	}
+}
+
+// An eligibility rule that answers an error is not a decision: the grant is neither revoked nor
+// renewed, so an outage of the subscription check cannot extend access, and the rule is asked again
+// after a backoff until it answers.
+func TestAGrantIsNotRenewedWhileItsEligibilityCheckFails(t *testing.T) {
+	entitled := &rule{decision: Eligible}
+	f := newFixture(t, entitled)
+	p := newPhone(t)
+	device := f.ask(p)
+	session, err := f.redeem(p, device.Invitation.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := f.gateway.grants
+	expires := f.grant(device.ID).ExpiresAt
+	entitled.failWith(errors.New("the subscription service is down"))
+	f.clock.advance(4*time.Hour + time.Minute)
+	if _, err := f.syncer.Pass(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	asked := entitled.questions()
+	// Within the backoff the rule is not asked again, and nothing is renewed.
+	if _, err := f.syncer.Pass(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if entitled.questions() != asked {
+		t.Fatalf("the failing rule was asked again within its backoff")
+	}
+	if grant := f.grant(device.ID); !grant.ExpiresAt.Equal(expires) || f.gateway.grants != sent {
+		t.Fatalf("a grant whose eligibility check failed was renewed until %v (%d sends)",
+			grant.ExpiresAt, f.gateway.grants)
+	}
+	if view := f.view(device.ID); view.State != store.DeviceApproved || !f.gateway.holds(session.GrantID) {
+		t.Fatalf("a failed check was taken as a refusal: %+v", view)
+	}
+	// The rule answers again: after the backoff the grant is renewed.
+	entitled.failWith(nil)
+	f.clock.advance(2 * time.Second)
+	if _, err := f.syncer.Pass(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if grant := f.grant(device.ID); !grant.ExpiresAt.Equal(f.clock.now().Add(6*time.Hour)) ||
+		f.gateway.grants != sent+1 {
+		t.Fatalf("the recovered check renewed until %v (%d sends)", grant.ExpiresAt, f.gateway.grants)
+	}
+}
+
+// A gateway whose BROADCAST_MAX_GRANT_HOURS is shorter than the lifetime this publisher asks for is
+// believed: the recorded expiry is the one it acknowledged, and the grant is renewed while a third of
+// that is left, so an approved device never loses access between renewals.
+func TestRenewalFollowsTheLifetimeTheGatewayGranted(t *testing.T) {
+	fake := newFakeGateway()
+	fake.most = time.Hour
+	f := fixtureAt(t, filepath.Join(t.TempDir(), "publisher.db"), nil, fake)
+	p := newPhone(t)
+	device := f.ask(p)
+	session, err := f.redeem(p, f.approve(device.ID))
+	if err != nil || !session.Synced {
+		t.Fatalf("redeemed %+v (%v)", session, err)
+	}
+	if grant := f.grant(device.ID); !grant.ExpiresAt.Equal(f.clock.now().Add(time.Hour)) {
+		t.Fatalf("the grant is recorded until %v, not the hour the gateway granted", grant.ExpiresAt)
+	}
+	// Over a working day the grant is kept alive: it never runs out at the gateway.
+	for range 8 * 60 / 5 {
+		f.clock.advance(5 * time.Minute)
+		if _, err := f.syncer.Pass(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if grant := f.grant(device.ID); !grant.ExpiresAt.After(f.clock.now()) {
+			t.Fatalf("the grant ran out at %v", grant.ExpiresAt)
+		}
+	}
+	// Renewed when a third of the hour is left — about every forty minutes — not every pass.
+	if sends := f.gateway.grants; sends < 8 || sends > 16 {
+		t.Fatalf("a day of one-hour grants took %d sends", sends)
 	}
 }
 
@@ -852,4 +942,14 @@ func TestExpiredChallengesAreForgotten(t *testing.T) {
 	if err == nil {
 		t.Fatal("an expired challenge was answered")
 	}
+}
+
+// grant is a device's newest grant as the store holds it.
+func (f *fixture) grant(deviceID string) store.AccessGrant {
+	f.t.Helper()
+	device, err := f.store.Device(context.Background(), deviceID)
+	if err != nil || device.Grant == nil {
+		f.t.Fatalf("no grant for %s (%v)", deviceID, err)
+	}
+	return *device.Grant
 }
