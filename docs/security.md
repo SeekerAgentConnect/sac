@@ -25,10 +25,14 @@ The shared gateway has its own, separately routed roles:
 
 | Credential | Held by | Accepted by | Grant |
 | --- | --- | --- | --- |
-| Publisher credential | An independent backend | Publisher listener | That server's public feed documents and manifest |
+| Publisher credential | An independent backend | Publisher listener | That server's feed documents and manifest, and — for a restricted feed (SEE-156) — granting and revoking access to its own channel |
+| Feed access session (SEE-156) | A device that publisher approved | Read listener | Reading that one restricted channel, while that one grant is live |
 
 Publisher credentials travel only in bearer headers and are stored as SHA-256 hashes. The gateway
-has no subscriber credential, binding, invitation, private-request route or result-upload route.
+issues no subscriber credential and has no binding, invitation, private-request route or
+result-upload route. A restricted feed's session is minted by the **publisher**, never by the
+gateway, which holds only its SHA-256 (see
+[A restricted feed is read only by devices its publisher approved](#a-restricted-feed-is-read-only-by-devices-its-publisher-approved-see-156)).
 
 ### The operator's account
 
@@ -131,10 +135,14 @@ subscribed phone reads from ([`wiki/feed-gateway.md`](wiki/feed-gateway.md)). It
 third party in the middle of the stage's one public relationship, so what it is unable to do matters
 more than what it does.
 
-- **The public tables have nowhere to put anything about a subscriber.** A publisher, its credential
+- **The tables have nowhere to put anything about a subscriber.** A publisher, its credential
   hashes, its manifest, its proposals, its channel's sequence, and the outbox contain no reader,
-  address, chosen quantity, decision, signature or history. Go boundary tests read the schema and
-  public contracts and fail if those appear in the feed path.
+  address, chosen quantity, decision, signature or history. A public feed writes nothing else at
+  all; a restricted one (SEE-156) adds `access_grant`, one row per device its publisher approved,
+  holding a grant ID, two opaque references the publisher chose, the SHA-256 of a session, an
+  expiry and a push target while one is registered — no wallet, no address, no signature, no device
+  name and no reason for the decision. Go boundary tests read the schema and the contracts and fail
+  if anything else appears in the feed path.
 - **A document cannot be smuggled through it.** Every publication is rebuilt from the fields that
   were validated rather than stored as it arrived, so a protobuf field the gateway does not
   understand is dropped instead of relayed to every phone on the channel. Over JSON the same attempt
@@ -150,7 +158,9 @@ more than what it does.
   identifier, no address, no session, nothing derived from any of them — and the gateway writes no
   record of having minted one, so a gateway that has been fanning out for a year still knows
   nothing about its subscribers. A Go test pins the claim set, so adding one is a deliberate act
-  with an argument attached.
+  with an argument attached. A restricted channel is named in a ticket only for a live grant's
+  session (SEE-156) and the ticket then lasts no longer than that grant, but the ticket itself still
+  says nothing about who holds it, and minting one still writes nothing down.
 - **The broker is configured so that a listener can only listen.** One unidirectional transport, so
   a connection has no commands to send at all; every publish, history and presence permission off;
   presence and join/leave off, so who is listening is not collected anywhere; every other transport
@@ -182,6 +192,10 @@ more than what it does.
   log line, and a test reads the database afterwards to prove it — and the phone keeps no list on
   disk either: its subscriptions are derived from the connections the owner has, every time. A topic
   name is public and proves nothing; what it admits someone to is the news that a broadcast changed.
+  A restricted feed has no topic at all (SEE-156), because topic membership is exactly what nobody
+  here can revoke: each approved device registers its own target against its own grant, that target
+  is used for that grant's hints and nothing else, it is never returned by a read outside the relay,
+  and it is dropped with the grant. It is a list of grants, not of people.
 - **The push credential is the deployment's, never a publisher's.** It is a file mounted read-only
   into the gateway's container alone, read once at startup, and no part of it reaches an answer, an
   error or a log line — a test fails if a message from the push endpoint, the access token or the
@@ -196,8 +210,11 @@ more than what it does.
   take one from the operator — and the image's CA bundle exists for the second of them, added in
   SEE-92 with the reason written beside the line that copies it.
 - **Reading writes nothing down.** No session, no subscription record, no count of who read what: a
-  test reads the database after several reads and requires every row count to be unchanged. What the
-  gateway learns from a read is which channel someone asked about.
+  test reads the database after several reads and requires every row count to be unchanged, a
+  restricted feed's reads included — checking a session looks a grant up and writes nothing, and the
+  grant itself was written by the publisher's own authenticated call. What the gateway learns from a
+  public read is which channel someone asked about, and from a restricted one which grant is
+  reading.
 
 ### Retired private gateway state (SEE-130)
 
@@ -339,6 +356,93 @@ worth having if getting *out* of it is an act somebody performed on purpose
   invariant is stated where a connection is built rather than checked where one is used: an agent
   waiting for a signature can be told no, but it cannot be handed a simulation, and this app will not
   invent one for it.
+
+### A restricted feed is read only by devices its publisher approved (SEE-156)
+
+Every feed before this one was a broadcast, and the whole of the grant was holding the reference. A
+**restricted** feed adds one decision — who may read — made by the publisher, enforced by the
+gateway, and proved by the owner's wallet
+([`wiki/restricted-feeds.md`](wiki/restricted-feeds.md)). The trust boundary is the point of the
+shape: deciding needs an identity, enforcing needs none, and the two parties are different.
+
+- **The policy is the gateway operator's registration, and nothing else can supply it.** Not the
+  link the owner scanned, not the publisher's own manifest, and not a default. The gateway stamps
+  the policy and the authentication origin onto the manifest it serves from that registration, and
+  refuses a publication claiming anything else, so a feed cannot be published as public by
+  forgetting and a link cannot nominate who gets asked to prove a wallet.
+- **Only the publisher sees who.** It holds the wallet address, the device key that wallet bound,
+  the label the phone claimed, its own decision, and the grant. What it never holds is anything
+  about what an owner did with a signal: no amount, no decision, no transaction, no result. That is
+  the same wall SEE-89 put between a proposal and a decision about it, and access does not open a
+  door through it.
+- **The gateway is told a decision and never a person.** Its grant row holds a grant ID, two opaque
+  publisher-scoped references (`subscriber_ref` for the wallet, `device_ref` for the device, each 1
+  to 64 printable ASCII characters it stores and never interprets), the SHA-256 of the session, an
+  expiry, and a push target while one is registered. It never receives the wallet address, the
+  signature, the device name, or the session itself, so a copy of the gateway's database is not a
+  copy of anybody's access.
+- **A wallet-authentication signature is not a transaction signature.** What the owner signs is
+  plain ASCII text whose second paragraph says so in its own words — "This is not a transaction.
+  Signing it moves no funds and approves nothing." — and nothing in this flow prepares, signs or
+  sends a transaction. The two must not look alike, because the owner is being asked to authorize
+  something in the same wallet app they authorize transfers in. The phone **rebuilds the text from
+  the challenge's own fields and compares it with the publisher's copy before the wallet is opened
+  at all**, so a publisher cannot get a wallet to sign words this app did not write, and a test on
+  each side pins the same fixture
+  ([`fixtures/restricted-feeds/challenge.json`](../fixtures/restricted-feeds/challenge.json)).
+- **The challenge is bound to everything it is worth.** It names the authentication origin, the
+  channel, the wallet address, the device key's fingerprint, the attempt and a fresh nonce, and
+  carries an issue time and an expiry (five minutes by default). Without the origin one publisher
+  could relay a proof to another; without the channel a proof for a free feed would open a paid one;
+  without the device key a proof captured in transit would be a proof for whoever captured it. It is
+  **one attempt**: a second answer is refused, and a *failed* verification spends it too, so a
+  captured challenge cannot be used as an oracle to try signatures against. A recording replayed
+  later is expired.
+- **The device key is what makes an installation that installation.** A P-256 key generated in the
+  Android Keystore, usable only for signing and never readable by this app or any other, which signs
+  the same challenge bytes beside the wallet and signs every later step — which is why the owner is
+  asked for exactly one wallet signature in the whole flow. It is **one key per feed connection**
+  (alias `seekervault.feed-access.v1.<connection ID>`) rather than one per phone, so two publishers
+  cannot compare notes about the same device. A restored backup is a different device and has to ask
+  again.
+- **The phone posts a wallet proof only to the origin the gateway stamped**, on every call, and the
+  HTTP client it uses for it follows no redirects: an answer from anywhere else is not the
+  publisher's. It refuses a challenge whose fields are not the ones it asked for, or that claims to
+  last longer than thirty minutes, before the wallet is opened.
+- **Access belongs to the wallet it was proven with.** Selecting another wallet inherits nothing;
+  asking again with it starts a new request and drops the old session, so a wallet change can never
+  silently reuse another wallet's authorization. Removing the connection drops the session, deletes
+  the access record and deletes the Keystore key.
+- **Revocation is enforced at the gateway, on everything, including an open stream.** The publisher
+  revokes; the gateway ends the grants and moves the channel's access epoch in the same write, and a
+  restricted channel's broker stream name carries that epoch — so publications go out under a new
+  name and a listener still attached under the old one, a revoked device replaying an old ticket
+  included, receives nothing more, without the broker having to close anybody's connection. Reads,
+  pages, point reads, tickets, renewals, topics, presence and push targets are all refused from then
+  on. **A queued hint confers no authority**: it is content-free, every read it prompts is checked
+  again, and one that was never delivered changes nothing about whether access ended.
+- **Revocation does not reach back, and the app says so.** A signal already delivered is on that
+  phone, and nothing here erases it remotely — the same rule the public feed has always had, and the
+  owner's status line says it out loud ("Signals already on this phone stay").
+- **A grant is finite, and that is the honest bound when the publisher cannot be reached.** A grant
+  runs for `PUBLISHER_ACCESS_GRANT_HOURS` (6 by default) and the publisher renews at a third left,
+  so an approved device keeps reading for at most one grant lifetime while its publisher cannot
+  reach the gateway, and a device revoked during such an outage keeps reading for at most what is
+  left of its grant, because nothing renews a revoked grant. Immediate revocation requires the
+  publisher to reach the gateway; an operator wanting a tighter bound sets a shorter lifetime and
+  pays for it in renewal traffic. The gateway caps any grant at `BROADCAST_MAX_GRANT_HOURS` (24
+  hours by default) and states the bound it enforces, so a publisher asking for longer is shortened
+  rather than surprised.
+- **A restricted feed never falls back to public.** There is no anonymous read path and no method
+  that skips the check: a restricted channel a caller holds no live session for behaves exactly as
+  an unknown channel does — refused on a read, and absent from a ticket, a topic list or a presence
+  answer — so one stale feed on a phone never costs it the others. A phone reads an unspecified or
+  unknown access policy as unsupported rather than as public, a feed added from an `access=restricted`
+  reference whose manifest then says public is refused, and a publisher refuses to publish at all
+  until the gateway confirms it enforces the feed as restricted at the registered origin.
+- **It is not an account system.** No password, no OAuth, no social login, no Seeker ID and no
+  subscriber record beyond the device rows the publisher keeps. The only identity in the flow is a
+  wallet that signed one message and a key that lives in one Keystore.
 
 ## One active phone per sidecar
 
@@ -491,6 +595,9 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 | The fixed FCM invalidation data (SAW-056) | Firebase callback memory until exact validation | Never written to app storage or WorkManager input; discarded before authenticated Sync |
 | The owner's answers, each with the request it answered (SAW-013), and for an approved transfer the version, content hash, and exact bytes they approved (SAW-021) | `filesDir/results/<connection ID>/<request ID>.json`, one file per answer. A settled answer is kept for a week, and one that's waiting to be sent is kept until it's settled. | App-private storage; an answer holds no secret, and an approved transaction is unsigned bytes the sidecar built |
 | The wallet session (SAW-015, SEE-84): the wallet the owner selected — its address, network, label, and when they chose it — together with the wallet's authorization token for that account, as one record | `noBackupFilesDir/wallet/wallet-session`, one file, written atomically | AES-256-GCM under the same Android Keystore key, with its own associated data. The address is public and is published to every paired sidecar; the token is not, and never leaves the phone |
+| A restricted feed's access record (SEE-156): the wallet the access was proven with, the device-key fingerprint that wallet bound, the publisher's request ID, the state, and the grant expiry | `noBackupFilesDir/feed-access/<connection ID>.json`, one atomic document per feed connection | App-private storage, out of backups. It holds no secret: the key is in the Keystore and the session is in its own vault |
+| The feed session (SEE-156): the one value that reads a restricted feed | `noBackupFilesDir/feed-sessions`, one vault | AES-256-GCM under the same Android Keystore key as a phone credential, in the same format |
+| The per-feed device key (SEE-156) | The Android Keystore, alias `seekervault.feed-access.v1.<connection ID>` | Generated in the Keystore, usable only for signing, and never readable by this app or any other. One key per feed connection, so two publishers cannot compare notes about the same device; a restored backup is a different device and asks again |
 | The owner's own record of what this phone did (SAW-023): who asked, the terms they reviewed, the network, the outcome, and the signature | `filesDir/activity/<connection ID>/<request ID>.json`, one file per request, written atomically. Nothing prunes it. | App-private storage; it holds public addresses, amounts, and outcomes, and no credential, key, or transaction bytes |
 
 - **The credential key lives in the Android Keystore** (`seekervault.credentials.v1`), created on first use. Its material never leaves the Keystore, so it can't be exported, backed up, or moved to another device. It protects credentials; it isn't a wallet key.
