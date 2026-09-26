@@ -30,7 +30,9 @@ type Grants interface {
 //
 // A grant runs for the lifetime this publisher asks for (PUBLISHER_ACCESS_GRANT_HOURS, six hours by
 // default; the gateway caps it at BROADCAST_MAX_GRANT_HOURS) and is renewed when a third of it is
-// left. So when this publisher cannot reach the gateway, an approved device keeps reading for at
+// left. The expiry recorded is the one the gateway acknowledged, and a third is a third of the
+// lifetime the gateway actually grants, so a gateway cap shorter than the lifetime asked for moves
+// the renewal earlier instead of letting the grant lapse. So when this publisher cannot reach the gateway, an approved device keeps reading for at
 // most one grant lifetime, and a device revoked in that time keeps reading for at most what was left
 // of its grant — never longer, because nothing renews a grant this publisher has revoked.
 type Syncer struct {
@@ -45,8 +47,20 @@ type Syncer struct {
 	wake        chan struct{}
 	idle        time.Duration
 	// One pass at a time, so a redemption's immediate attempt and the loop do not both send the
-	// same grant.
+	// same grant. It also guards the two fields below.
 	passing sync.Mutex
+	// capped is the lifetime the gateway was last seen to cap a grant at, zero while it has granted
+	// what it was asked for.
+	capped time.Duration
+	// unchecked is the devices due for renewal whose eligibility rule answered an error: their
+	// grants are not renewed, and the rule is asked again after a backoff.
+	unchecked map[string]recheck
+}
+
+// recheck is when a failed eligibility check is asked again.
+type recheck struct {
+	attempts int
+	due      time.Time
 }
 
 // SyncPlan is what a [Syncer] needs.
@@ -68,6 +82,7 @@ func NewSyncer(plan SyncPlan) *Syncer {
 		store: plan.Store, grants: plan.Grants, eligibility: plan.Eligibility,
 		lifetime: plan.Lifetime, channel: plan.Channel, log: plan.Log, now: plan.Now,
 		backoff: plan.Backoff, wake: make(chan struct{}, 1), idle: plan.Idle,
+		unchecked: map[string]recheck{},
 	}
 	if syncer.lifetime <= 0 {
 		syncer.lifetime = DefaultGrantLifetime
@@ -158,32 +173,50 @@ func (s *Syncer) SyncNow(ctx context.Context, grantID string) bool {
 }
 
 // renew re-asks the eligibility rule about every approved device whose grant is due for renewal,
-// revokes the ones it now refuses, and extends the rest.
+// revokes the ones it now refuses, and extends the ones it answered for. A device whose rule
+// answered an error is neither: its grant keeps the expiry it has, and the rule is asked again
+// after a backoff — an eligibility outage must not extend access it can no longer vouch for.
 func (s *Syncer) renew(ctx context.Context) error {
 	now := s.now()
-	before := s.lifetime / 3
+	before := s.effective() / 3
 	devices, err := s.store.Devices(ctx)
 	if err != nil {
 		return err
 	}
+	var checked []string
+	unchecked := map[string]recheck{}
 	for _, device := range devices {
 		grant := device.Grant
 		if device.State != store.DeviceApproved || grant == nil || grant.State != store.GrantActive ||
 			!grant.ExpiresAt.Before(now.Add(before)) {
 			continue
 		}
+		if waiting, failed := s.unchecked[device.ID]; failed && now.Before(waiting.due) {
+			unchecked[device.ID] = waiting
+			continue
+		}
 		decision, err := s.eligibility.Decide(ctx, Subject{
 			Wallet: device.Wallet, Installation: device.Installation, Label: device.Label,
 			Channel: s.channel,
 		})
-		if err == nil && decision == Ineligible {
+		switch {
+		case err != nil:
+			attempts := s.unchecked[device.ID].attempts
+			unchecked[device.ID] = recheck{attempts: attempts + 1, due: now.Add(s.backoff(attempts))}
+			s.log.Warn("the eligibility rule did not answer about a device; its grant is not renewed until it does",
+				"request", device.ID, "attempts", attempts+1, "error", err)
+		case decision == Ineligible:
 			s.log.Info("the eligibility rule no longer admits a device; revoking it", "request", device.ID)
 			if err := s.store.Revoke(ctx, device.ID, now); err != nil && !errors.Is(err, store.ErrDeviceState) {
 				return err
 			}
+		default:
+			checked = append(checked, device.ID)
 		}
 	}
-	renewed, err := s.store.Renew(ctx, now, before, now.Add(s.lifetime))
+	// Only the devices still due and still failing are remembered.
+	s.unchecked = unchecked
+	renewed, err := s.store.Renew(ctx, now, before, now.Add(s.lifetime), checked)
 	if err != nil {
 		return err
 	}
@@ -193,10 +226,41 @@ func (s *Syncer) renew(ctx context.Context) error {
 	return nil
 }
 
+// effective is the lifetime a grant really runs for: the one this publisher asks for, or the
+// gateway's cap when it grants less.
+func (s *Syncer) effective() time.Duration {
+	if s.capped > 0 && s.capped < s.lifetime {
+		return s.capped
+	}
+	return s.lifetime
+}
+
+// learn reads the gateway's cap from what it granted against what it was asked for. The gateway
+// answers whole seconds left of the grant it holds, so a lifetime within a minute of the one asked
+// for is the one asked for.
+func (s *Syncer) learn(requested, granted time.Duration) {
+	switch {
+	case granted <= 0:
+		// A gateway that says nothing about the lifetime is taken at the lifetime asked for.
+	case granted+time.Minute < requested:
+		if granted != s.capped {
+			s.log.Info("the gateway grants access for less than this publisher asks; renewing earlier",
+				"asked", requested, "granted", granted)
+		}
+		s.capped = granted
+	case requested > s.capped:
+		// It granted more than the cap it used to have: the operator raised or removed it.
+		s.capped = 0
+	}
+}
+
 // one sends one grant's wanted state and records what the gateway said.
 func (s *Syncer) one(ctx context.Context, grant store.AccessGrant) bool {
 	now := s.now()
-	var err error
+	var (
+		err          error
+		acknowledged time.Time
+	)
 	if grant.State == store.GrantActive {
 		lifetime := grant.ExpiresAt.Sub(now)
 		if lifetime < time.Second {
@@ -204,15 +268,22 @@ func (s *Syncer) one(ctx context.Context, grant store.AccessGrant) bool {
 			// (or the device's next redemption) is what gives it a lifetime again.
 			lifetime = time.Second
 		}
-		_, err = s.grants.GrantAccess(ctx, gateway.Grant{
+		var granted time.Duration
+		granted, err = s.grants.GrantAccess(ctx, gateway.Grant{
 			ID: grant.ID, SubscriberRef: grant.SubscriberRef, DeviceRef: "device-" + grant.Installation,
 			SessionDigest: grant.SessionDigest, Lifetime: lifetime,
 		})
+		if err == nil && granted > 0 {
+			// What the gateway enforces, after its BROADCAST_MAX_GRANT_HOURS cap: the renewal is
+			// scheduled from this, not from what was asked for.
+			s.learn(lifetime, granted)
+			acknowledged = now.Add(granted)
+		}
 	} else {
 		_, err = s.grants.RevokeAccess(ctx, grant.ID)
 	}
 	if err == nil {
-		if err := s.store.GrantSynced(ctx, grant.ID, grant.Revision, now); err != nil {
+		if err := s.store.GrantSynced(ctx, grant.ID, grant.Revision, now, acknowledged); err != nil {
 			s.log.Error("a confirmed grant was not recorded", "grant", grant.ID, "error", err)
 			return false
 		}
