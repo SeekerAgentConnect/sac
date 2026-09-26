@@ -155,6 +155,51 @@ class AppNavigationTest {
     }
 
     @Test
+    fun aHistoryRecordOpensFromInboxAsAFullPageAndBackReturnsToInbox() {
+        val identity = ReviewIdentity.Signal(CONNECTION, REQUEST)
+        val navigator = AppNavigator()
+
+        // Not from Home, and not over a sheet the owner is working in.
+        assertFalse(navigator.openHistoryDetail(identity))
+        assertTrue(navigator.selectTab(AppScreen.Inbox))
+        assertTrue(navigator.openHistoryDetail(identity))
+        assertEquals(NavigationState(AppScreen.HistoryDetail(identity)), navigator.state)
+        // Nothing is pushed over a record: it is read-only and has no review to hand off to.
+        assertFalse(navigator.openReview(identity))
+
+        assertTrue(navigator.back())
+        assertEquals(NavigationState(AppScreen.Inbox), navigator.state)
+    }
+
+    @Test
+    fun aReviewAboutAClosedItemIsReplacedByItsRecord() {
+        val identity = ReviewIdentity.Private(CONNECTION, REQUEST)
+        val other = ReviewIdentity.Private(CONNECTION, OTHER_REQUEST)
+        val navigator = AppNavigator()
+        assertTrue(navigator.openReview(identity))
+
+        assertFalse(navigator.openHistoryDetail(other))
+        assertTrue(navigator.openHistoryDetail(identity))
+        assertEquals(NavigationState(AppScreen.HistoryDetail(identity)), navigator.state)
+        assertTrue(navigator.back())
+        assertEquals(NavigationState(AppScreen.Inbox), navigator.state)
+    }
+
+    @Test
+    fun savedStateRoundTripsAHistoryRecord() {
+        listOf(
+                ReviewIdentity.Private(CONNECTION, REQUEST),
+                ReviewIdentity.Signal(CONNECTION, OTHER_REQUEST),
+            )
+            .forEach { identity ->
+                val state = NavigationState(AppScreen.HistoryDetail(identity))
+                val saved = encodeNavigationState(state)
+                assertEquals(state, decodeNavigationState(saved))
+                assertEquals(null, decodeNavigationState(saved.dropLast(1)))
+            }
+    }
+
+    @Test
     fun savedStateRoundTripsTypedRoutesAndRejectsCorruption() {
         val state =
             NavigationState(

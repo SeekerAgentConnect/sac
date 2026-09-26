@@ -2132,7 +2132,8 @@ fun NotificationRequestStateScreen(
         when (status) {
             NotificationOpenStatus.Loading -> R.string.notification_open_loading
             NotificationOpenStatus.Gone,
-            NotificationOpenStatus.Current -> R.string.notification_open_gone
+            NotificationOpenStatus.Current,
+            NotificationOpenStatus.Closed -> R.string.notification_open_gone
             NotificationOpenStatus.Removed -> R.string.notification_open_removed
             NotificationOpenStatus.Revoked -> R.string.notification_open_revoked
             NotificationOpenStatus.Unavailable -> R.string.notification_open_unavailable

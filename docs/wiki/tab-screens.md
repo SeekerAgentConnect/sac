@@ -9,7 +9,8 @@ Android `:designsystem` library. Each destination separates display state from a
   pairing, camera permission, scanner, history, and review navigation.
 - `ScreenScaffold` owns the app bar, overlaid four-item navigation bar, and the scroll body whose
   trailing space lets the last item clear that bar. Add connection keeps the navigation visible
-  with no selected tab.
+  with no selected tab. `DetailScreenScaffold` is the same app bar with no navigation bar, for a
+  page reached from a tab such as a History record ([history details](history-details.md)).
 - Empty Home server, Home pending, Inbox pending/history, and Activity states use the shared
   design-system empty-state component.
 
