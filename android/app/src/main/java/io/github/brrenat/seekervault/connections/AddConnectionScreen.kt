@@ -392,7 +392,15 @@ private fun ConfirmFeed(
         value = reference.serverId,
         valueStyle = FactRowValueStyle.MonoWrap,
     )
-    ScreenCaption(stringResource(R.string.feed_confirm_public))
+    ScreenCaption(
+        stringResource(
+            // A reference that says restricted is a hint and a floor, not a permission: the
+            // gateway's own manifest decides, and a feed added from a restricted reference whose
+            // manifest says public is refused (SEE-156).
+            if (reference.restricted) R.string.feed_confirm_restricted
+            else R.string.feed_confirm_public
+        )
+    )
     if (failure != null) {
         ScreenCaption(
             text = feedFailureText(failure, reference.gatewayUrl),

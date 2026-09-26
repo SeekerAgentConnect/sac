@@ -178,7 +178,12 @@ class ForegroundFeedManager(
                 }
                 val ended = listen(origin, grant, feeds, current)
                 attempt = 0
-                when (val next = ended?.let(::afterClose)) {
+                // A restricted channel's access changed under this ticket (SEE-156). The ticket
+                // named the channel that is being retired, so it is spent whatever the broker said
+                // about the close: the next pass asks for a fresh one, and gets the channel back
+                // only if this device's grant is still live.
+                if (ended.reticket) grant = null
+                when (val next = ended.code?.let(::afterClose)) {
                     is AfterClose.Stop -> {
                         publish(current) { it + (origin to FeedListenerState.Refused(next.code)) }
                         return
@@ -236,7 +241,7 @@ class ForegroundFeedManager(
         grant: FeedGrant,
         feeds: Map<String, Connection>,
         current: Long,
-    ): Int? {
+    ): Ended {
         val owners = mutableMapOf<String, Connection>()
         val resume = mutableMapOf<String, FeedCursor>()
         for (granted in grant.channels) {
@@ -245,9 +250,10 @@ class ForegroundFeedManager(
             owners[granted.streamChannel] = connection
             cursors.get(connection.serverId)?.cursor?.let { resume[granted.streamChannel] = it }
         }
-        if (owners.isEmpty()) return null
+        if (owners.isEmpty()) return Ended()
         val epochs = mutableMapOf<String, String>()
         var closed: Int? = null
+        var spent = false
         try {
             stream.listen(origin, grant.ticket, resume).collect { event ->
                 when (event) {
@@ -263,6 +269,17 @@ class ForegroundFeedManager(
                     }
                     is FeedStreamEvent.Published -> {
                         val connection = owners[event.streamChannel] ?: return@collect
+                        if (event.event.documentCase == FeedEvent.DocumentCase.ACCESS_CHANGED) {
+                            // A grant on this channel was revoked (SEE-156). The event says
+                            // nothing about who, so this listener finds out the only way it can:
+                            // it reads the feed, and the gateway either answers or refuses. A
+                            // refusal is what records the revocation on this phone, which is why
+                            // the read happens even though the stream is about to end.
+                            snapshot(connection)
+                            spent = true
+                            closed = null
+                            throw StreamEnded()
+                        }
                         apply(connection, event.event)
                         epochs[event.streamChannel]?.let {
                             remember(connection.serverId, FeedCursor(it, event.offset))
@@ -289,10 +306,15 @@ class ForegroundFeedManager(
                 }
             }
         } catch (e: StreamEnded) {
-            return closed
+            return Ended(closed, spent)
         }
-        return closed
+        return Ended(closed, spent)
     }
+
+    /**
+     * How a stream ended: the broker's close code, if it gave one, and whether the ticket is spent.
+     */
+    private data class Ended(val code: Int? = null, val reticket: Boolean = false)
 
     /**
      * What to do about one channel when the stream opens: nothing, or read the snapshot.

@@ -73,7 +73,10 @@ import io.github.brrenat.seekervault.policy.PolicyEditorDraft
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyLibrarySheetScreen
 import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.FeedAccess
 import io.github.brrenat.seekervault.servers.executable
+import io.github.brrenat.seekervault.servers.feedAccess
+import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.ui.SeekerSheet
 import io.github.brrenat.seekervault.ui.SheetInputBarrier
 import io.github.brrenat.seekervault.wallet.WalletRoute
@@ -961,9 +964,14 @@ private fun ConnectionDetailsRoute(
         LaunchedEffect(id, state.loaded) { if (state.loaded) onBack() }
         return
     }
+    val access = state.access[id]
+    val restricted = connection.server.manifest?.feedAccess is FeedAccess.Restricted
+    // Opening a restricted feed asks the publisher where this phone stands, signed with the
+    // device key (SEE-156). It never opens the wallet: only the owner asking does that.
     LaunchedEffect(id) {
         viewModel.refresh(id)
         if (connection.mode == ConnectionMode.GatewayFeed) onOperationRefresh()
+        if (restricted && access != null) viewModel.checkAccess(id)
     }
     ConnectionDetailLibraryScreen(
         connection = connection,
@@ -975,6 +983,12 @@ private fun ConnectionDetailsRoute(
         onRefresh = {
             viewModel.refresh(id)
             if (connection.mode == ConnectionMode.GatewayFeed) onOperationRefresh()
+            // Refresh is also the Retry the ticket asks for: a feed nothing has been asked of
+            // yet asks — which opens the wallet once — and one that already has a request only
+            // checks, which does not (SEE-156).
+            if (restricted) {
+                if (access == null) viewModel.requestAccess(id) else viewModel.checkAccess(id)
+            }
         },
         onRename = { viewModel.rename(id, it) },
         onDisconnect = { viewModel.askToDisconnect(id) },
@@ -991,6 +1005,7 @@ private fun ConnectionDetailsRoute(
         support = state.support[id],
         feed = state.feeds.gateways[connection.serverUrl],
         availability = state.feedStatus.availabilityOf(id),
+        access = access,
     )
 }
 

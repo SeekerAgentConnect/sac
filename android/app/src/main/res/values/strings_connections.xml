@@ -56,6 +56,13 @@
     <string name="connection_status_updates_not_configured">Live updates are not configured. Refresh still works.</string>
     <string name="connection_status_upgrade_required">This sidecar must be upgraded for live updates. Refresh still works.</string>
     <string name="connection_status_updates_incompatible">This sidecar advertised an incompatible live-update address. Check its configuration.</string>
+
+    <!-- Restricted feeds (SEE-156): where this device's request to read the feed stands. -->
+    <string name="connection_status_access_pending">Waiting for the publisher to approve this device.</string>
+    <string name="connection_status_access_approved">Approved. Finishing the connection…</string>
+    <string name="connection_status_access_rejected">The publisher didn\'t approve this device. Ask again to make a new request.</string>
+    <string name="connection_status_access_revoked">The publisher revoked this device\'s access to the feed. Signals already on this phone stay.</string>
+    <string name="connection_status_access_expired">This device\'s access to the feed has run out. Check again to renew it.</string>
     <string name="checked_at">Last synced %1$s</string>
 
     <string name="field_server">Server</string>
@@ -97,6 +104,13 @@
     <string name="message_removed">Removed %1$s from this phone.</string>
     <string name="message_renamed">Renamed to %1$s.</string>
 
+    <!-- Restricted feeds (SEE-156): asking for access stopped before a decision. -->
+    <string name="access_problem_no_wallet">Connect a wallet first. A restricted feed grants access to a wallet, not to a phone.</string>
+    <string name="access_problem_not_signed">The wallet didn\'t sign, so nothing was sent.</string>
+    <string name="access_problem_bad_challenge">The publisher asked this phone to sign something it didn\'t recognise, so nothing was signed.</string>
+    <string name="access_problem_unreachable">Couldn\'t reach the publisher. Nothing changed — try again.</string>
+    <string name="access_problem_refused">The publisher refused the request.</string>
+
     <string name="add_title">Add connection</string>
     <string name="add_instructions">Scan or enter a direct pairing code or a public feed reference.</string>
     <string name="scan_qr">Scan QR code</string>
@@ -123,6 +137,8 @@
     <string name="feed_reference_bad_gateway">The gateway address in the feed reference isn\'t valid.</string>
     <string name="feed_reference_insecure_gateway">The feed\'s gateway doesn\'t use HTTPS. Only a debug build accepts plain HTTP, and only to 127.0.0.1 over adb reverse.</string>
     <string name="feed_reference_bad_server_id">The publisher\'s server ID in the feed reference isn\'t valid.</string>
+    <string name="feed_reference_bad_access">This feed reference asks for an access policy this version of the app doesn\'t know. Update the app or ask the publisher for a current reference.</string>
+    <string name="feed_reference_bad_invitation">The invitation in this feed reference is incomplete or damaged. Ask the publisher to issue a new one.</string>
 
     <string name="confirm_title">Pair with this server?</string>
     <string name="confirm_trust">Pair only with a server you run. Whoever controls it can send this phone requests to review.</string>
@@ -145,6 +161,7 @@
     <string name="field_gateway">Gateway</string>
     <string name="feed_confirm_title">Add this public feed?</string>
     <string name="feed_confirm_public">This is a public broadcast feed. The phone creates no credential, never contacts the publisher, and reads its manifest and proposals through the gateway shown above.</string>
+    <string name="feed_confirm_restricted">This feed is restricted. After it is added, the publisher asks you to prove you control your wallet — by signing a message, not a transaction, which moves no funds — and then decides whether this device may read it.</string>
     <string name="feed_add">Add feed</string>
     <string name="feed_adding">Adding…</string>
     <string name="feed_added_title">Feed added</string>

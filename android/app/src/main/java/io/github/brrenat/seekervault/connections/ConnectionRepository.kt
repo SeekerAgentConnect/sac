@@ -207,6 +207,12 @@ class ConnectionRepository(
     syncStore: SyncStore? = null,
     updateTransport: UpdateTransport? = null,
     private val onConnectionUnavailable: (String) -> Unit = {},
+    /**
+     * A connection was removed from this phone for good. Unlike [onConnectionUnavailable], which
+     * also fires when a credential stops working, this one means the connection is gone — so it is
+     * where a restricted feed's access record, session and device key go with it (SEE-156).
+     */
+    private val onConnectionRemoved: suspend (String) -> Unit = {},
 ) : SynchronizationHost {
     private val lock = Mutex()
     private val loading = Mutex()
@@ -1263,7 +1269,8 @@ class ConnectionRepository(
 
     /**
      * Removes the connection from this phone only: its credential first, then its answers, the
-     * rules the owner wrote for it, the proposals it read (SEE-89), and its metadata.
+     * rules the owner wrote for it, the proposals it read (SEE-89), its restricted-feed access if
+     * it had any (SEE-156), and its metadata.
      *
      * What outlives it is the owner's own Activity: what this phone did is worth keeping after the
      * connection that asked for it is gone (SAW-023, docs/wiki/shared-proposals.md#retention).
@@ -1279,6 +1286,7 @@ class ConnectionRepository(
             _inbox.update { it.copy(pending = it.pending - id) }
             publish()
         }
+        onConnectionRemoved(id)
         onConnectionUnavailable(id)
     }
 
@@ -1590,6 +1598,12 @@ class ConnectionRepository(
                     GatewayException.Kind.Unimplemented -> true
                     GatewayException.Kind.Unreachable,
                     GatewayException.Kind.BadResponse,
+                    // A feed's access refusals (SEE-156). They cannot come of an approval — that
+                    // is a direct server's call and carries no feed session — and if one ever did,
+                    // it would say nothing about whether the approval was taken.
+                    GatewayException.Kind.AccessRequired,
+                    GatewayException.Kind.AccessRevoked,
+                    GatewayException.Kind.AccessExpired,
                     GatewayException.Kind.Other -> false
                 }
 
