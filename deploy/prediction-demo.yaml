@@ -108,7 +108,7 @@ services:
   - key: ADMIN_PASSWORDS
     scope: RUN_AND_BUILD_TIME
     type: SECRET
-    value: EV[1:bNonDy4dR083bP1UbI7qDZWtHp0GNKvc:meo88BpeM061Yl3AZ4ufnxICB17b8ZG/D1d5vZA1yCGngUcY7NjZ/5lTBBSff8hcpixDS+wT+9W4rUBVTIUpsPEdm0WqPbeBjHHE+a4SpSzx7A==]
+    value: EV[1:Ddyg0TWypbEoKBu9UTha5a+tB1D2jgEH:XUbpuNfA6n+1JDGlzPMGwPeR2Iso6Rz7g4i60XZIzaVWk5DYBOKa3MAiH4Gh2tb8DC3pW7MEF2U+PESjwApakpvbmRv6NRvu8bpl+2UQPAimMw==]
   health_check:
     failure_threshold: 9
     http_path: /healthz
