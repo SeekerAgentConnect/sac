@@ -19,6 +19,7 @@ import java.io.IOException
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -55,42 +56,73 @@ class ConfirmationScheduler(
     private val network =
         object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                // Checks that were waiting out an unreachable endpoint are due again now; the
+                // loop only runs what is due, so waking it alone would leave them on their backoff.
+                tracker.connectivityRestored()
                 wake.trySend(Unit)
             }
         }
+
+    /**
+     * Counts lifecycle transitions. Each one takes a number when it is called, and acts only if no
+     * later transition has been called since, so a foreground whose preparation is still loading
+     * when the app is hidden again never starts the loop behind the background's back.
+     */
+    private val transitions = AtomicLong()
 
     init {
         tracker.onDue = ::poke
     }
 
-    /** The app is visible: check what is due now and keep checking while it stays visible. */
-    fun onForeground() {
-        synchronized(lock) {
-            if (loop?.isActive == true) {
-                wake.trySend(Unit)
-                return
-            }
-            // Restored connectivity is a reason to look again straight away.
-            runCatching { connectivity?.registerDefaultNetworkCallback(network) }
-            loop = scope.launch {
-                while (isActive) {
-                    val next = tracker.checkDue()
-                    val wait = next?.let { Duration.between(now(), it).toMillis().coerceAtLeast(0) }
-                    if (wait == null) wake.receive()
-                    else withTimeoutOrNull(wait.coerceAtLeast(MIN_LOOP_MILLIS)) { wake.receive() }
+    /**
+     * The app is visible: [prepare] (reading what is stored, backfilling) runs first, then what is
+     * due is checked, and checking continues while the app stays visible. If the app is hidden
+     * again before [prepare] finishes, the loop is not started.
+     */
+    fun onForeground(prepare: suspend () -> Unit = {}) {
+        val transition = transitions.incrementAndGet()
+        scope.launch {
+            prepare()
+            synchronized(lock) {
+                if (transitions.get() != transition) return@launch
+                if (loop?.isActive == true) {
+                    wake.trySend(Unit)
+                    return@launch
+                }
+                // Restored connectivity is a reason to look again straight away.
+                runCatching { connectivity?.registerDefaultNetworkCallback(network) }
+                loop = scope.launch {
+                    while (isActive) {
+                        val next = tracker.checkDue()
+                        val wait = next?.let {
+                            Duration.between(now(), it).toMillis().coerceAtLeast(0)
+                        }
+                        if (wait == null) wake.receive()
+                        else
+                            withTimeoutOrNull(wait.coerceAtLeast(MIN_LOOP_MILLIS)) {
+                                wake.receive()
+                            }
+                    }
                 }
             }
         }
     }
 
-    /** The app is hidden: hand what is unfinished to WorkManager. */
+    /**
+     * The app is hidden: stop the foreground loop and hand what is unfinished to WorkManager. A
+     * later [onForeground] supersedes it.
+     */
     fun onBackground() {
-        synchronized(lock) {
-            loop?.cancel()
-            loop = null
-            runCatching { connectivity?.unregisterNetworkCallback(network) }
+        val transition = transitions.incrementAndGet()
+        scope.launch {
+            synchronized(lock) {
+                if (transitions.get() != transition) return@launch
+                loop?.cancel()
+                loop = null
+                runCatching { connectivity?.unregisterNetworkCallback(network) }
+            }
+            schedule(ExistingWorkPolicy.REPLACE)
         }
-        schedule(ExistingWorkPolicy.REPLACE)
     }
 
     /** Something became due. The foreground loop wakes; without one, the work is (re)scheduled. */

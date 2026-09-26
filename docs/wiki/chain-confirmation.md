@@ -120,7 +120,10 @@ One coordinator (`ConfirmationTracker`), three callers, one mutex:
 
 - **Foreground** — `MainActivity.onStart` loads, backfills, and starts a loop that runs each check
   when it is due, two seconds after a new signature and on the tracker's backoff after that. A
-  restored network wakes it.
+  restored network makes every check that was only waiting out an unreachable endpoint due at once
+  (`connectivityRestored`) and wakes the loop; any other backoff, and the attempt count, are kept.
+  Transitions are ordered: if the app is hidden again while the foreground is still loading, the
+  loop is not started, and the background hand-off stands.
 - **Background** — `MainActivity.onStop` hands anything unfinished to WorkManager as one unique,
   one-time request (`chain-confirmations`) with `NetworkType.CONNECTED` and an initial delay equal to
   the next due check. Each pass schedules its successor while something is unfinished. It is not

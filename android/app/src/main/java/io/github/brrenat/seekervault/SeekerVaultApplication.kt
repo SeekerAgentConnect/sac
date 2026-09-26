@@ -298,7 +298,9 @@ class SeekerVaultApplication : Application() {
      * force-stopped app catches up — nothing ran while it was stopped.
      */
     fun onConfirmationsForeground() {
-        confirmationScope.launch {
+        // The scheduler orders the transitions: if the app is hidden while this is still loading,
+        // the loop is not started afterwards.
+        confirmationScheduler.onForeground {
             try {
                 confirmations.load()
                 connectionRepository.load()
@@ -310,16 +312,13 @@ class SeekerVaultApplication : Application() {
             } catch (_: java.io.IOException) {
                 // The history or the tracking couldn't be read; nothing is backfilled this time.
             }
-            confirmationScheduler.onForeground()
         }
     }
 
     /** The app was hidden: what is unfinished is handed to background work. */
     fun onConfirmationsBackground() {
-        confirmationScope.launch { confirmationScheduler.onBackground() }
+        confirmationScheduler.onBackground()
     }
-
-    private val confirmationScope by lazy { CoroutineScope(SupervisorJob() + connectionIo) }
 
     /** One registry for the process, so every screen resolves an operation the same way. */
     val providerRegistry: ProviderRegistry by lazy { providers() }

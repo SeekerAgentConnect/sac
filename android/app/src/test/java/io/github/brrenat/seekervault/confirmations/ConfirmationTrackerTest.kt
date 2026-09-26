@@ -206,6 +206,42 @@ class ConfirmationTrackerTest {
     }
 
     @Test
+    fun restoredConnectivityMakesOnlyUnreachableChecksDueAtOnce() = runBlocking {
+        send()
+        chain.failure = SolanaException(SolanaProblem.Unreachable)
+        // Deep into the backoff, where the next attempt is minutes away.
+        repeat(8) {
+            now = checkNotNull(tracker.nextDue())
+            tracker.checkDue()
+        }
+        val attempts = trackingStore.get(key)!!.attempts
+        assertTrue(checkNotNull(tracker.nextDue()) > now.plusSeconds(60))
+
+        assertTrue(tracker.connectivityRestored())
+        assertEquals(now, tracker.nextDue())
+        assertEquals(ChainReason.Unreachable, check().reason)
+        assertEquals(attempts, trackingStore.get(key)!!.attempts)
+
+        chain.failure = null
+        chain.status = SignatureStatus(9, ChainLevel.Finalized, null)
+        chain.body = ChainTransaction(9, signedWire(), null)
+        tracker.checkDue()
+        assertEquals(ChainState.Confirmed, check().state)
+    }
+
+    @Test
+    fun restoredConnectivityLeavesAnEndpointThatAnsweredOnItsBackoff() = runBlocking {
+        send()
+        now = checkNotNull(tracker.nextDue())
+        chain.failure = SolanaException(SolanaProblem.RateLimited)
+        tracker.checkDue()
+        val next = checkNotNull(tracker.nextDue())
+
+        assertFalse(tracker.connectivityRestored())
+        assertEquals(next, tracker.nextDue())
+    }
+
+    @Test
     fun automaticChecksStopAfterTheirBudgetAndSaySo() = runBlocking {
         send()
         chain.failure = SolanaException(SolanaProblem.Unreachable)

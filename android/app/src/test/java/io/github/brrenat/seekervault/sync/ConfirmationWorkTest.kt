@@ -29,6 +29,7 @@ import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
 import java.io.IOException
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -102,6 +103,34 @@ class ConfirmationWorkTest {
     }
 
     @Test
+    fun aForegroundStillLoadingWhenTheAppIsHiddenAgainNeverStartsTheLoop() {
+        val tracker = tracker()
+        val scheduler = ConfirmationScheduler(workManager, tracker, scope) { now }
+        val loading = CompletableDeferred<Unit>()
+        scheduler.onForeground { loading.await() }
+        scheduler.onBackground()
+        loading.complete(Unit)
+
+        // No loop is running, so a new submission goes to WorkManager rather than to a loop.
+        submit(tracker, RequestKey(CONNECTION, REQUEST))
+        assertEquals(1, workInfos().size)
+    }
+
+    @Test
+    fun aForegroundThatFinishesLoadingWhileVisibleRunsTheLoop() {
+        val tracker = tracker()
+        val scheduler = ConfirmationScheduler(workManager, tracker, scope) { now }
+        scheduler.onForeground()
+
+        // The loop takes the poke; nothing is handed to WorkManager while the app is visible.
+        submit(tracker, RequestKey(CONNECTION, REQUEST))
+        assertTrue(workInfos().isEmpty())
+
+        scheduler.onBackground()
+        assertEquals(1, workInfos().size)
+    }
+
+    @Test
     fun aWorkerPassSucceedsOrRetriesOnAStorageFailure() = runBlocking {
         assertEquals(ListenableWorker.Result.success(), worker { true }.doWork())
         assertEquals(ListenableWorker.Result.retry(), worker { throw IOException("x") }.doWork())
@@ -124,6 +153,19 @@ class ConfirmationWorkTest {
         tracker.submitted(key, ByteArray(64) { 7 })
         scheduler.schedule(ExistingWorkPolicy.APPEND_OR_REPLACE)
         assertTrue(workInfos().isNotEmpty())
+    }
+
+    private fun submit(tracker: ConfirmationTracker, key: RequestKey) {
+        tracker.expect(
+            Submission(
+                key,
+                TrackingOrigin.Operation,
+                Network.NETWORK_DEVNET,
+                WALLET,
+                byteArrayOf(1) + ByteArray(64) + ByteArray(20) { 3 },
+            )
+        )
+        tracker.submitted(key, ByteArray(64) { 7 })
     }
 
     private fun tracker() =

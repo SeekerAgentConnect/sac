@@ -246,6 +246,27 @@ class ConfirmationTracker(
         if (due) onDue()
     }
 
+    /**
+     * The phone is online again. A check that is only waiting because the endpoint couldn't be
+     * reached is due now rather than at the end of its backoff, which can be hours long by then.
+     * Nothing else is re-armed: an endpoint that answered, even unhelpfully, keeps its backoff, and
+     * the attempt count is unchanged. Returns whether anything became due.
+     */
+    fun connectivityRestored(): Boolean =
+        synchronized(lock) {
+            val at = now()
+            val waiting =
+                store.list().filter { tracking ->
+                    tracking.unfinished &&
+                        tracking.check.state == ChainState.Checking &&
+                        tracking.check.reason == ChainReason.Unreachable &&
+                        tracking.check.nextCheckAt?.let { it > at } == true
+                }
+            waiting.forEach { store.put(it.copy(check = it.check.copy(nextCheckAt = at))) }
+            if (waiting.isNotEmpty()) publishAll()
+            waiting.isNotEmpty()
+        }
+
     /** When the next automatic check is due, or null when nothing is waiting. */
     fun nextDue(): Instant? =
         synchronized(lock) {
