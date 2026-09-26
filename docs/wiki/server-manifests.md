@@ -12,7 +12,7 @@ A publisher does not write one by hand: the templates build and publish it from 
 
 ## The document
 
-[`proto/seekervault/server/v1/manifest.proto`](../../proto/seekervault/server/v1/manifest.proto). It is a separate package from `seekervault.request.v1` because every kind of server publishes one, including the Go gateway (SEE-90) and the publisher templates (SEE-95, SEE-96), which serve no `RequestService` and speak no MCP.
+[`packages/protocol/proto/seekervault/server/v1/manifest.proto`](../../packages/protocol/proto/seekervault/server/v1/manifest.proto). It is a separate package from `seekervault.request.v1` because every kind of server publishes one, including the Go gateway (SEE-90) and the publisher templates (SEE-95, SEE-96), which serve no `RequestService` and speak no MCP.
 
 | Field | What it is |
 | --- | --- |
@@ -33,7 +33,7 @@ The `oneof` is the last field group in the message on purpose. Where a oneof's b
 
 | | **Direct** | **Gateway feed** |
 | --- | --- | --- |
-| Whose server | The owner's own (`mcp-server/`) | A developer's public publisher |
+| Whose server | The owner's own (`servers/mcp-server/`) | A developer's public publisher |
 | How it is added | A pairing code, `pnpm pair` | A public feed reference |
 | Credential on the phone | One issued by the sidecar | **None** |
 | Who sees a request | Only the owner who paired | Every subscriber of the channel |
@@ -46,7 +46,7 @@ authorizes no signing. `docs/architecture.md` has the whole picture.
 
 ## What the phone checks, and why
 
-[`servers/ManifestValidation.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/servers/ManifestValidation.kt) is the only way a manifest becomes something the app will hold, and every rule has one `ManifestProblem` of its own. They fall into three groups.
+[`servers/ManifestValidation.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/servers/ManifestValidation.kt) is the only way a manifest becomes something the app will hold, and every rule has one `ManifestProblem` of its own. They fall into three groups.
 
 **Identity.** The manifest has to be about the server this connection already trusts (`other_server`, `bad_server_id`), at the origin it already goes to (`other_endpoint`, `bad_endpoint`), in the mode it is already in (`other_mode`, `no_mode`). Nothing in a manifest can move a connection: it confirms where the phone is talking and can never redirect it. In particular **a connection can never change mode** — a mode is never guessed, and a missing one is refused rather than read as the more permissive case.
 
@@ -71,7 +71,7 @@ The manifest is cached because it is the server's data. **Support is not cached*
 
 ## What the owner is told
 
-[`servers/ServerSupport.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/servers/ServerSupport.kt), in the order the states are reported:
+[`servers/ServerSupport.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/servers/ServerSupport.kt), in the order the states are reported:
 
 | State | What it means | Executable |
 | --- | --- | --- |
@@ -112,7 +112,7 @@ It is read by the same rules a pairing code is (`FeedReferences`, which shares t
 
 **The existing Add connection screen starts this path.** It scans or accepts a pasted reference,
 shows the gateway origin, server ID and public/no-credential boundary for confirmation, and only then
-calls `ConnectionRepository.addFeed`. [`FeedGateway`](../../android/app/src/main/java/io/github/brrenat/seekervault/connections/FeedGateway.kt) is still the one seam through which the manifest arrives, and SEE-91's [`ConnectFeedGateway`](../../android/app/src/main/java/io/github/brrenat/seekervault/feeds/ConnectFeedGateway.kt) implements it. The identity, origin and channel are checked before anything is written; no call reaches a publisher and no credential is created. A newly stored feed is observed immediately by the authoritative snapshot, foreground stream and optional topic-subscription owners, without restarting the app. There is deliberately still no Android intent filter for a `seekervault://feed` deep link. The owner flow and every result are in [`feed-onboarding.md`](feed-onboarding.md); the publisher's side is [`docs/guides/server-development.md#5-connect-the-app`](../guides/server-development.md#5-connect-the-app).
+calls `ConnectionRepository.addFeed`. [`FeedGateway`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/connections/FeedGateway.kt) is still the one seam through which the manifest arrives, and SEE-91's [`ConnectFeedGateway`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/feeds/ConnectFeedGateway.kt) implements it. The identity, origin and channel are checked before anything is written; no call reaches a publisher and no credential is created. A newly stored feed is observed immediately by the authoritative snapshot, foreground stream and optional topic-subscription owners, without restarting the app. There is deliberately still no Android intent filter for a `seekervault://feed` deep link. The owner flow and every result are in [`feed-onboarding.md`](feed-onboarding.md); the publisher's side is [`docs/guides/server-development.md#5-connect-the-app`](../guides/server-development.md#5-connect-the-app).
 
 ## Where the mode lives
 

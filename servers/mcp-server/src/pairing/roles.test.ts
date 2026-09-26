@@ -16,9 +16,9 @@ import {
   ConnectionMode,
   ServerEnvironment,
 } from "@seeker-vault/server-sdk/protocol";
-import { SERVER_PROTOCOL_VERSION } from "../../../server-sdk/src/manifest.ts";
+import { SERVER_PROTOCOL_VERSION } from "../../../../packages/server-sdk/src/manifest.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
-import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
+import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";
 import {
   Code,
   ConnectError,
@@ -31,7 +31,7 @@ import {
 } from "../testing/clients.ts";
 import { FakeChain, startFakeRpc, type FakeRpc } from "../testing/chain.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
+import { PairingStore } from "../../../../packages/server-sdk/src/storage/pairing-store.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);

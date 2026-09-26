@@ -7,15 +7,15 @@ closes. Every phone subscribed to its channel reads the same document, and each 
 their own side and their own stake on their own device and approves it there.
 
 **It is one of two demonstrations, and it is independent.** It builds, tests, images and runs
-without [`demo-copytrading/`](../demo-copytrading), without the Direct Server SDK, and without the
+without [`examples/demo-signals/`](../demo-signals), without the Direct Server SDK, and without the
 MCP server. The things it needs that it does not contain are a reachable feed gateway and a
 prediction provider. The two demos share a source library —
-[`publisher-support/`](../publisher-support), which has no command, no image and no deployment of its
+[`packages/publisher-support/`](../../packages/publisher-support), which has no command, no image and no deployment of its
 own — and nothing else: not a database, not a credential, not a container, not a lifecycle.
 Restarting or cancelling here does nothing to the other demo's source.
 
 For a clean-host deployment beside the gateway or all four applications, follow the canonical
-numbered [`deploy/README.md`](../deploy/README.md). This guide remains the application/API reference.
+numbered [`deploy/README.md`](../../deploy/README.md). This guide remains the application/API reference.
 
 **Nothing comes back.** This server never learns who is subscribed, which side anyone took, whether
 they went ahead, or what came of it. There is no table for any of that, no field in its API that
@@ -38,15 +38,15 @@ can see would be a publisher that argues with itself.
 | [`internal/api`](internal/api) | How its discovery joins the shared API frame |
 | [`internal/boundary`](internal/boundary) | What this demo is, as tests over its own source |
 | [`Dockerfile`](Dockerfile) | This demo's image, and only this demo's |
-| [`../deploy/prediction/compose.yaml`](../deploy/prediction/compose.yaml) | The portable stack: only this demo on host loopback. `ctl` is an opt-in profile |
-| [`../deploy/prediction/.env.example`](../deploy/prediction/.env.example) | Deployment-only settings and the explicit durable volume name |
+| [`../../deploy/prediction/compose.yaml`](../../deploy/prediction/compose.yaml) | The portable stack: only this demo on host loopback. `ctl` is an opt-in profile |
+| [`../../deploy/prediction/.env.example`](../../deploy/prediction/.env.example) | Deployment-only settings and the explicit durable volume name |
 | [`.env.example`](.env.example) | Every setting, with its default and what it means. Copy to `.env` here, which git ignores |
 
 Everything durable — the market rows, the signals, their revisions, their idempotency keys and the
 outbox that gets them to the gateway — lives in
-[`publisher-support/store`](../publisher-support/store); the client that reaches the gateway is
-[`publisher-support/gateway`](../publisher-support/gateway); the API frame both demos serve is
-[`publisher-support/api`](../publisher-support/api). This module supplies the provider, the filters,
+[`packages/publisher-support/store`](../../packages/publisher-support/store); the client that reaches the gateway is
+[`packages/publisher-support/gateway`](../../packages/publisher-support/gateway); the API frame both demos serve is
+[`packages/publisher-support/api`](../../packages/publisher-support/api). This module supplies the provider, the filters,
 the reconciler, its own configuration and its own deployment.
 
 ## 1. What it needs
@@ -55,7 +55,7 @@ the reconciler, its own configuration and its own deployment.
 | --- | --- | --- |
 | Go | 1.27.1, as [`go.mod`](go.mod) requires | Building from source and running the tests |
 | Docker with Compose v2 | any current release | Building and running the image |
-| A reachable feed gateway | [`feed-gateway/`](../feed-gateway) | Where publications go and where phones read |
+| A reachable feed gateway | [`services/gateway/`](../../services/gateway) | Where publications go and where phones read |
 | A publisher credential | issued by that gateway's operator | Authenticates this source to it |
 | A prediction provider | Jupiter's prediction API | Where the markets come from — **keyless by default** |
 
@@ -77,7 +77,7 @@ It may be a file instead (`PREDICTION_API_KEY_FILE`).
 `PREDICTION_CALL_GAP_MS` (default 2100) is what keeps a keyless deployment inside the allowance of
 one call every two seconds. Raising the cadence without raising the gap is how a deployment starts
 collecting rate limits. Provider details and the rate limits themselves are
-[`docs/integrations/jupiter.md`](../docs/integrations/jupiter.md).
+[`docs/integrations/jupiter.md`](../../docs/integrations/jupiter.md).
 
 ### What a provider outage does
 
@@ -104,13 +104,13 @@ docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
 ```
 
 That prints one bearer credential, once, and the gateway stores only its SHA-256 hash. See
-[`feed-gateway/README.md`](../feed-gateway/README.md#register-a-publisher) for rotation and
+[`services/gateway/README.md`](../../services/gateway/README.md#register-a-publisher) for rotation and
 revocation.
 
 ## 3. Build and run from source
 
 ```sh
-cd demo-prediction
+cd examples/demo-prediction
 go build ./...
 go test ./...
 
@@ -126,7 +126,7 @@ go run ./cmd/prediction
 
 A repository checkout resolves the shared library through the `replace` line at the bottom of
 [`go.mod`](go.mod). A copy taken out of the repository has to bring
-[`publisher-support/`](../publisher-support) with it, or replace that line with an explicit module
+[`packages/publisher-support/`](../../packages/publisher-support) with it, or replace that line with an explicit module
 revision — see [§11](#11-copying-this-demo-out-of-the-repository).
 
 It prints one line on stdout, and that line is the whole of what a subscriber needs:
@@ -141,15 +141,15 @@ It carries no secret, so it can go in a README, a QR code or a public post.
 
 The build context is the repository root, because this module's `go.mod` replaces the shared library
 with `../publisher-support` and the build needs that directory too. It needs nothing else:
-`demo-copytrading/` is never copied in, so no swap-writing API, no CopyTrading trader UI and no CopyTrading
+`examples/demo-signals/` is never copied in, so no swap-writing API, no CopyTrading trader UI and no CopyTrading
 binary exists anywhere in this image.
 
 ```sh
 cd <repository root>
-docker build -f demo-prediction/Dockerfile -t demo-prediction:local .
+docker build -f examples/demo-prediction/Dockerfile -t demo-prediction:local .
 
 # or, for a host of a different architecture
-docker buildx build --platform linux/amd64 -f demo-prediction/Dockerfile \
+docker buildx build --platform linux/amd64 -f examples/demo-prediction/Dockerfile \
   -t demo-prediction:local --load .
 ```
 
@@ -175,7 +175,7 @@ There is no image published anywhere. `seeker-prediction/prediction:local` is a 
 ## 5. Configuration
 
 Application settings are documented in [`.env.example`](.env.example); deployment-only settings
-and their examples are in [`../deploy/prediction/.env.example`](../deploy/prediction/.env.example).
+and their examples are in [`../../deploy/prediction/.env.example`](../../deploy/prediction/.env.example).
 The publisher's own half is read by exactly the same code as the other demo's; the `PREDICTION_*`
 half is this demo's alone.
 
@@ -247,7 +247,7 @@ Those are the standalone deployment's established identities. The old combined s
 `seeker-agent-wallet-server_prediction-data`; preserve that lineage by setting
 `PREDICTION_VOLUME_NAME` after inspecting and backing up the exact volume. Never merge two non-empty
 SQLite lineages or delete an unfamiliar volume. The full mapping is in
-[`deploy/README.md`](../deploy/README.md#7-back-up-replace-and-roll-back). This data is never
+[`deploy/README.md`](../../deploy/README.md#7-back-up-replace-and-roll-back). This data is never
 shared with CopyTrading.
 
 ## 8. Health and a first publication
@@ -319,7 +319,7 @@ fixed.
    in the process. The cycle number is the store's to mint, so it does not start again from one.
 
 What each filter means exactly, and the complete account of what one cycle does, is
-[`docs/wiki/prediction-template.md`](../docs/wiki/prediction-template.md).
+[`docs/wiki/prediction-template.md`](../../docs/wiki/prediction-template.md).
 
 ## 9. Optional: HTTPS and provider credentials
 
@@ -327,11 +327,11 @@ There is no internet-facing overlay for this demo and it needs none: its signals
 own discovery, so its API is something an operator reads rather than something a strategy engine
 writes to. Keep it on loopback, or reach it over a VPN or an SSH tunnel. If a deployment genuinely
 needs it published, put it behind an ingress of the deployment's own — see
-[`deploy/README.md`](../deploy/README.md) — and remember that the token on it is still a grant.
+[`deploy/README.md`](../../deploy/README.md) — and remember that the token on it is still a grant.
 
 The only optional credential here is `PREDICTION_API_KEY`, described in [§1](#1-what-it-needs).
 There is no FCM and no OAuth: push is the gateway's
-([`docs/guides/firebase.md`](../docs/guides/firebase.md)) and OAuth belongs to the direct server.
+([`docs/guides/firebase.md`](../../docs/guides/firebase.md)) and OAuth belongs to the direct server.
 
 ## 10. Logs, common errors, backup, upgrade and rollback
 
@@ -381,13 +381,16 @@ gateway: three processes, three lifecycles, three sets of durable state.
 Take two directories, not one:
 
 ```sh
-cp -R demo-prediction ~/my-markets
-cp -R publisher-support ~/publisher-support
+cp -R examples/demo-prediction ~/my-markets
+cp -R packages/publisher-support ~/publisher-support
+cd ~/my-markets
+go mod edit -replace github.com/BrRenat/SeekerAgentWallet/publisher-support=../publisher-support
 ```
 
-The `replace` line at the bottom of `~/my-markets/go.mod` points at `../publisher-support`, so place
-them as siblings — or edit that line to an explicit, compatible module revision if you would rather
-depend on a published one. Nothing else in the repository is needed: `go build ./...` and
+In the repository the `replace` line at the bottom of `go.mod` points at
+`../../packages/publisher-support`; the `go mod edit` above points the copy at its sibling instead.
+Alternatively, edit that line to an explicit, compatible module revision if you would rather depend
+on a published one. Nothing else in the repository is needed: `go build ./...` and
 `go test ./...` run from the copy, and the Docker build needs only those two directories as its
 context.
 
@@ -408,4 +411,4 @@ arriving on somebody's phone, is the thing the manifest rules exist to prevent.
 phone that will sign, and they stay there.
 
 Developer internals and the verification commands are
-[`docs/development/demos.md`](../docs/development/demos.md).
+[`docs/development/demos.md`](../../docs/development/demos.md).

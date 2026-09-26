@@ -28,7 +28,7 @@ export const CANCEL_REQUEST_TOOL = "vault_cancel_request";
  */
 export const SWAP_TOOL = "vault_swap";
 
-/** Process exit codes (test-agent/README.md). */
+/** Process exit codes (tools/test-agent/README.md). */
 export const ExitCode = {
   OK: 0,
   FAILURE: 1,

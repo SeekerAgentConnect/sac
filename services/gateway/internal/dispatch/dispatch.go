@@ -29,7 +29,7 @@
 //
 // A serialized seekervault.gateway.v1.FeedEvent: the document as the gateway rebuilt it, wrapped
 // with the channel sequence it was accepted at. The envelope is built here rather than in a
-// dispatcher, because it is the contract every subscriber reads (proto/.../event.proto) and not one
+// dispatcher, because it is the contract every subscriber reads (packages/protocol/proto/.../event.proto) and not one
 // transport's framing — a second dispatcher would carry the same bytes.
 package dispatch
 

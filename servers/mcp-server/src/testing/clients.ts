@@ -29,9 +29,9 @@ import {
   RequestService,
 } from "@seeker-vault/server-sdk/protocol";
 import { DISPLAY_COMMAND_TOOL } from "../mcp-endpoint.ts";
-import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
+import { PairingStore } from "../../../../packages/server-sdk/src/storage/pairing-store.ts";
 import type { RequestView } from "../requests/mcp-tools.ts";
-import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
+import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";
 
 export function phoneClient(
   baseUrl: string,

@@ -219,7 +219,7 @@ const (
 	// about ninety seconds. It is a bounded cost the gateway can state: one tiny write per
 	// publisher per interval, and only from a publisher that had nothing else to say.
 	DefaultHeartbeat = 30 * time.Second
-	// A day. A publisher renews well inside it (publisher-support/access renews at a third of what
+	// A day. A publisher renews well inside it (packages/publisher-support/access renews at a third of what
 	// it asked for), so a gateway that loses its publisher for an afternoon does not cut approved
 	// devices off, and one that never hears again stops admitting them within a day.
 	DefaultMostGrant    = 24 * time.Hour
@@ -672,7 +672,7 @@ func Origin(raw string) (string, error) {
 // no phone ever sees and nothing compares. So any host may be named over plain HTTP here, and the
 // reason to say so out loud is that it is a weaker rule: what keeps the broker's API key off the
 // network is the network it is on, which is the deployment's job and is documented as such
-// (feed-gateway/README.md).
+// (services/gateway/README.md).
 //
 // Still no path, query, fragment or user information: this is an origin the gateway appends its own
 // paths to, and a base URL carrying half a request would produce requests nobody meant.

@@ -71,9 +71,9 @@ literal, or a style parameter to get around the scale.
 
 1. Add or update a `:designsystem` preview for every implemented variant. Every `@Preview` has a
    matching `@DesignRef(component, variant)`.
-2. From `android/`, run `./gradlew :designsystem:recordRoborazziDebug`.
+2. From `apps/android/`, run `./gradlew :designsystem:recordRoborazziDebug`.
 3. Run `./gradlew designCompare`.
-4. Read `android/build/design-compare/report.txt`, inspect every labelled `reference | actual`
+4. Read `apps/android/build/design-compare/report.txt`, inspect every labelled `reference | actual`
    image, and write a difference list for padding, radius, font weight, line height, height, and
    color. Use the variant HTML to resolve each numeric difference.
 5. Adjust the component and repeat record + compare until every intended variant is paired and the
@@ -97,7 +97,7 @@ after that refreshed guide is approved.
    root, `pnpm run design:capture` is equivalent.
 4. Update the named tokens, stateless components, exact-copy fixtures, screens, and sheets that the
    generated diff requires. Do not infer uncaptured variants.
-5. Record the candidate Android baselines from `android/`:
+5. Record the candidate Android baselines from `apps/android/`:
 
    ```bash
    ./gradlew :designsystem:recordRoborazziDebug :app:recordRoborazziDebug
@@ -113,8 +113,8 @@ after that refreshed guide is approved.
    ```
 
 8. Commit the implementation and all approved PNGs under
-   `android/designsystem/src/test/snapshots/images/` and
-   `android/app/src/test/snapshots/images/`. Never commit files from the comparison-output
+   `apps/android/designsystem/src/test/snapshots/images/` and
+   `apps/android/app/src/test/snapshots/images/`. Never commit files from the comparison-output
    directories. CI runs the same verify tasks and fails if rendering changes without a matching
    reviewed golden update.
 
@@ -169,7 +169,7 @@ pnpm run design:capture
 pnpm run design:capture --check
 ```
 
-From `android/`:
+From `apps/android/`:
 
 ```bash
 ./gradlew :designsystem:recordRoborazziDebug
@@ -184,7 +184,7 @@ From `android/`:
 over them.
 
 `designCompare` reads `design/components`, writes labelled pairs to
-`android/build/design-compare/<component>/<variant-slug>.png`, and writes `report.txt` with paired
+`apps/android/build/design-compare/<component>/<variant-slug>.png`, and writes `report.txt` with paired
 files and missing files in either direction. A matching path is paired even when its pixel
 dimensions differ, which keeps scale and crop mistakes visible.
 

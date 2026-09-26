@@ -36,7 +36,7 @@ There is no Jupiter devnet or testnet to point sandbox at. Neither the swap aggr
 
 **A manifest says which environments a server *serves*. A connection records which one it *keeps*.** Those are different facts, held in different places, and that is what makes a promotion to production something a person did.
 
-- A publisher's deployment serves exactly one (`publisher-support/environment`). It is configured with `PUBLISHER_ENVIRONMENT`, published in its manifest, stamped into its database, and in every answer its own API gives. Two environments are two deployments, with their own server IDs, credentials and databases.
+- A publisher's deployment serves exactly one (`packages/publisher-support/environment`). It is configured with `PUBLISHER_ENVIRONMENT`, published in its manifest, stamped into its database, and in every answer its own API gives. Two environments are two deployments, with their own server IDs, credentials and databases.
 - The shared gateway **refuses a manifest that changes the environments a server ID published before** (`GATEWAY_PROBLEM_OTHER_ENVIRONMENT`). A promise a higher revision can raise is not a promise: every subscribed phone caches a manifest by revision, so one document would move them all from a demonstration to real money without anybody looking at it.
 - The phone stores the environment **on the connection** (`Connection.environment`). A feed starts in sandbox whenever its publisher serves one, and only the owner moves it. A manifest that stops naming the environment a connection keeps makes that server *unsupported* — readable, and executing nothing — rather than moving the connection to the other one.
 - A **direct** connection is always production. A sandbox rehearsal is possible only where nobody is waiting for the answer: an agent that asked a paired sidecar for a signature can be told no, but it cannot be handed a simulation, and this app will not invent one for it.
@@ -66,15 +66,15 @@ A rehearsal **spends the proposal**, exactly as declining in the wallet does: on
 
 | Layer | File | What it holds |
 | --- | --- | --- |
-| Protocol | `proto/seekervault/server/v1/manifest.proto` | `ServerEnvironment`, and the `environments` a manifest names |
-| Gateway | `feed-gateway/internal/rules/manifest.go` | The environments may not change once published |
-| Publisher | `publisher-support/environment/environment.go` | One type, one pair of words, shared by both templates |
-| Phone: the promise | `android/.../plugins/ExecutionProvider.kt` | `PluginEnvironment`, `ProviderCapabilities.environments` (which promises a provider can keep) and `ActionCapability.networks` (which clusters it serves), declared apart |
-| Phone: the refusal | `android/.../plugins/ProviderRegistry.kt` | `EnvironmentUnsupported` and `NetworkUnsupported`, told apart and both answered before anything is prepared |
-| Phone: the connection | `android/.../connections/Connection.kt` | Which one this connection keeps, and the direct-is-production invariant |
-| Phone: the gate | `android/.../proposals/ProposalBinding.kt` | The promise pinned in a binding, checked inside the wallet's own lock |
-| Phone: the act | `android/.../operations/OperationViewModel.kt` | The one branch: a rehearsal has no wallet session in scope to sign with |
-| Phone: the record | `android/.../activity/ActivityRecord.kt` | What the operation was bound under, beside the cluster |
+| Protocol | `packages/protocol/proto/seekervault/server/v1/manifest.proto` | `ServerEnvironment`, and the `environments` a manifest names |
+| Gateway | `services/gateway/internal/rules/manifest.go` | The environments may not change once published |
+| Publisher | `packages/publisher-support/environment/environment.go` | One type, one pair of words, shared by both templates |
+| Phone: the promise | `apps/android/.../plugins/ExecutionProvider.kt` | `PluginEnvironment`, `ProviderCapabilities.environments` (which promises a provider can keep) and `ActionCapability.networks` (which clusters it serves), declared apart |
+| Phone: the refusal | `apps/android/.../plugins/ProviderRegistry.kt` | `EnvironmentUnsupported` and `NetworkUnsupported`, told apart and both answered before anything is prepared |
+| Phone: the connection | `apps/android/.../connections/Connection.kt` | Which one this connection keeps, and the direct-is-production invariant |
+| Phone: the gate | `apps/android/.../proposals/ProposalBinding.kt` | The promise pinned in a binding, checked inside the wallet's own lock |
+| Phone: the act | `apps/android/.../operations/OperationViewModel.kt` | The one branch: a rehearsal has no wallet session in scope to sign with |
+| Phone: the record | `apps/android/.../activity/ActivityRecord.kt` | What the operation was bound under, beside the cluster |
 
 **An execution provider does not read the environment to decide anything.** It prepares the same way in both, because whether bytes are signed is core's business — core holds the wallet — exactly as which cluster they are for is core's. A provider that decided for itself would be a second place for the answer to be wrong, and the demonstration would stop being a demonstration of the real thing. What a provider *does* declare is which environments it can serve at all, and `ProviderRegistry.resolve` reports one that cannot as unsupported rather than calling it for something it said it could not do — separately from the cluster check, which it answers in its own words.
 
@@ -91,7 +91,7 @@ Both templates' examples are sandbox deployments, so that copying one and runnin
 
 ```sh
 # The examples: sandbox, because a demonstration is what an example should be
-grep PUBLISHER_ENVIRONMENT demo-copytrading/.env.example demo-prediction/.env.example
+grep PUBLISHER_ENVIRONMENT examples/demo-signals/.env.example examples/demo-prediction/.env.example
 ```
 
 What a sandbox deployment publishes is real: a CopyTrading signal names real mints, and the Prediction template discovers real live markets from the provider's own API. Nothing about the publisher is simulated, because nothing about a publisher executes anything in the first place — what a publisher's environment changes is what every subscribed phone is told to expect when its owner approves (`docs/wiki/copytrading-template.md`, `docs/wiki/prediction-template.md`).

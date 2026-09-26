@@ -25,7 +25,7 @@ import org.junit.runner.RunWith
  *
  * Run it with:
  *
- *     android/gradlew -p android :app:testDebugUnitTest \
+ *     apps/android/gradlew -p apps/android :app:testDebugUnitTest \
  *       --tests '*JupiterLiveTest' -Dseekervault.jupiter=https://lite-api.jup.ag
  *
  * **It spends nothing.** A quote is a public read and a build returns unsigned bytes; nothing here

@@ -57,7 +57,7 @@ class PolicyScenarioTest {
     private val cases =
         JSONObject(
                 checkNotNull(javaClass.getResourceAsStream("/transactions/cases.json")) {
-                        "fixtures/transactions/cases.json is missing; run `node mcp-server/src/testing/transaction-fixtures.ts`"
+                        "fixtures/transactions/cases.json is missing; run `node servers/mcp-server/src/testing/transaction-fixtures.ts`"
                     }
                     .use { it.readBytes().decodeToString() }
             )

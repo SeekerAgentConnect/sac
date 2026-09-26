@@ -17,7 +17,7 @@ They are not interchangeable, and the reason is the ticket's own: **a prediction
 
 ## The publisher names a market, and nothing else
 
-The payload lives in [`plugins/actions/PredictionAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionAction.kt) and is read by core, once, before any provider is consulted — it is the action's schema rather than Jupiter's, because every provider of `prediction.buy` has to mean the same thing by `market_id` and refuse the same malformed document in the same way.
+The payload lives in [`plugins/actions/PredictionAction.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionAction.kt) and is read by core, once, before any provider is consulted — it is the action's schema rather than Jupiter's, because every provider of `prediction.buy` has to mean the same thing by `market_id` and refuse the same malformed document in the same way.
 
 | Term | Meaning | Rule |
 | --- | --- | --- |
@@ -33,13 +33,13 @@ The payload lives in [`plugins/actions/PredictionAction.kt`](../../android/app/s
 
 ### The two stake tokens and the five dollars are the venue's, not the action's
 
-They used to be constants inside this payload reader, which quietly made "the mints Jupiter settles in" and "the smallest order Jupiter accepts" part of what the *action* meant. SEE-145 moved them to where they are true: `PREDICTION_BUY_CAPABILITY` in [`jupiter/JupiterExecutionProvider.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt), as `depositAssets` — Jupiter's own dollar token and USDC — and `leastDeposit`, five dollars in base units.
+They used to be constants inside this payload reader, which quietly made "the mints Jupiter settles in" and "the smallest order Jupiter accepts" part of what the *action* meant. SEE-145 moved them to where they are true: `PREDICTION_BUY_CAPABILITY` in [`jupiter/JupiterExecutionProvider.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt), as `depositAssets` — Jupiter's own dollar token and USDC — and `leastDeposit`, five dollars in base units.
 
 The difference is visible to the owner. A publisher that names a stake token this venue will not take is now refused as `AssetUnsupported` **when the signal is read**, by the registry, before anything is prepared and before the provider's API is reached at all — rather than by an order coming back refused halfway through. And the five-dollar floor is folded into the amount field beside the publisher's own, so the bound the owner is shown is the one that actually applies; both are enforced again when the choice is read back. A second provider of the same action would declare its own two facts and neither would change what `prediction.buy` means.
 
 ## What is the owner's
 
-The side and the stake ([`plugins/actions/PredictionInputs.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionInputs.kt)). There is deliberately no default side: a market has two answers and no third, and suggesting one would be the app expressing an opinion about a market it has no basis for. The stake has no suggestion for the same reason a swap's amount does not.
+The side and the stake ([`plugins/actions/PredictionInputs.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionInputs.kt)). There is deliberately no default side: a market has two answers and no third, and suggesting one would be the app expressing an opinion about a market it has no basis for. The stake has no suggestion for the same reason a swap's amount does not.
 
 Neither number reaches the publisher or the gateway, and there is nowhere for it to: a feed connection has no outbox, no result upload, no per-subscriber state. `PredictionOperationTest` runs the whole path and reads back what the gateway was told — a channel and a sequence.
 
@@ -135,13 +135,13 @@ It appears only when the record holds an order account, which means only after a
 
 | File | What is in it |
 | --- | --- |
-| [`plugins/actions/PredictionAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionAction.kt) | The action's payload and every rule a publisher's terms are held to — provider-neutral, read by core |
-| [`plugins/actions/PredictionInputs.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionInputs.kt) | The side and the stake, with the publisher's bounds and the venue's floor folded together |
-| [`jupiter/JupiterPredictionAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterPredictionAction.kt) | Jupiter's half: `resolve`, the ordered checks in `prepare`, the chain read, the inspection, and the market and order destinations |
-| [`plugins/actions/ProviderLink.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/ProviderLink.kt) | The one rule for an address this app may hand to another app, and the host check an adapter makes about its own property (SEE-157) |
-| [`activity/Explorer.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/activity/Explorer.kt) | `openDestination`: the provider's app first, the web only if no app took it |
-| [`jupiter/JupiterExecutionProvider.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt) | The provider itself, and `PREDICTION_BUY_CAPABILITY`: schema 1, mainnet, its two stake mints, its five-dollar floor |
-| [`jupiter/JupiterPrediction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterPrediction.kt), [`jupiter/PredictionInstructions.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/PredictionInstructions.kt), [`jupiter/PredictionInspection.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/PredictionInspection.kt) | The market read and the order, the instruction's Borsh layout, and `inspectPrediction` |
+| [`plugins/actions/PredictionAction.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionAction.kt) | The action's payload and every rule a publisher's terms are held to — provider-neutral, read by core |
+| [`plugins/actions/PredictionInputs.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionInputs.kt) | The side and the stake, with the publisher's bounds and the venue's floor folded together |
+| [`jupiter/JupiterPredictionAction.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterPredictionAction.kt) | Jupiter's half: `resolve`, the ordered checks in `prepare`, the chain read, the inspection, and the market and order destinations |
+| [`plugins/actions/ProviderLink.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/ProviderLink.kt) | The one rule for an address this app may hand to another app, and the host check an adapter makes about its own property (SEE-157) |
+| [`activity/Explorer.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/activity/Explorer.kt) | `openDestination`: the provider's app first, the web only if no app took it |
+| [`jupiter/JupiterExecutionProvider.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt) | The provider itself, and `PREDICTION_BUY_CAPABILITY`: schema 1, mainnet, its two stake mints, its five-dollar floor |
+| [`jupiter/JupiterPrediction.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterPrediction.kt), [`jupiter/PredictionInstructions.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/PredictionInstructions.kt), [`jupiter/PredictionInspection.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/PredictionInspection.kt) | The market read and the order, the instruction's Borsh layout, and `inspectPrediction` |
 
 ## Where the rules for this live
 

@@ -10,19 +10,19 @@ plugins:
   # Kotlin for Android: protobuf-lite messages and Connect-Kotlin clients. The Android
   # runtime libraries must match these versions (see docs/development/toolchain.md).
   - remote: buf.build/protocolbuffers/java:v36.1
-    out: android/app/src/main/generated/java
+    out: apps/android/app/src/main/generated/java
     opt: lite
   - remote: buf.build/protocolbuffers/kotlin:v36.1
-    out: android/app/src/main/generated/kotlin
+    out: apps/android/app/src/main/generated/kotlin
     opt: lite
   - remote: buf.build/connectrpc/kotlin:v0.9.0
-    out: android/app/src/main/generated/kotlin
-# What is generated for the phone, which is everything in proto/ except one file:
+    out: apps/android/app/src/main/generated/kotlin
+# What is generated for the phone, which is everything in packages/protocol/proto/ except one file:
 # seekervault/gateway/v1/publish.proto is the feed gateway's publisher API (SEE-90), and
 # neither of them is a publisher. Excluding it here is a boundary that needs no test to hold: there
 # is no publisher client in the app because none is compiled for the app. Go generation, which does
 # need it, has its own template (buf.gen.feed-gateway.yaml).
 inputs:
-  - directory: proto
+  - directory: packages/protocol/proto
     exclude_paths:
-      - proto/seekervault/gateway/v1/publish.proto
+      - packages/protocol/proto/seekervault/gateway/v1/publish.proto

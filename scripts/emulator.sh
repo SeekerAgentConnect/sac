@@ -66,7 +66,7 @@ setup() {
 build() {
   export JAVA_HOME; JAVA_HOME="$(java_home)"
   export JAVA_TOOL_OPTIONS="-Djava.net.preferIPv4Stack=true"
-  "$ROOT/android/gradlew" -p "$ROOT/android" :app:assembleDebug \
+  "$ROOT/apps/android/gradlew" -p "$ROOT/apps/android" :app:assembleDebug \
     "-Pseekervault.relayUrl=$RELAY_URL" "$@"
 }
 
@@ -107,7 +107,7 @@ EOF
 
 install_app() {
   local apk
-  apk="$(ls "$ROOT"/android/app/build/outputs/apk/debug/*.apk | head -1)"
+  apk="$(ls "$ROOT"/apps/android/app/build/outputs/apk/debug/*.apk | head -1)"
   "$ADB" install -r "$apk"
   "$ADB" shell am start -n "$PACKAGE/.MainActivity" >/dev/null
 }

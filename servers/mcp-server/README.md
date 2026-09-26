@@ -16,7 +16,7 @@ image from SEE-132 is published to a registry. The commands below build local ar
 not publish or upload either package.
 
 For a clean-host container deployment, use the canonical numbered
-[`deploy/README.md`](../deploy/README.md). It covers direct-only, feeds-only, and combined hosting,
+[`deploy/README.md`](../../deploy/README.md). It covers direct-only, feeds-only, and combined hosting,
 including generic native HTTPS/HTTP/2 without requiring Tailscale.
 
 ## Requirements and boundaries
@@ -122,14 +122,14 @@ credential and cancels its pending requests.
 The build uses the repository root only to compile the declared MCP package and unpublished SDK:
 
 ```sh
-docker build -f mcp-server/Dockerfile \
+docker build -f servers/mcp-server/Dockerfile \
   -t seeker-agent-connect/mcp-server:local .
 cp deploy/mcp/.env.example deploy/mcp/.env
 # replace the tokens; keep the local public URL for host-loopback development
 docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --build
 curl --fail http://127.0.0.1:8080/healthz
 docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml exec mcp-server \
-  node mcp-server/dist/cli.js pair
+  node servers/mcp-server/dist/cli.js pair
 ```
 
 The Compose project publishes the container only on host loopback and persists `/data/sidecar.db`
@@ -146,9 +146,9 @@ Build the staged, self-contained package and inspect exactly what npm will pack:
 
 ```sh
 pnpm run build
-npm pack --dry-run --json ./mcp-server/package
+npm pack --dry-run --json ./servers/mcp-server/package
 mkdir -p ./artifacts
-npm pack --json --pack-destination ./artifacts ./mcp-server/package
+npm pack --json --pack-destination ./artifacts ./servers/mcp-server/package
 ```
 
 The source workspace imports `@seeker-vault/server-sdk` through its public API. During the MCP build,
@@ -164,7 +164,7 @@ mkdir -p "$HOME/.local/seeker-agent-connect-mcp"
 npm install --global --prefix "$HOME/.local/seeker-agent-connect-mcp" \
   "$PWD/artifacts/seeker-vault-mcp-server-0.1.0.tgz"
 mkdir -p "$HOME/.seeker-agent-connect/mcp-server"
-cp mcp-server/.env.example "$HOME/.seeker-agent-connect/mcp-server/config.env"
+cp servers/mcp-server/.env.example "$HOME/.seeker-agent-connect/mcp-server/config.env"
 chmod 600 "$HOME/.seeker-agent-connect/mcp-server/config.env"
 "$HOME/.local/seeker-agent-connect-mcp/bin/seeker-agent-connect-mcp" --version
 "$HOME/.local/seeker-agent-connect-mcp/bin/seeker-agent-connect-mcp" start
@@ -319,15 +319,15 @@ application does not provide login, client registration, consent, accounts, or a
 
 TLS, domains, Caddy and Tailscale/Funnel are separate deployment layers. For the phone's live update
 stream, use the server's TLS listener with a trusted PEM identity and preserve HTTP/2, or forward raw
-TCP. [`deploy/ingress/direct/`](../deploy/ingress/direct) is the separately managed Caddy example
+TCP. [`deploy/ingress/direct/`](../../deploy/ingress/direct) is the separately managed Caddy example
 for MCP and unary phone calls; it deliberately does not claim to proxy the production update
-stream. [`deploy/operators/tailscale/`](../deploy/operators/tailscale) shows the native-TLS/raw-TCP
+stream. [`deploy/operators/tailscale/`](../../deploy/operators/tailscale) shows the native-TLS/raw-TCP
 layout without host networking. The older gateway-private routing is retired and is not a
 reachability solution.
 
 The portable project mounts the explicitly named `MCP_VOLUME_NAME` at `/data`. Its clean default
 preserves `seeker-agent-connect-mcp_mcp-data`; older `gateway/` and combined-server lineages are
-selected explicitly and backed up first using the mapping in [`deploy/README.md`](../deploy/README.md).
+selected explicitly and backed up first using the mapping in [`deploy/README.md`](../../deploy/README.md).
 Replace only `mcp-server` with `up -d --no-deps mcp-server`; ingress and every feed component stay
 running.
 

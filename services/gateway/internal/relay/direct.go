@@ -46,7 +46,7 @@ type Direct struct {
 
 // The invalidation, in full, and it is two constants.
 //
-// They are the sidecar's own (server-sdk/src/push/invalidation.ts: FCM_INVALIDATION_DATA and
+// They are the sidecar's own (packages/server-sdk/src/push/invalidation.ts: FCM_INVALIDATION_DATA and
 // FCM_INVALIDATION_COLLAPSE_KEY), because this is the same message from a different sender: a
 // phone cannot tell whether a wake-up came from a server's own Firebase project or through this
 // gateway, and it must not have to. The phone matches the whole map

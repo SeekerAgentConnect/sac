@@ -59,10 +59,10 @@ func TestAnEnvironmentFromNowhereIsNotProduction(t *testing.T) {
 // would never be a protocol error. It would be quieter than that: a `PUBLISHER_ENVIRONMENT` an
 // operator copied out of the app, or a log line and a screen that name the same deployment
 // differently, and nobody would find out from a failure. It is the same technique
-// `publisher-support/signals/contract_test.go` uses on the phone's term rules, and it skips when the
+// `packages/publisher-support/signals/contract_test.go` uses on the phone's term rules, and it skips when the
 // phone's source is not there, which is what a copied-out template looks like.
 func TestTheWordsAreThePhonesOwn(t *testing.T) {
-	const boundary = "../../android/app/src/main/java/io/github/brrenat/seekervault/" +
+	const boundary = "../../../apps/android/app/src/main/java/io/github/brrenat/seekervault/" +
 		"plugins/ActionPlugin.kt"
 	source, err := os.ReadFile(boundary)
 	if err != nil {

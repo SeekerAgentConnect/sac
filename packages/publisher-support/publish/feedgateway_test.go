@@ -25,7 +25,7 @@ import (
 // Opt-in, like the phone's Centrifugo test and for the same reason: it needs a binary that is not
 // this module's.
 //
-//	cd feed-gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway \
+//	cd services/gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway \
 //	                        && go build -o /tmp/feed-gatewayctl ./cmd/feed-gatewayctl
 //	cd publisher && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./internal/publish/ -run Gateway
 //

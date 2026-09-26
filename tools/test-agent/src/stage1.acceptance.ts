@@ -15,12 +15,12 @@ import {
   ConnectError,
   connectPhone,
   type Phone,
-} from "../../mcp-server/src/testing/clients.ts";
+} from "../../../servers/mcp-server/src/testing/clients.ts";
 import {
   freePort,
   startSidecarProcess,
   type SidecarProcess,
-} from "../../mcp-server/src/testing/process.ts";
+} from "../../../servers/mcp-server/src/testing/process.ts";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 const MCP_TOKEN = "m".repeat(64);

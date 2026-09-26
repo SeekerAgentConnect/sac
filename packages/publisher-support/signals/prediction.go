@@ -238,7 +238,7 @@ func IsMarketID(value string) bool {
 //
 // It is exported because the reconciler decides whether to publish a label it did not write — the
 // provider's own name for a venue — and a term it cannot publish should be left out rather than
-// cost the whole market (demo-prediction/internal/discovery).
+// cost the whole market (examples/demo-prediction/internal/discovery).
 func IsLabel(text string) bool {
 	return len(utf16.Encode([]rune(text))) <= mostSymbolUnits &&
 		Printable(text, MaxValueTextBytes, false)

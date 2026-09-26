@@ -53,7 +53,7 @@
 
 ## 2026-09-11 — SAW-005 MCP test client (SEE-11)
 
-- **`pnpm agent` runs `node test-agent/src/main.ts` directly.** A plain `pnpm run` keeps the script's exit code, but `pnpm --filter …` turns every failure into 1, which was measured.
+- **`pnpm agent` runs `node tools/test-agent/src/main.ts` directly.** A plain `pnpm run` keeps the script's exit code, but `pnpm --filter …` turns every failure into 1, which was measured.
 - **The exit codes are fixed, and tests assert them:**
   - 0 OK
   - 1 unexpected
@@ -87,7 +87,7 @@
 
 ## 2026-09-11 — SAW-008 Stage 1 acceptance gate (SEE-14)
 
-- **`pnpm test:hello` runs `test-agent/src/stage1.acceptance.ts`, one case per acceptance scenario.** The file name keeps it out of the package test glob, so `pnpm check` doesn't run it twice; CI runs `pnpm test:hello` as its own step. The suite runs the real CLI against the sidecar as a separate process (`sidecar/src/testing/process.ts`), because the restart cases need a process to kill.
+- **`pnpm test:hello` runs `tools/test-agent/src/stage1.acceptance.ts`, one case per acceptance scenario.** The file name keeps it out of the package test glob, so `pnpm check` doesn't run it twice; CI runs `pnpm test:hello` as its own step. The suite runs the real CLI against the sidecar as a separate process (`sidecar/src/testing/process.ts`), because the restart cases need a process to kill.
 - **`--device` is orchestrated from the host.**
   - It uses throwaway tokens and a free port, never the owner's `.env` or a running sidecar.
   - It runs `adb reverse` for that port.
@@ -255,12 +255,12 @@
 
 ## 2026-09-12 — SAW-016, manual message signing
 
-- **No `proto/` change was needed, so none was made.** SAW-009 already defined `SignMessageAction`, `Approval`, `MessageSignature`, and `COMPLETED`. The alternative was carrying the wallet's reported bytes in `MessageSignature` so the sidecar could compare them.
+- **No `packages/protocol/proto/` change was needed, so none was made.** SAW-009 already defined `SignMessageAction`, `Approval`, `MessageSignature`, and `COMPLETED`. The alternative was carrying the wallet's reported bytes in `MessageSignature` so the sidecar could compare them.
   - That comparison is already implied: the sidecar verifies the signature against the bytes it stored, so a signature over anything else can't be accepted. Carrying the bytes would add a field that changes no decision.
   - The phone still checks that the wallet returned the bytes it asked for, and records a failure otherwise, so a wallet that signs something else is caught before anything is sent.
   - The agent gets the exact bytes back as `signed_message_base64`, derived from the stored action, which is what it needs to verify without re-deriving the encoding.
 - **The sidecar verifies signatures, and the guard now says it signs none.** `requests/signature.ts` uses `node:crypto` with the raw Ed25519 key wrapped in its SPKI header; a Solana address *is* the public key, so nothing else is needed. `stage-boundary.test.ts` gained a check that no shipped source calls a signing API, beside the existing one for key creation.
-- **"Independent verifier" means independent of this repository.** `signature.test.ts` uses the RFC 8032 §7.1 known-answer vectors, which come from the specification, and rejects tampered copies of each. `test-agent/src/verify.ts` is a second implementation that shares no code with the sidecar's, and `pnpm agent get` runs it over a real round trip.
+- **"Independent verifier" means independent of this repository.** `signature.test.ts` uses the RFC 8032 §7.1 known-answer vectors, which come from the specification, and rejects tampered copies of each. `tools/test-agent/src/verify.ts` is a second implementation that shares no code with the sidecar's, and `pnpm agent get` runs it over a real round trip.
 - **A lost message signing is FAILED, not UNKNOWN.** UNKNOWN exists for a transaction that may be on chain. A message signature is never broadcast, so one the phone never received exists nowhere; leaving such a request UNKNOWN would leave it non-terminal forever, with nothing that could ever settle it. `ConnectionRepository.load` turns an approval the wallet never answered into an execution failure, and sends the approval first so the sidecar sees the same order.
 - **The approval is stored and sent before the wallet is opened, in two submissions.** The lifecycle already requires PENDING → PROCESSING before a result, and the phone's outbox already resends what the sidecar hasn't taken.
   - `LocalResult` gained `approved` and `signing`, and the stored file went to version 2, reading version 1 as it was.

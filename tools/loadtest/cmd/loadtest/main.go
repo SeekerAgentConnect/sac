@@ -37,14 +37,14 @@ import (
 )
 
 func main() {
-	profiles := flag.String("profiles", "", "the profile file (default: loadtest/profiles.json)")
+	profiles := flag.String("profiles", "", "the profile file (default: tools/loadtest/profiles.json)")
 	which := flag.String("scenario", "", "one scenario, or a comma-separated list; empty is all")
 	profile := flag.String("profile", "", "run this profile instead of the scenario's own")
 	listeners := flag.Int("listeners", 0, "override the profile's listener count")
 	measured := flag.Duration("measure", 0, "override the profile's measured window")
 	nodes := flag.Int("broker-nodes", 0, "override the number of broker nodes")
 	config := flag.String("broker-config", "",
-		"the broker configuration (default: feed-gateway/centrifugo.yaml, found by walking up)")
+		"the broker configuration (default: services/gateway/centrifugo.yaml, found by walking up)")
 	out := flag.String("report", "", "write the JSON report here")
 	settle := flag.Duration("settle", 5*time.Second,
 		"how long to wait between scenarios, for the kernel's ephemeral ports to drain")
@@ -211,7 +211,7 @@ func choose(all []drive.Scenario, named string) ([]drive.Scenario, error) {
 	return chosen, nil
 }
 
-// profileFile finds loadtest/profiles.json by walking up from the working directory, so the harness
+// profileFile finds tools/loadtest/profiles.json by walking up from the working directory, so the harness
 // runs from anywhere in the checkout.
 func profileFile() (string, error) {
 	at, err := os.Getwd()
@@ -219,14 +219,14 @@ func profileFile() (string, error) {
 		return "", err
 	}
 	for {
-		candidate := filepath.Join(at, "loadtest", "profiles.json")
+		candidate := filepath.Join(at, "tools", "loadtest", "profiles.json")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, nil
 		}
 		parent := filepath.Dir(at)
 		if parent == at {
 			return "", fmt.Errorf(
-				"loadtest/profiles.json is not above the working directory; name it with --profiles")
+				"tools/loadtest/profiles.json is not above the working directory; name it with --profiles")
 		}
 		at = parent
 	}

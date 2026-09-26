@@ -3,7 +3,7 @@
 // The API itself — the token, the routing, the strict decoding, the refusal shape and every
 // endpoint an operator calls — is the support library's, because both demos serve exactly the same
 // one and a second copy would be a second set of rules about what a publisher will say
-// (publisher-support/api). What differs between the two demos is who writes their signals, and
+// (packages/publisher-support/api). What differs between the two demos is who writes their signals, and
 // that is the whole of what this package supplies: a publisher whose proposals come from a
 // provider's listing refuses a caller that posts one, and answers two endpoints of its own about
 // what its discovery is doing.

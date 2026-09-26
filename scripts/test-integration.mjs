@@ -25,12 +25,12 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const FEED_GATEWAY = join(ROOT, "feed-gateway");
+const FEED_GATEWAY = join(ROOT, "services", "gateway");
 // The two demos are two modules and two images (SEE-134). This harness builds both because it is
 // about what happens when two independent sources publish to one gateway; nothing here makes one
 // demo's build depend on the other's.
-const COPYTRADING = join(ROOT, "demo-copytrading");
-const PREDICTION = join(ROOT, "demo-prediction");
+const COPYTRADING = join(ROOT, "examples", "demo-signals");
+const PREDICTION = join(ROOT, "examples", "demo-prediction");
 
 // The version every go.mod requires, and the one docs/development/toolchain.md records as
 // tested. A newer Go builds them too; this is the message for a machine that has none.
@@ -114,7 +114,7 @@ try {
     leg(
       "the cross-component run (gateway, both templates, two devices, the sidecar and the agent)",
       () =>
-        node(["test-agent/src/stage71.acceptance.ts"], {
+        node(["tools/test-agent/src/stage71.acceptance.ts"], {
           ...binaries,
           ...(broker === "" ? {} : { SEEKERVAULT_CENTRIFUGO: broker }),
         }),
@@ -123,8 +123,8 @@ try {
   legs.push(
     leg("the direct-mode acceptance suites, unchanged", () =>
       node([
-        "test-agent/src/stage2.acceptance.ts",
-        "test-agent/src/stage4.acceptance.ts",
+        "tools/test-agent/src/stage2.acceptance.ts",
+        "tools/test-agent/src/stage4.acceptance.ts",
       ]),
     ),
   );
@@ -184,7 +184,7 @@ function android() {
   const sdk =
     process.env.ANDROID_HOME ??
     process.env.ANDROID_SDK_ROOT ??
-    (existsSync(join(ROOT, "android", "local.properties"))
+    (existsSync(join(ROOT, "apps", "android", "local.properties"))
       ? "local.properties"
       : undefined);
   if (sdk === undefined) {
@@ -195,10 +195,10 @@ function android() {
   }
   return leg(name, () => {
     const run = spawnSync(
-      join(ROOT, "android", "gradlew"),
+      join(ROOT, "apps", "android", "gradlew"),
       [
         "-p",
-        "android",
+        join("apps", "android"),
         ":app:testDebugUnitTest",
         ...ANDROID_TESTS.flatMap((tests) => ["--tests", tests]),
         // The phone's own opt-in stream test, when this machine has the two binaries for it.

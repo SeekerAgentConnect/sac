@@ -2,8 +2,8 @@
 // the shared library and each demo separately.
 //
 //   pnpm check:publisher-support
-//   pnpm check:copytrading
-//   pnpm check:prediction
+//   pnpm check:demo-signals       # (alias: check:copytrading)
+//   pnpm check:demo-prediction    # (alias: check:prediction)
 //   pnpm check:demos              # all three, in that order
 //
 // One script, three entry points, because the three modules are checked identically and a copy of
@@ -11,13 +11,13 @@
 // *together*: each demo builds and runs without the other, and the way that stays true is that the
 // command which proves it names one module (docs/development/demos.md).
 //
-// It is separate from `pnpm check` for the same reason `pnpm check:feed-gateway` and
+// It is separate from `pnpm check` for the same reason `pnpm check:gateway` and
 // `pnpm check:android` are: it needs a toolchain the Node checks do not, and someone working on the
 // MCP server should not have to install Go to run them. CI runs all of them, as separate jobs.
 //
 // Two tests are opt-in, because they need a binary these modules do not build: the ones that run
-// the real feed gateway as a separate process — one in publisher-support/publish for a
-// caller-authored request, one in demo-prediction/internal/discovery for a discovered market. They
+// the real feed gateway as a separate process — one in packages/publisher-support/publish for a
+// caller-authored request, one in examples/demo-prediction/internal/discovery for a discovered market. They
 // are what prove that a publisher and the gateway agree about a manifest, a channel and a
 // republication rather than assuming it, so this script builds the gateway and runs them — and says
 // so, rather than quietly skipping the most interesting test in the module.
@@ -29,10 +29,20 @@ import { fileURLToPath } from "node:url";
 
 // Each module, in dependency order: the library both demos are built on, then the two demos. The
 // order matters only for the reading of the output; nothing here builds one demo from the other.
+// The key is the component name a command takes; the value holds its directory (SEE-167 layout).
 const modules = {
-  "publisher-support": "the shared library",
-  "demo-copytrading": "the CopyTrading demo",
-  "demo-prediction": "the Prediction demo",
+  "publisher-support": {
+    directory: "packages/publisher-support",
+    what: "the shared library",
+  },
+  "demo-signals": {
+    directory: "examples/demo-signals",
+    what: "the CopyTrading signals demo",
+  },
+  "demo-prediction": {
+    directory: "examples/demo-prediction",
+    what: "the Prediction demo",
+  },
 };
 
 const asked = process.argv.slice(2);
@@ -50,7 +60,7 @@ for (const name of chosen) {
 }
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const feedGateway = join(root, "feed-gateway");
+const feedGateway = join(root, "services", "gateway");
 
 // The version each go.mod requires, and the one docs/development/toolchain.md records as tested. A
 // newer Go builds them too; this is the message for a machine that has none.
@@ -102,8 +112,9 @@ try {
 
 try {
   for (const name of chosen) {
-    console.log(`\n=== ${name} — ${modules[name]}`);
-    check(join(root, name), name);
+    const { directory, what } = modules[name];
+    console.log(`\n=== ${name} — ${what}`);
+    check(join(root, directory), directory);
   }
 } finally {
   rmSync(built, { recursive: true, force: true });

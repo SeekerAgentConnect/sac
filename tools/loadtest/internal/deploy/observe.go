@@ -25,7 +25,7 @@ import (
 // NodeInfo is one broker node, as it describes itself.
 //
 // The numbers come from the node's own metrics endpoint rather than from its server API, and that
-// is the one setting this harness turns on that `feed-gateway/centrifugo.yaml` does not:
+// is the one setting this harness turns on that `services/gateway/centrifugo.yaml` does not:
 // `prometheus.enabled`. The reason is a measurement one. The server API's `info` answers from an
 // aggregate the node refreshes every sixty seconds, so a fifteen-second window reads zero for
 // every counter in it; the metrics endpoint answers live. It is on the API port, which is private

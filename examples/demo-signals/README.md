@@ -2,18 +2,18 @@
 
 An independent public-feed publisher (SEE-95, SEE-108, SEE-134): a developer's — or a trader's —
 own server. A trader posts one signal to its API, it publishes one feed request to the
-[shared feed gateway](../feed-gateway), every phone subscribed to its channel reads the same
+[shared feed gateway](../../services/gateway), every phone subscribed to its channel reads the same
 document, and each owner then chooses their own amount on their own device and approves it there.
 
 **It is one of two demonstrations, and it is independent.** It builds, tests, images and runs
-without [`demo-prediction/`](../demo-prediction), without the Direct Server SDK, and without the
+without [`examples/demo-prediction/`](../demo-prediction), without the Direct Server SDK, and without the
 MCP server. The one thing it needs that it does not contain is a reachable feed gateway. The two
-demos share a source library — [`publisher-support/`](../publisher-support), which has no command,
+demos share a source library — [`packages/publisher-support/`](../../packages/publisher-support), which has no command,
 no image and no deployment of its own — and nothing else: not a database, not a credential, not a
 container, not a lifecycle. Restarting or cancelling here does nothing to the other demo's source.
 
 For a clean-host deployment beside the gateway or all four applications, follow the canonical
-numbered [`deploy/README.md`](../deploy/README.md). This guide remains the application/API reference.
+numbered [`deploy/README.md`](../../deploy/README.md). This guide remains the application/API reference.
 
 **Nothing comes back.** This server never learns who is subscribed, what anyone chose, whether they
 went ahead, or what came of it. There is no table for any of that, no field in its API that would
@@ -29,14 +29,14 @@ this process.
 | [`internal/boundary`](internal/boundary) | What this demo is, as tests over its own source |
 | [`sdk`](sdk) | A small Go client of this demo's request API |
 | [`Dockerfile`](Dockerfile) | This demo's image, and only this demo's |
-| [`../deploy/copytrading/compose.yaml`](../deploy/copytrading/compose.yaml) | The portable stack: this demo on host loopback. Operator tools and the admin UI are opt-in profiles |
-| [`../deploy/copytrading/.env.example`](../deploy/copytrading/.env.example) | Deployment-only settings and the explicit durable volume name |
+| [`../../deploy/copytrading/compose.yaml`](../../deploy/copytrading/compose.yaml) | The portable stack: this demo on host loopback. Operator tools and the admin UI are opt-in profiles |
+| [`../../deploy/copytrading/.env.example`](../../deploy/copytrading/.env.example) | Deployment-only settings and the explicit durable volume name |
 | [`.env.example`](.env.example) | Every setting, with its default and what it means. Copy to `.env` here, which git ignores |
 
 Everything durable — the signals, their revisions, their idempotency keys and the outbox that gets
-them to the gateway — lives in [`publisher-support/store`](../publisher-support/store); the client
-that reaches the gateway is [`publisher-support/gateway`](../publisher-support/gateway); the API
-frame both demos serve is [`publisher-support/api`](../publisher-support/api). This module supplies
+them to the gateway — lives in [`packages/publisher-support/store`](../../packages/publisher-support/store); the client
+that reaches the gateway is [`packages/publisher-support/gateway`](../../packages/publisher-support/gateway); the API
+frame both demos serve is [`packages/publisher-support/api`](../../packages/publisher-support/api). This module supplies
 the kind it registers, who writes its signals, its own configuration and its own deployment.
 
 ## 1. What it needs
@@ -45,7 +45,7 @@ the kind it registers, who writes its signals, its own configuration and its own
 | --- | --- | --- |
 | Go | 1.27.1, as [`go.mod`](go.mod) requires | Building from source and running the tests |
 | Docker with Compose v2 | any current release | Building and running the image |
-| A reachable feed gateway | [`feed-gateway/`](../feed-gateway) | Where publications go and where phones read |
+| A reachable feed gateway | [`services/gateway/`](../../services/gateway) | Where publications go and where phones read |
 | A publisher credential | issued by that gateway's operator | Authenticates this source to it |
 
 Nothing else. No broker, no Redis, no Firebase credential, no database server, no provider account:
@@ -68,13 +68,13 @@ docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
 
 That prints one bearer credential, once, and the gateway stores only its SHA-256 hash. It is this
 source's own: the Prediction demo is registered separately, under its own UUID, with its own
-credential. See [`feed-gateway/README.md`](../feed-gateway/README.md#register-a-publisher) for
+credential. See [`services/gateway/README.md`](../../services/gateway/README.md#register-a-publisher) for
 rotation and revocation.
 
 ## 3. Build and run from source
 
 ```sh
-cd demo-copytrading
+cd examples/demo-signals
 go build ./...
 go test ./...
 
@@ -89,7 +89,7 @@ go run ./cmd/copytrading
 
 A repository checkout resolves the shared library through the `replace` line at the bottom of
 [`go.mod`](go.mod). A copy taken out of the repository has to bring
-[`publisher-support/`](../publisher-support) with it, or replace that line with an explicit module
+[`packages/publisher-support/`](../../packages/publisher-support) with it, or replace that line with an explicit module
 revision — see [§11](#11-copying-this-demo-out-of-the-repository).
 
 It prints one line on stdout, and that line is the whole of what a subscriber needs:
@@ -106,15 +106,15 @@ grants nothing.
 
 The build context is the repository root, because this module's `go.mod` replaces the shared library
 with `../publisher-support` and the build needs that directory too. It needs nothing else:
-`demo-prediction/` is never copied in, so no provider client, no discovery and no prediction binary
+`examples/demo-prediction/` is never copied in, so no provider client, no discovery and no prediction binary
 exists anywhere in this image.
 
 ```sh
 cd <repository root>
-docker build -f demo-copytrading/Dockerfile -t demo-copytrading:local .
+docker build -f examples/demo-signals/Dockerfile -t demo-copytrading:local .
 
 # or, for a host of a different architecture
-docker buildx build --platform linux/amd64 -f demo-copytrading/Dockerfile \
+docker buildx build --platform linux/amd64 -f examples/demo-signals/Dockerfile \
   -t demo-copytrading:local --load .
 ```
 
@@ -140,7 +140,7 @@ There is no image published anywhere. `seeker-publisher/copytrading:local` is a 
 ## 5. Configuration
 
 Application settings are documented in [`.env.example`](.env.example); deployment-only settings
-and their examples are in [`../deploy/copytrading/.env.example`](../deploy/copytrading/.env.example).
+and their examples are in [`../../deploy/copytrading/.env.example`](../../deploy/copytrading/.env.example).
 In summary:
 
 | Variable | Required | Default | What it is |
@@ -194,7 +194,7 @@ Those are the standalone deployment's established identities. The old combined s
 `seeker-agent-wallet-server_copytrading-data` and `/data/copytrading.db`; preserving it requires
 setting **both** `COPYTRADING_VOLUME_NAME` and `PUBLISHER_DATABASE_PATH`. Inspect and back up the
 exact volume first; never merge two non-empty SQLite lineages or delete an unfamiliar volume. The
-full mapping is in [`deploy/README.md`](../deploy/README.md#7-back-up-replace-and-roll-back).
+full mapping is in [`deploy/README.md`](../../deploy/README.md#7-back-up-replace-and-roll-back).
 This data is never shared with Prediction.
 
 ## 8. Health and a first request
@@ -270,8 +270,8 @@ publisher. New code uses `/v1/requests`.
    the identical document again is answered `unchanged` by the gateway, so a restart notifies nobody.
 
 The complete request/answer/status-code contract for a strategy system is
-[`docs/integrations/signal-api.md`](../docs/integrations/signal-api.md);
-[`docs/wiki/copytrading-template.md`](../docs/wiki/copytrading-template.md) is why this demo is
+[`docs/integrations/signal-api.md`](../../docs/integrations/signal-api.md);
+[`docs/wiki/copytrading-template.md`](../../docs/wiki/copytrading-template.md) is why this demo is
 shaped like this, including a worked example of where publication ends and each owner's own
 execution begins.
 
@@ -295,7 +295,7 @@ decision rather than a portable default. The optional admin UI is also a host-lo
 profile; it is never placed on the public feed ingress.
 
 There is no FCM, OAuth or provider configuration here. Push is the gateway's
-([`docs/guides/firebase.md`](../docs/guides/firebase.md)), OAuth belongs to the direct server, and
+([`docs/guides/firebase.md`](../../docs/guides/firebase.md)), OAuth belongs to the direct server, and
 this demo has no provider at all.
 
 ## 10. Logs, common errors, backup, upgrade and rollback
@@ -347,13 +347,16 @@ gateway: three processes, three lifecycles, three sets of durable state.
 Take two directories, not one:
 
 ```sh
-cp -R demo-copytrading ~/my-signals
-cp -R publisher-support ~/publisher-support
+cp -R examples/demo-signals ~/my-signals
+cp -R packages/publisher-support ~/publisher-support
+cd ~/my-signals
+go mod edit -replace github.com/BrRenat/SeekerAgentWallet/publisher-support=../publisher-support
 ```
 
-The `replace` line at the bottom of `~/my-signals/go.mod` points at `../publisher-support`, so place
-them as siblings — or edit that line to an explicit, compatible module revision if you would rather
-depend on a published one. Nothing else in the repository is needed: `go build ./...` and
+In the repository the `replace` line at the bottom of `go.mod` points at
+`../../packages/publisher-support`; the `go mod edit` above points the copy at its sibling instead.
+Alternatively, edit that line to an explicit, compatible module revision if you would rather depend
+on a published one. Nothing else in the repository is needed: `go build ./...` and
 `go test ./...` run from the copy, and the Docker build needs only those two directories as its
 context.
 
@@ -378,4 +381,4 @@ For a request addressed to one phone, use the owner's own direct server and its 
 request-result or completion-polling API.
 
 Developer internals and the verification commands are
-[`docs/development/demos.md`](../docs/development/demos.md).
+[`docs/development/demos.md`](../../docs/development/demos.md).

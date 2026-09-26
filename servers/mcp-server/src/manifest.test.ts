@@ -26,19 +26,19 @@ import {
   publishManifest,
   SERVER_PROTOCOL_VERSION,
   serverManifest,
-} from "../../server-sdk/src/manifest.ts";
+} from "../../../packages/server-sdk/src/manifest.ts";
 import {
   IN_MEMORY,
   openDatabase,
-} from "../../server-sdk/src/storage/database.ts";
-import { PairingStore } from "../../server-sdk/src/storage/pairing-store.ts";
+} from "../../../packages/server-sdk/src/storage/database.ts";
+import { PairingStore } from "../../../packages/server-sdk/src/storage/pairing-store.ts";
 import { temporaryDatabasePath } from "./testing/process.ts";
 
 // `pnpm generate` writes each .binpb from the .json beside it with `buf convert`. The Android unit
 // tests (ServerManifestFixturesTest) read the same .binpb files and check what the phone makes of
 // each one, so both runtimes agree about the document and about which manifests are refused.
 const FIXTURES = new URL(
-  "../../proto/fixtures/seekervault/server/v1/ServerManifest/",
+  "../../../packages/protocol/proto/fixtures/seekervault/server/v1/ServerManifest/",
   import.meta.url,
 );
 

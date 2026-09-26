@@ -3,7 +3,7 @@
  * as the phone — including the genuine gRPC one the phone streams updates over — and an MCP SDK
  * client acting as the agent.
  *
- * They are the general server's test clients (mcp-server/src/testing/clients.ts) cut down to what
+ * They are the general server's test clients (servers/mcp-server/src/testing/clients.ts) cut down to what
  * this server serves. Nothing here imports from `mcp-server`, and nothing should: the two packages
  * share the SDK and nothing else.
  */

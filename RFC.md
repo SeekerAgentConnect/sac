@@ -24,16 +24,16 @@ We provide the app and self-hosted server software. The user deploys the server 
 ## 2. Components and Repository
 
 ```text
-proto/            Protobuf contract, Buf, Kotlin and TypeScript code generation
-server-sdk/       TypeScript direct-server lifecycle, persistence and phone services
-mcp-server/       TypeScript/Node MCP application and executable packaging
-android/          Kotlin/Compose: connections, policies, requests, MWA, history
+packages/protocol/proto/            Protobuf contract, Buf, Kotlin and TypeScript code generation
+packages/server-sdk/       TypeScript direct-server lifecycle, persistence and phone services
+servers/mcp-server/       TypeScript/Node MCP application and executable packaging
+apps/android/          Kotlin/Compose: connections, policies, requests, MWA, history
 deploy/           Independent MCP, feed, demo and optional-ingress presets
-feed-gateway/     The shared feed gateway (Go): the publication and feed-read API
-publisher-support/  Go library the two feed demos share: publication, store, manifest, API
-demo-copytrading/   Go feed demo: a trader's own signals, plus the create-request SDK for its API
-demo-prediction/    Go feed demo: the Jupiter Prediction markets it discovers itself
-test-agent/       Minimal MCP client for testing and demos
+services/gateway/     The shared feed gateway (Go): the publication and feed-read API
+packages/publisher-support/  Go library the two feed demos share: publication, store, manifest, API
+examples/demo-signals/   Go feed demo: a trader's own signals, plus the create-request SDK for its API
+examples/demo-prediction/    Go feed demo: the Jupiter Prediction markets it discovers itself
+tools/test-agent/       Minimal MCP client for testing and demos
 docs/             Architecture, protocol, policies, setup, and integrations
 ```
 

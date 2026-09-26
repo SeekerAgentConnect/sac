@@ -2,7 +2,7 @@
 //
 //   node scripts/capture-jupiter.mjs            # rewrite fixtures/jupiter/swaps.json
 //   node scripts/capture-jupiter.mjs --orders   # rewrite fixtures/jupiter/orders.json
-//   node scripts/capture-jupiter.mjs --events   # rewrite demo-prediction/internal/jupiter/testdata
+//   node scripts/capture-jupiter.mjs --events   # rewrite examples/demo-prediction/internal/jupiter/testdata
 //   node scripts/capture-jupiter.mjs --check    # decode what is committed and print it
 //
 // Why this exists: neither plugin will sign a transaction it cannot read, so the tests have to be
@@ -281,7 +281,10 @@ if (process.argv.includes("--check")) {
 // and one that does not exist. A rate limit is not here, because provoking one deliberately is
 // rude; the test constructs that body from the provider's published error schema and says so.
 const TESTDATA = fileURLToPath(
-  new URL("../demo-prediction/internal/jupiter/testdata", import.meta.url),
+  new URL(
+    "../examples/demo-prediction/internal/jupiter/testdata",
+    import.meta.url,
+  ),
 );
 
 /** The query string the template itself would send: the same parameters, in the same order. */

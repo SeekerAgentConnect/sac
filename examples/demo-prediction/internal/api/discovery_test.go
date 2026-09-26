@@ -234,7 +234,7 @@ func TestAPollRunsACycleAndPublishesWhatItFound(t *testing.T) {
 }
 
 // expectPublished is the one assertion the poll test needs from a listing. It is a function rather
-// than a method because the driver belongs to the support library (publisher-support/demotest).
+// than a method because the driver belongs to the support library (packages/publisher-support/demotest).
 func expectPublished(t *testing.T, listed answer) {
 	t.Helper()
 	records, _ := listed.Body["signals"].([]any)

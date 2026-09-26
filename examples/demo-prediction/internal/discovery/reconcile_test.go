@@ -32,7 +32,7 @@ import (
 
 // The shared store is what a reconciliation needs, said at compile time rather than discovered
 // at run time: this demo writes its reconciler against an interface, and the support library's
-// durable store is the thing that has to satisfy it (publisher-support/store).
+// durable store is the thing that has to satisfy it (packages/publisher-support/store).
 var _ discovery.Documents = (*store.Store)(nil)
 
 const server = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"

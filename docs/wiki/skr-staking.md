@@ -2,7 +2,7 @@
 
 An agent can ask its owner to stake SKR, to start unstaking it, to cancel a pending unstake, or to
 withdraw what a finished cooldown released. The asking is done by a **separate MCP server**
-([`skr-staking-server/`](../../skr-staking-server)), which connects to the phone as its own
+([`servers/mcp-skr-staking/`](../../servers/mcp-skr-staking)), which connects to the phone as its own
 connection; the deciding is done on the phone, in the review the owner already knows, and the signing
 is done by their wallet.
 
@@ -26,7 +26,7 @@ flow the general MCP server has had since SEE-140, served by this server at `/pa
 says which server it is so two connections are not confused for one.
 
 The page, the fragment codec and what an agent is told about the link live in the SDK
-(`server-sdk/src/pairing/`) and are shared by both servers, so the protections are one
+(`packages/server-sdk/src/pairing/`) and are shared by both servers, so the protections are one
 implementation rather than two: the token is in the fragment and never in a request, a log or
 storage; nothing pairs, revokes or launches on load, copy or QR; a code for another origin or a
 fragment that has been shortened — including one with a literal ellipsis in it — is refused rather

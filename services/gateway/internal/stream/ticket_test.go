@@ -176,7 +176,7 @@ func TestAGrantSignedWithAnotherKeyIsNotTheSameGrant(t *testing.T) {
 // The transport's namespace is a constant on purpose: it has to match the broker's configuration,
 // and a mismatch is silent — a publication into an unconfigured namespace is kept without history,
 // so recovery would stop working with nothing to see. This is one half of the pin; the phone's
-// FeedStreamContractTest is the other, and feed-gateway/centrifugo.json is what both describe.
+// FeedStreamContractTest is the other, and services/gateway/centrifugo.json is what both describe.
 func TestTheNamespaceIsTheOneTheBrokerIsConfiguredWith(t *testing.T) {
 	if Namespace != "feed" {
 		t.Fatalf("the namespace is %q", Namespace)

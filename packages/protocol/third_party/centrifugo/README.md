@@ -14,15 +14,15 @@ The phone consumes Centrifugo's **unidirectional gRPC** transport, and a client 
 speak it. Fetching it at build time would make an offline build depend on a network and a release
 tag; hand-writing an equivalent would put a wire contract we do not own into a file we maintain.
 So it is copied, pinned and checksummed, and `buf.gen.centrifugo.yaml` generates Kotlin from it into
-`android/app/src/main/generated/centrifugo/`.
+`apps/android/app/src/main/generated/centrifugo/`.
 
 It is deliberately **outside** `buf.yaml`'s workspace: `buf format` and `buf lint` apply our
 conventions to our protocol, and neither should rewrite or judge somebody else's schema. Nothing in
-`proto/` imports it, and nothing generated from it reaches the sidecar or the gateway.
+`packages/protocol/proto/` imports it, and nothing generated from it reaches the sidecar or the gateway.
 
 ## What the app is allowed to do with it
 
-One file — `android/.../feeds/CentrifugoFeedStream.kt` — may import these types. Everything else in
+One file — `apps/android/.../feeds/CentrifugoFeedStream.kt` — may import these types. Everything else in
 the app sees `feeds/FeedStream.kt`'s own types, so the broker stays an implementation detail of one
 adapter (SEE-91). `FeedBoundaryTest` fails if a second file imports them.
 

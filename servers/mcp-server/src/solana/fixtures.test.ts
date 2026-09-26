@@ -15,7 +15,7 @@ import {
 } from "../testing/transaction-fixtures.ts";
 
 const COMMITTED = fileURLToPath(
-  new URL("../../../fixtures/transactions/cases.json", import.meta.url),
+  new URL("../../../../fixtures/transactions/cases.json", import.meta.url),
 );
 
 describe("the shared transfer fixtures", () => {
@@ -24,7 +24,7 @@ describe("the shared transfer fixtures", () => {
     assert.equal(
       readFileSync(COMMITTED, "utf8"),
       built,
-      `${FIXTURE_PATH} is stale; run \`node mcp-server/src/testing/transaction-fixtures.ts\``,
+      `${FIXTURE_PATH} is stale; run \`node servers/mcp-server/src/testing/transaction-fixtures.ts\``,
     );
   });
 

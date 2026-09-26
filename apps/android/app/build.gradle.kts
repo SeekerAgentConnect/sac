@@ -39,7 +39,7 @@ if (firebaseConfigured) {
 // never a publisher's, so nothing a server sends can point the phone at an endpoint of the server's
 // choosing. Set it for a build that wants prediction orders:
 //
-//   android/gradlew -p android :app:assembleDebug -Pseekervault.solanaRpc=https://…
+//   apps/android/gradlew -p apps/android :app:assembleDebug -Pseekervault.solanaRpc=https://…
 val solanaRpc = (providers.gradleProperty("seekervault.solanaRpc").orNull ?: "").trim()
 
 // Per-cluster endpoints the phone checks its own sent transactions against (SEE-165,
@@ -49,7 +49,8 @@ val solanaRpc = (providers.gradleProperty("seekervault.solanaRpc").orNull ?: "")
 // serves devnet) and nowhere else. A debug build may point one at a local test validator, whose
 // genesis hash no cluster has; a release build may not.
 //
-//   android/gradlew -p android :app:assembleDebug -Pseekervault.solanaRpc.devnet=https://…
+//   apps/android/gradlew -p apps/android :app:assembleDebug \
+//     -Pseekervault.solanaRpc.devnet=https://…
 fun clusterRpc(cluster: String) =
     (providers.gradleProperty("seekervault.solanaRpc.$cluster").orNull ?: "").trim()
 
@@ -62,7 +63,8 @@ fun clusterRpc(cluster: String) =
 // collect device registrations. With no value, the app registers with no relay at all and every
 // other push path is unchanged.
 //
-//   android/gradlew -p android :app:assembleDebug -Pseekervault.relayUrl=https://feeds.example.com
+//   apps/android/gradlew -p apps/android :app:assembleDebug \
+//     -Pseekervault.relayUrl=https://feeds.example.com
 val relayUrl = (providers.gradleProperty("seekervault.relayUrl").orNull ?: "").trim().trimEnd('/')
 
 android {
@@ -106,20 +108,20 @@ android {
 
     sourceSets {
         getByName("main") {
-            // Written by `pnpm generate` from proto/ (buf.gen.yaml); do not edit.
+            // Written by `pnpm generate` from packages/protocol/proto/ (buf.gen.yaml); do not edit.
             java.srcDir("src/main/generated/java")
             kotlin.srcDir("src/main/generated/kotlin")
             // The vendored broker schema (buf.gen.centrifugo.yaml), kept in its own directory and
             // its own package so an import of it is visible: only feeds/CentrifugoFeedStream.kt
-            // may have one (SEE-91, third_party/centrifugo/README.md).
+            // may have one (SEE-91, packages/protocol/third_party/centrifugo/README.md).
             java.srcDir("src/main/generated/centrifugo/java")
             kotlin.srcDir("src/main/generated/centrifugo/kotlin")
         }
         // Cross-runtime fixtures, shared with the sidecar tests: the protobuf ones, and the
         // transfer transactions the sidecar builds and this app decodes (SAW-020).
         getByName("test") {
-            resources.srcDir("../../proto/fixtures")
-            resources.srcDir("../../fixtures")
+            resources.srcDir("../../../packages/protocol/proto/fixtures")
+            resources.srcDir("../../../fixtures")
             kotlin.directories.add(rootProject.file("preview-testing/src/main/kotlin").absolutePath)
         }
     }
@@ -188,7 +190,7 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     // ConnectLiveCommandTransportTest runs the real sidecar from this repository.
-    val repoRoot = layout.projectDirectory.dir("../..")
+    val repoRoot = layout.projectDirectory.dir("../../..")
     systemProperty("seekervault.repoRoot", repoRoot.asFile.absolutePath)
     // Opt-in integration switches, forwarded from the Gradle invocation to the test JVM: a broker
     // and a Redis are services, so the tests that need them skip unless someone says where they
@@ -202,7 +204,7 @@ tasks.withType<Test>().configureEach {
         providers.systemProperty(name).orNull?.let { systemProperty(name, it) }
     }
     inputs
-        .dir(repoRoot.dir("mcp-server/src"))
+        .dir(repoRoot.dir("servers/mcp-server/src"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("mcpServerSources")
 }

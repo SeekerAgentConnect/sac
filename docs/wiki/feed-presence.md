@@ -24,7 +24,7 @@ Three facts, and each one is load-bearing:
 1. **The gateway never contacts a publisher.** Not here and nowhere else — a publisher's `host` is
    administrative metadata it supplied, and a gateway that connected to one would be a gateway a
    publisher could aim at somebody else. A boundary test
-   ([`TestOnlyTheBrokerAndRelayCallOut`](../../feed-gateway/internal/gateway/boundary_test.go)) holds
+   ([`TestOnlyTheBrokerAndRelayCallOut`](../../services/gateway/internal/gateway/boundary_test.go)) holds
    it.
 2. **So presence is pushed.** Every authenticated call on the publisher API is a check-in, because a
    publisher that is publishing is manifestly running. `PublisherService.Heartbeat` exists for the
@@ -69,7 +69,7 @@ and compares. The check-in is written on the *publisher* listener, where every c
 resolved to exactly one registered server, so there is nowhere for a reader's identity to enter.
 
 The contract is pinned field by field
-([`TestTheContractIsBoundedAndSaysNothingAboutAnyone`](../../feed-gateway/internal/gateway/boundary_test.go)):
+([`TestTheContractIsBoundedAndSaysNothingAboutAnyone`](../../services/gateway/internal/gateway/boundary_test.go)):
 the request carries channels, the answer carries a channel and a verdict, and the verdict is an enum
 with three named values rather than a free field. `HeartbeatRequest` has **no field at all** — the
 credential says who is calling — so no check-in can tell a gateway where to reach anybody.
@@ -93,7 +93,7 @@ case is a registration deleted in between, and there is nothing to record about 
 ## The publisher's side
 
 Nothing, if it publishes regularly. For the quiet publisher,
-[`publish.Presence`](../../publisher-support/publish/presence.go) is the loop, and both demos run it
+[`publish.Presence`](../../packages/publisher-support/publish/presence.go) is the loop, and both demos run it
 beside their drainer:
 
 ```go
@@ -122,7 +122,7 @@ Three kinds of answer, and only one of them ends the loop:
 
 ## The phone's side
 
-[`FeedStatusManager`](../../android/app/src/main/java/io/github/brrenat/seekervault/feeds/FeedStatusManager.kt)
+[`FeedStatusManager`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/feeds/FeedStatusManager.kt)
 polls while the app is being looked at — one pass over every gateway per 30 seconds — and publishes
 `FeedStatusState`, keyed by connection id.
 
@@ -181,14 +181,14 @@ down.
 
 | Where | What it holds |
 | --- | --- |
-| `feed-gateway/internal/gateway/presence_test.go` | The reported bug (gateway up, publisher stopped, phone told); coming back; one offline feed leaving the others alone; every publication counting as a check-in; never-checked-in being offline rather than unknown; an unhosted channel absent; the refusals; a deployment with no broker and no relay still answering; the read writing nothing; surviving two missed check-ins; a backwards check-in; an anonymous caller unable to say a feed is online |
-| `feed-gateway/internal/storage/sqlite/store_test.go` | The version 5 → 6 migration keeping every row and answering "never"; forward-only writes; a stranger's check-in tolerated |
-| `feed-gateway/internal/gateway/boundary_test.go` | The pinned field lists and both new procedures being 404 on the other listener |
-| `publisher-support/publish/presence_test.go` | The gateway naming the interval; the default when it names none; `unimplemented` retried on the slow backoff with one log line; an upgraded gateway resuming check-ins in the same process on its own interval; a shutdown during the long wait; the unsupported backoff's bounds; a permanent refusal stopping it; an unreachable gateway retried on the backoff; a cancelled context ending it |
-| `android/…/feeds/ConnectFeedStatusTest.kt` | The request carrying the channels and nothing else; each verdict mapped; an unreadable availability being unknown; an unasked channel refused whole; `unimplemented` and unreachable told apart |
-| `android/…/feeds/FeedStatusManagerTest.kt` | The first read immediate; each feed its own answer; a feed returning on the next pass; a failing gateway not making its feeds offline; one gateway's failure not stopping the others; feeds added and removed; nothing asked in the background; a refresh asking at once; 32, 33 and 65 feeds in batches; a failed batch keeping only its own feeds; an older answer not overwriting a newer one, and a failed newer read not dropping it; a feed removed mid-read not coming back; two refreshes being one read |
-| `android/…/connections/FeedPresenceRefreshTest.kt` | The refresh action through the real `ConnectionsViewModel` and manager: a feed's refresh reading presence at once without moving the timer; a direct connection's refresh asking nothing; opening the app not asking once per feed |
-| `android/…/connections/ConnectionFeedAvailabilityTest.kt` | The row and the connection screen, including that unknown keeps the ordinary line and an unreachable gateway is said first |
+| `services/gateway/internal/gateway/presence_test.go` | The reported bug (gateway up, publisher stopped, phone told); coming back; one offline feed leaving the others alone; every publication counting as a check-in; never-checked-in being offline rather than unknown; an unhosted channel absent; the refusals; a deployment with no broker and no relay still answering; the read writing nothing; surviving two missed check-ins; a backwards check-in; an anonymous caller unable to say a feed is online |
+| `services/gateway/internal/storage/sqlite/store_test.go` | The version 5 → 6 migration keeping every row and answering "never"; forward-only writes; a stranger's check-in tolerated |
+| `services/gateway/internal/gateway/boundary_test.go` | The pinned field lists and both new procedures being 404 on the other listener |
+| `packages/publisher-support/publish/presence_test.go` | The gateway naming the interval; the default when it names none; `unimplemented` retried on the slow backoff with one log line; an upgraded gateway resuming check-ins in the same process on its own interval; a shutdown during the long wait; the unsupported backoff's bounds; a permanent refusal stopping it; an unreachable gateway retried on the backoff; a cancelled context ending it |
+| `apps/android/…/feeds/ConnectFeedStatusTest.kt` | The request carrying the channels and nothing else; each verdict mapped; an unreadable availability being unknown; an unasked channel refused whole; `unimplemented` and unreachable told apart |
+| `apps/android/…/feeds/FeedStatusManagerTest.kt` | The first read immediate; each feed its own answer; a feed returning on the next pass; a failing gateway not making its feeds offline; one gateway's failure not stopping the others; feeds added and removed; nothing asked in the background; a refresh asking at once; 32, 33 and 65 feeds in batches; a failed batch keeping only its own feeds; an older answer not overwriting a newer one, and a failed newer read not dropping it; a feed removed mid-read not coming back; two refreshes being one read |
+| `apps/android/…/connections/FeedPresenceRefreshTest.kt` | The refresh action through the real `ConnectionsViewModel` and manager: a feed's refresh reading presence at once without moving the timer; a direct connection's refresh asking nothing; opening the app not asking once per feed |
+| `apps/android/…/connections/ConnectionFeedAvailabilityTest.kt` | The row and the connection screen, including that unknown keeps the ordinary line and an unreachable gateway is said first |
 
 ## What this is not
 

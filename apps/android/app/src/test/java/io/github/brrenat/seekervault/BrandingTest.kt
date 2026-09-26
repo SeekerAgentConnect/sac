@@ -16,7 +16,7 @@ class BrandingTest {
                 "run this test through Gradle"
             }
         )
-    private val main = File(repository, "android/app/src/main")
+    private val main = File(repository, "apps/android/app/src/main")
 
     private fun xml(file: File): Element =
         DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file).documentElement
@@ -48,7 +48,7 @@ class BrandingTest {
         assertEquals("@mipmap/ic_launcher", application.getAttribute("android:icon"))
         assertEquals("@mipmap/ic_launcher", application.getAttribute("android:roundIcon"))
 
-        val build = File(repository, "android/app/build.gradle.kts").readText()
+        val build = File(repository, "apps/android/app/build.gradle.kts").readText()
         assertTrue("namespace changed", "namespace = \"io.github.brrenat.seekervault\"" in build)
         assertTrue(
             "application ID changed",

@@ -12,6 +12,19 @@
 - If you explored files not covered by `CODEBASE.md` during a task, append them to the relevant section.
 - After completing any task that adds, removes, or moves files or changes architecture, update `CODEBASE.md` to reflect the changes.
 
+## Repository Layout
+
+- Components live in group folders, and the folder name is the component identifier used by root
+  `pnpm` commands and CI jobs: `apps/android`, `services/gateway`, `packages/protocol`,
+  `packages/server-sdk`, `packages/publisher-support`, `servers/mcp-server`,
+  `servers/mcp-skr-staking`, `examples/demo-signals`, `examples/demo-prediction`,
+  `tools/test-agent`, `tools/loadtest`. README § Repository layout lists each one's commands;
+  `docs/development/monorepo-layout.md` has the old → new mapping and migration steps.
+- `packages/protocol` is the only protocol source (`proto/`, `buf.yaml`, `buf.gen*.yaml`, the vendored
+  Centrifugo schema). Never add a `.proto` elsewhere or edit generated code; run `pnpm generate`.
+- A new MCP server goes in `servers/<component>/`, a new demo in `examples/demo-<name>/`, and shared
+  code in `packages/` only when an existing component needs it.
+
 ## Project Commands
 
 ### Package Manager Detection (ALWAYS do this first)

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const ROOT = fileURLToPath(new URL("../../", import.meta.url));
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const GUIDE_PATH = "docs/guides/self-hosting.md";
 const GUIDE_DIRECTORY = "docs/guides";
 const COMPOSE_PATH = "deploy/mcp/compose.yaml";

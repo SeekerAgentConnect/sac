@@ -24,7 +24,7 @@ import { startSidecar, type Sidecar } from "./server.ts";
 import {
   openDatabase,
   schemaVersion,
-} from "../../server-sdk/src/storage/database.ts";
+} from "../../../packages/server-sdk/src/storage/database.ts";
 import {
   callTool,
   connectAgent,

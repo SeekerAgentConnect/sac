@@ -8,7 +8,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * The Kotlin half of the manifest fixtures in proto/fixtures/seekervault/server/v1 (SEE-88).
+ * The Kotlin half of the manifest fixtures in
+ * packages/protocol/proto/fixtures/seekervault/server/v1 (SEE-88).
  *
  * `buf convert` writes the bytes and the sidecar's manifest.test.ts checks them too, so both
  * runtimes agree about the document. What this side adds is what the phone *makes* of each one: a

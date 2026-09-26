@@ -13,9 +13,9 @@ import {
   RequestErrorDetailSchema,
   RequestState,
 } from "@seeker-vault/server-sdk/protocol";
-import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
+import { PairingStore } from "../../../../packages/server-sdk/src/storage/pairing-store.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
-import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
+import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";
 import {
   Code,
   ConnectError,
@@ -29,9 +29,9 @@ import {
   type TestPhone,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { testWallet } from "../../../server-sdk/src/testing/wallet.ts";
-import { decodeBase58 } from "../../../server-sdk/src/requests/action.ts";
-import { verifySignature } from "../../../server-sdk/src/requests/signature.ts";
+import { testWallet } from "../../../../packages/server-sdk/src/testing/wallet.ts";
+import { decodeBase58 } from "../../../../packages/server-sdk/src/requests/action.ts";
+import { verifySignature } from "../../../../packages/server-sdk/src/requests/signature.ts";
 import { CREATE_PAIRING_LINK_TOOL } from "../pairing/mcp-tool.ts";
 import {
   CANCEL_REQUEST_TOOL,

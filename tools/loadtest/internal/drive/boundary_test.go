@@ -19,7 +19,7 @@ import (
 // trading or provider traffic. Each of them is a thing that could be crossed in an afternoon by
 // someone adding a scenario — "let's point it at the live provider and see" — so each of them is a
 // test. The publisher templates' own boundary test is the model
-// (`publisher-support/api/boundary_test.go`).
+// (`packages/publisher-support/api/boundary_test.go`).
 
 // root is this module, from this package.
 const root = "../.."
@@ -90,7 +90,7 @@ func shipped(t *testing.T) map[string]string {
 			return nil
 		case strings.HasSuffix(path, "_test.go"):
 			return nil
-		// Generated from proto/ and never edited by hand; what is in it is settled by
+		// Generated from packages/protocol/proto/ and never edited by hand; what is in it is settled by
 		// buf.gen.loadtest.yaml, which the last test here is about.
 		case strings.Contains(path, filepath.Join("internal", "gen")):
 			return nil

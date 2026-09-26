@@ -50,7 +50,7 @@ import (
 // It is a constant rather than a setting because it has to match the broker's own configuration
 // exactly, and a mismatch between the two would be silent — a publication into an unconfigured
 // namespace is accepted and kept without history, so recovery would quietly stop working. The
-// broker config this repository ships (feed-gateway/centrifugo.json) declares this name, and a test
+// broker config this repository ships (services/gateway/centrifugo.json) declares this name, and a test
 // on each side pins it.
 //
 // The prefix is what scopes history, recovery and permissions to feed channels and leaves every

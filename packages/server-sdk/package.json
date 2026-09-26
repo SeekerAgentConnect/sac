@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/BrRenat/SeekerAgentWallet.git",
-    "directory": "server-sdk"
+    "directory": "packages/server-sdk"
   },
   "engines": {
     "node": ">=24.21.0 <25"

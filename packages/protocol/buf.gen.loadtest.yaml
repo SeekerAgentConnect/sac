@@ -19,27 +19,27 @@ managed:
     - file_option: go_package_prefix
       value: github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen
 plugins:
-  # Messages. The runtime library in loadtest/go.mod must match this version, and it is the version
-  # feed-gateway/go.mod and publisher-support/go.mod pin: a harness that measured a different wire format from
+  # Messages. The runtime library in tools/loadtest/go.mod must match this version, and it is the version
+  # services/gateway/go.mod and packages/publisher-support/go.mod pin: a harness that measured a different wire format from
   # the one the gateway speaks would be measuring itself (docs/development/toolchain.md).
   - remote: buf.build/protocolbuffers/go:v1.36.12
-    out: loadtest/internal/gen
+    out: tools/loadtest/internal/gen
     opt: paths=source_relative
   # The Connect clients. Only clients are used: the harness serves none of these procedures, and
-  # loadtest/internal/drive/boundary_test.go fails if it ever mounts one.
+  # tools/loadtest/internal/drive/boundary_test.go fails if it ever mounts one.
   - remote: buf.build/connectrpc/go:v1.21.0
-    out: loadtest/internal/gen
+    out: tools/loadtest/internal/gen
     opt: paths=source_relative
 inputs:
   # Our protocol: the publisher API a synthetic publisher writes through, the client API a
   # subscriber reads, and the stream envelope a listener decodes.
-  - directory: proto
+  - directory: packages/protocol/proto
     paths:
-      - proto/seekervault/gateway/v1
-      - proto/seekervault/proposal/v1
-      - proto/seekervault/request/v2
-      - proto/seekervault/server/v1
-  # The broker's own client schema, pinned and checksummed in third_party/centrifugo. The harness
+      - packages/protocol/proto/seekervault/gateway/v1
+      - packages/protocol/proto/seekervault/proposal/v1
+      - packages/protocol/proto/seekervault/request/v2
+      - packages/protocol/proto/seekervault/server/v1
+  # The broker's own client schema, pinned and checksummed in packages/protocol/third_party/centrifugo. The harness
   # listens on the transport a phone listens on, which means speaking this; `pnpm generate` checks
   # the digest before generating, so a harness is never built against an edited copy.
-  - directory: third_party/centrifugo
+  - directory: packages/protocol/third_party/centrifugo

@@ -10,7 +10,7 @@ import java.time.format.DateTimeFormatter
  * The phone builds every one of them itself, from fields, and compares the publisher's copy of the
  * challenge with its own before the wallet sees anything: a publisher cannot get the wallet to sign
  * text this app did not write. The publisher builds the same bytes from the same fields
- * (publisher-support/access/proof.go), and both sides pin one fixture
+ * (packages/publisher-support/access/proof.go), and both sides pin one fixture
  * (fixtures/restricted-feeds/challenge.json).
  *
  * The wallet signs exactly one of these, once — the challenge, which says in its own words that it

@@ -23,10 +23,10 @@ Compatibility reservations and one-way migration readers may still name the reti
 
 An independent server is a role, not an extra service that every developer must install beside their backend. The existing MCP server is one implementation of that role. The historical name `sidecar` does not imply another required component.
 
-The CopyTrading demo's API client remains in `demo-copytrading/sdk/`. The publication engine both
-feed demos use is `publisher-support/`, a source library with no command, image or deployment of
-its own. The reusable TypeScript direct-server engine lives in `server-sdk/`; the independently
-packaged `mcp-server/` application consumes only its public exports. Feed publishers use the
+The CopyTrading demo's API client remains in `examples/demo-signals/sdk/`. The publication engine both
+feed demos use is `packages/publisher-support/`, a source library with no command, image or deployment of
+its own. The reusable TypeScript direct-server engine lives in `packages/server-sdk/`; the independently
+packaged `servers/mcp-server/` application consumes only its public exports. Feed publishers use the
 gateway's ordinary publication API rather than this Direct Server SDK. The Android build currently
 has `:app` and `:designsystem`; a separately packaged Android SDK remains future work.
 
@@ -136,17 +136,17 @@ These are the canonical post-refactor boundaries:
 
 | Path | Responsibility | Boundary |
 | --- | --- | --- |
-| `android/` | SAC app and design system | No server implementation |
-| `proto/` | Shared direct/feed contracts plus compatibility reservations | Retired private-gateway identifiers stay reserved |
-| `server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Embeddable library; no MCP/product configuration |
-| `mcp-server/` | Self-hosted MCP host, executable CLI, providers and standalone Docker/npm packaging | Consumes only the Direct Server SDK's public API; the npm artifact vendors the unpublished runtime |
+| `apps/android/` | SAC app and design system | No server implementation |
+| `packages/protocol/proto/` | Shared direct/feed contracts plus compatibility reservations | Retired private-gateway identifiers stay reserved |
+| `packages/server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Embeddable library; no MCP/product configuration |
+| `servers/mcp-server/` | Self-hosted MCP host, executable CLI, providers and standalone Docker/npm packaging | Consumes only the Direct Server SDK's public API; the npm artifact vendors the unpublished runtime |
 | `deploy/mcp/`, `deploy/ingress/direct/` | Portable direct server and separately managed TLS/OAuth ingress | Application and ingress have independent lifecycles |
-| `feed-gateway/` | Shared Go feed gateway with public-read and publisher listeners, storage contract and local SQLite implementation | The only shared public-feed service |
-| `publisher-support/` | Go source library shared by both feed demos: publication bindings, document rules, manifest, store, gateway client, API and operator CLI | No command, image or deployment of its own |
-| `demo-copytrading/` | CopyTrading application: commands, admin UI, SDK and image | Independent preset in `deploy/copytrading/` |
-| `demo-prediction/` | Prediction application: command, provider client, discovery cycle and image | Independent preset in `deploy/prediction/` |
+| `services/gateway/` | Shared Go feed gateway with public-read and publisher listeners, storage contract and local SQLite implementation | The only shared public-feed service |
+| `packages/publisher-support/` | Go source library shared by both feed demos: publication bindings, document rules, manifest, store, gateway client, API and operator CLI | No command, image or deployment of its own |
+| `examples/demo-signals/` | CopyTrading application: commands, admin UI, SDK and image | Independent preset in `deploy/copytrading/` |
+| `examples/demo-prediction/` | Prediction application: command, provider client, discovery cycle and image | Independent preset in `deploy/prediction/` |
 | `deploy/` | Portable feed/MCP/demo presets, separate ingress and isolated operator examples | Canonical orchestration with explicit volume identities |
-| `test-agent/` | Developer MCP client | Development and verification only |
+| `tools/test-agent/` | Developer MCP client | Development and verification only |
 
 **There is one shared feed gateway.** Direct MCP traffic stays out of it; optional direct and feed
 ingress projects are separate from their applications and from each other.

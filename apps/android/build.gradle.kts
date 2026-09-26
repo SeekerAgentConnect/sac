@@ -197,7 +197,7 @@ tasks.register<DesignCompareTask>("designCompare") {
     group = "verification"
     description =
         "Writes reference | Roborazzi PNGs with dimensions and reports missing design pairs."
-    referenceDirectory.set(rootProject.layout.projectDirectory.dir("../design/components"))
+    referenceDirectory.set(rootProject.layout.projectDirectory.dir("../../design/components"))
     screenReferences.from(
         listOf(
                 "sheet-transfer.png",
@@ -217,7 +217,7 @@ tasks.register<DesignCompareTask>("designCompare") {
                 "assetEdit.png",
                 "addAddress.png",
             )
-            .map { rootProject.layout.projectDirectory.file("../design/screens/$it") }
+            .map { rootProject.layout.projectDirectory.file("../../design/screens/$it") }
     )
     actualDirectories.from(
         project(":designsystem").layout.projectDirectory.dir("src/test/snapshots/images"),

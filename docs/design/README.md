@@ -32,9 +32,9 @@ No token, palette, typeface, shape or component was added or changed for these f
 approved ones. Nothing in the reference HTML was edited.
 
 These files govern the v4 screen hierarchy and existing component presentation. Read them together
-with `android/designsystem/`, `SeekerTheme`, and the affected screen code before changing Android UI
+with `apps/android/designsystem/`, `SeekerTheme`, and the affected screen code before changing Android UI
 or resolving a UI merge conflict. SEE-114's token values come from the finalized Stage 7.2 export's
 rendered token specimens; its module and font provenance are documented in
-[`android/designsystem/README.md`](../../android/designsystem/README.md). Keep reference HTML bytes
+[`apps/android/designsystem/README.md`](../../apps/android/designsystem/README.md). Keep reference HTML bytes
 intact: an intentional design revision belongs in a new version with its source and differences
 documented here. Never edit a reference to make current application output appear correct.

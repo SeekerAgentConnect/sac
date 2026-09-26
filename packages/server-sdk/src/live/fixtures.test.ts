@@ -20,7 +20,7 @@ import {
 // `pnpm generate` writes each .binpb from the .json beside it with `buf convert`. The
 // Android unit tests check the same .binpb files, so all three implementations agree.
 const FIXTURES = new URL(
-  "../../../proto/fixtures/seekervault/live/v1/",
+  "../../../protocol/proto/fixtures/seekervault/live/v1/",
   import.meta.url,
 );
 

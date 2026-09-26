@@ -9,9 +9,9 @@ pnpm test:integration --no-android    # the Node legs only, for a machine with n
 ```
 
 It needs **Go** and Node. It builds five binaries out of three Go modules — `feed-gateway` and
-`feed-gatewayctl` from [`feed-gateway/`](../../feed-gateway), `copytrading` and `publishctl` from
-[`demo-copytrading/`](../../demo-copytrading), and `prediction` from
-[`demo-prediction/`](../../demo-prediction) — because the demos are two independent modules and two
+`feed-gatewayctl` from [`services/gateway/`](../../services/gateway), `copytrading` and `publishctl` from
+[`examples/demo-signals/`](../../examples/demo-signals), and `prediction` from
+[`examples/demo-prediction/`](../../examples/demo-prediction) — because the demos are two independent modules and two
 images now (SEE-134, [`demos.md`](demos.md)), and this run is precisely about what happens when two
 independent sources publish to one gateway. One `publishctl` is enough for both of them: each demo
 ships its own three-line build of the same shared client, so the binary that drives one drives the
@@ -26,8 +26,8 @@ cluster.
 
 | Leg | What it is |
 | --- | --- |
-| The cross-component run | `test-agent/src/stage71.acceptance.ts` against the five built binaries: the gateway, `feed-gatewayctl`, both demos and `publishctl`, plus the sidecar as its own process and an MCP agent |
-| The direct-mode acceptance suites | `test-agent/src/stage2.acceptance.ts` and `stage4.acceptance.ts`, unchanged, because "the private workflow still works" is a claim about the suites that already prove it |
+| The cross-component run | `tools/test-agent/src/stage71.acceptance.ts` against the five built binaries: the gateway, `feed-gatewayctl`, both demos and `publishctl`, plus the sidecar as its own process and an MCP agent |
+| The direct-mode acceptance suites | `tools/test-agent/src/stage2.acceptance.ts` and `stage4.acceptance.ts`, unchanged, because "the private workflow still works" is a claim about the suites that already prove it |
 | The stream | The same cross-component run, with a real Centrifugo in front of the gateway. Opt-in: see below |
 | The phone's cross-component cases | A filtered `:app:testDebugUnitTest` — the feed transport, shared proposals, manifests, plugins, the wallet's binding, and the direct-mode suites that must still pass with all of it in the tree |
 
@@ -45,25 +45,25 @@ SEEKERVAULT_REDIS=/path/to/redis-server \
 ```
 
 - **`SEEKERVAULT_CENTRIFUGO`** runs the gateway with a real broker in front of it, on the shipped
-  `feed-gateway/centrifugo.yaml` with the memory engine. The run then checks that a listener is granted
+  `services/gateway/centrifugo.yaml` with the memory engine. The run then checks that a listener is granted
   the channels this gateway hosts and that the publications actually reached the broker's channel.
   Without it the run checks the other half of the same contract — a gateway with no broker answers
   `no_stream` and says so in its log — and reports the stream leg as NOT RUN.
 - **`SEEKERVAULT_REDIS`**, together with the above, also enables the phone's own two-node stream
   test (`feeds/CentrifugoStreamIntegrationTest`), which is where recovery, epochs and failover are
-  checked. Neither binary is vendored: verify them against `third_party/centrifugo/SHA256SUMS` and
+  checked. Neither binary is vendored: verify them against `packages/protocol/third_party/centrifugo/SHA256SUMS` and
   the Redis release checksums, as `docs/testing/stage-7-1.md` records.
 
 ## What is stood in for, and why
 
-- **The prediction provider** (`test-agent/src/integration/provider.ts`) serves the seven real
-  answers in `demo-prediction/internal/jupiter/testdata/` — the ones that demo's own client is
+- **The prediction provider** (`tools/test-agent/src/integration/provider.ts`) serves the seven real
+  answers in `examples/demo-prediction/internal/jupiter/testdata/` — the ones that demo's own client is
   already tested against — to the demo **binary**, over `PREDICTION_PROVIDER_URL`. Two things are
   rewritten and both are about time rather than shape: every timestamp moves forward by the age of
   the capture, because a market's close time decides whether it is published at all and a process
   reads the real clock; and a closed market answers under the identity of the market that was asked
   about, because a withdrawal is only meaningful for a market somebody is following.
-- **The wallet** is `mcp-server/src/testing/wallet.ts`: a key pair made in the test process, which
+- **The wallet** is `servers/mcp-server/src/testing/wallet.ts`: a key pair made in the test process, which
   produces the same Ed25519 signature a wallet app would. The cross-component run asks it to sign a
   message and needs no chain at all; the fake Solana JSON-RPC in `chain.ts` belongs to the
   direct-mode leg, which is where a transfer is built.
@@ -73,7 +73,7 @@ SEEKERVAULT_REDIS=/path/to/redis-server \
 
 ## Writing a new case
 
-The harness is in `test-agent/src/integration/`:
+The harness is in `tools/test-agent/src/integration/`:
 
 | File | What it holds |
 | --- | --- |

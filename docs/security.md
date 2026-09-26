@@ -14,7 +14,7 @@ Each credential opens one role, and the sidecar accepts it in one place only:
 | Phone credential (`phone_token`) | The paired phone | The `Pair` response, once | `RequestService`, `UpdateService`, and authenticated `PairingService` operations for its own connection | Its SHA-256 hash |
 | `PHONE_TOKEN` | The Stage 1 live-test screen | The operator, in `.env` | `LiveCommandService` only | The value, in `.env` |
 
-- **Only the paired phone can prepare, review, and answer requests or register an FCM target.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool prepares, submits a result, registers a target, or revokes. `vault_create_pairing_link` issues the operator pairing code (deep link plus HTTPS landing page), and `skr_create_pairing_link` does the same for the SKR staking server's own pairing (SEE-149); neither completes pairing. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `mcp-server/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
+- **Only the paired phone can prepare, review, and answer requests or register an FCM target.** The agent's token is refused on every phone RPC, and the phone-side tokens are refused on `/mcp`. No MCP tool prepares, submits a result, registers a target, or revokes. `vault_create_pairing_link` issues the operator pairing code (deep link plus HTTPS landing page), and `skr_create_pairing_link` does the same for the SKR staking server's own pairing (SEE-149); neither completes pairing. The full matrix is in [`docs/protocol.md`](protocol.md#roles), and `servers/mcp-server/src/pairing/roles.test.ts` tries every credential against every RPC and MCP method.
 - **An access token is an agent's credential and no more.** When `MCP_OAUTH_ISSUER` is configured, `/mcp` also accepts a token issued by that authorization server for this deployment. It opens `/mcp` and nothing else — the same refusals as `MCP_TOKEN` apply to every phone RPC — and it authorizes asking, never answering: a request still waits for the owner's hand on the wallet. See [The authorization boundary](#the-authorization-boundary-saw-036).
 - **`PHONE_TOKEN` is the Stage 1 development exception, and it stays with the live diagnostic.** It can watch and acknowledge display-only live commands, and nothing else. It can't pair, and `RequestService` refuses it.
 - **The phone credential exists only on the phone.** The sidecar returns it once, in the `Pair` response, and stores only its hash. The database, its backups, and the log can't give it away.
@@ -130,7 +130,7 @@ What each owner does about one is theirs, and it stays on their phone
 
 ### The public broadcast path holds no reader (SEE-90, SEE-91, SEE-92)
 
-The shared gateway in [`feed-gateway/`](../feed-gateway) is what a publisher publishes to and every
+The shared gateway in [`services/gateway/`](../services/gateway) is what a publisher publishes to and every
 subscribed phone reads from ([`wiki/feed-gateway.md`](wiki/feed-gateway.md)). It is a
 third party in the middle of the stage's one public relationship, so what it is unable to do matters
 more than what it does.
@@ -230,13 +230,13 @@ from a direct sidecar; neither its old origin nor its credential is converted. S
 
 ### A publisher template holds no subscriber either (SEE-95)
 
-The template in [`demo-copytrading/`](../demo-copytrading) is the other new server in this stage,
+The template in [`examples/demo-signals/`](../examples/demo-signals) is the other new server in this stage,
 and it is the one a stranger runs: a developer's or a trader's own process, publishing signals
 everybody subscribed will read ([`wiki/copytrading-template.md`](wiki/copytrading-template.md)).
 What matters about it is the same thing that matters about the gateway — not what it does, but what
 it has no way to do. Since SEE-134 the second template is its own module,
-[`demo-prediction/`](../demo-prediction), and both are built on
-[`publisher-support/`](../publisher-support) — a source library with no command, no listener and no
+[`examples/demo-prediction/`](../examples/demo-prediction), and both are built on
+[`packages/publisher-support/`](../packages/publisher-support) — a source library with no command, no listener and no
 deployment of its own — so each claim below is made about each of them separately.
 
 - **It has nowhere to put anything about a subscriber.** Six tables: the deployment's own stamp, its
@@ -252,7 +252,7 @@ deployment of its own — so each claim below is made about each of them separat
   every word.
 - **It never learns that a phone exists.** It reads no feed — and the way that is true is that no
   feed client is compiled for either module at all
-  ([`buf.gen.publisher-support.yaml`](../buf.gen.publisher-support.yaml) generates the publisher API
+  ([`buf.gen.publisher-support.yaml`](../packages/protocol/buf.gen.publisher-support.yaml) generates the publisher API
   and the two documents into the library the two share, and nothing else), so there is no code in it
   that could ask who is subscribed even if somebody wanted to.
 - **And it was checked by looking, not only by arguing.** SEE-98's integration run publishes from
@@ -496,7 +496,7 @@ A sidecar has one paired phone at a time. A phone can pair with several sidecars
 
 This is the optional reverse proxy in front of one owner's direct server, and not the shared feed
 gateway of SEE-90 above: different service, different operator, different deployment
-([`feed-gateway/README.md`](../feed-gateway/README.md)).
+([`services/gateway/README.md`](../services/gateway/README.md)).
 
 The portable server in [`deploy/mcp`](../deploy/mcp) is host-loopback by default. The public
 [`deploy/ingress/direct/Caddyfile`](../deploy/ingress/direct/Caddyfile) belongs to a separate Compose
@@ -560,7 +560,7 @@ so HTTP/2 remains end to end.
 
 Don't use a self-signed certificate. The phone rightly refuses it, and the only way around that is weakening its checks. The automated production-listener test trusts a throwaway local certificate only inside the test process; no such trust configuration ships.
 
-`mcp-server/src/pairing/tls.test.ts` covers legacy unary proxying and certificate refusal. `mcp-server/src/updates/service.test.ts` drives gRPC over negotiated HTTP/2 into the actual secure sidecar listener while also proving its health, authenticated MCP, pairing, and RequestService HTTP/1 calls still work.
+`servers/mcp-server/src/pairing/tls.test.ts` covers legacy unary proxying and certificate refusal. `servers/mcp-server/src/updates/service.test.ts` drives gRPC over negotiated HTTP/2 into the actual secure sidecar listener while also proving its health, authenticated MCP, pairing, and RequestService HTTP/1 calls still work.
 
 ## Local storage and recovery
 
@@ -917,6 +917,6 @@ The assessment the owner read is kept with their own record of what they did, as
 
 - **`pnpm pair status` and `pnpm pair revoke` print no secret.** They name the connection, its device name, and when it paired. The phone chooses its own name, so control, format, and line separator characters in it print escaped, as `\u{…}`. A name can't start a line of its own or send the terminal an escape sequence.
 - **`pnpm pair` prints the pairing code,** because that's how pairing works. Show it only to the phone, and clear the terminal afterwards. Never paste it into a chat, an issue, or a log. An unused code stops working when it expires, or when the next one is issued.
-- **The test agent removes `MCP_TOKEN` and `PHONE_TOKEN` from all its output;** see [`test-agent/README.md`](../test-agent/README.md).
+- **The test agent removes `MCP_TOKEN` and `PHONE_TOKEN` from all its output;** see [`tools/test-agent/README.md`](../tools/test-agent/README.md).
 
 `roles.test.ts` and `cli.test.ts` check that no bearer credential or FCM target appears in the sidecar's log or in the CLI's status and revoke output.

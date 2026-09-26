@@ -21,8 +21,8 @@
 //	cp .env.example .env    # PUBLISHER_*, and the credential the gateway's operator issued
 //	go run ./cmd/copytrading
 //
-// It is not `mcp-server/`, which is one owner's private server for their own phone,
-// and it is not the gateway in `feed-gateway/`, which is the shared service this publishes to. Three
+// It is not `servers/mcp-server/`, which is one owner's private server for their own phone,
+// and it is not the gateway in `services/gateway/`, which is the shared service this publishes to. Three
 // different servers, three different operators (docs/wiki/mcp-adapter.md).
 package main
 
@@ -302,7 +302,7 @@ func run(log *slog.Logger) error {
 	}
 
 	// Stop accepting, let what is in flight finish, and leave what is unpublished in the file: it
-	// is durable, and the next start finds the same two revisions (publisher-support/store).
+	// is durable, and the next start finds the same two revisions (packages/publisher-support/store).
 	log.Info("stopping")
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

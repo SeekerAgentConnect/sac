@@ -41,7 +41,7 @@ The phone is connected separately, once, by pairing. Either you ask for the link
 or whoever has a shell on the host runs:
 
 ```bash
-node --env-file-if-exists=.env skr-staking-server/src/cli.ts pair
+node --env-file-if-exists=.env servers/mcp-skr-staking/src/cli.ts pair
 ```
 
 Show the owner the **whole** `https_url`. A label such as "Connect your phone" is fine when that

@@ -4,7 +4,7 @@
  *
  * The SDK's `ConfirmationProvider` asks each host for this rather than owning it, because only the
  * host knows what its own preparations look like. The rule here is the same one the general MCP
- * server uses (mcp-server/src/solana/confirmation.ts) and for the same reason: the approved bytes
+ * server uses (servers/mcp-server/src/solana/confirmation.ts) and for the same reason: the approved bytes
  * carry empty signature slots and the chain's copy carries the wallet's real ones, so the two are
  * compared over the region the signatures cover — the message — which is everything else.
  *

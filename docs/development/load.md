@@ -28,7 +28,7 @@ SEEKERVAULT_REDIS=/path/to/redis-server \
 ```
 
 - **`SEEKERVAULT_CENTRIFUGO`** is the pinned Centrifugo release — v6.9.6, the version
-  `deploy/feed/compose.yaml` runs and `third_party/centrifugo/README.md` pins the client schema to.
+  `deploy/feed/compose.yaml` runs and `packages/protocol/third_party/centrifugo/README.md` pins the client schema to.
   Verify the download against the release's own `centrifugo_6.9.6_checksums.txt` before using it.
   Without it, every scenario that streams is NOT RUN.
 - **`SEEKERVAULT_REDIS`** is `redis-server`, matching `deploy/feed/compose.yaml`'s `redis:8.2`.
@@ -50,10 +50,10 @@ What that number **includes**, because it is not only the transport:
 
 | Part of it | Where it is |
 | --- | --- |
-| The publish call, including the gateway's own commit | `feed-gateway/internal/gateway/publisher.go` |
-| The outbox drainer's pass — it wakes on a publication and sends up to 64 notices | `feed-gateway/internal/dispatch` |
-| The broker accepting the publication and fanning it out | `feed-gateway/internal/stream`, Centrifugo |
-| This process decoding the `FeedEvent` | `loadtest/internal/listen` |
+| The publish call, including the gateway's own commit | `services/gateway/internal/gateway/publisher.go` |
+| The outbox drainer's pass — it wakes on a publication and sends up to 64 notices | `services/gateway/internal/dispatch` |
+| The broker accepting the publication and fanning it out | `services/gateway/internal/stream`, Centrifugo |
+| This process decoding the `FeedEvent` | `tools/loadtest/internal/listen` |
 
 It is what a phone would see **minus the phone**. What a device and a mobile network add is not
 measured here and is not guessed at either; neither is push latency, which is Firebase's and the
@@ -68,7 +68,7 @@ and the report says it did.
 ## What is in the path, and what is not
 
 Everything in the path is the shipped thing. The gateway is the `broadcast` binary on its own SQLite
-file; the broker nodes run `feed-gateway/centrifugo.yaml` unchanged; Redis runs the settings
+file; the broker nodes run `services/gateway/centrifugo.yaml` unchanged; Redis runs the settings
 `deploy/feed/compose.yaml` gives it; a publisher exists only because `feed-gatewayctl register` made one.
 
 Three things are not:
@@ -81,7 +81,7 @@ Three things are not:
   the gateway, minting a real RS256 assertion — talks to a loopback server that counts hints. That
   seam is the gateway's own: `BROADCAST_PUSH_ENDPOINT` names where the API is, and a credential's
   `token_uri` may be a loopback HTTP one for development.
-- **A phone.** The harness's client makes the app's decisions — `loadtest/internal/listen/policy.go`
+- **A phone.** The harness's client makes the app's decisions — `tools/loadtest/internal/listen/policy.go`
   is a port of `feeds/FeedRecovery.kt`, with the same disconnect-code ranges, the same continuity
   test and the same 1 s → 30 s jittered backoff — but it is not the app. The app's own runtime is
   `pnpm check:android`, and its two-node broker test is
@@ -98,7 +98,7 @@ a short window is that lag rather than a lost connection.
 
 ## The profiles
 
-`loadtest/profiles.json` is data rather than code, so the numbers behind a report can be read
+`tools/loadtest/profiles.json` is data rather than code, so the numbers behind a report can be read
 without reading Go and a variant is an edit rather than a rebuild. A misspelled field is refused
 rather than silently defaulted.
 
@@ -187,7 +187,7 @@ rather than printing what was pinned.
 
 ## Writing a new case
 
-The harness is `loadtest/`:
+The harness is `tools/loadtest/`:
 
 | File | What it holds |
 | --- | --- |

@@ -1,13 +1,13 @@
 # The feed gateway's image. Build from the repository root:
-#   docker build -f feed-gateway/Dockerfile .
+#   docker build -f services/gateway/Dockerfile .
 # The context is the root because the service compiles the generated protocol code
-# in feed-gateway/internal/gen, which is generated from proto/ and committed.
+# in services/gateway/internal/gen, which is generated from packages/protocol/proto/ and committed.
 #
 # This is the shared service a developer's publisher publishes to and every
 # subscribed phone reads from (SEE-90). Portable orchestration and optional
 # ingress are separate under deploy/ (SEE-135).
 
-# Pinned to the version feed-gateway/go.mod requires, so a build from a clean
+# Pinned to the version services/gateway/go.mod requires, so a build from a clean
 # checkout uses the toolchain the tests were run with
 # (docs/development/toolchain.md).
 ARG GO_VERSION=1.27.1
@@ -18,14 +18,14 @@ ARG GO_VERSION=1.27.1
 # The compiler runs on the building machine's own platform and cross-compiles
 # for the target: CGO is off, so GOOS/GOARCH is all it takes, and `docker buildx
 # build --platform linux/amd64` from an Apple silicon Mac needs no emulation (as
-# in mcp-server/Dockerfile).
+# in servers/mcp-server/Dockerfile).
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS build
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src
-COPY feed-gateway/go.mod feed-gateway/go.sum ./
+COPY services/gateway/go.mod services/gateway/go.sum ./
 RUN go mod download
-COPY feed-gateway/ ./
+COPY services/gateway/ ./
 # CGO off, so the SQLite driver's pure-Go implementation is what gets compiled and
 # the binary needs no libc at run time. The Postgres driver (pgx) is pure Go as
 # well, so the second store costs the image nothing: same scratch base, same
@@ -102,7 +102,7 @@ ENTRYPOINT ["/feed-gateway"]
 # /bin/sh. Compose can still build scratch with --target runtime.
 #
 #   docker buildx build --platform linux/amd64 --push \
-#     -f feed-gateway/Dockerfile -t brenat/seeker-agent-connect:gateway-0.1.7 .
+#     -f services/gateway/Dockerfile -t brenat/seeker-agent-connect:gateway-0.1.7 .
 FROM runtime AS console
 USER 0
 COPY --from=busybox:1.37.0-uclibc /bin/busybox /bin/sh

@@ -245,7 +245,7 @@ class SeekerVaultThemeTest {
         val source =
             File(
                     root,
-                    "android/app/src/main/java/io/github/brrenat/seekervault/MainActivity.kt",
+                    "apps/android/app/src/main/java/io/github/brrenat/seekervault/MainActivity.kt",
                 )
                 .readText()
         assertTrue(source.contains("setContent {\n            SeekerTheme {"))

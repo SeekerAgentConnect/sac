@@ -15,15 +15,15 @@ plugins:
   # broker's server API, and the sidecar has nothing to do with feeds at all. Same argument as
   # buf.gen.yaml's exclusion of publish.proto: a boundary that needs no test to hold.
   - remote: buf.build/protocolbuffers/java:v36.1
-    out: android/app/src/main/generated/centrifugo/java
+    out: apps/android/app/src/main/generated/centrifugo/java
     opt: lite
   - remote: buf.build/protocolbuffers/kotlin:v36.1
-    out: android/app/src/main/generated/centrifugo/kotlin
+    out: apps/android/app/src/main/generated/centrifugo/kotlin
     opt: lite
   - remote: buf.build/connectrpc/kotlin:v0.9.0
-    out: android/app/src/main/generated/centrifugo/kotlin
-# Vendored, pinned and checksummed: third_party/centrifugo/README.md says which release this is and
+    out: apps/android/app/src/main/generated/centrifugo/kotlin
+# Vendored, pinned and checksummed: packages/protocol/third_party/centrifugo/README.md says which release this is and
 # why the file is here rather than fetched. It is deliberately outside buf.yaml's workspace, so
 # `buf format` and `buf lint` never rewrite or judge someone else's schema.
 inputs:
-  - directory: third_party/centrifugo
+  - directory: packages/protocol/third_party/centrifugo
