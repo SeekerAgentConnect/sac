@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.wallet
 
+import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -25,6 +26,16 @@ class WalletIntentSender(private val activity: ComponentActivity) {
     /** Whether a launch hasn't come back yet. One at a time: an Activity result has one home. */
     private var waiting = false
 
+    /**
+     * Lint's `InvalidFragmentVersionForActivityResult` asks for `androidx.fragment` 1.3.0 or newer,
+     * because a Fragment older than that has no `registerForActivityResult` of its own. This app
+     * has no Fragment at all — every screen is Compose under a `ComponentActivity`, and the
+     * registration below is `androidx.activity`'s — so the check's premise doesn't hold here. The
+     * 1.1.0 on the classpath is Play Services' transitive one, and nothing in this app reaches it.
+     * Mobile Wallet Adapter's own `ActivityResultSender`, which this replaces, registers in exactly
+     * the same way.
+     */
+    @SuppressLint("InvalidFragmentVersionForActivityResult")
     private val launcher: ActivityResultLauncher<Intent> =
         activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             waiting = false
