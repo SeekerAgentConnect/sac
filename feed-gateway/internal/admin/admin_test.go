@@ -847,6 +847,139 @@ func TestAPasswordHashCannotBeTurnedBackIntoAPassword(t *testing.T) {
 	}
 }
 
+// --- who may read (SEE-162) -------------------------------------------------------
+
+// A restricted feed can be registered from the page, with the origin canonicalised exactly as
+// feed-gatewayctl register --access restricted records it.
+func TestRegisteringARestrictedFeedThroughTheUI(t *testing.T) {
+	one := newFixture(t, openLimiter{})
+	one.logIn()
+
+	response := one.post(at+"/servers", url.Values{
+		"csrf":        {one.token(at + "/")},
+		"server":      {publisher},
+		"label":       {"signals"},
+		"publishing":  {"on"},
+		"access":      {"restricted"},
+		"auth_origin": {"https://Signals.Example.com:443/"},
+	})
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("registering answered %s", response.Status)
+	}
+	held, err := one.documents.Publisher(context.Background(), publisher)
+	if err != nil || held == nil {
+		t.Fatalf("the publisher was not registered: %v", err)
+	}
+	if !held.Access.Restricted() || held.Access.AuthOrigin != "https://signals.example.com" {
+		t.Fatalf("the registration holds %+v", held.Access)
+	}
+}
+
+// Every access the CLI refuses, the page refuses, and nothing is written.
+func TestAnInvalidAccessIsRefusedAtRegistration(t *testing.T) {
+	one := newFixture(t, openLimiter{})
+	one.logIn()
+	for _, form := range []url.Values{
+		{"access": {"restricted"}},
+		{"access": {"restricted"}, "auth_origin": {"http://signals.example.com"}},
+		{"access": {"restricted"}, "auth_origin": {"https://signals.example.com/access"}},
+		{"access": {"public"}, "auth_origin": {"https://signals.example.com"}},
+		{"access": {"everyone"}},
+		// A relay-only server publishes no feed, so there is nothing to restrict.
+		{"access": {"restricted"}, "auth_origin": {"https://signals.example.com"},
+			"publishing": nil, "relaying": {"on"}},
+	} {
+		form["csrf"] = []string{one.token(at + "/")}
+		form["server"], form["label"] = []string{publisher}, []string{"x"}
+		if _, set := form["publishing"]; !set {
+			form["publishing"] = []string{"on"}
+		}
+		response := one.post(at+"/servers", form)
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%v answered %s", form, response.Status)
+		}
+	}
+	publishers, err := one.documents.Publishers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(publishers) != 0 {
+		t.Fatalf("a refused registration wrote %d publisher(s)", len(publishers))
+	}
+}
+
+// Switching an existing feed is feed-gatewayctl access: it needs the ID typed back, it lands in the
+// store the gateway enforces from, and asking for what is already held changes nothing.
+func TestSwitchingAFeedsAccessNeedsItsIdTypedBack(t *testing.T) {
+	one := newFixture(t, openLimiter{})
+	registerDirectly(t, one.documents, publisher, "signals")
+	one.logIn()
+	ctx := context.Background()
+	page := at + "/servers/" + publisher
+	restricted := url.Values{"access": {"restricted"},
+		"auth_origin": {"https://signals.example.com"}}
+
+	for _, confirm := range []string{"", other} {
+		form := url.Values{"csrf": {one.token(page)}, "confirm": {confirm}}
+		for key, value := range restricted {
+			form[key] = value
+		}
+		response := one.post(page+"/access", form)
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("confirming with %q answered %s", confirm, response.Status)
+		}
+		if held, _ := one.documents.Publisher(ctx, publisher); held.Access.Restricted() {
+			t.Fatalf("confirming with %q changed the policy", confirm)
+		}
+	}
+
+	form := url.Values{"csrf": {one.token(page)}, "confirm": {publisher}}
+	for key, value := range restricted {
+		form[key] = value
+	}
+	response := one.post(page+"/access", form)
+	body := read(t, response)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(body, "publish its manifest again") {
+		t.Fatalf("switching answered %s", response.Status)
+	}
+	held, err := one.documents.Publisher(ctx, publisher)
+	if err != nil || !held.Access.Restricted() ||
+		held.Access.AuthOrigin != "https://signals.example.com" {
+		t.Fatalf("the store holds %+v: %v", held.Access, err)
+	}
+
+	// The same policy again is not a change, so it needs no confirmation and says so.
+	again := url.Values{"csrf": {one.token(page)}}
+	for key, value := range restricted {
+		again[key] = value
+	}
+	response = one.post(page+"/access", again)
+	body = read(t, response)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(body, "Nothing changed") {
+		t.Fatalf("repeating the policy answered %s", response.Status)
+	}
+
+	// And back to public, with an origin refused the way the CLI refuses it.
+	response = one.post(page+"/access", url.Values{"csrf": {one.token(page)}, "access": {"public"},
+		"auth_origin": {"https://signals.example.com"}, "confirm": {publisher}})
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("a public feed with an origin answered %s", response.Status)
+	}
+	response = one.post(page+"/access", url.Values{"csrf": {one.token(page)}, "access": {"public"},
+		"confirm": {publisher}})
+	_ = response.Body.Close()
+	if held, _ := one.documents.Publisher(ctx, publisher); response.StatusCode != http.StatusOK ||
+		held.Access.Restricted() {
+		t.Fatalf("switching back answered %s and holds %+v", response.Status, held.Access)
+	}
+}
+
 // --- helpers --------------------------------------------------------------------
 
 // registerDirectly is what feed-gatewayctl does, so the tests that are about the UI reading or

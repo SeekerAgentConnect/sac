@@ -45,7 +45,7 @@
   again. Revoking a credential below ends it for good.</p>
   <label class="check">
     <input type="checkbox" name="publishing" value="on" {{if $p.Publishing}}checked{{end}}>
-    Publish a public feed
+    Publish a feed
   </label>
   <label class="check">
     <input type="checkbox" name="relaying" value="on" {{if $p.Relaying}}checked{{end}}>
@@ -56,6 +56,35 @@
   and a wake-up already handed to Firebase cannot be recalled.</p>
   <button type="submit">Save capabilities</button>
 </form>
+
+{{if $p.Publishing}}
+<h2>Who may read</h2>
+<form method="post" action="{{at "/servers/"}}{{$p.ServerID}}/access" class="card">
+  <input type="hidden" name="csrf" value="{{$c}}">
+  <p class="hint">Currently: {{$p.AccessSentence}}.</p>
+  <label class="check">
+    <input type="radio" name="access" value="public" {{if not $p.Access.Restricted}}checked{{end}}>
+    Public — anyone holding the feed reference
+  </label>
+  <label class="check">
+    <input type="radio" name="access" value="restricted" {{if $p.Access.Restricted}}checked{{end}}>
+    Restricted — only devices the publisher approved
+  </label>
+  <label for="access-origin">Authentication origin <span class="sub">(restricted only)</span></label>
+  <input id="access-origin" name="auth_origin" value="{{$p.Access.AuthOrigin}}" spellcheck="false"
+         autocomplete="off" placeholder="https://signals.example.com">
+  <p class="hint">The publisher's <code>PUBLISHER_AUTH_ORIGIN</code>, character for character. A
+  restricted publisher publishes nothing until this gateway confirms it enforces the feed at that
+  origin.</p>
+  <p class="hint">Changing either retires every stream name issued under the current policy: every
+  listener attached now goes silent, and the publisher should publish its manifest again so the
+  policy it states matches this one. Grants already issued are not revoked by a policy
+  change; revoking a device is the publisher's, on its own page.</p>
+  <label for="access-confirm">Type <code class="id">{{$p.ServerID}}</code> to confirm a change</label>
+  <input id="access-confirm" name="confirm" spellcheck="false" autocomplete="off">
+  <button type="submit">Save access</button>
+</form>
+{{end}}
 
 <h2>Credentials</h2>
 <p class="hint">A credential is shown once, when it is created, and only its hash is stored. There
