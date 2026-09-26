@@ -63,8 +63,7 @@ fun explorerUrl(signature: String, network: Network?): String? =
  */
 fun openLink(context: Context, url: String, appOnly: Boolean = false): Boolean =
     try {
-        val intent =
-            Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (appOnly) intent.addFlags(Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER)
         context.startActivity(intent)
         true
