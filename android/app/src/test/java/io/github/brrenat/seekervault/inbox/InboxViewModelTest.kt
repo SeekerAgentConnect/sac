@@ -230,7 +230,7 @@ class InboxViewModelTest {
         val viewModel = viewModel()
         viewModel.openFromNotification(answered)
         assertEquals(
-            NotificationOpen(answered, NotificationOpenStatus.Current),
+            NotificationOpen(answered, NotificationOpenStatus.Closed),
             viewModel.state.value.notificationOpen,
         )
         assertNotNull(viewModel.state.value.inbox.result(answered))

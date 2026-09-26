@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -24,6 +25,7 @@ import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
+import io.github.brrenat.seekervault.designsystem.HistoryDetailTags
 import io.github.brrenat.seekervault.inbox.InboxTags
 import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
 import io.github.brrenat.seekervault.policy.PolicyTags
@@ -110,16 +112,22 @@ class InboxActivityTest {
             server.stateOf(connection.id, request.ref.requestId),
         )
 
-        // Back in the list it's answered; reopened, it shows the outcome, not the buttons.
+        // Back in the list it's answered; reopened, it is its read-only record, not the review
+        // (SEE-161), and it survives the activity being recreated.
         compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
         compose.mainClock.advanceTimeBy(240)
         compose.onNodeWithText("History").performClick()
         compose.onNodeWithTag(InboxTags.item(key)).performClick()
         scenario.recreate()
-        compose
-            .onNodeWithTag(InboxTags.STATUS)
-            .assertTextEquals(app.getString(R.string.status_acknowledged))
+        compose.onNodeWithTag(HistoryDetailTags.Page).assertExists()
+        compose.onNodeWithText("Acknowledged").assertExists()
+        compose.onNodeWithTag(InboxTags.ACKNOWLEDGE).assertDoesNotExist()
         compose.onNodeWithTag(InboxTags.REJECT).assertDoesNotExist()
+
+        // Back is History again, with the row where it was.
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithTag(HistoryDetailTags.Page).assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.item(key)).assertExists()
         assertEquals(1, gateway.submits.size)
     }
 
@@ -264,10 +272,14 @@ class InboxActivityTest {
         scenario.recreate()
         compose.waitForIdle()
 
-        // The request is still in History, and the wallet was not asked a second time.
+        // The request is still in History, and the wallet was not asked a second time. Its record
+        // says the wallet hasn't answered, not that anything was signed.
         compose.onNodeWithText("History").performClick()
         compose.onNodeWithTag(InboxTags.item(key)).performClick()
-        compose.onNodeWithTag(InboxTags.STATUS).assertExists()
+        compose
+            .onNodeWithText("You approved on this phone. The wallet hasn't answered yet.")
+            .assertExists()
+        compose.onNodeWithTag(HistoryDetailTags.Execution).assertDoesNotExist()
         assertEquals(1, adapter.signings.size)
         assertEquals(
             RequestState.REQUEST_STATE_PROCESSING,
@@ -277,9 +289,8 @@ class InboxActivityTest {
         release.complete(Unit)
         compose.waitForIdle()
 
-        compose
-            .onNodeWithTag(InboxTags.STATUS)
-            .assertTextEquals(app.getString(R.string.status_signed))
+        // The same open page updates in place once the wallet answers.
+        compose.onNodeWithText("Signed · no transaction").assertExists()
         assertEquals(1, adapter.signings.size)
         assertEquals(
             RequestState.REQUEST_STATE_COMPLETED,
