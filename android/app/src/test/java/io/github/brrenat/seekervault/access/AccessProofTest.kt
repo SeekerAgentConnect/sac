@@ -73,9 +73,7 @@ class AccessProofTest {
     fun theWalletSignatureInTheFixtureVerifiesOverThoseBytes() {
         val key = checkNotNull(decodeBase58(fixture.getString("wallet")))
         val signature = Base64.getDecoder().decode(fixture.getString("wallet_signature"))
-        assertTrue(
-            verifiesSignature(key, FeedAccessProof.message(challenge), signature)
-        )
+        assertTrue(verifiesSignature(key, FeedAccessProof.message(challenge), signature))
         // And over nothing else: a single flipped field is a different statement.
         assertFalse(
             verifiesSignature(

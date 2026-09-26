@@ -20,7 +20,11 @@ import org.junit.Test
  */
 class RestrictedFeedAccessTest {
     private val expect =
-        ManifestExpectation(serverId = SERVER_B, mode = ConnectionMode.GatewayFeed, origin = GATEWAY)
+        ManifestExpectation(
+            serverId = SERVER_B,
+            mode = ConnectionMode.GatewayFeed,
+            origin = GATEWAY,
+        )
 
     private fun valid(message: WireManifest, expect: ManifestExpectation = this.expect) =
         (manifestFrom(message, expect) as ManifestResult.Valid).manifest
@@ -63,8 +67,7 @@ class RestrictedFeedAccessTest {
             ManifestProblem.BadAccess,
             refused(
                 feedManifest(
-                    access =
-                        feedAccess { policy = FeedAccessPolicy.FEED_ACCESS_POLICY_UNSPECIFIED }
+                    access = feedAccess { policy = FeedAccessPolicy.FEED_ACCESS_POLICY_UNSPECIFIED }
                 )
             ),
         )
