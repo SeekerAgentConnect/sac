@@ -61,6 +61,10 @@ class ProviderLinkTest {
             assertFalse(refused, isProviderLink(refused))
         }
         assertFalse(isProviderLink("https://jup.ag/" + "x".repeat(MOST_LINK_LENGTH)))
+        // The bound is bytes, which is what the protocol caps and what the publisher side
+        // measures. A link well inside 512 characters can still be outside 512 bytes, and the two
+        // sides must not disagree about it.
+        assertFalse(isProviderLink("https://jup.ag/" + "\u0444".repeat(MOST_LINK_LENGTH / 2)))
     }
 
     @Test
