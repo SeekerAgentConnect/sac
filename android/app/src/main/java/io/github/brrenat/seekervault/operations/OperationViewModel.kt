@@ -25,6 +25,7 @@ import io.github.brrenat.seekervault.plugins.PluginDestination
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFailure
+import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.PreparedOperation
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.ProviderResolution
@@ -223,7 +224,7 @@ class OperationViewModel(
      */
     fun open(connectionId: String, proposalId: String) {
         val record = proposals.proposal(connectionId, proposalId) ?: return
-        val terms = termsOf(record)
+        val terms = termsOf(record, referencesOf(connectionId, proposalId))
         val generation = reviews.incrementAndGet()
         _review.value =
             OperationReview(
@@ -271,8 +272,13 @@ class OperationViewModel(
      * the point: the parsed payload, the input form, the provider resolution and the destinations
      * are derived together from one record, so a review can never hold one revision's terms beside
      * another revision's record (SEE-145).
+     *
+     * [references] are what this operation's provider named for it if it has already been submitted
+     * ([referencesOf]). They only ever add a destination — a provider with somewhere to send an
+     * owner about *their order* rather than about the market — and a review of something nobody has
+     * ordered passes none (SEE-157).
      */
-    private fun termsOf(record: ProposalRecord): Terms {
+    private fun termsOf(record: ProposalRecord, references: List<PluginReference>): Terms {
         val read = payloadOf(record)
         val payload = (read as? ActionPayloadResult.Valid)?.payload
         val resolved = payload?.let { provider(record, it) }
@@ -289,10 +295,43 @@ class OperationViewModel(
                     else -> ParameterForm()
                 },
             destinations =
-                if (resolved != null && operation != null) resolved.destinations(operation)
+                if (resolved != null && operation != null)
+                    resolved.destinations(operation, references)
                 else emptyList(),
             served = resolved != null,
         )
+    }
+
+    /**
+     * What this operation's provider named for it, if it has already been submitted (SEE-157).
+     *
+     * The owner's own record is the source, because it is the one that outlives the process: an
+     * order placed last week is still an order, and the review that placed it is long gone. The
+     * record keeps public identifiers and never a URL, so a destination is still built here, now,
+     * from compiled code — reading this back is reading *which* order, not where to send anybody.
+     */
+    private fun referencesOf(connectionId: String, proposalId: String): List<PluginReference> =
+        history.records.value
+            .firstOrNull { it.connectionId == connectionId && it.requestId == proposalId }
+            ?.operation
+            ?.references
+            ?.map { PluginReference(it.key, it.text) }
+            .orEmpty()
+
+    /**
+     * Where this record's provider would send the owner now, given what it has named for it.
+     *
+     * Re-derived rather than remembered, because an order placed while the review is open changes
+     * the answer: before it there is a market to look at, and after it there is also the order
+     * itself (SEE-157). Pure, and it reaches nothing.
+     */
+    private fun destinationsOf(
+        record: ProposalRecord,
+        payload: ActionPayload?,
+        references: List<PluginReference>,
+    ): List<PluginDestination> {
+        val resolved = payload?.let { provider(record, it) } ?: return emptyList()
+        return resolved.destinations(operationFor(record, payload), references)
     }
 
     /**
@@ -833,13 +872,24 @@ class OperationViewModel(
                 record = record,
                 standing = proposals.standing(record),
                 environment = environment,
+                // An execution recorded under an open review is exactly when a provider gains
+                // somewhere to send the owner about the order itself, so this is asked again
+                // rather than kept from before it existed (SEE-157).
+                destinations =
+                    destinationsOf(
+                        record,
+                        open.payload,
+                        referencesOf(open.connectionId, open.proposalId).ifEmpty {
+                            open.inspection?.references.orEmpty()
+                        },
+                    ),
             )
         }
         // A revision that moved is a different set of terms, and everything read off the old ones
         // goes with it: the parsed payload, the input form, which provider serves it and where it
         // may be continued. Keeping the old payload beside the new record is how the latest
         // revision comes to be prepared against the previous revision's limits (SEE-145).
-        val terms = termsOf(record)
+        val terms = termsOf(record, referencesOf(open.connectionId, open.proposalId))
         return open.copy(
             // A new number, so a provider read still in flight for the old terms cannot land on
             // these, and so the caller knows to ask about them afresh.

@@ -92,12 +92,16 @@ class JupiterExecutionProvider(
                 prediction.inspect(operation, payload.payload, choice, prepared)
         }
 
-    override fun destinations(operation: ActionOperation): List<PluginDestination> =
+    override fun destinations(
+        operation: ActionOperation,
+        references: List<PluginReference>,
+    ): List<PluginDestination> =
         when (val payload = operation.payload) {
             // A swap ends on chain and the app already links the transaction there. There is
             // nowhere truthful to send anybody afterwards, so it sends them nowhere.
             is ActionPayload.Swap -> emptyList()
-            is ActionPayload.PredictionBuy -> prediction.destinations(payload.payload)
+            is ActionPayload.PredictionBuy ->
+                prediction.destinations(payload.payload, references)
         }
 
     /**
