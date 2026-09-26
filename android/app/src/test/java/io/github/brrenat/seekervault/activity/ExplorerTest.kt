@@ -30,6 +30,26 @@ class ExplorerTest {
     }
 
     @Test
+    fun aStakingActionLinksToItsOwnClusterAndALegacyOneWithoutContextGetsNone() {
+        // SEE-165: a staking transaction is a transaction, and its record now says which cluster.
+        val staking =
+            record(kind = ActivityKind.Staking, signature = signature)
+                .copy(
+                    transfer = null,
+                    staking =
+                        ReviewedStaking(
+                            wallet = WALLET,
+                            network = Network.NETWORK_MAINNET,
+                            operation = "STAKING_OPERATION_STAKE",
+                            amount = "5",
+                        ),
+                )
+        assertEquals("https://explorer.solana.com/tx/$signature", explorerUrl(staking))
+        // One written before its terms were kept names no cluster, and a guessed link is wrong.
+        assertNull(explorerUrl(staking.copy(staking = null)))
+    }
+
+    @Test
     fun offersNothingForASignatureOverAMessage() {
         // The signature is there, it is 64 bytes, and it is not a transaction. No explorer has it,
         // and a link would say it was a payment.

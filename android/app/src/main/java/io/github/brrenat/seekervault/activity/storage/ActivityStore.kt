@@ -8,8 +8,10 @@ import io.github.brrenat.seekervault.activity.ReviewedDailyCheck
 import io.github.brrenat.seekervault.activity.ReviewedOperation
 import io.github.brrenat.seekervault.activity.ReviewedPolicy
 import io.github.brrenat.seekervault.activity.ReviewedRuleSource
+import io.github.brrenat.seekervault.activity.ReviewedStaking
 import io.github.brrenat.seekervault.activity.ReviewedTransfer
 import io.github.brrenat.seekervault.activity.ReviewedValue
+import io.github.brrenat.seekervault.confirmations.storage.TrackingStore
 import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.request.v1.Network
@@ -103,9 +105,38 @@ class ActivityStore(private val dir: File) {
         return record
     }
 
-    /** Removes everything. The owner asked; nothing else calls it. */
-    fun clear() {
+    /**
+     * Removes everything. The owner asked; nothing else calls it.
+     *
+     * It also writes down when (SEE-165), because a record is written from more than one place and
+     * some of them answer late: a server's reply, a sync, a chain check that was in flight. None of
+     * them may bring back a record the owner cleared, and [clearedAt] is how they know.
+     */
+    fun clear(at: Instant) {
         connectionIds().forEach { File(dir, it).deleteRecursively() }
+        dir.mkdirs()
+        val file = AtomicFile(File(dir, CLEARED))
+        val stream = file.startWrite()
+        try {
+            stream.write(at.toString().toByteArray(Charsets.UTF_8))
+            file.finishWrite(stream)
+        } catch (e: IOException) {
+            file.failWrite(stream)
+            throw e
+        }
+    }
+
+    /** When the owner last cleared History, or null if they never have. */
+    fun clearedAt(): Instant? {
+        val file = AtomicFile(File(dir, CLEARED))
+        if (!file.baseFile.exists()) return null
+        return try {
+            Instant.parse(String(file.readFully(), Charsets.UTF_8).trim())
+        } catch (_: IOException) {
+            null
+        } catch (_: DateTimeException) {
+            null
+        }
     }
 
     fun connectionIds(): Set<String> =
@@ -149,6 +180,7 @@ class ActivityStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
+        const val CLEARED = "cleared-at"
         // SAW-028 added the assessment the owner was shown, and left the version alone. The field
         // is optional and additive, so a file with one reads the same on a build that has never
         // heard of it. A bump would not: a build that refuses the version drops the whole record,
@@ -179,7 +211,28 @@ class ActivityStore(private val dir: File) {
                 .putOpt("signature", record.signature)
                 .putOpt("detail", record.detail)
                 .putOpt("checkedWith", record.checkedWith)
+                // SEE-165 added a staking action's terms and what the phone itself found on chain,
+                // and left the version alone for the reasons above: both are optional and
+                // additive, and an older build reading them skips them rather than the record.
+                .putOpt("staking", record.staking?.let(::encodeStaking))
+                .putOpt("chain", record.chain?.let(TrackingStore::encodeCheck))
                 .toString()
+
+        fun encodeStaking(staking: ReviewedStaking): JSONObject =
+            JSONObject()
+                .put("wallet", staking.wallet)
+                .put("network", staking.network.name)
+                .put("operation", staking.operation)
+                .put("amount", staking.amount)
+
+        fun decodeStaking(json: JSONObject?): ReviewedStaking? = json?.let {
+            ReviewedStaking(
+                wallet = it.getString("wallet"),
+                network = Network.valueOf(it.getString("network")),
+                operation = it.getString("operation"),
+                amount = it.optString("amount"),
+            )
+        }
 
         fun encodeTransfer(transfer: ReviewedTransfer): JSONObject =
             JSONObject()
@@ -352,6 +405,10 @@ class ActivityStore(private val dir: File) {
                 signature = json.optString("signature").takeIf(String::isNotEmpty),
                 detail = json.optString("detail").takeIf(String::isNotEmpty),
                 checkedWith = json.optString("checkedWith").takeIf(String::isNotEmpty),
+                staking = decodeStaking(json.optJSONObject("staking")),
+                // A chain state a later build named and this one can't read is left out, not the
+                // record: the record is still the owner's history without it.
+                chain = json.optJSONObject("chain")?.let(TrackingStore::decodeCheck),
             )
         }
     }

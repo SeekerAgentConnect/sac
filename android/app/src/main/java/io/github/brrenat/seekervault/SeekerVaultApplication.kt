@@ -17,6 +17,11 @@ import io.github.brrenat.seekervault.access.OkHttpFeedAccessApi
 import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
+import io.github.brrenat.seekervault.confirmations.ChainEndpoint
+import io.github.brrenat.seekervault.confirmations.ChainEndpoints
+import io.github.brrenat.seekervault.confirmations.ConfirmationTracker
+import io.github.brrenat.seekervault.confirmations.HttpChainReader
+import io.github.brrenat.seekervault.confirmations.storage.TrackingStore
 import io.github.brrenat.seekervault.connections.ConnectConnectionGateway
 import io.github.brrenat.seekervault.connections.ConnectionGateway
 import io.github.brrenat.seekervault.connections.ConnectionRepository
@@ -55,9 +60,11 @@ import io.github.brrenat.seekervault.push.HttpRelayClient
 import io.github.brrenat.seekervault.push.RelayClient
 import io.github.brrenat.seekervault.push.RelayRegistrationManager
 import io.github.brrenat.seekervault.push.storage.RelayStore
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.solana.HttpSolanaAccounts
 import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.sync.BackgroundSyncScheduler
+import io.github.brrenat.seekervault.sync.ConfirmationScheduler
 import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
 import io.github.brrenat.seekervault.sync.FeedSyncRunner
 import io.github.brrenat.seekervault.sync.FeedSyncScheduler
@@ -234,6 +241,85 @@ class SeekerVaultApplication : Application() {
         HttpSolanaAccounts(httpClient, BuildConfig.SOLANA_RPC)
     }
 
+    /**
+     * Where the phone asks about its own sent transactions (SEE-165,
+     * docs/wiki/chain-confirmation.md#endpoints): the per-cluster endpoints this build was
+     * configured with, and the general one, each used for a cluster only once its genesis hash says
+     * it serves it. Like [solanaAccounts], it is the application's and never a server's. Tests
+     * replace it with a fake chain.
+     */
+    var chainEndpoints: () -> ChainEndpoints = {
+        ChainEndpoints(
+            listOf(
+                ChainEndpoint(BuildConfig.SOLANA_RPC_MAINNET, Network.NETWORK_MAINNET),
+                ChainEndpoint(
+                    BuildConfig.SOLANA_RPC_DEVNET,
+                    Network.NETWORK_DEVNET,
+                    allowUnknownGenesis = BuildConfig.DEBUG,
+                ),
+                ChainEndpoint(
+                    BuildConfig.SOLANA_RPC_TESTNET,
+                    Network.NETWORK_TESTNET,
+                    allowUnknownGenesis = BuildConfig.DEBUG,
+                ),
+                ChainEndpoint(BuildConfig.SOLANA_RPC, network = null),
+            )
+        ) { url ->
+            HttpChainReader(httpClient, url)
+        }
+    }
+
+    /**
+     * What follows each sent transaction to the chain from this phone (SEE-165). One for the
+     * process: the foreground loop, the background worker and the owner's "Check status" all go
+     * through it. Clearing History clears it too.
+     */
+    val confirmations: ConfirmationTracker by lazy {
+        ConfirmationTracker(
+                store = TrackingStore(File(filesDir, "confirmations")),
+                history = activityLog,
+                endpoints = chainEndpoints(),
+            )
+            .also { tracker -> activityLog.onClear(tracker::clear) }
+    }
+
+    /** When the tracker runs: in the foreground while visible, as background work otherwise. */
+    val confirmationScheduler: ConfirmationScheduler by lazy {
+        ConfirmationScheduler.create(
+            context = this,
+            tracker = confirmations,
+            scope = CoroutineScope(SupervisorJob() + connectionIo),
+        )
+    }
+
+    /**
+     * The app became visible: read what is tracked, bring older submissions into tracking where the
+     * phone still holds enough to check them, and check whatever is due (SEE-165). Also how a
+     * force-stopped app catches up — nothing ran while it was stopped.
+     */
+    fun onConfirmationsForeground() {
+        // The scheduler orders the transitions: if the app is hidden while this is still loading,
+        // the loop is not started afterwards.
+        confirmationScheduler.onForeground {
+            try {
+                confirmations.load()
+                connectionRepository.load()
+                if (!activityLog.loaded.value) activityLog.load()
+                confirmations.backfill(
+                    connectionRepository.inbox.value.results,
+                    activityLog.records.value,
+                )
+            } catch (_: java.io.IOException) {
+                // The history or the tracking couldn't be read; nothing is backfilled this time.
+            }
+        }
+    }
+
+    /** The app was hidden: what is unfinished is handed to background work. */
+    fun onConfirmationsBackground() {
+        confirmationScheduler.onBackground()
+    }
+
     /** One registry for the process, so every screen resolves an operation the same way. */
     val providerRegistry: ProviderRegistry by lazy { providers() }
 
@@ -278,6 +364,9 @@ class SeekerVaultApplication : Application() {
                 // A restricted feed the owner removed takes its access with it: the record, the
                 // session and the device key the publisher's approval was bound to (SEE-156).
                 onConnectionRemoved = { id -> feedAccessManager?.forget(id) },
+                // Told what the wallet is handed and what it answered, and it follows the chain
+                // from there, independently of this connection (SEE-165).
+                tracking = confirmations,
             )
         backgroundSync =
             BackgroundSyncScheduler.create(
@@ -390,6 +479,7 @@ class SeekerVaultApplication : Application() {
             feed = feedGateway(),
             history = activityLog,
             io = connectionIo,
+            tracking = confirmations,
         )
     }
 

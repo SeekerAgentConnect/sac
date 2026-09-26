@@ -182,6 +182,9 @@ fun SeekerVaultApp(
 
     val state by connections.state.collectAsStateWithLifecycle()
     val inboxState by inbox.state.collectAsStateWithLifecycle()
+    // What the phone itself found on chain, one source for every History surface (SEE-165).
+    val historyState by history.state.collectAsStateWithLifecycle()
+    val chainChecks by history.chainChecks.collectAsStateWithLifecycle()
     val walletState by wallet.state.collectAsStateWithLifecycle()
     val policyState by policy.state.collectAsStateWithLifecycle()
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
@@ -358,6 +361,7 @@ fun SeekerVaultApp(
                 AppScreen.Inbox ->
                     InboxRoute(
                         state = inboxState,
+                        chainChecks = chainChecks,
                         feedRecords = operationsState.records,
                         feedStanding = { record ->
                             operations?.standing(record)
@@ -415,6 +419,9 @@ fun SeekerVaultApp(
                         onCheckStatus = inbox::checkStatus,
                         onBack = { navigator.back() },
                         modifier = rootModifier,
+                        chainChecks = chainChecks,
+                        checkingChain = historyState.checking,
+                        onCheckChain = history::checkChain,
                     )
                 AppScreen.AddConnection ->
                     AddConnectionRoute(

@@ -42,6 +42,17 @@ if (firebaseConfigured) {
 //   android/gradlew -p android :app:assembleDebug -Pseekervault.solanaRpc=https://…
 val solanaRpc = (providers.gradleProperty("seekervault.solanaRpc").orNull ?: "").trim()
 
+// Per-cluster endpoints the phone checks its own sent transactions against (SEE-165,
+// docs/wiki/chain-confirmation.md#endpoints). Each is **empty by default** for the reasons above.
+// A record is only ever checked on the cluster it was bound to, so a transaction sent on devnet is
+// asked about at the devnet endpoint (or at `seekervault.solanaRpc` once its genesis hash proves it
+// serves devnet) and nowhere else. A debug build may point one at a local test validator, whose
+// genesis hash no cluster has; a release build may not.
+//
+//   android/gradlew -p android :app:assembleDebug -Pseekervault.solanaRpc.devnet=https://…
+fun clusterRpc(cluster: String) =
+    (providers.gradleProperty("seekervault.solanaRpc.$cluster").orNull ?: "").trim()
+
 // The gateway this app will register with for push relayed on a direct server's behalf (SEE-144,
 // docs/guides/server-development.md#the-gateway-push-relay). **Empty by default**, for the same two
 // reasons as above and one more that matters more here: it is the one place this decision can be
@@ -70,6 +81,11 @@ android {
         // A read-only endpoint, or the empty string. It is not a credential and it is not a
         // secret: it is an address the owner's phone reads public account data from.
         buildConfigField("String", "SOLANA_RPC", "\"$solanaRpc\"")
+        // The same, per cluster, for following sent transactions (SEE-165). Read-only addresses
+        // like the one above; only their hosts are ever stored.
+        buildConfigField("String", "SOLANA_RPC_MAINNET", "\"${clusterRpc("mainnet")}\"")
+        buildConfigField("String", "SOLANA_RPC_DEVNET", "\"${clusterRpc("devnet")}\"")
+        buildConfigField("String", "SOLANA_RPC_TESTNET", "\"${clusterRpc("testnet")}\"")
         // The one relay this app will hand its Firebase registration to, or the empty string. It
         // is an origin, not a credential: what it grants is nothing until the owner's phone
         // authorizes a server at it, one direct connection at a time.

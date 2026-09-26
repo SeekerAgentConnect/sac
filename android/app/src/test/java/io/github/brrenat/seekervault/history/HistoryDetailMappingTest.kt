@@ -9,6 +9,10 @@ import io.github.brrenat.seekervault.activity.messageRequest
 import io.github.brrenat.seekervault.activity.result
 import io.github.brrenat.seekervault.activity.signatureBytes
 import io.github.brrenat.seekervault.activity.transferRequest
+import io.github.brrenat.seekervault.confirmations.ChainCheck
+import io.github.brrenat.seekervault.confirmations.ChainLevel
+import io.github.brrenat.seekervault.confirmations.ChainReason
+import io.github.brrenat.seekervault.confirmations.ChainState
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Delivery
@@ -25,6 +29,7 @@ import io.github.brrenat.seekervault.designsystem.HistoryDetailStatus
 import io.github.brrenat.seekervault.designsystem.HistoryDetailTransactionStatus
 import io.github.brrenat.seekervault.designsystem.SourceColour
 import io.github.brrenat.seekervault.operations.choiceRows
+import io.github.brrenat.seekervault.operations.predictionProposal
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterField
 import io.github.brrenat.seekervault.plugins.ParameterForm
@@ -306,6 +311,8 @@ class HistoryDetailMappingTest {
             )
         assertEquals(HistoryDetailStatus.Approved, model.status.status)
         assertTrue(model.status.explanation.contains("never learned"))
+        // Nothing to look up without a signature; the owner is pointed at the wallet (SEE-165).
+        assertTrue(model.status.explanation.contains("wallet's own history"))
         assertNull(model.execution)
         assertTrue(model.transactions.isEmpty())
     }
@@ -405,7 +412,7 @@ class HistoryDetailMappingTest {
     }
 
     @Test
-    fun aSubmittedSignalIsPendingBecauseNothingFollowsItOnChain() {
+    fun aSubmittedSignalIsPendingUntilThePhoneHasCheckedIt() {
         val base = record()
         val signature = signatureBytes(9)
         val outcome = ProposalOutcome.Submitted(signature)
@@ -433,6 +440,144 @@ class HistoryDetailMappingTest {
             "https://explorer.solana.com/tx/${encodeBase58(signature.toByteArray())}",
             transaction.explorerUrl,
         )
+    }
+
+    // SEE-165: what the phone itself found on chain ---------------------------------------------
+
+    private val verified =
+        ChainCheck(
+            state = ChainState.Confirmed,
+            level = ChainLevel.Finalized,
+            slot = 812L,
+            checkedAt = ANSWERED_AT.plusSeconds(20),
+            checks = 2,
+            host = "rpc.example.com",
+        )
+
+    @Test
+    fun thePhonesOwnVerifiedResultIsShownWhileTheServerIsStillBehind() {
+        val signature = signatureBytes()
+        val request = transferRequest(state = RequestState.REQUEST_STATE_SUBMITTED)
+        val model =
+            privateHistoryDetail(
+                result(request, signing = SigningOutcome.Sent(signature)),
+                owner,
+                clock,
+                chain = verified,
+            )
+
+        assertEquals(HistoryDetailExecutionState.Confirmed, model.execution?.state)
+        assertTrue(model.execution!!.body.contains("This phone checked"))
+        assertTrue(model.execution!!.body.contains("rpc.example.com"))
+        assertTrue(model.execution!!.rows.contains(HistoryDetailRow("Commitment", "Finalized")))
+        assertNull(model.execution!!.checkStatus)
+        assertEquals(HistoryDetailTransactionStatus.Confirmed, model.transactions.single().status)
+        assertTrue(model.timeline.any { it.event == HistoryDetailEvent.Confirmed })
+        // Local confirmation says nothing about delivery: a response still waiting still says so.
+        val waiting =
+            privateHistoryDetail(
+                result(
+                    request,
+                    signing = SigningOutcome.Sent(signature),
+                    delivery = Delivery.Waiting,
+                ),
+                owner,
+                clock,
+                chain = verified,
+            )
+        assertNotNull(waiting.delivery)
+        assertEquals(HistoryDetailExecutionState.Confirmed, waiting.execution?.state)
+    }
+
+    @Test
+    fun aLocallyVerifiedFailureIsNotOverruledByTheServer() {
+        val signature = signatureBytes()
+        val model =
+            privateHistoryDetail(
+                result(
+                    transferRequest(state = RequestState.REQUEST_STATE_CONFIRMED),
+                    signing = SigningOutcome.Sent(signature),
+                ),
+                owner,
+                clock,
+                chain =
+                    verified.copy(state = ChainState.Failed, chainError = "custom program error"),
+            )
+        assertEquals(HistoryDetailExecutionState.Failed, model.execution?.state)
+        // The readable reason on the card, the chain's raw error under Identifiers (SEE-161).
+        assertFalse(model.execution!!.failureReason!!.contains("custom program error"))
+        assertEquals(HistoryDetailRow("Error", "custom program error"), model.identifiers.last())
+        assertEquals(HistoryDetailTransactionStatus.Failed, model.transactions.single().status)
+    }
+
+    @Test
+    fun aProvenExpiryIsNeverLandedAndOffersNoCheck() {
+        val model =
+            privateHistoryDetail(
+                result(transferRequest(), signing = SigningOutcome.Sent(signatureBytes())),
+                owner,
+                clock,
+                chain = ChainCheck(ChainState.Expired, checkedAt = ANSWERED_AT.plusSeconds(600)),
+            )
+        assertEquals("Expired · never landed", model.execution?.title)
+        assertTrue(model.execution!!.body.contains("Nothing was spent"))
+        assertNull(model.execution!!.checkStatus)
+        assertEquals(HistoryDetailTransactionStatus.Failed, model.transactions.single().status)
+    }
+
+    @Test
+    fun anUnsettledCheckSaysWhenItWasTriedAndOffersCheckStatus() {
+        val model =
+            privateHistoryDetail(
+                result(transferRequest(), signing = SigningOutcome.Sent(signatureBytes())),
+                owner,
+                clock,
+                chain =
+                    ChainCheck(
+                        state = ChainState.Checking,
+                        checkedAt = ANSWERED_AT.plusSeconds(30),
+                        reason = ChainReason.RateLimited,
+                        nextCheckAt = ANSWERED_AT.plusSeconds(90),
+                    ),
+                checkingChain = true,
+            )
+        assertEquals(HistoryDetailExecutionState.Pending, model.execution?.state)
+        val body = model.execution!!.body.plain()
+        assertTrue(body, body.contains("slow down"))
+        assertTrue(body, body.contains("Last checked"))
+        assertTrue(body, body.contains("Next check"))
+        assertEquals(true, model.execution!!.checkStatus?.checking)
+    }
+
+    @Test
+    fun aConfirmedPredictionOrderIsNeverCalledFilled() {
+        val base =
+            ProposalRecord(
+                connectionId = CONNECTION,
+                proposal = proposal(predictionProposal()),
+            )
+        val signature = signatureBytes(9)
+        val outcome = ProposalOutcome.Submitted(signature)
+        val model =
+            signalHistoryDetail(
+                base.copy(
+                    execution =
+                        ProposalExecution(
+                            binding = binding(base.proposal, choice(1UL)),
+                            startedAt = ANSWERED_AT,
+                            outcome = outcome,
+                            settledAt = ANSWERED_AT.plusSeconds(3),
+                        )
+                ),
+                ProposalStanding.Executed(outcome),
+                feed,
+                clock = clock,
+                chain = verified,
+            )
+        assertEquals(HistoryDetailExecutionState.Confirmed, model.execution?.state)
+        assertTrue(model.execution!!.body.contains("doesn't mean the order filled"))
+        assertFalse(model.toString().contains("Filled"))
+        assertEquals(HistoryDetailTransactionStatus.Confirmed, model.transactions.single().status)
     }
 
     @Test

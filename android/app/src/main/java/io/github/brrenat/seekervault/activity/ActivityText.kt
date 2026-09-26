@@ -4,6 +4,11 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.confirmations.ChainCheck
+import io.github.brrenat.seekervault.confirmations.ChainLevel
+import io.github.brrenat.seekervault.confirmations.ChainReason
+import io.github.brrenat.seekervault.confirmations.ChainState
+import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.policy.DailyCheckScope
 import io.github.brrenat.seekervault.policy.PolicyCheckStatus
 import io.github.brrenat.seekervault.policy.RuleSource
@@ -35,6 +40,10 @@ object ActivityTags {
     const val DETAIL = "activityDetail"
     const val SOURCE = "activitySource"
     const val POLICY = "activityPolicy"
+    /** What the phone itself found on chain (SEE-165). */
+    const val CHAIN = "activityChain"
+    const val CHECK_STATUS = "activityCheckStatus"
+    const val NO_SIGNATURE = "activityNoSignature"
 
     fun item(record: ActivityRecord) = "activity:${record.connectionId}/${record.requestId}"
 
@@ -84,7 +93,7 @@ fun outcomeText(outcome: ActivityOutcome): Int =
 fun clusterText(record: ActivityRecord): String? =
     // A transfer's own cluster, or the one an operation from a shared proposal was bound to
     // (SEE-89): its signature is a transaction's ID too, and means nothing without the cluster.
-    (record.transfer?.network ?: record.operation?.network)?.let { network ->
+    record.network?.let { network ->
         stringResource(
             when (network) {
                 Network.NETWORK_MAINNET -> R.string.activity_cluster_mainnet
@@ -213,3 +222,65 @@ private fun reviewedStatusText(status: PolicyCheckStatus): String =
             PolicyCheckStatus.NotConfigured -> R.string.policy_status_not_configured
         }
     )
+
+/**
+ * The record's outcome line, told apart where the chain made it more specific (SEE-165): a
+ * transaction proven never to land is not one that ran and failed, and one no check can settle is
+ * not simply "sent".
+ */
+@StringRes
+fun recordOutcomeText(record: ActivityRecord): Int {
+    val chain = record.chain
+    return when {
+        chain?.state == ChainState.Expired && record.outcome == ActivityOutcome.ChainFailed ->
+            R.string.activity_outcome_expired
+        chain?.state == ChainState.Unresolved &&
+            (record.outcome == ActivityOutcome.Sent || record.outcome == ActivityOutcome.Unknown) ->
+            R.string.activity_outcome_unresolved
+        else -> outcomeText(record.outcome)
+    }
+}
+
+/** What the phone itself last found on chain, in one sentence (SEE-165). */
+@Composable
+fun chainText(chain: ChainCheck): String {
+    val state =
+        when (chain.state) {
+            ChainState.Awaiting -> stringResource(R.string.activity_chain_awaiting)
+            ChainState.Checking ->
+                when (chain.reason) {
+                    ChainReason.ProcessedOnly -> stringResource(R.string.activity_chain_processed)
+                    ChainReason.NoEndpoint -> stringResource(R.string.activity_chain_no_endpoint)
+                    ChainReason.WrongCluster ->
+                        stringResource(R.string.activity_chain_wrong_cluster)
+                    ChainReason.Unreachable,
+                    ChainReason.RateLimited,
+                    ChainReason.Refused,
+                    ChainReason.Unusable -> stringResource(R.string.activity_chain_delayed)
+                    else -> stringResource(R.string.activity_chain_checking)
+                }
+            ChainState.Confirmed ->
+                stringResource(
+                    R.string.activity_chain_confirmed,
+                    chain.level?.code ?: ChainLevel.Confirmed.code,
+                )
+            ChainState.Failed -> stringResource(R.string.activity_chain_failed)
+            ChainState.Expired -> stringResource(R.string.activity_chain_expired)
+            ChainState.Unresolved ->
+                when (chain.reason) {
+                    ChainReason.Mismatch -> stringResource(R.string.activity_chain_mismatch)
+                    ChainReason.MissingContext ->
+                        stringResource(R.string.activity_chain_missing_context)
+                    else -> stringResource(R.string.activity_chain_gave_up)
+                }
+        }
+    val checked =
+        chain.checkedAt?.let {
+            " " + stringResource(R.string.activity_chain_checked_at, formatInstant(it))
+        } ?: ""
+    val next =
+        chain.nextCheckAt?.let {
+            " " + stringResource(R.string.activity_chain_next_at, formatInstant(it))
+        } ?: ""
+    return state + checked + next
+}

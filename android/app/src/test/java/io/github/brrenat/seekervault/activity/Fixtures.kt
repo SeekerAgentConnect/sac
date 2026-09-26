@@ -13,6 +13,7 @@ import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.request.v1.StakingOperation
 import io.github.brrenat.seekervault.request.v1.ackAction
 import io.github.brrenat.seekervault.request.v1.action
 import io.github.brrenat.seekervault.request.v1.actionRequest
@@ -21,6 +22,7 @@ import io.github.brrenat.seekervault.request.v1.confirmation
 import io.github.brrenat.seekervault.request.v1.outcome
 import io.github.brrenat.seekervault.request.v1.requestRef
 import io.github.brrenat.seekervault.request.v1.signMessageAction
+import io.github.brrenat.seekervault.request.v1.stakingAction
 import io.github.brrenat.seekervault.request.v1.transferAction
 import java.time.Instant
 
@@ -82,6 +84,25 @@ fun transferRequest(
             }
         }
     }
+}
+
+/** One of the four SKR staking actions, on mainnet where the program is (SEE-146, SEE-165). */
+fun stakingRequest(requestId: String = REQUEST): ActionRequest = actionRequest {
+    ref = requestRef {
+        connectionId = CONNECTION
+        this.requestId = requestId
+    }
+    action = action {
+        staking = stakingAction {
+            wallet = WALLET
+            network = Network.NETWORK_MAINNET
+            operation = StakingOperation.STAKING_OPERATION_UNSTAKE
+            amount = "1000"
+        }
+    }
+    state = RequestState.REQUEST_STATE_PROCESSING
+    createdAt = timestamp { seconds = ANSWERED_AT.epochSecond }
+    expiresAt = timestamp { seconds = ANSWERED_AT.plusSeconds(3600).epochSecond }
 }
 
 fun messageRequest(requestId: String = OTHER_REQUEST): ActionRequest = actionRequest {

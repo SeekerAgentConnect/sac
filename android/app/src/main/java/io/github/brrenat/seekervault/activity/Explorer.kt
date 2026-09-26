@@ -18,10 +18,11 @@ private const val EXPLORER = "https://explorer.solana.com/tx/"
 /**
  * Where [record]'s transaction can be read, or null when there is nothing to read.
  *
- * There is nothing to read for anything but a transaction that was sent: a transfer the owner
- * approved, or an operation they executed from a shared proposal (SEE-89). A signed message carries
- * a signature too, and it is not a transaction: it moved nothing, no cluster has it, and no
- * explorer can show it. Offering a link for one would say it was a payment.
+ * There is nothing to read for anything but a transaction that was sent: a transfer or a staking
+ * action the owner approved (SEE-165), or an operation they executed from a shared proposal
+ * (SEE-89). A signed message carries a signature too, and it is not a transaction: it moved
+ * nothing, no cluster has it, and no explorer can show it. Offering a link for one would say it was
+ * a payment.
  *
  * The cluster comes from what the owner reviewed — the transfer's own, or the one an operation was
  * bound to — and mainnet is the explorer's default. The same signature on another cluster is
@@ -31,7 +32,7 @@ private const val EXPLORER = "https://explorer.solana.com/tx/"
 fun explorerUrl(record: ActivityRecord): String? {
     if (!record.signatureIsTransaction) return null
     val signature = record.signature ?: return null
-    return explorerUrl(signature, record.transfer?.network ?: record.operation?.network)
+    return explorerUrl(signature, record.network)
 }
 
 /**

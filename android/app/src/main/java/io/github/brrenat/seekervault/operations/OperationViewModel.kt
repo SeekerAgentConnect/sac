@@ -688,7 +688,13 @@ class OperationViewModel(
         wallet.withWallet { session ->
             when (
                 val begun =
-                    proposals.beginExecution(open.connectionId, open.proposalId, binding, selected)
+                    proposals.beginExecution(
+                        open.connectionId,
+                        open.proposalId,
+                        binding,
+                        selected,
+                        transaction = prepared.transaction.toByteArray(),
+                    )
             ) {
                 is ExecutionOutcome.Refused -> stop(OperationProblem.Binding(begun.problem))
                 is ExecutionOutcome.Gone -> stop(OperationProblem.Gone)
