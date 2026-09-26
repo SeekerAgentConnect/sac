@@ -102,25 +102,32 @@ This page is what is checked automatically, what only the Seeker can show, and t
 
 ### Wallet targeting
 
-Mobile Wallet Adapter's client learns where the wallet answered from while it authorizes, and keeps
-it in that client object. Until SEE-84 the app made a new client for every operation, so each one
-threw that away and started association afresh.
+SEE-84 made one wallet session one client, so that what a client learned about the wallet while it
+authorized held for the session. SEE-159 took the next step and made it outlive the process: the
+wallet app the owner connected is stored beside their account, and every association is aimed at it.
+Full description: [docs/wiki/wallet-targeting.md](../wiki/wallet-targeting.md).
 
-- **One wallet session is one client.** Connecting, signing, sending and disconnecting share it, so
-  what it learned about the wallet holds for the session's lifetime. Nothing is held open between
-  calls: each one associates, does its work, and closes.
+- **One wallet session is one client, for one wallet app.** Connecting, signing, sending and
+  disconnecting share it. Nothing is held open between calls: each one associates, does its work,
+  and closes.
 - **It is dropped, not reused, when it stops meaning the same wallet.** Disconnecting ends it, an
-  authorization the wallet refused ends it, and another network is another session — a client is
-  bound to the chain it authorized on.
-- **A restart starts again.** The client's learned endpoint is private state in the pinned Mobile
-  Wallet Adapter (`mwa = 2.2.0`): there is no supported way to set it, and this app does not reach
-  into one by reflection or keep a copy of it. So a phone that reopens the app associates the way it
-  did the first time, and Android chooses the wallet as it does for any association. Restoring it
-  across a restart needs an upstream API that can take it; that is a follow-up, not something this
-  change works around.
-- **No server chooses a wallet.** Endpoint metadata comes from the wallet's own authorization flow
-  and nowhere else. Nothing a sidecar sends reaches the wallet client, and nothing about routing is
-  read back out of storage.
+  authorization the wallet refused ends it, another network is another session — a client is bound to
+  the chain it authorized on — and so is another wallet app.
+- **A restart opens the same wallet.** The route is read back out of the stored session, so the first
+  approval after the app is reopened goes to the app the owner connected, exactly as the one before
+  it did. It was not always so: Mobile Wallet Adapter's own `MobileWalletAdapter` keeps the wallet's
+  association URI in a private field with no setter (checked against the pinned `mwa = 2.2.0`), so
+  routing could be learned within a process and never restored into one. The app builds the
+  association itself now, over the library's public `LocalAssociationScenario`,
+  `LocalAssociationIntentCreator` and `LocalAdapterOperations`, which is what lets a stored route be
+  applied to the intent. Nothing is reached by reflection.
+- **A wallet app that has gone stops a signing rather than moving it.** Falling back to a wide
+  association there would put an approval the owner gave for one wallet in front of another. Nothing
+  is opened, the answer is "no wallet app answered", and the owner connects a wallet again.
+  Connecting is the opposite case and does fall back: that is what changing wallet means.
+- **No server chooses a wallet.** A route comes from the wallet's own authorization and from
+  `PackageManager`, and from nowhere else. Nothing a sidecar sends reaches it, and no package name
+  is written down that the system didn't report.
 
 ## Automated checks
 
@@ -153,6 +160,21 @@ threw that away and started association afresh.
 | One session across connecting, signing and sending; another network is another session | `MwaWalletAdapterSessionTest.keepsOneSessionAcrossConnectingSigningAndSending`, `…startsAnotherSessionForAnotherNetwork` |
 | The session is dropped when the wallet refuses the authorization, and when the owner disconnects | `MwaWalletAdapterSessionTest.forgetsTheSessionWhenTheWalletRefusesThisPhonesAuthorization`, `…forgetsTheSessionWhenTheOwnerDisconnects` |
 | The selection and its token are one sealed record, and an interrupted replacement leaves the one that was there | `WalletStoreTest.anInterruptedReplacementLeavesTheRecordThatWasThere`, `…aHalfWrittenReplacementIsNeverTheRecord` |
+| **Wallet targeting (SEE-159)** | |
+| Where an association is aimed, for every route and every set of installed apps | `WalletRoutingTest` |
+| The route is stored with the account, sealed with it, and read back by a store made afresh | `WalletStoreTest.keepsTheRouteToTheWalletAppBesideTheAccount`, `…sealsTheRouteWithTheRestOfTheRecord` |
+| A record from the format before it still loads, and the wallet is not asked for again | `WalletStoreTest.readsTheRecordAnEarlierBuildWroteWithoutARoute` |
+| Connecting carries the app the owner picked, and keeps the association URI the wallet reported | `MwaWalletAdapterRoutingTest.connectingAimsAtTheWalletAppTheOwnerPicked`, `WalletRepositoryTest.storesTheWalletAppTheOwnerPickedAndTheUriTheWalletReported` |
+| One installed wallet app is connected without asking anybody | `WalletRepositoryTest.needsNobodyToPickWhenThisPhoneHasOneWalletApp`, `WalletViewModelTest.offersNoChoiceWhenThisPhoneHasOneWalletApp` |
+| Several installed: the owner picks once, on the Wallet screen, and connecting waits for it | `WalletViewModelTest.waitsForTheOwnerToPickWhenThisPhoneHasSeveral`, `WalletScreenTest.offersTheInstalledWalletAppsWhenThereIsMoreThanOne` |
+| Every signing opens the same app, and so does the first one after a restart | `WalletRepositoryTest.opensTheSameWalletAppForEverySigningAndAfterARestart` |
+| A wallet that moved its association URI is followed; one that said nothing changes nothing | `WalletRepositoryTest.keepsTheAssociationUriTheWalletMovedTo`, `…keepsTheRouteWhenTheWalletSaysNothingAboutWhereItLives` |
+| An uninstalled wallet app signs and sends nothing, and no other wallet is opened instead | `MwaWalletAdapterRoutingTest.refusesToSignWhenTheWalletAppTheOwnerConnectedIsGone` |
+| Connecting again after it is gone asks Android, because that is the owner changing wallet | `MwaWalletAdapterRoutingTest.connectingAgainAsksAndroidWhenTheAppTheOwnerHadIsGone` |
+| Changing the wallet app carries nothing over from the one being left | `WalletRepositoryTest.picksAWalletAppOverTheOneTheOwnerHadAndKeepsNothingOfTheOldOne` |
+| Disconnecting tells the wallet over its own route and leaves nothing aimed at it | `WalletRepositoryTest.disconnectingTakesTheRouteWithIt` |
+| A session is never reused for another wallet app | `MwaWalletAdapterRoutingTest.keepsOneSessionPerWalletAppAndNeverReusesAnothers` |
+| The screen names the wallet app, not the account's own label inside it | `WalletScreenTest.namesTheWalletAppRatherThanTheAccountLabel`, `WalletViewModelTest.namesTheWalletAppTheSelectionBelongsTo` |
 | The two files an older build wrote are migrated into one; half of that pair is refused | `WalletStoreTest.readsWhatTheOlderBuildWroteAsTwoFilesAndStoresItAsOne`, `…refusesHalfOfWhatTheOlderBuildWrote` |
 | A stored record that isn't the selection in hand opens no wallet | `WalletRepositoryTest.asksTheWalletNothingWhenTheStoredRecordIsNotTheSelectionInHand` |
 | Every outcome across a restart of the app's storage, including the unresolved one | `ResultStoreTest` |
@@ -356,6 +378,11 @@ Run on 2026-09-17 on macOS 26.5.2 (Apple silicon), with the versions in
   here is written against the behaviour the code had, and no defect below was ever seen on a Seeker.
 - No automated test has started a real wallet app. `FakeWalletClient` stands in for a Mobile Wallet
   Adapter session, which means the mapping from that library's own answers to this app's outcomes is
-  exercised only as far as `MwaSession` — a thin layer — and the library's behaviour itself is not.
-- Wallet targeting across a process restart is **not** solved. A restart starts association afresh,
-  and it needs an upstream API to do otherwise; see [wallet targeting](#wallet-targeting).
+  exercised only as far as `MwaSession` — and since SEE-159 that layer builds the association intent
+  itself, so it is no longer as thin as it was. The library's behaviour, and Android's resolution of
+  an intent aimed at one package or at one `https` prefix, are not exercised at all here.
+- Whether a given wallet reports an `https` association URI is a fact about that wallet, and no test
+  here can establish it. That is why the route also carries the app's package, which the system
+  reported: a wallet that reports no URI is still opened directly.
+- SEE-159's acceptance is a real Seeker with Seeker Wallet and at least one other Mobile Wallet
+  Adapter wallet installed. Nothing below stands in for it.

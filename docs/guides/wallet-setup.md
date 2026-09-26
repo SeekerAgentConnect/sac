@@ -31,17 +31,20 @@ Any other wallet that speaks Mobile Wallet Adapter works the same way. The accep
 ## 2. Connect
 
 1. Open the app. The first row on **Connections** is **Wallet**; tap it.
-2. Pick the **network**: Mainnet, Devnet, or Testnet. You can't change it later without connecting again.
-3. Tap **Connect wallet**. The wallet opens and asks you to choose an account and approve.
-4. Back in the app you see the address, the network, the account's name in the wallet, and when you connected it. Underneath, the app says how many connections it told.
+2. If the phone has more than one wallet app, pick **which one** under **Wallet app**. The list is what the phone reports as installed. With only one wallet app there is nothing to pick, and the app uses it.
+3. Pick the **network**: Mainnet, Devnet, or Testnet. You can't change it later without connecting again.
+4. Tap **Connect wallet**. The wallet you picked opens and asks you to choose an account and approve.
+5. Back in the app you see the wallet app's name, the address, the network, the account's name in the wallet, and when you connected it. Underneath, the app says how many connections it told.
 
-The **Connections** screen's Wallet row then shows the address, so you can see at a glance which wallet agents are working with.
+The **Connections** screen's Wallet row then shows the wallet app and the address, so you can see at a glance which wallet agents are working with.
+
+From here on, approvals open that wallet app straight away — no Android "Open with…" list, and no need to make any wallet your phone's default. It stays that way after you restart the app. To use a different wallet, disconnect and connect again; see [Change the wallet or the network](#change-the-wallet-or-the-network).
 
 ### If something goes wrong
 
 | What the app says | What it means | What to do |
 | --- | --- | --- |
-| No wallet app answered | Nothing on the phone speaks Mobile Wallet Adapter | Install or set up a wallet, such as Seed Vault Wallet, and try again |
+| No wallet app answered | Nothing on the phone speaks Mobile Wallet Adapter — or, when you were approving something, the wallet app you connected has been uninstalled | Install or set up a wallet, such as Seed Vault Wallet. If you uninstalled the one you had connected, go to **Wallet**, disconnect, and connect the one you want. The app will not quietly move your approval to another wallet. |
 | The wallet didn't give an account | You declined, or left the wallet without choosing | Nothing changed. Tap **Connect wallet** again. |
 | The wallet no longer accepts this app's authorization | The wallet revoked what the phone had stored | The phone has forgotten it. Tap **Connect wallet** to approve afresh. |
 | The wallet doesn't serve this network | The wallet has no such cluster | Pick a network it offers. Which ones your wallet offers is a property of the wallet, not of this app. |
@@ -110,9 +113,10 @@ Disconnecting the wallet doesn't touch your connections, your paired sidecars, o
 
 ## Change the wallet or the network
 
-Connect again from the Wallet screen. Choosing another account, or another network, replaces the binding:
+Connect again from the Wallet screen. Choosing another wallet app, another account, or another network replaces the binding:
 
 - Every sidecar is told the new address and network.
+- Approvals go to the wallet app you picked this time, and nothing of the previous one is kept.
 - Any **pending request queued for the old wallet is cancelled** by the sidecar, and disappears from Pending requests. Requests that don't involve a wallet, such as the demo acknowledgements, are left alone.
 
 ## The wallet under test

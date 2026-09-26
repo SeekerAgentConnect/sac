@@ -62,9 +62,9 @@ data class WalletUiState(
     /**
      * Whether connecting can go ahead. The owner picks the wallet app when this phone has several,
      * because connecting without one is what leaves Android asking them at every approval
-     * afterwards; with one installed, or none this phone could list, there is nothing to decide.
-     * A list that hasn't come back yet holds nothing up — the owner's own button is never disabled
-     * on the strength of a read this app hasn't finished.
+     * afterwards; with one installed, or none this phone could list, there is nothing to decide. A
+     * list that hasn't come back yet holds nothing up — the owner's own button is never disabled on
+     * the strength of a read this app hasn't finished.
      */
     val canConnect: Boolean
         get() = apps == null || apps.size <= 1 || chosen != null

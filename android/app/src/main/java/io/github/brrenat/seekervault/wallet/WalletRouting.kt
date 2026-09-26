@@ -3,19 +3,19 @@ package io.github.brrenat.seekervault.wallet
 /**
  * How this phone reaches the wallet *app* the owner connected (SEE-159), beside [SelectedWallet],
  * which is the account inside it. The two are stored together and read together: an account without
- * the app that holds it is how an approval ended up in front of whichever wallet Android happened to
- * resolve.
+ * the app that holds it is how an approval ended up in front of whichever wallet Android happened
+ * to resolve.
  *
  * Nothing here is invented. [uriBase] is the wallet's own association URI, exactly as Mobile Wallet
  * Adapter reported it in `AuthorizationResult.walletUriBase`, and [packageName] and [appLabel] come
- * from `PackageManager`, which is the only thing on this phone that knows what is installed. The app
- * never writes down a wallet's package name of its own accord.
+ * from `PackageManager`, which is the only thing on this phone that knows what is installed. The
+ * app never writes down a wallet's package name of its own accord.
  */
 data class WalletRouting(
     /**
-     * The wallet-specific association URI the wallet reported, or null when it reported none. Mobile
-     * Wallet Adapter only accepts an absolute, hierarchical `https` one, so that is all that is kept
-     * (`LocalAssociationIntentCreator.createAssociationIntent` throws on anything else).
+     * The wallet-specific association URI the wallet reported, or null when it reported none.
+     * Mobile Wallet Adapter only accepts an absolute, hierarchical `https` one, so that is all that
+     * is kept (`LocalAssociationIntentCreator.createAssociationIntent` throws on anything else).
      */
     val uriBase: String? = null,
     /** The wallet app's package, as `PackageManager` reported it, or null when it isn't known. */
@@ -70,7 +70,9 @@ sealed interface WalletTarget {
      */
     data class Endpoint(val uriBase: String, val packageName: String?) : WalletTarget
 
-    /** At one installed app, by package. The association URI is the ordinary `solana-wallet:` one. */
+    /**
+     * At one installed app, by package. The association URI is the ordinary `solana-wallet:` one.
+     */
     data class App(val packageName: String) : WalletTarget
 
     /** At no app in particular: Android resolves it, and may ask the owner. */
@@ -85,12 +87,13 @@ sealed interface WalletTarget {
 }
 
 /**
- * Where an association for [route] should be aimed, given the wallet apps [installed] on this phone.
+ * Where an association for [route] should be aimed, given the wallet apps [installed] on this
+ * phone.
  *
  * The wallet's own association URI comes first, because that is the mechanism Mobile Wallet Adapter
- * defines for reaching one wallet, and the package narrows it when this phone knows it. A route that
- * has only a package uses it. A route that names a package this phone no longer has is [
- * WalletTarget.Missing], whatever else it holds: the app it pointed at is gone, and no other app
+ * defines for reaching one wallet, and the package narrows it when this phone knows it. A route
+ * that has only a package uses it. A route that names a package this phone no longer has is
+ * [ WalletTarget.Missing], whatever else it holds: the app it pointed at is gone, and no other app
  * inherits an approval.
  */
 fun targetOf(route: WalletRouting?, installed: Set<String>): WalletTarget {
