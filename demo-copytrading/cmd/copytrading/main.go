@@ -139,12 +139,16 @@ func run(log *slog.Logger) error {
 	// Who may read: the operator decides (access.ManualApproval) on the trader page's Devices view,
 	// and the syncer tells the gateway, retrying until it confirms.
 	syncer := access.NewSyncer(access.SyncPlan{
-		Store:    documents,
-		Grants:   gateway,
-		Lifetime: restricted.GrantLifetime,
-		Channel:  signals.ChannelFor(settings.ServerID),
-		Log:      log,
-		Now:      time.Now,
+		Store:  documents,
+		Grants: gateway,
+		// The same rule the service asks, named here as well: a renewal re-asks it, and a
+		// publisher that gave its own rule to one of these and not the other would keep
+		// renewing access its rule had stopped allowing.
+		Eligibility: access.ManualApproval{},
+		Lifetime:    restricted.GrantLifetime,
+		Channel:     signals.ChannelFor(settings.ServerID),
+		Log:         log,
+		Now:         time.Now,
 	})
 	devices := access.New(access.Plan{
 		Store:       documents,

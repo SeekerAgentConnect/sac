@@ -815,3 +815,41 @@ func TestAccessDecisionsSurviveARestart(t *testing.T) {
 		}
 	}
 }
+
+// A challenge that expired can no longer be redeemed, so the row is spent history. A publisher
+// that ran for a year should not still be holding one for every attempt anyone ever made at it,
+// and the sync pass is where they are forgotten.
+func TestExpiredChallengesAreForgotten(t *testing.T) {
+	f := newFixture(t, ManualApproval{})
+	device := newPhone(t)
+	issued := f.challenge(device)
+	attempt := issued.Challenge.Attempt
+
+	// A live challenge is left alone: the owner may still be looking at their wallet.
+	if _, err := f.syncer.Pass(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.store.Challenge(context.Background(), attempt); err != nil {
+		t.Fatalf("a live challenge was forgotten: %v", err)
+	}
+
+	f.clock.advance(time.Hour)
+	if _, err := f.syncer.Pass(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.store.Challenge(context.Background(), attempt); !errors.Is(err, store.ErrNoChallenge) {
+		t.Fatalf("an expired challenge was kept: %v", err)
+	}
+
+	// And forgetting one is not what refuses it. An answer to a challenge this store no longer
+	// has is refused for the same reason it was refused a moment before the sweep reached it.
+	message := []byte(issued.Message)
+	_, err := f.service.Request(context.Background(), Answer{
+		Attempt:         attempt,
+		WalletSignature: ed25519.Sign(device.wallet, message),
+		DeviceSignature: device.sign(message),
+	})
+	if err == nil {
+		t.Fatal("an expired challenge was answered")
+	}
+}
