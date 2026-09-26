@@ -559,6 +559,22 @@ func (r *Reconciler) statement(one candidate, row markets.Market, now time.Time)
 	if r.deposit.Most > 0 {
 		terms[signals.MostDeposit] = strconv.FormatUint(r.deposit.Most, 10)
 	}
+	// Where the owner may carry on with this market, on the provider's own property (SEE-157).
+	//
+	// This template is the only side that knows it. The page is addressed by the event's slug,
+	// which is in the listing this template reads and in nothing the phone can ask for, so a phone
+	// left to itself composes an address out of the market identifier and hopes. Publishing it is
+	// what makes "open this on Jupiter" land on the market rather than near it.
+	//
+	// The same address is given as both, and that is not a placeholder: Jupiter publishes no
+	// private scheme, and `jup.ag/.well-known/assetlinks.json` delegates its addresses to its own
+	// Android app — so a `jup.ag` address *is* the deep link, and the phone opening it app-first
+	// lands in Jupiter when Jupiter is installed. The two terms stay separate because the next
+	// venue's may differ.
+	if signals.IsProviderLink(one.event.SourceURL) {
+		terms[signals.ProviderDeepLink] = one.event.SourceURL
+		terms[signals.ProviderWebURL] = one.event.SourceURL
+	}
 
 	written, expiry, checked, fault := signals.Check(r.kind,
 		note(r.note, one.event, one.market, expires), expires, now, terms)
