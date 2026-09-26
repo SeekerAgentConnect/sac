@@ -25,12 +25,14 @@ import io.github.brrenat.seekervault.request.v1.transactionSubmission
 import io.github.brrenat.seekervault.request.v1.unknownOutcome
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
 import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.FeedAccess
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.ManifestExpectation
 import io.github.brrenat.seekervault.servers.ManifestProblem
 import io.github.brrenat.seekervault.servers.ManifestResult
 import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.feedAccess
 import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.servers.manifestFrom
 import io.github.brrenat.seekervault.skr.staking
@@ -503,6 +505,9 @@ class ConnectionRepository(
                             serverId = reference.serverId,
                             mode = ConnectionMode.GatewayFeed,
                             origin = reference.gatewayUrl,
+                            // A reference that said restricted is a floor (SEE-156): a gateway
+                            // answering "public" for it is refused, not believed.
+                            restricted = reference.restricted,
                         ),
                     )
             ) {
@@ -588,6 +593,7 @@ class ConnectionRepository(
                     mode = ConnectionMode.GatewayFeed,
                     origin = connection.serverUrl,
                     heldRevision = connection.server.manifest?.settingsRevision,
+                    restricted = connection.server.manifest?.feedAccess is FeedAccess.Restricted,
                 ),
             )
         val manifest =
