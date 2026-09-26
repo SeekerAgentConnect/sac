@@ -28,6 +28,7 @@ import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -86,6 +87,9 @@ class FeedAccessManagerTest {
     private val connected = mutableListOf<String>()
     private val pushed = mutableListOf<Triple<String, String, String>>()
 
+    /** The gateway refuses push registrations, as it does before the publisher's grant lands. */
+    private var pushRefused = false
+
     private fun TestScope.manager() =
         FeedAccessManager(
             connections = { connections },
@@ -100,6 +104,7 @@ class FeedAccessManagerTest {
             },
             label = { "A phone" },
             pushTarget = { _, channel, session, target ->
+                if (pushRefused) error("ACCESS_REQUIRED")
                 pushed += Triple(channel, session, target)
             },
             onConnected = { connected += it },
@@ -372,6 +377,50 @@ class FeedAccessManagerTest {
     }
 
     @Test
+    fun aRegistrationRefusedBeforeTheGrantSyncedIsRetriedUntilItLands() = runTest {
+        val manager = manager()
+        manager.onRegistered("a-firebase-target")
+        runCurrent()
+        // The publisher answered the redemption before the gateway held the grant: the gateway
+        // refuses the session, and with it the registration, until the publisher's retry lands.
+        api.synced = false
+        pushRefused = true
+        connect(manager)
+        assertTrue(pushed.isEmpty())
+
+        // The first retry is still refused; the grant lands at the gateway before the next.
+        advanceTimeBy(Duration.ofSeconds(6).toMillis())
+        assertTrue(pushed.isEmpty())
+        pushRefused = false
+        advanceTimeBy(Duration.ofSeconds(16).toMillis())
+
+        assertEquals(listOf(Triple(CHANNEL, SESSION, "a-firebase-target")), pushed)
+        // Once landed it is not sent again.
+        advanceTimeBy(Duration.ofHours(1).toMillis())
+        assertEquals(1, pushed.size)
+    }
+
+    @Test
+    fun aCheckThatFindsTheGrantUsableRegistersWhatWasRefused() = runTest {
+        val manager = manager()
+        manager.onRegistered("a-firebase-target")
+        runCurrent()
+        api.synced = false
+        pushRefused = true
+        connect(manager)
+        manager.denied(CHANNEL, FeedSessions.Denial.Required)
+        runCurrent()
+        assertTrue(pushed.isEmpty())
+
+        // The gateway recovered: the owner (or the app) checks, and the grant is usable again.
+        pushRefused = false
+        manager.check(CONNECTION)
+
+        assertEquals(State.Connected, manager.states.value[CONNECTION]?.state)
+        assertEquals(listOf(Triple(CHANNEL, SESSION, "a-firebase-target")), pushed)
+    }
+
+    @Test
     fun aFeedThatIsNotConnectedIsToldNothingAboutThisDevice() = runTest {
         val manager = manager()
         manager.requestAccess(CONNECTION)
@@ -432,6 +481,7 @@ class FeedAccessManagerTest {
         var invitation: String? = null
         var requestId = "a1b2c3d4-e5f6-4789-abcd-0123456789ab"
         var unreachable = false
+        var synced = true
         var forge: (FeedAccessProof.Challenge) -> FeedAccessProof.Challenge = { it }
         var message: (FeedAccessProof.Challenge) -> String = {
             String(FeedAccessProof.message(it), Charsets.US_ASCII)
@@ -500,7 +550,7 @@ class FeedAccessManagerTest {
         ): RedeemAnswer {
             calls += "redeem"
             if (unreachable) throw FeedAccessException(FeedAccessException.Kind.Unreachable)
-            return RedeemAnswer(requestId, SESSION, until, synced = true)
+            return RedeemAnswer(requestId, SESSION, until, synced = synced)
         }
     }
 
