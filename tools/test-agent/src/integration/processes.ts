@@ -7,7 +7,7 @@
  * the shipped ones: `pnpm test:integration` builds the five binaries out of the two Go modules and
  * hands their paths in, so what the suite exercises is the code a deployment runs
  * (`docs/development/integration.md`). What *is* stood in for is the world outside — the provider
- * (`provider.ts`) and the wallet (`server-sdk/src/testing/wallet.ts`) — because a run that reached a
+ * (`provider.ts`) and the wallet (`packages/server-sdk/src/testing/wallet.ts`) — because a run that reached a
  * real provider would not be repeatable, and one that reached a real wallet would not be free.
  *
  * Every process keeps its output, and a failure prints it. A gateway that refused a publication for

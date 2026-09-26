@@ -357,7 +357,7 @@ func TestACyclesNumberKeepsCountingAcrossARestart(t *testing.T) {
 		StartedAt: now, FinishedAt: now.Add(time.Second), Outcome: markets.OK,
 		Pages: 2, Events: 4, Considered: 20, Matched: 3, Created: 3,
 		// An opaque reason string. Which reasons exist is the discovering demo's own affair
-		// (demo-prediction/internal/discovery); the store keeps the tally whatever it says.
+		// (examples/demo-prediction/internal/discovery); the store keeps the tally whatever it says.
 		Reasons: map[string]int{"no_keyword": 17},
 	})
 	if err != nil {

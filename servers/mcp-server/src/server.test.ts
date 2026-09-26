@@ -13,7 +13,7 @@ import { Network } from "@seeker-vault/server-sdk/protocol";
 import { DISPLAY_COMMAND_TOOL } from "./mcp-endpoint.ts";
 import { REQUEST_ACK_TOOL } from "./requests/mcp-tools.ts";
 import { FcmSender } from "./push/fcm.ts";
-import { FCM_INVALIDATION_DATA } from "../../server-sdk/src/push/invalidation.ts";
+import { FCM_INVALIDATION_DATA } from "../../../packages/server-sdk/src/push/invalidation.ts";
 import { isLoopbackAddress, startSidecar, type Sidecar } from "./server.ts";
 import {
   callTool,

@@ -14,7 +14,7 @@ import (
 
 // The CLI is a client, so its tests are about what it sends: the method, the path, the headers and
 // the body. What the template does with them is the API's own tests
-// (publisher-support/api), and the two meeting for real is `publisher-support/publish/gateway_test.go`.
+// (packages/publisher-support/api), and the two meeting for real is `packages/publisher-support/publish/gateway_test.go`.
 type recorded struct {
 	method  string
 	path    string

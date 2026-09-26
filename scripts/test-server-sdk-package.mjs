@@ -20,7 +20,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
-const SDK = join(ROOT, "server-sdk");
+const SDK = join(ROOT, "packages", "server-sdk");
 const scratch = mkdtempSync(join(tmpdir(), "seeker-server-sdk-package-"));
 const artifacts = join(scratch, "artifacts");
 const consumer = join(scratch, "consumer");

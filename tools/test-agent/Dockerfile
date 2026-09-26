@@ -1,5 +1,5 @@
 # Test-agent image. Build from the repository root:
-#   docker build -f test-agent/Dockerfile .
+#   docker build -f tools/test-agent/Dockerfile .
 # The context is the root for the same reason as the MCP server's: the workspace
 # lockfile and catalog resolve this package's dependencies.
 #
@@ -17,15 +17,15 @@ ENV CI=true
 RUN npm install --global --no-fund --no-audit pnpm@${PNPM_VERSION}
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY server-sdk/package.json server-sdk/
-COPY mcp-server/package.json mcp-server/
-COPY test-agent/package.json test-agent/
+COPY packages/server-sdk/package.json packages/server-sdk/
+COPY servers/mcp-server/package.json servers/mcp-server/
+COPY tools/test-agent/package.json tools/test-agent/
 RUN pnpm install --frozen-lockfile
 
 # --- build ------------------------------------------------------------------
 FROM deps AS build
 WORKDIR /app
-COPY test-agent/ test-agent/
+COPY tools/test-agent/ tools/test-agent/
 # tsconfig.build.json excludes the tests and the stage acceptance suites, so the
 # image cannot run a scenario that creates requests.
 RUN pnpm --filter @seeker-vault/test-agent run build
@@ -44,14 +44,14 @@ RUN groupadd --system --gid 10002 agent \
 
 WORKDIR /app
 COPY --from=prod-deps --chown=root:root /app/node_modules node_modules
-COPY --from=prod-deps --chown=root:root /app/test-agent/node_modules test-agent/node_modules
-COPY --from=build --chown=root:root /app/test-agent/dist test-agent/dist
-COPY --chown=root:root test-agent/package.json test-agent/
+COPY --from=prod-deps --chown=root:root /app/tools/test-agent/node_modules tools/test-agent/node_modules
+COPY --from=build --chown=root:root /app/tools/test-agent/dist tools/test-agent/dist
+COPY --chown=root:root tools/test-agent/package.json tools/test-agent/
 COPY --chown=root:root package.json pnpm-workspace.yaml ./
 
 USER agent:agent
 
-ENTRYPOINT ["node", "test-agent/dist/main.js"]
+ENTRYPOINT ["node", "tools/test-agent/dist/main.js"]
 # `tools` lists what the sidecar serves. It reads; it creates no request, asks
 # for no signature, and moves no funds. Overridden per run, for example
 # `docker compose run --rm test-agent address`.

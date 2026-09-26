@@ -1,6 +1,6 @@
 // Checks the feed gateway (SEE-90): formatting, `go vet`, and its tests.
 //
-//   pnpm check:feed-gateway
+//   pnpm check:gateway
 //
 // It is separate from `pnpm check` for the same reason `pnpm check:android` is: it needs a
 // toolchain the Node checks do not, and someone working on the sidecar should not have to install
@@ -8,9 +8,11 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const directory = fileURLToPath(new URL("../feed-gateway", import.meta.url));
+const directory = fileURLToPath(
+  new URL("../services/gateway", import.meta.url),
+);
 
-// The version feed-gateway/go.mod requires, and the one docs/development/toolchain.md records as
+// The version services/gateway/go.mod requires, and the one docs/development/toolchain.md records as
 // tested. A newer Go builds it too; this is the message for a machine that has none.
 const version = "1.27.1";
 
@@ -36,8 +38,8 @@ if (unformatted !== "") {
   console.error(
     [
       "These files are not formatted:",
-      ...unformatted.split("\n").map((file) => `  feed-gateway/${file}`),
-      "Run `gofmt -w .` in feed-gateway/.",
+      ...unformatted.split("\n").map((file) => `  services/gateway/${file}`),
+      "Run `gofmt -w .` in services/gateway/.",
     ].join("\n"),
   );
   process.exit(1);

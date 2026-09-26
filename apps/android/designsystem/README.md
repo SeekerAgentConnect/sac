@@ -36,7 +36,7 @@ use the dark `SeekerTheme`, native Robolectric graphics, and a
 unrolled review sheets record at natural height; wrap-content component previews keep their own
 dimensions. No emulator is involved. Each preview also has a
 `@DesignRef`; its component and variant map to the same `<component>/<variant-slug>.png` path as
-the design export. See [`design/README.md`](../../design/README.md) for the commands and comparison
+the design export. See [`design/README.md`](../../../design/README.md) for the commands and comparison
 contract.
 
 `:app` carries the same scanner dependencies and tester configuration. SEE-121 enabled its scanner
@@ -57,11 +57,11 @@ sets and are absent from release builds.
 
 SEE-117 adds the shared chips, verdict/signal marks, source avatar, button, FAB, and accessible
 switch/check/radio rows. Their public state axes and visual verification record are documented in
-[`docs/wiki/design-system-atoms.md`](../../docs/wiki/design-system-atoms.md). The same internal
+[`docs/wiki/design-system-atoms.md`](../../../docs/wiki/design-system-atoms.md). The same internal
 deterministic source palette drives `SourceChip` and `SourceAvatar`.
 
 Every captured atom variant has one exact-text `@Preview` and `@DesignRef`. The committed
-[`reference | actual` review](../../docs/reviews/see-117/README.md) is the PR evidence set. The
+[`reference | actual` review](../../../docs/reviews/see-117/README.md) is the PR evidence set. The
 icon-button remains deferred because its required hand-written component spec is absent.
 
 ## Molecule library
@@ -69,10 +69,10 @@ icon-button remains deferred because its required hand-written component spec is
 SEE-118 adds fact and daily-limit rows, segmented and Inbox tab selectors, navigation items,
 section headers, text fields, notice cards, empty states, and source-filter bars. Their public APIs,
 state axes, ticket/spec resolutions, and visual verification record are documented in
-[`docs/wiki/design-system-molecules.md`](../../docs/wiki/design-system-molecules.md).
+[`docs/wiki/design-system-molecules.md`](../../../docs/wiki/design-system-molecules.md).
 
 Each of the 22 captured component variants has one exact-text `@Preview` and `@DesignRef`. The
-committed [`reference | actual` review](../../docs/reviews/see-118/README.md) is the PR evidence set;
+committed [`reference | actual` review](../../../docs/reviews/see-118/README.md) is the PR evidence set;
 an additional 390dp preview composes four `NavItem` instances into the required bottom bar.
 
 ## Organism library
@@ -81,10 +81,10 @@ SEE-119 adds request tiles and their snapping carousel, merged Inbox and Activit
 server and rule rows, verdict and owner-input cards, terms summaries, wallet banners and handoff,
 and the reusable sheet scaffold. The public APIs, composition boundaries, missing-specimen notes,
 and ticket/spec resolutions are documented in
-[`docs/wiki/design-system-organisms.md`](../../docs/wiki/design-system-organisms.md).
+[`docs/wiki/design-system-organisms.md`](../../../docs/wiki/design-system-organisms.md).
 
 All 43 generated organism variants have exact-copy `@Preview` and `@DesignRef` coverage. The
-committed [`reference | actual` review](../../docs/reviews/see-119/README.md) contains every pair.
+committed [`reference | actual` review](../../../docs/reviews/see-119/README.md) contains every pair.
 The carousel follows SEE-119's 358dp viewport and centred highlight while retaining SEE-81's
 start/centre/end snapping policy.
 
@@ -95,7 +95,7 @@ Prediction, Signature, and Acknowledge. Requests and signals differ only in mapp
 template composes the existing design-system tiers, owns warning confirmation, and applies the
 caller's action gate after requiring that confirmation. Five exact-copy fixtures record against
 the canonical unrolled `design/screens/sheet-*.png` references; see the
-[`reference | actual` review](../../docs/reviews/see-120/README.md).
+[`reference | actual` review](../../../docs/reviews/see-120/README.md).
 
 ## Guardrail
 

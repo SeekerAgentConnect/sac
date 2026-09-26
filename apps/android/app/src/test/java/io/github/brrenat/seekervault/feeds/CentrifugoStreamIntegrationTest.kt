@@ -43,15 +43,16 @@ import org.junit.Test
  *
  * It is opt-in, because a broker and a Redis are services and CI has neither:
  * ```
- * android/gradlew -p android :app:testDebugUnitTest \
+ * apps/android/gradlew -p apps/android :app:testDebugUnitTest \
  *   --tests 'io.github.brrenat.seekervault.feeds.CentrifugoStreamIntegrationTest' \
  *   -Dseekervault.centrifugo=/path/to/centrifugo -Dseekervault.redis=/path/to/redis-server
  * ```
  *
  * Two things here stand in for the gateway, which is a Go service this test does not run: the
- * ticket is minted with the same claims (`feed-gateway/internal/stream/ticket_test.go` pins them),
- * and publications are made with the same request (`feed-gateway/internal/stream/broker_test.go`
- * pins that against a real broker). What is under test is everything between them and the phone.
+ * ticket is minted with the same claims (`services/gateway/internal/stream/ticket_test.go` pins
+ * them), and publications are made with the same request
+ * (`services/gateway/internal/stream/broker_test.go` pins that against a real broker). What is
+ * under test is everything between them and the phone.
  */
 class CentrifugoStreamIntegrationTest {
     private val centrifugo = System.getProperty("seekervault.centrifugo")
@@ -59,7 +60,7 @@ class CentrifugoStreamIntegrationTest {
     private val config =
         File(
             System.getProperty("seekervault.repoRoot") ?: ".",
-            "feed-gateway/centrifugo.yaml",
+            "services/gateway/centrifugo.yaml",
         )
 
     private val processes = mutableListOf<Process>()
@@ -485,7 +486,8 @@ class CentrifugoStreamIntegrationTest {
         const val PROPOSAL = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         const val CHANNEL = "feed:server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
         /**
-         * What the shipped configuration keeps on a feed channel (feed-gateway/centrifugo.yaml).
+         * What the shipped configuration keeps on a feed channel
+         * (services/gateway/centrifugo.yaml).
          */
         const val HISTORY = 256
     }

@@ -15,7 +15,7 @@ adb devices -l
 adb shell getprop ro.product.brand
 adb shell getprop ro.product.model
 adb shell getprop ro.build.version.release
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Record the git revision with `git rev-parse HEAD`. A device row is a Seeker pass only when the brand/model identify the physical Seeker; an emulator, another phone, or a successful APK build does not count.

@@ -8,7 +8,7 @@
 // privileged back door into the store for it to use.
 //
 // The implementation is the shared library's, because both demos answer the same API and neither
-// may import the other (publisher-support/publisherctl). This module builds and ships the binary.
+// may import the other (packages/publisher-support/publisherctl). This module builds and ships the binary.
 package main
 
 import "github.com/BrRenat/SeekerAgentWallet/publisher-support/publisherctl"

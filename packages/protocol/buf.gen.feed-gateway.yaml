@@ -13,20 +13,20 @@ managed:
     - file_option: go_package_prefix
       value: github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen
 plugins:
-  # Messages. The runtime library in feed-gateway/go.mod must match this version
+  # Messages. The runtime library in services/gateway/go.mod must match this version
   # (docs/development/toolchain.md).
   - remote: buf.build/protocolbuffers/go:v1.36.12
-    out: feed-gateway/internal/gen
+    out: services/gateway/internal/gen
     opt: paths=source_relative
   # The Connect handlers and clients: the gateway serves two of these services, and the Go
   # publisher templates (SEE-95, SEE-96) will call one of them.
   - remote: buf.build/connectrpc/go:v1.21.0
-    out: feed-gateway/internal/gen
+    out: services/gateway/internal/gen
     opt: paths=source_relative
 inputs:
-  - directory: proto
+  - directory: packages/protocol/proto
     paths:
-      - proto/seekervault/gateway/v1
-      - proto/seekervault/proposal/v1
-      - proto/seekervault/request/v2
-      - proto/seekervault/server/v1
+      - packages/protocol/proto/seekervault/gateway/v1
+      - packages/protocol/proto/seekervault/proposal/v1
+      - packages/protocol/proto/seekervault/request/v2
+      - packages/protocol/proto/seekervault/server/v1

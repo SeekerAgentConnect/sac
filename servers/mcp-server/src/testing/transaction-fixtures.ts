@@ -10,7 +10,7 @@
  * nonsense, and what matters is that it rejects a transaction that is perfectly valid and simply
  * isn't the one the owner was asked to approve.
  *
- * Run `node mcp-server/src/testing/transaction-fixtures.ts` after changing a case.
+ * Run `node servers/mcp-server/src/testing/transaction-fixtures.ts` after changing a case.
  *
  * It lives in `testing/` because it writes a file, which only test-only code and `storage/` may do
  * (stage-boundary.test.ts). Nothing here ships.
@@ -50,7 +50,7 @@ import {
 export const FIXTURE_PATH = "fixtures/transactions/cases.json";
 
 const FIXTURE_FILE = fileURLToPath(
-  new URL("../../../fixtures/transactions/cases.json", import.meta.url),
+  new URL("../../../../fixtures/transactions/cases.json", import.meta.url),
 );
 
 /** Deterministic addresses, so a rebuilt file is byte-identical. */
@@ -658,8 +658,8 @@ export async function transactionFixtures(): Promise<FixtureFile> {
 
   return {
     note:
-      "Built by mcp-server/src/testing/transaction-fixtures.ts and decoded by the phone's " +
-      "TransactionFixturesTest. Run `node mcp-server/src/testing/transaction-fixtures.ts` to rebuild.",
+      "Built by servers/mcp-server/src/testing/transaction-fixtures.ts and decoded by the phone's " +
+      "TransactionFixturesTest. Run `node servers/mcp-server/src/testing/transaction-fixtures.ts` to rebuild.",
     cases,
   };
 }

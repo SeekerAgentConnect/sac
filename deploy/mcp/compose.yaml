@@ -4,7 +4,7 @@ services:
   mcp-server:
     build:
       context: ../..
-      dockerfile: mcp-server/Dockerfile
+      dockerfile: servers/mcp-server/Dockerfile
     image: ${MCP_SERVER_IMAGE:-seeker-agent-connect/mcp-server:local}
     restart: unless-stopped
     environment:

@@ -1,10 +1,10 @@
-// demo-copytrading is one of two independent public-feed demonstrations. It builds, runs, tests
+// demo-signals (the CopyTrading demo) is one of two independent public-feed demonstrations. It builds, runs, tests
 // and deploys on its own: it needs a reachable feed gateway and nothing else — not the Prediction
 // demo, not the MCP server, and not the Direct Server SDK (SEE-134).
 //
 // The replace below is how a repository checkout resolves the shared source library. A copy of
 // this demo taken out of the repository replaces it with an explicit module revision instead; the
-// guide says how (demo-copytrading/README.md).
+// guide says how (examples/demo-signals/README.md).
 module github.com/BrRenat/SeekerAgentWallet/demo-copytrading
 
 go 1.27.1
@@ -30,4 +30,4 @@ require (
 	modernc.org/sqlite v1.59.0 // indirect
 )
 
-replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../publisher-support
+replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../../packages/publisher-support

@@ -12,8 +12,8 @@ run on the phone. The automated checks are `pnpm check`, `pnpm check:broadcast`,
 > `pnpm check:feed-gateway`, `pnpm check:publisher` is `pnpm check:publisher-support`,
 > `pnpm check:copytrading` and `pnpm check:prediction`, and each demo's compose stack is in its own
 > directory with its own `.env.example`
-> ([`demo-copytrading/README.md`](../../demo-copytrading/README.md),
-> [`demo-prediction/README.md`](../../demo-prediction/README.md)).
+> ([`demo-copytrading/README.md`](../../examples/demo-signals/README.md),
+> [`demo-prediction/README.md`](../../examples/demo-prediction/README.md)).
 
 ## What no machine here could run
 

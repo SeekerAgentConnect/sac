@@ -2,12 +2,17 @@
 // direct SDK and the MCP server's remaining feed fixture, buf.gen.feed-gateway.yaml for
 // the feed gateway, buf.gen.centrifugo.yaml for the phone's vendored broker schema,
 // buf.gen.loadtest.yaml for the load harness) and the binary protobuf fixtures:
-// proto/fixtures/<package path>/<Message>/<case>.json → <case>.binpb, via `buf convert`.
+// packages/protocol/proto/fixtures/<package path>/<Message>/<case>.json → <case>.binpb, via `buf convert`.
 //
 //   pnpm generate           write the output into the repository
 //   pnpm check:generated    generate into a temporary directory; fail if committed files differ
 //
 // Run it through pnpm so the pinned buf and protoc-gen-es from node_modules/.bin are on PATH.
+//
+// The protocol package (packages/protocol) owns the one source: the Buf module in proto/, its
+// buf.yaml, every buf.gen*.yaml template and the vendored broker schema. buf runs from the
+// repository root, so every input and output path in a template is repository-relative, and each
+// output directory below belongs to the component that consumes it.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -22,15 +27,16 @@ import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const fixturesDir = "proto/fixtures";
+const protocolDir = "packages/protocol";
+const fixturesDir = `${protocolDir}/proto/fixtures`;
 // Owned entirely by `buf generate` (clean: true); --check compares every file in them.
 const generatedDirs = [
-  "server-sdk/src/gen",
-  "mcp-server/src/gen",
-  "android/app/src/main/generated",
-  "feed-gateway/internal/gen",
-  "publisher-support/gen",
-  "loadtest/internal/gen",
+  "packages/server-sdk/src/gen",
+  "servers/mcp-server/src/gen",
+  "apps/android/app/src/main/generated",
+  "services/gateway/internal/gen",
+  "packages/publisher-support/gen",
+  "tools/loadtest/internal/gen",
 ];
 // One template per runtime pair. buf.gen.yaml writes the phone's Kotlin and the sidecar's
 // TypeScript; buf.gen.feed-gateway.yaml writes the feed gateway's Go, which is a different subset of
@@ -49,13 +55,13 @@ const templates = [
   "buf.gen.publisher-support.yaml",
   "buf.gen.centrifugo.yaml",
   "buf.gen.loadtest.yaml",
-];
+].map((template) => `${protocolDir}/${template}`);
 
 // Schemas we did not write, with the digest of the release they were copied from
-// (third_party/<name>/SHA256SUMS). Generating from an edited copy would produce a client for a
+// (packages/protocol/third_party/<name>/SHA256SUMS). Generating from an edited copy would produce a client for a
 // protocol no server speaks, so the digest is checked before anything is generated: an upgrade is
 // an edit to the file and to its digest, in one commit, on purpose.
-const vendored = ["third_party/centrifugo"];
+const vendored = [`${protocolDir}/third_party/centrifugo`];
 
 const check = process.argv.includes("--check");
 const out = check
@@ -80,7 +86,7 @@ try {
     const type = dirname(file).split(sep).join(".");
     buf(
       "convert",
-      ".",
+      protocolDir,
       "--type",
       type,
       "--from",

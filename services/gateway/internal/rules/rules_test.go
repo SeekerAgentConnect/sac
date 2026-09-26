@@ -17,7 +17,7 @@ import (
 // The publisher these tests are about, and one that is not it. Both are lowercase UUIDs, because
 // that is the only shape an identity has anywhere in this protocol.
 //
-// They are the same identities the phone's own tests use (android/.../servers/Manifests.kt), so a
+// They are the same identities the phone's own tests use (apps/android/.../servers/Manifests.kt), so a
 // document from one side can be read by the other without translating anything.
 const (
 	publisher = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"

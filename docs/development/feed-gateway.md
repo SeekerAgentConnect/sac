@@ -1,6 +1,6 @@
 # The feed gateway
 
-The Go service in [`feed-gateway/`](../../feed-gateway): an authenticated publisher API and a feed
+The Go service in [`services/gateway/`](../../services/gateway): an authenticated publisher API and a feed
 API that is anonymous for a public feed and, since SEE-156, needs an approved device's session for a
 restricted one. SEE-130 removed the former invitation/device API for private server connections.
 [`docs/wiki/feed-gateway.md`](../wiki/feed-gateway.md) is why it is shaped the way it is;
@@ -12,16 +12,16 @@ different operator, different deployment.
 
 ## Running it
 
-The toolchain is Go alone — the version in [`feed-gateway/go.mod`](../../feed-gateway/go.mod), which is
+The toolchain is Go alone — the version in [`services/gateway/go.mod`](../../services/gateway/go.mod), which is
 also what CI reads ([`docs/development/toolchain.md`](toolchain.md)).
 
 ```sh
-cd feed-gateway
+cd services/gateway
 go build ./...
 go test ./...
 ```
 
-From the repository root, `pnpm check:feed-gateway` runs the formatting check, `go vet` and the tests —
+From the repository root, `pnpm check:gateway` runs the formatting check, `go vet` and the tests —
 the same command CI runs. It is separate from `pnpm check` because that one must not need Go.
 
 Natively, with a database in the current directory:
@@ -62,13 +62,13 @@ operations. The proposal operations remain compatibility adapters over the same 
 In Docker, copy `deploy/feed/.env.example` to `deploy/feed/.env`, start
 `deploy/feed/compose.yaml`, then register through the `gateway-ctl` operator profile. Public HTTPS
 is the separate `deploy/ingress/feed` project, so plain HTTP cannot become the public default by
-omission. The exact commands are in [`feed-gateway/README.md`](../../feed-gateway/README.md).
+omission. The exact commands are in [`services/gateway/README.md`](../../services/gateway/README.md).
 
 ## Configuration
 
 Every setting is one environment variable, a problem names the variable rather than guessing a
 value, and every problem is reported at once — the sidecar's own rules
-([`internal/config`](../../feed-gateway/internal/config)). Nothing here has a default that opens
+([`internal/config`](../../services/gateway/internal/config)). Nothing here has a default that opens
 something.
 
 | Variable | Default | What it is |
@@ -156,7 +156,7 @@ holds.
 
 ## The operator's admin page
 
-[`internal/admin`](../../feed-gateway/internal/admin), on its own listener, off unless
+[`internal/admin`](../../services/gateway/internal/admin), on its own listener, off unless
 `BROADCAST_ADMIN_PASSWORD_HASH` is set. [`docs/wiki/feed-gateway.md`](../wiki/feed-gateway.md#the-operators-admin-page)
 is why; this is what it is made of.
 
@@ -176,7 +176,7 @@ would be a cycle: the gateway builds this surface and supplies its own token buc
 trusted-proxy policy, so a login is counted against the same caller identity a read is.
 
 Two things live outside it because more than one surface needs them:
-[`internal/credential`](../../feed-gateway/internal/credential) is the one place a publishing
+[`internal/credential`](../../services/gateway/internal/credential) is the one place a publishing
 credential is minted, hashed and named **and** the one place a password is stretched (PBKDF2-HMAC-SHA256,
 `crypto/pbkdf2`, encoded dot-separated so a `$` is never eaten by Compose's interpolation); and
 `storage.PublisherAdminStore` is the one administration boundary, which the CLI and the page both
@@ -201,8 +201,8 @@ go run ./cmd/feed-gatewayctl access --database ./broadcast.db \
 ```
 
 **What the schema holds.** SQLite version 7 and Postgres version 3 add the same three columns and
-the same table ([`internal/storage/sqlite/store.go`](../../feed-gateway/internal/storage/sqlite/store.go),
-[`internal/storage/postgres/store.go`](../../feed-gateway/internal/storage/postgres/store.go), where
+the same table ([`internal/storage/sqlite/store.go`](../../services/gateway/internal/storage/sqlite/store.go),
+[`internal/storage/postgres/store.go`](../../services/gateway/internal/storage/postgres/store.go), where
 the reasoning is written out once):
 
 | Where | What |
@@ -231,16 +231,16 @@ under row-level security like the others.
 
 | Code | What it does |
 | --- | --- |
-| [`internal/gateway/access.go`](../../feed-gateway/internal/gateway/access.go) | `admit` is the one check: a live grant for this server's channel, or `ACCESS_REQUIRED`, `ACCESS_REVOKED`, `ACCESS_EXPIRED` in the order a phone acts on them. `stamped` writes the registration's policy onto a served manifest, `declaredAccessFits` refuses a publisher that claims another, and `SetFeedPushTarget`, `DescribeAccess`, `GrantAccess` and `RevokeAccess` live here |
+| [`internal/gateway/access.go`](../../services/gateway/internal/gateway/access.go) | `admit` is the one check: a live grant for this server's channel, or `ACCESS_REQUIRED`, `ACCESS_REVOKED`, `ACCESS_EXPIRED` in the order a phone acts on them. `stamped` writes the registration's policy onto a served manifest, `declaredAccessFits` refuses a publisher that claims another, and `SetFeedPushTarget`, `DescribeAccess`, `GrantAccess` and `RevokeAccess` live here |
 | `internal/gateway/feed.go` | Every snapshot page, point read and legacy proposal view authorizes before it reads anything about the channel, a sequence included |
 | `internal/gateway/ticket.go` | A restricted channel is granted only for a live grant, is left out otherwise as an unknown channel is, and the ticket is cut to the shortest grant it carries (`GrantWithin`) |
 | `internal/gateway/topics.go` | A restricted channel is always left out: it has no public topic |
 | `internal/gateway/presence.go` | A restricted channel with no live session is absent from the status answer |
 | `internal/gateway/publisher.go` | `PublishManifest` reads the policy inside the publication's own transaction, so a manifest is stamped with what is in force when it is stored |
 | `internal/storage/sqlite/access.go`, `internal/storage/postgres/access.go` | Every statement is scoped to one server in the statement itself, so a session for one channel matching another, or a publisher touching another's grants, is impossible rather than remembered. `RevokeGrants` ends the grants, moves the epoch and writes the retiring notice in one transaction |
-| [`internal/stream/stream.go`](../../feed-gateway/internal/stream/stream.go) | `RestrictedStreamChannel` is the channel's name at one epoch, so publications after a revocation go out under a name the old listener is not on |
+| [`internal/stream/stream.go`](../../services/gateway/internal/stream/stream.go) | `RestrictedStreamChannel` is the channel's name at one epoch, so publications after a revocation go out under a name the old listener is not on |
 | `internal/dispatch/dispatch.go` | Reads the policy when a notice is sent rather than when it was written, so a publication that waited through a revocation goes out under the new name; the `access` notice kind carries the retired epoch and becomes an empty `AccessChanged` |
-| [`internal/relay/restricted.go`](../../feed-gateway/internal/relay/restricted.go) | A restricted channel's hints go to the live grants' own targets, read fresh at send time, and the devices whose grants just ended are told once, best effort |
+| [`internal/relay/restricted.go`](../../services/gateway/internal/relay/restricted.go) | A restricted channel's hints go to the live grants' own targets, read fresh at send time, and the devices whose grants just ended are told once, best effort |
 
 Two operational notes. A deployment that relays nothing answers `SetFeedPushTarget` with
 `GATEWAY_PROBLEM_NO_PUSH`, exactly as it answers `GetFeedTopics`; restricted feeds otherwise work
@@ -265,7 +265,7 @@ late renewal of a revoked grant is refused by name rather than by absence.
 | `internal/dispatch` | The outbox drainer, its backoff, `Dispatcher`, and the event envelope every subscriber receives |
 | `internal/stream` | The broker (SEE-91): publishing an event over its server API, and minting the ticket a listener connects with — bounded by a grant, and named for a restricted channel's access epoch, since SEE-156. One of the two packages that open a connection, and it takes the address from the operator |
 | `internal/relay` | The push relay (SEE-92): one content-free hint per changed feed, the topic it goes to, the quota that bounds how often a feed's subscribers are woken, and the service-account grant it is sent with; `restricted.go` sends a restricted channel's hints to its live grants' own targets instead of a topic (SEE-156). The other package that opens a connection, and it takes both addresses from its operator — one from the environment, one from the credential document |
-| `internal/gen` | Generated from `proto/`, committed, and never edited by hand |
+| `internal/gen` | Generated from `packages/protocol/proto/`, committed, and never edited by hand |
 
 ## Tests
 
@@ -337,7 +337,7 @@ Two tests on the phone's side finish the loop, and one of them needs services:
 | `push/FeedHintContractTest` | nothing (always runs) | that the phone and the relay still agree on what a hint is — it reads the relay's own Go source, because a drift here would be silence rather than an error |
 
 ```sh
-android/gradlew -p android :app:testDebugUnitTest \
+apps/android/gradlew -p apps/android :app:testDebugUnitTest \
   --tests 'io.github.brrenat.seekervault.feeds.CentrifugoStreamIntegrationTest' \
   -Dseekervault.centrifugo=/path/to/centrifugo \
   -Dseekervault.redis=/path/to/redis-server

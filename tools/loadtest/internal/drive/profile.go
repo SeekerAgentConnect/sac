@@ -11,7 +11,7 @@ import (
 
 // A workload profile: what to publish, how many phones are listening, and for how long (SEE-99).
 //
-// Profiles are **data**, in `loadtest/profiles.json`, and not code. SEE-99 asks that scripts and
+// Profiles are **data**, in `tools/loadtest/profiles.json`, and not code. SEE-99 asks that scripts and
 // configuration reproduce the report from a documented revision, which means the numbers behind
 // every line of `docs/testing/see-99.md` have to be readable without reading Go — and that someone
 // asking "what happens at four times the payload" can answer it by editing a file rather than by

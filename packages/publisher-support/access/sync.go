@@ -20,7 +20,7 @@ type Grants interface {
 
 // Syncer tells the gateway what this publisher decided, and keeps telling it until it confirms.
 //
-// Every grant is an outbox row (publisher-support/store): the state this publisher wants the gateway
+// Every grant is an outbox row (packages/publisher-support/store): the state this publisher wants the gateway
 // to hold, at a revision, and the revision the gateway confirmed. A grant, a renewal and a
 // revocation are each a new revision, sent until the gateway answers, with backoff in between, and
 // the operator's page shows the ones that have not landed with their last error — a revocation is

@@ -12,21 +12,21 @@ whole path in order — a gateway, a credential, a copied demo, a published sign
 
 | Module | What it is |
 | --- | --- |
-| [`publisher-support/`](../../publisher-support) | The shared source library. No `main` package, no Dockerfile, no compose file, no listener, no deployment of its own |
-| [`demo-copytrading/`](../../demo-copytrading) | An independent deployable: a trader's own signals, its own image, its own stack, its own database and credential ([README](../../demo-copytrading/README.md)) |
-| [`demo-prediction/`](../../demo-prediction) | An independent deployable: markets it discovered itself, its own image, its own stack, its own database and credential ([README](../../demo-prediction/README.md)) |
+| [`packages/publisher-support/`](../../packages/publisher-support) | The shared source library. No `main` package, no Dockerfile, no compose file, no listener, no deployment of its own |
+| [`examples/demo-signals/`](../../examples/demo-signals) | An independent deployable: a trader's own signals, its own image, its own stack, its own database and credential ([README](../../examples/demo-signals/README.md)) |
+| [`examples/demo-prediction/`](../../examples/demo-prediction) | An independent deployable: markets it discovered itself, its own image, its own stack, its own database and credential ([README](../../examples/demo-prediction/README.md)) |
 
 **Three modules and two images.** Each demo's `go.mod` ends with
-`replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../publisher-support`, which is
-how a repository checkout resolves the library; a copy taken out of the repository takes the two
-directories as siblings, or replaces that line with an explicit module revision. Nothing else joins
-them. `demo-copytrading` builds, tests, images, runs, backs up, upgrades and rolls back without
-`demo-prediction` ever being on the machine, and the reverse is equally true — which is the whole
+`replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../../packages/publisher-support`,
+which is how a repository checkout resolves the library; a copy taken out of the repository takes
+the two directories and points that line at wherever the library went (`go mod edit -replace`), or
+replaces it with an explicit module revision. Nothing else joins them. `demo-signals` builds, tests,
+images, runs, backs up, upgrades and rolls back without `demo-prediction` ever being on the machine, and the reverse is equally true — which is the whole
 point of the split, and the thing each demo's own `internal/boundary` tests fail over.
 
 ## What the library is, and what it is not
 
-`publisher-support/` exists so that the two demos share one durable publication engine rather than
+`packages/publisher-support/` exists so that the two demos share one durable publication engine rather than
 two subtly different copies of it. A signal is stored before it is published, at a settled revision,
 so a retry after a crash sends identical bytes; the gateway answers `UNCHANGED` and nobody is
 notified twice. That behaviour is worth getting right once, and a second implementation of it in the
@@ -35,11 +35,11 @@ second demo would be a second opinion about when a publisher has already said so
 **It is not deployable.** There is no `cmd/` in it, no Dockerfile, no compose file, no Caddyfile and
 no `.env.example`, and there is nothing for those to describe: it has no listener of its own and
 nothing to start. Each demo builds the binaries — including its own `cmd/publishctl`, whose `main`
-is three lines over `publisher-support/publisherctl` — because a binary belongs to the thing that
+is three lines over `packages/publisher-support/publisherctl` — because a binary belongs to the thing that
 ships it.
 
 **And it is not a published "feed publisher client" product.** Nothing in it is a protocol nobody
-else can speak. `publisher-support/gateway` is an ordinary authenticated HTTP/Connect call to the
+else can speak. `packages/publisher-support/gateway` is an ordinary authenticated HTTP/Connect call to the
 gateway's documented publication API — a bearer credential in one header and a protobuf message in
 the body — which any HTTP client in any language can make, and which
 [`docs/development/feed-gateway.md`](feed-gateway.md) shows being made with `curl`. The library is
@@ -50,7 +50,7 @@ a dependency of that.
 
 ## The two demos, and the one thing that differs
 
-| | `demo-copytrading` (SEE-95) | `demo-prediction` (SEE-96) |
+| | `demo-signals` (SEE-95) | `demo-prediction` (SEE-96) |
 | --- | --- | --- |
 | Publishes | a trader's own spot-swap signals | Jupiter Prediction markets it discovered |
 | Kind | `signals.Swap` → `jupiter.swap` | `signals.Prediction` → `jupiter.prediction` |
@@ -66,8 +66,8 @@ implementation: the token compared in constant time, the strict decoding, the id
 create, the revision that moves only when the content actually changed, the router's own 404 and 405
 rewritten into this API's shape.
 
-These are neither of the other two services. [`feed-gateway/`](../../feed-gateway) is the shared
-gateway they publish *to*, run by whoever hosts the broadcast; [`mcp-server/`](../../mcp-server) is
+These are neither of the other two services. [`services/gateway/`](../../services/gateway) is the shared
+gateway they publish *to*, run by whoever hosts the broadcast; [`servers/mcp-server/`](../../servers/mcp-server) is
 one owner's private server for their own phone. Three servers, three operators.
 
 Prediction discovery also supplies the common request presentation title from the provider's own
@@ -81,21 +81,21 @@ generic “Prediction market” title is only the compatibility fallback for a s
 ## Running them
 
 The toolchain is Go alone — the version in
-[`publisher-support/go.mod`](../../publisher-support/go.mod), which is the same one both demos and
-`feed-gateway/go.mod` pin ([`docs/development/toolchain.md`](toolchain.md)).
+[`packages/publisher-support/go.mod`](../../packages/publisher-support/go.mod), which is the same one both demos and
+`services/gateway/go.mod` pin ([`docs/development/toolchain.md`](toolchain.md)).
 
 Each module is checked on its own, from inside its own directory, because that is what proves each
 one stands on its own:
 
 ```sh
 # from the repository root; each parenthesis is one module, checked on its own
-(cd publisher-support && gofmt -l . && go vet ./... && go build ./... && go test ./...)
-(cd demo-copytrading  && gofmt -l . && go vet ./... && go build ./... && go test ./...)
-(cd demo-prediction   && gofmt -l . && go vet ./... && go build ./... && go test ./...)
+(cd packages/publisher-support && gofmt -l . && go vet ./... && go build ./... && go test ./...)
+(cd examples/demo-signals && gofmt -l . && go vet ./... && go build ./... && go test ./...)
+(cd examples/demo-prediction && gofmt -l . && go vet ./... && go build ./... && go test ./...)
 ```
 
-From the repository root, `pnpm check:publisher-support`, `pnpm check:copytrading` and
-`pnpm check:prediction` each run exactly that for one module, and `pnpm check:demos` runs all three
+From the repository root, `pnpm check:publisher-support`, `pnpm check:demo-signals` and
+`pnpm check:demo-prediction` each run exactly that for one module, and `pnpm check:demos` runs all three
 in that order — the same commands CI runs, as separate jobs. They also build the feed gateway into a
 temporary directory so the opt-in tests that run the real thing are not skipped; a machine that
 cannot build it gets every other test and a warning saying so. What none of them does is check the
@@ -105,7 +105,7 @@ Two things have to exist before either demo can publish: a gateway, and a creden
 operates it. Each demo is registered separately, under its own UUID, with its own credential.
 
 ```sh
-# in feed-gateway/, once per publisher
+# in services/gateway/, once per publisher
 go run ./cmd/feed-gatewayctl register --database ./broadcast.db \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label "copy trading"
 
@@ -116,7 +116,7 @@ go run ./cmd/feed-gateway
 Then, natively, with a database in the demo's own directory:
 
 ```sh
-cd demo-copytrading
+cd examples/demo-signals
 PUBLISHER_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
@@ -151,7 +151,7 @@ go run ./cmd/publishctl create --in 2h --note "trimming SOL into USDC" \
 In Docker, copy `deploy/copytrading/.env.example` to `.env` beside it, then start
 `deploy/copytrading/compose.yaml`. The build context is the repository root, because the `replace`
 line needs `../publisher-support`; the canonical Compose file already says so, and
-[`demo-copytrading/README.md`](../../demo-copytrading/README.md#4-build-and-run-the-image) has the
+[`examples/demo-signals/README.md`](../../examples/demo-signals/README.md#4-build-and-run-the-image) has the
 plain `docker build` form. There is no bundled public ingress: what it publishes is a write API,
 not the gateway's public read port.
 
@@ -163,7 +163,7 @@ work — though a first run with no filters at all will find a great many market
 `PREDICTION_MOST_OPEN` is for.
 
 ```sh
-cd demo-prediction
+cd examples/demo-prediction
 PUBLISHER_SERVER_ID=7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
@@ -210,28 +210,28 @@ settings a deployment cannot get wrong have no default at all.
 **Each demo's own `.env.example` is the authority for its settings**, with a paragraph on each one
 beside the line that sets it, and each README's §5 is the same list as a table:
 
-- [`demo-copytrading/.env.example`](../../demo-copytrading/.env.example) and
-  [`demo-copytrading/README.md#5-configuration`](../../demo-copytrading/README.md#5-configuration)
-- [`demo-prediction/.env.example`](../../demo-prediction/.env.example) and
-  [`demo-prediction/README.md#5-configuration`](../../demo-prediction/README.md#5-configuration)
+- [`examples/demo-signals/.env.example`](../../examples/demo-signals/.env.example) and
+  [`examples/demo-signals/README.md#5-configuration`](../../examples/demo-signals/README.md#5-configuration)
+- [`examples/demo-prediction/.env.example`](../../examples/demo-prediction/.env.example) and
+  [`examples/demo-prediction/README.md#5-configuration`](../../examples/demo-prediction/README.md#5-configuration)
 
 They are not repeated here, because a settings table in a developer page and a settings table in the
 file an operator actually copies are two tables that drift.
 
 What is worth saying here is the code behind them, because it is shared and its shape is deliberate
-([`publisher-support/config`](../../publisher-support/config)). `Config` and `Load` read the settings
+([`packages/publisher-support/config`](../../packages/publisher-support/config)). `Config` and `Load` read the settings
 every publisher has — the identity, the gateway, the environment, the database, the API and its
 token — and both demos call exactly the same `Load`, so a missing variable or a bad number is
 reported identically wherever it is set. Beside it the package exports `Reader`: `NewReader`, `Note`,
 `Text`, `Secret`, `Whole`, `List` and `Problems`, which is the same collecting reader the library
-uses for its own half. [`demo-prediction/internal/config`](../../demo-prediction/internal/config)
+uses for its own half. [`examples/demo-prediction/internal/config`](../../examples/demo-prediction/internal/config)
 reads its twenty-odd `PREDICTION_*` settings through it, so a Prediction deployment's two halves are
 validated in one pass and reported in one message — rather than an operator fixing the publisher's
 half, restarting, and only then being told about the provider's.
 
 **Both credentials have to be usable rather than compared**, which is why they are configuration at
 all — the gateway keeps a publisher's credential as a SHA-256 and has none in its own environment
-(`feed-gateway/`). Neither is ever logged, no refusal quotes one, and a boundary test drives a series
+(`services/gateway/`). Neither is ever logged, no refusal quotes one, and a boundary test drives a series
 of calls including refused ones and fails if either appears in a log line. Either may be a file
 instead: `BROADCAST_CREDENTIAL_FILE` and `PUBLISHER_API_TOKEN_FILE` name a path, which is what a
 deployment that mounts secrets wants. Setting both a value and a file for the same secret is a
@@ -251,10 +251,10 @@ credential that could not survive being put in an HTTP header.
 ### The Prediction template's own settings
 
 Everything above, plus the `PREDICTION_*` half, which is
-[`demo-prediction`](../../demo-prediction/internal/config)'s alone and unknown to the other demo. All
+[`demo-prediction`](../../examples/demo-prediction/internal/config)'s alone and unknown to the other demo. All
 of them have a default, so a deployment can start with none of them. Their ranges and defaults are
-[`demo-prediction/.env.example`](../../demo-prediction/.env.example) and
-[the README's table](../../demo-prediction/README.md#5-configuration); what each of them *means* is
+[`examples/demo-prediction/.env.example`](../../examples/demo-prediction/.env.example) and
+[the README's table](../../examples/demo-prediction/README.md#5-configuration); what each of them *means* is
 [the filters table](../wiki/prediction-template.md#the-filters-and-what-they-mean), because a
 filter's exact semantics are a promise to an operator rather than an implementation detail.
 
@@ -273,7 +273,7 @@ phone would refuse.
 
 `publishctl` is a client of a demo's own API and nothing more, so every command is one HTTP call any
 program could make. The implementation is
-[`publisher-support/publisherctl`](../../publisher-support/publisherctl) and each demo's
+[`packages/publisher-support/publisherctl`](../../packages/publisher-support/publisherctl) and each demo's
 `cmd/publishctl` is a three-line `main` over it — because both demos answer the same API, neither may
 import the other, and two copies of one CLI would be two CLIs.
 
@@ -299,7 +299,7 @@ an absolute one. The answer is JSON on stdout so it can be piped; what a person 
 
 | Path | What is in it |
 | --- | --- |
-| `gen/` | Generated from `proto/` by `buf.gen.publisher-support.yaml`, committed, and never edited by hand |
+| `gen/` | Generated from `packages/protocol/proto/` by `buf.gen.publisher-support.yaml`, committed, and never edited by hand |
 | `signals/` | What a signal is, as pure data: `signals.go` with the `Kind` seam a demo supplies, `swap.go` and `prediction.go` with the two kinds and their terms, the document a signal becomes, and its fingerprint |
 | `manifest/` | What a publisher says about itself, its fingerprint, and the `seekervault://feed` reference — which carries no secret, because a feed is a broadcast |
 | `environment/` | Which promise a deployment keeps (SEE-97): one type, one pair of words, shared by everything that validates, stamps, publishes or answers with it |
@@ -315,13 +315,13 @@ an absolute one. The answer is JSON on stdout so it can be piped; what a person 
 | `publishertest/` | Exported test support: the fake gateway, the shared environment fixture, and the real-gateway process harness (`RunGateway`, `ReadFeed`, `CredentialFrom`, `FreePort`, `WaitFor`) |
 | `demotest/` | Exported test support: the whole-demo driver — a real store, the real drainer, the real API and a gateway of our own at the end of it |
 
-### demo-copytrading
+### demo-signals
 
 | Path | What is in it |
 | --- | --- |
 | `cmd/copytrading` | The demo: configuration, the store, the swap kind, the manifest at startup, the API, the drainer, an orderly shutdown |
 | `cmd/copytrading-admin` | The password-gated HTML UI for the trader (SEE-126), and a client of `/v1` rather than a second writer |
-| `cmd/publishctl` | Three lines over `publisher-support/publisherctl` |
+| `cmd/publishctl` | Three lines over `packages/publisher-support/publisherctl` |
 | `internal/admin` | That UI's implementation: named bcrypt file, sessions, CSRF, pages, its own rate limits |
 | `internal/boundary` | What this module is, as tests over its own source |
 | `sdk/` | A small Go client of this demo's request API |
@@ -333,7 +333,7 @@ an absolute one. The answer is JSON on stdout so it can be piped; what a person 
 | --- | --- |
 | `cmd/prediction` | The demo: the same core, plus the provider client and the reconciler's own goroutine, and an API nobody may write a signal through |
 | `cmd/prediction-admin` | The password-gated HTML UI (SEE-138), a client of `/v1` rather than a second writer |
-| `cmd/publishctl` | Three lines over `publisher-support/publisherctl` |
+| `cmd/publishctl` | Three lines over `packages/publisher-support/publisherctl` |
 | `internal/admin` | That UI's implementation: named bcrypt file, sessions, CSRF, pages, its own rate limits |
 | `internal/jupiter` | The prediction provider: two endpoints, its pagination, its error codes, a paced client, and **the only file in this module that names its host**. Seven captured answers under `testdata/` |
 | `internal/discovery` | What a filter means, what a cycle does, and the reconciler. No SQL and no HTTP: it is written against interfaces |
@@ -344,16 +344,16 @@ an absolute one. The answer is JSON on stdout so it can be piped; what a person 
 
 ### Three decisions worth knowing about
 
-**The market rows live in `publisher-support/store`, not in the Prediction demo.** It is the one
+**The market rows live in `packages/publisher-support/store`, not in the Prediction demo.** It is the one
 place where the split could plausibly have gone the other way, and it did not, because a market row
 and the signal published for it are written in **one transaction by the same durable engine**. A row
 without a signal would be a market nobody hears about; a signal without a row would be a proposal
 nothing maintains — and the second is the dangerous one, because nothing would ever withdraw it.
 Splitting that transaction across two modules would mean two writers of one file, or a second
 schema, or an interface wide enough that it was the store again with a longer name. So the *rows* are
-shared and the *meaning* is not: `publisher-support/markets` knows no provider, and which markets are
+shared and the *meaning* is not: `packages/publisher-support/markets` knows no provider, and which markets are
 worth publishing, how they are found and who they are found from is
-`demo-prediction/internal/discovery` alone.
+`examples/demo-prediction/internal/discovery` alone.
 
 **The API frame is shared; the listener, the token and the authorship are each demo's.** Both demos
 serve the same endpoints with the same authorization, the same strict decoding, the same refusal
@@ -365,11 +365,11 @@ the Prediction demo refuses all three with 403 and adds `GET /v1/discovery` and
 `main` and fails if it stops saying which it is.
 
 **No feed client is generated for any of the three.**
-[`buf.gen.publisher-support.yaml`](../../buf.gen.publisher-support.yaml) takes `publish.proto`,
+[`buf.gen.publisher-support.yaml`](../../packages/protocol/buf.gen.publisher-support.yaml) takes `publish.proto`,
 `problem.proto`, `proposal.proto`, `request.proto` and `manifest.proto` and nothing else, into one
 output directory shared by both demos — one contract, not two generated copies of one. So a demo
 cannot read a feed because no client for one exists anywhere in its module graph: the same argument
-that keeps `publish.proto` out of the phone's generation. `publisher-support/api/boundary_test.go`
+that keeps `publish.proto` out of the phone's generation. `packages/publisher-support/api/boundary_test.go`
 checks both halves of that — what is absent, and what is present.
 
 ## Tests
@@ -379,9 +379,9 @@ run: there is no phone behaviour in a publisher, and nothing here is mocked that
 also use.
 
 ```sh
-(cd publisher-support && go test ./...)
-(cd demo-copytrading  && go test ./...)
-(cd demo-prediction   && go test ./...)
+(cd packages/publisher-support && go test ./...)
+(cd examples/demo-signals && go test ./...)
+(cd examples/demo-prediction && go test ./...)
 ```
 
 Beside them, `pnpm test:integration` runs both **binaries** — with `PREDICTION_PROVIDER_URL` aimed at
@@ -440,10 +440,10 @@ publishing to one gateway.
 
 Note that the boundary tests are now three, not one, and that is deliberate. The rules every
 public-feed publisher obeys are stated once over the library, in
-[`publisher-support/api/boundary_test.go`](../../publisher-support/api/boundary_test.go). The rules
+[`packages/publisher-support/api/boundary_test.go`](../../packages/publisher-support/api/boundary_test.go). The rules
 about *being an independent demonstration* are stated per module, in
-[`demo-copytrading/internal/boundary`](../../demo-copytrading/internal/boundary) and
-[`demo-prediction/internal/boundary`](../../demo-prediction/internal/boundary), each walking its own
+[`examples/demo-signals/internal/boundary`](../../examples/demo-signals/internal/boundary) and
+[`examples/demo-prediction/internal/boundary`](../../examples/demo-prediction/internal/boundary), each walking its own
 module's shipped source — because "this builds and runs without the other" is a claim about one
 module, and a test that walked both at once could not make it.
 
@@ -455,20 +455,20 @@ republication is answered with — and they are also the automated half of "two 
 proposal":
 
 ```sh
-(cd feed-gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway \
+(cd services/gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway \
                  && go build -o /tmp/feed-gatewayctl ./cmd/feed-gatewayctl)
 
-(cd publisher-support && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./publish/ -run Gateway -v)
-(cd demo-prediction   && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./internal/discovery/ -run Gateway -v)
+(cd packages/publisher-support && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./publish/ -run Gateway -v)
+(cd examples/demo-prediction && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./internal/discovery/ -run Gateway -v)
 ```
 
 Each registers a publisher with the real `feed-gatewayctl`, starts the real gateway on isolated
 loopback ports, publishes a manifest and a signal, **reads the feed back twice with two independent
 clients and compares the bytes**, republishes the identical document and requires `UNCHANGED`, then
 withdraws and reads the withdrawal. The process harness they share is
-[`publisher-support/publishertest`](../../publisher-support/publishertest), exported for exactly this
+[`packages/publisher-support/publishertest`](../../packages/publisher-support/publishertest), exported for exactly this
 reason: both modules need the same gateway, and a difference between two tests' gateways would be a
-difference nobody meant. `pnpm check:publisher-support` and `pnpm check:prediction` build the gateway
+difference nobody meant. `pnpm check:publisher-support` and `pnpm check:demo-prediction` build the gateway
 and set the variable for you.
 
 There are two of these, one per demo, and the second is not the first with a word changed: a
@@ -486,16 +486,16 @@ The other opt-in test, and the one that can notice the provider changing under t
 a beta API by its own documentation:
 
 ```sh
-cd demo-prediction && SEEKERVAULT_JUPITER=1 go test ./internal/jupiter/ -run Live -v
+cd examples/demo-prediction && SEEKERVAULT_JUPITER=1 go test ./internal/jupiter/ -run Live -v
 ```
 
 It reads one real page of the listing and then one real market from it, and checks that the fields
 discovery depends on are all still there — an identifier, a category, a title, the markets inside the
 event, a status, a close time — rather than asserting anything about a particular market. It is not
-in `pnpm check:prediction`, because a check that needs the internet is not a check.
+in `pnpm check:demo-prediction`, because a check that needs the internet is not a check.
 
 Everything else about the provider runs against seven answers it really gave, committed under
-`demo-prediction/internal/jupiter/testdata` with the request that produced each. To re-capture them:
+`examples/demo-prediction/internal/jupiter/testdata` with the request that produced each. To re-capture them:
 
 ```sh
 node scripts/capture-jupiter.mjs --events
@@ -509,10 +509,10 @@ identity and credential, the image, the stack, every setting, the persistent vol
 first publication, logs, common errors, backup, upgrade, rollback, and copying the demo out of the
 repository.
 
-- **[`demo-copytrading/README.md`](../../demo-copytrading/README.md)** — application image and
+- **[`examples/demo-signals/README.md`](../../examples/demo-signals/README.md)** — application image and
   configuration plus `deploy/copytrading`: Compose project `seeker-publisher`, explicit physical
   volume `seeker-publisher_publisher-data`.
-- **[`demo-prediction/README.md`](../../demo-prediction/README.md)** — application image and
+- **[`examples/demo-prediction/README.md`](../../examples/demo-prediction/README.md)** — application image and
   configuration plus `deploy/prediction`: Compose project `seeker-prediction`, explicit physical
   volume `seeker-prediction_prediction-data`.
 

@@ -4,7 +4,7 @@
 //
 // The replace below is how a repository checkout resolves the shared source library. A copy of
 // this demo taken out of the repository replaces it with an explicit module revision instead; the
-// guide says how (demo-prediction/README.md).
+// guide says how (examples/demo-prediction/README.md).
 module github.com/BrRenat/SeekerAgentWallet/demo-prediction
 
 go 1.27.1
@@ -30,4 +30,4 @@ require (
 	modernc.org/sqlite v1.59.0 // indirect
 )
 
-replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../publisher-support
+replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../../packages/publisher-support

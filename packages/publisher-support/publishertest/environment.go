@@ -7,7 +7,7 @@ import "strings"
 // It is shared because both halves of a Prediction deployment are read at once — the settings every
 // publisher has, and the ones only a discovering demo has — so the demo's own configuration tests
 // need exactly the environment the support library's tests use. A second copy of it would drift the
-// first time a setting was added (publisher-support/config, demo-prediction/internal/config).
+// first time a setting was added (packages/publisher-support/config, examples/demo-prediction/internal/config).
 func Environment() map[string]string {
 	return map[string]string{
 		"PUBLISHER_SERVER_ID":     ServerID,

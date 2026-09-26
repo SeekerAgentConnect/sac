@@ -12,7 +12,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * The Kotlin half of the proposal fixtures in proto/fixtures/seekervault/proposal/v1 (SEE-89).
+ * The Kotlin half of the proposal fixtures in
+ * packages/protocol/proto/fixtures/seekervault/proposal/v1 (SEE-89).
  *
  * The bytes matter more here than for most messages, because the publisher that writes them is a Go
  * program (SEE-95, SEE-96) and the phone that reads them is this one: `buf convert` writes each

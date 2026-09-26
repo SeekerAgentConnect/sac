@@ -42,7 +42,7 @@ import {
   type TestPhone,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { testWallet } from "../../../server-sdk/src/testing/wallet.ts";
+import { testWallet } from "../../../../packages/server-sdk/src/testing/wallet.ts";
 import {
   GET_CAPABILITIES_TOOL,
   TRANSFER_TOOL,

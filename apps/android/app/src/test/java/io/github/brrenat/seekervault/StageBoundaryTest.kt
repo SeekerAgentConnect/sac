@@ -45,7 +45,7 @@ class StageBoundaryTest {
             }
         )
 
-    private val main = File(repoRoot, "android/app/src/main")
+    private val main = File(repoRoot, "apps/android/app/src/main")
 
     /**
      * [file]'s source with its comments removed, so an assertion about what the code does is not
@@ -993,7 +993,7 @@ class StageBoundaryTest {
         // prepared for them to sign — and a field that could carry one would have to be added here
         // first.
         val proto =
-            File(repoRoot, "proto/seekervault/proposal/v1/proposal.proto")
+            File(repoRoot, "packages/protocol/proto/seekervault/proposal/v1/proposal.proto")
                 .readLines()
                 .filterNot { it.trim().startsWith("//") }
                 .joinToString("\n")
@@ -1052,7 +1052,7 @@ class StageBoundaryTest {
         )
 
         val proto =
-            File(repoRoot, "proto/seekervault/request/v2/request.proto")
+            File(repoRoot, "packages/protocol/proto/seekervault/request/v2/request.proto")
                 .readLines()
                 .filterNot { it.trim().startsWith("//") }
                 .joinToString("\n")
@@ -1187,7 +1187,7 @@ class StageBoundaryTest {
         // The document itself is bounded, and this is the whole of it. A field that could carry a
         // permission, a policy, or a wallet endpoint would have to be added here first.
         val proto =
-            File(repoRoot, "proto/seekervault/server/v1/manifest.proto")
+            File(repoRoot, "packages/protocol/proto/seekervault/server/v1/manifest.proto")
                 .readLines()
                 .filterNot { it.trim().startsWith("//") }
                 .joinToString("\n")
@@ -1532,11 +1532,11 @@ class StageBoundaryTest {
 
     @Test
     fun theDesignSystemOwnsOnlyVisualCodeAndTheAppDependsOnIt() {
-        val designSystem = File(repoRoot, "android/designsystem")
+        val designSystem = File(repoRoot, "apps/android/designsystem")
         val build = File(designSystem, "build.gradle.kts").readText()
-        val settings = File(repoRoot, "android/settings.gradle.kts").readText()
-        val appBuild = File(repoRoot, "android/app/build.gradle.kts").readText()
-        val rootBuild = File(repoRoot, "android/build.gradle.kts").readText()
+        val settings = File(repoRoot, "apps/android/settings.gradle.kts").readText()
+        val appBuild = File(repoRoot, "apps/android/app/build.gradle.kts").readText()
+        val rootBuild = File(repoRoot, "apps/android/build.gradle.kts").readText()
         val packageJson = File(repoRoot, "package.json").readText()
         val sources =
             File(designSystem, "src/main/java").walk().filter { it.extension == "kt" }.toList()
@@ -1616,7 +1616,7 @@ class StageBoundaryTest {
         val theme =
             File(
                     repoRoot,
-                    "android/designsystem/src/main/java/io/github/brrenat/seekervault/designsystem/theme",
+                    "apps/android/designsystem/src/main/java/io/github/brrenat/seekervault/designsystem/theme",
                 )
                 .walk()
                 .filter { it.extension == "kt" }

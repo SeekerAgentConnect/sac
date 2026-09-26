@@ -26,8 +26,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const FEED_GATEWAY = join(ROOT, "feed-gateway");
-const LOADTEST = join(ROOT, "loadtest");
+const FEED_GATEWAY = join(ROOT, "services", "gateway");
+const LOADTEST = join(ROOT, "tools", "loadtest");
 
 // The version the go.mod files require, and the one docs/development/toolchain.md records as
 // tested. A newer Go builds them too; this is the message for a machine that has none.

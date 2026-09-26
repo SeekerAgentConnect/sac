@@ -7,7 +7,7 @@ import (
 
 // The ported policy, against the cases the Kotlin's own test asserts (SEE-99).
 //
-// `android/.../feeds/FeedRecoveryTest.kt` is the original, and these are its cases in the same
+// `apps/android/.../feeds/FeedRecoveryTest.kt` is the original, and these are its cases in the same
 // order with the same numbers. That is the point of the file: the harness's client has to make the
 // app's decisions, and the way to keep a port honest is to port its test as well. A change on
 // either side that is not made on both fails here.

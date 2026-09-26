@@ -53,9 +53,10 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 /**
- * The Kotlin half of the durable request fixtures in proto/fixtures/seekervault/request/v1. `buf
- * convert` writes the bytes, and the sidecar's requests/fixtures.test.ts checks them too. Each test
- * builds the message in Kotlin and requires the same bytes in both directions.
+ * The Kotlin half of the durable request fixtures in
+ * packages/protocol/proto/fixtures/seekervault/request/v1. `buf convert` writes the bytes, and the
+ * sidecar's requests/fixtures.test.ts checks them too. Each test builds the message in Kotlin and
+ * requires the same bytes in both directions.
  */
 class RequestProtocolFixturesTest {
     @Test

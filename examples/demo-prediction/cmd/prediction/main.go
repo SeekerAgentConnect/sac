@@ -137,7 +137,7 @@ func run(log *slog.Logger) error {
 		Log:       log,
 		Now:       time.Now,
 		// A cycle that changed something asks the drainer for a pass. Publication stays one path,
-		// in one package, whoever asked for it (publisher-support/publish).
+		// in one package, whoever asked for it (packages/publisher-support/publish).
 		Wake: drainer.Wake,
 	})
 

@@ -194,7 +194,7 @@ None of these ever quotes the token.
 
 The whole path was exercised against an authorization server the tests control: the discovery
 document through the public TLS gateway, a real MCP session opened with an access token, and every
-refusal above (`mcp-server/src/oauth.test.ts`, `docs/testing/stage-7.md#saw-036`).
+refusal above (`servers/mcp-server/src/oauth.test.ts`, `docs/testing/stage-7.md#saw-036`).
 
 **No hosted Claude client has connected to it.** That needs a public domain, a real authorization
 server, and an account, and it is the one check this integration is actually for — a metadata

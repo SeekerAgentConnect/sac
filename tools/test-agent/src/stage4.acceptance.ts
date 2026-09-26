@@ -25,7 +25,7 @@ import {
   type PreparedTransaction,
 } from "@seeker-vault/server-sdk/protocol";
 import { encodeBase58 } from "@seeker-vault/server-sdk";
-import { transactionMessage } from "../../mcp-server/src/solana/confirmation.ts";
+import { transactionMessage } from "../../../servers/mcp-server/src/solana/confirmation.ts";
 import {
   FakeChain,
   holdToken,
@@ -33,22 +33,22 @@ import {
   startFakeRpc,
   walletAccount,
   type FakeRpc,
-} from "../../mcp-server/src/testing/chain.ts";
+} from "../../../servers/mcp-server/src/testing/chain.ts";
 import {
   pairPhone,
   requestClient,
   type TestPhone,
-} from "../../mcp-server/src/testing/clients.ts";
+} from "../../../servers/mcp-server/src/testing/clients.ts";
 import {
   freePort,
   startSidecarProcess,
   temporaryDatabasePath,
   type SidecarProcess,
-} from "../../mcp-server/src/testing/process.ts";
+} from "../../../servers/mcp-server/src/testing/process.ts";
 import {
   testWallet,
   type TestWallet,
-} from "../../server-sdk/src/testing/wallet.ts";
+} from "../../../packages/server-sdk/src/testing/wallet.ts";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 const MCP_TOKEN = "m".repeat(64);

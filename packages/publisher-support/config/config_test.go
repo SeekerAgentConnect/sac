@@ -11,7 +11,7 @@ import (
 
 // A configuration that starts. It is the support library's own fixture because the Prediction
 // demo's configuration tests need exactly this environment plus their own settings
-// (publisher-support/publishertest).
+// (packages/publisher-support/publishertest).
 func complete() map[string]string { return publishertest.Environment() }
 
 func from(environment map[string]string) Lookup { return publishertest.LookupIn(environment) }

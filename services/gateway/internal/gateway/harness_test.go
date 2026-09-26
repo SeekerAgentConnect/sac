@@ -46,7 +46,7 @@ import (
 
 // The two publishers every test has available, and the proposals they publish. They are the
 // identities the phone's own tests use, so a document from here is one the phone's validators can
-// be pointed at without translating anything (proto/fixtures/seekervault/gateway/v1).
+// be pointed at without translating anything (packages/protocol/proto/fixtures/seekervault/gateway/v1).
 const (
 	publisherA = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
 	publisherB = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"

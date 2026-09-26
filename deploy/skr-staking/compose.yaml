@@ -7,7 +7,7 @@ services:
   skr-staking-server:
     build:
       context: ../..
-      dockerfile: skr-staking-server/Dockerfile
+      dockerfile: servers/mcp-skr-staking/Dockerfile
     image: ${SKR_STAKING_IMAGE:-seeker-agent-connect/skr-staking-server:local}
     restart: unless-stopped
     environment:

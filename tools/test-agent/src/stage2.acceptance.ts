@@ -16,7 +16,7 @@ import {
   RequestErrorDetailSchema,
   RequestState,
 } from "@seeker-vault/server-sdk/protocol";
-import { openDatabase } from "../../server-sdk/src/storage/database.ts";
+import { openDatabase } from "../../../packages/server-sdk/src/storage/database.ts";
 import {
   Code,
   ConnectError,
@@ -25,18 +25,18 @@ import {
   requestClient,
   type Phone,
   type TestPhone,
-} from "../../mcp-server/src/testing/clients.ts";
+} from "../../../servers/mcp-server/src/testing/clients.ts";
 import {
   freePort,
   startSidecarProcess,
   temporaryDatabasePath,
   type SidecarProcess,
-} from "../../mcp-server/src/testing/process.ts";
+} from "../../../servers/mcp-server/src/testing/process.ts";
 import type { RequestView } from "./agent.ts";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 const PAIR = fileURLToPath(
-  new URL("../../mcp-server/src/cli.ts", import.meta.url),
+  new URL("../../../servers/mcp-server/src/cli.ts", import.meta.url),
 );
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);

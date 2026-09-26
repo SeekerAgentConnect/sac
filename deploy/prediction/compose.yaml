@@ -4,7 +4,7 @@ services:
   prediction:
     build:
       context: ../..
-      dockerfile: demo-prediction/Dockerfile
+      dockerfile: examples/demo-prediction/Dockerfile
     image: ${PREDICTION_IMAGE:-seeker-prediction/prediction:local}
     restart: unless-stopped
     environment:
@@ -55,7 +55,7 @@ services:
     profiles: [operator]
     build:
       context: ../..
-      dockerfile: demo-prediction/Dockerfile
+      dockerfile: examples/demo-prediction/Dockerfile
     image: ${PREDICTION_IMAGE:-seeker-prediction/prediction:local}
     entrypoint: ["/publishctl"]
     environment:
@@ -70,7 +70,7 @@ services:
     profiles: [admin]
     build:
       context: ../..
-      dockerfile: demo-prediction/Dockerfile
+      dockerfile: examples/demo-prediction/Dockerfile
     image: ${PREDICTION_IMAGE:-seeker-prediction/prediction:local}
     entrypoint: ["/prediction-admin"]
     restart: unless-stopped

@@ -16,7 +16,7 @@
  * asked for one would be recorded asking for a path that does not exist, and would fail the run.
  *
  * What it cannot do is the phone: the Android client is another runtime, and its half of every
- * scenario below is under `android/app/src/test` (`pnpm check:android`, and the cross-component
+ * scenario below is under `apps/android/app/src/test` (`pnpm check:android`, and the cross-component
  * subset that `pnpm test:integration` runs). The device half is the owner's, and the checklist is
  * in `docs/testing/see-98.md`.
  *
@@ -39,16 +39,16 @@ import {
   requestClient,
   viewOf,
   type TestPhone,
-} from "../../mcp-server/src/testing/clients.ts";
+} from "../../../servers/mcp-server/src/testing/clients.ts";
 import {
   freePort,
   startSidecarProcess,
   type SidecarProcess,
-} from "../../mcp-server/src/testing/process.ts";
+} from "../../../servers/mcp-server/src/testing/process.ts";
 import {
   testWallet,
   type TestWallet,
-} from "../../server-sdk/src/testing/wallet.ts";
+} from "../../../packages/server-sdk/src/testing/wallet.ts";
 import {
   BROKER_API_KEY,
   BROKER_TOKEN_KEY,

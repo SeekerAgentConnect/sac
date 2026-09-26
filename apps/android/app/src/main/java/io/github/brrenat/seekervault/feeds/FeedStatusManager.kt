@@ -327,10 +327,10 @@ class FeedStatusManager(
 
         /**
          * The most channels one read may name, which is the gateway's own bound
-         * (feed-gateway/internal/gateway.MostStatusChannels). It is duplicated rather than derived
-         * because there is nothing to derive it from on a phone: the number is part of the API's
-         * contract, and a gateway that lowered it would refuse the batch, which is a failed batch
-         * and not a failed gateway.
+         * (services/gateway/internal/gateway.MostStatusChannels). It is duplicated rather than
+         * derived because there is nothing to derive it from on a phone: the number is part of the
+         * API's contract, and a gateway that lowered it would refuse the batch, which is a failed
+         * batch and not a failed gateway.
          */
         const val MOST_CHANNELS = 32
     }

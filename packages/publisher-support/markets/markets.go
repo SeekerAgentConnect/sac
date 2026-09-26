@@ -3,12 +3,12 @@
 //
 // They are here, in the shared support library, because they are rows of the store's schema — the
 // market row and the signal it is published as are written in one transaction by the same durable
-// engine (publisher-support/store), and a second copy of these types would be a second opinion
+// engine (packages/publisher-support/store), and a second copy of these types would be a second opinion
 // about what that transaction wrote.
 //
 // Nothing in this package knows a provider. Which markets are worth publishing, how they are
 // discovered and who they are discovered from is the Prediction demo's own affair
-// (demo-prediction/internal/discovery); what is here is only what the store persists and what an
+// (examples/demo-prediction/internal/discovery); what is here is only what the store persists and what an
 // operator's API answers with.
 package markets
 
@@ -21,7 +21,7 @@ import (
 
 // ErrBusy is returned when a discovery cycle is asked for while one is already running. It is in
 // this package rather than in the demo's reconciler because the shared API frame answers it 409
-// without knowing whose reconciler refused (publisher-support/api).
+// without knowing whose reconciler refused (packages/publisher-support/api).
 var ErrBusy = errors.New("a discovery cycle is already running")
 
 // Market is one market this template is tracking: what the provider last said about it, the
@@ -65,7 +65,7 @@ type Market struct {
 //
 // It is derived rather than random on purpose. A cycle that is interrupted between reading the
 // listing and storing the signal leaves nothing behind, and the next cycle derives the same key —
-// so a market cannot become two proposals, whatever happens in between (publisher-support/store).
+// so a market cannot become two proposals, whatever happens in between (packages/publisher-support/store).
 func (m Market) Key() string {
 	return "market:" + m.Provider + ":" + m.MarketID + ":" + itoa(m.Generation)
 }

@@ -1,8 +1,9 @@
 package io.github.brrenat.seekervault.live
 
 /**
- * The binary fixtures in proto/fixtures, written by `buf convert` (`pnpm generate`) and checked
- * byte for byte by the sidecar tests too. The test resources include that folder.
+ * The binary fixtures in packages/protocol/proto/fixtures, written by `buf convert` (`pnpm
+ * generate`) and checked byte for byte by the sidecar tests too. The test resources include that
+ * folder.
  */
 internal object LiveProtocolFixtures {
     fun bytes(name: String): ByteArray =

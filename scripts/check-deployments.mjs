@@ -154,10 +154,10 @@ for (const retiredRoot of ["sidecar", "broadcast", "publisher", "gateway"]) {
 
 for (const retired of [
   "gateway/compose.yaml",
-  "feed-gateway/compose.yaml",
-  "mcp-server/compose.yaml",
-  "demo-copytrading/compose.yaml",
-  "demo-prediction/compose.yaml",
+  "services/gateway/compose.yaml",
+  "servers/mcp-server/compose.yaml",
+  "examples/demo-signals/compose.yaml",
+  "examples/demo-prediction/compose.yaml",
   "deploy/server/compose.yaml",
 ]) {
   assert.equal(existsSync(join(ROOT, retired)), false, `${retired} is retired`);
@@ -199,7 +199,7 @@ for (const path of activeLayoutDocs) {
 }
 
 const mcpPackageEnvironment = readFileSync(
-  join(ROOT, "mcp-server/.env.example"),
+  join(ROOT, "servers/mcp-server/.env.example"),
   "utf8",
 );
 assert.match(mcpPackageEnvironment, /^SIDECAR_HOST=127\.0\.0\.1$/m);
@@ -209,7 +209,7 @@ assert.match(mcpPackageEnvironment, /^SIDECAR_PORT=8080$/m);
 // default port is a different one (SEE-146). Two servers that shared a name could not both be
 // configured out of one .env, which is exactly how they are meant to be deployed.
 const skrPackageEnvironment = readFileSync(
-  join(ROOT, "skr-staking-server/.env.example"),
+  join(ROOT, "servers/mcp-skr-staking/.env.example"),
   "utf8",
 );
 assert.match(skrPackageEnvironment, /^SKR_STAKING_HOST=127\.0\.0\.1$/m);
@@ -223,13 +223,13 @@ for (const shared of [
   assert.doesNotMatch(
     skrPackageEnvironment,
     new RegExp(`^${shared}`, "m"),
-    `skr-staking-server/.env.example does not reuse ${shared}`,
+    `servers/mcp-skr-staking/.env.example does not reuse ${shared}`,
   );
 }
 
 const androidSources = [
-  ...filesBelow(join(ROOT, "android/app/src/main")),
-  ...filesBelow(join(ROOT, "android/app/src/test")),
+  ...filesBelow(join(ROOT, "apps/android/app/src/main")),
+  ...filesBelow(join(ROOT, "apps/android/app/src/test")),
 ]
   .filter((path) => extname(path) === ".kt")
   .map((path) => readFileSync(path, "utf8"))
@@ -299,10 +299,13 @@ assert.match(directTls, /SIDECAR_TLS_KEY_PATH: \/run\/tls\/privkey\.pem/);
 assert.match(directTls, /source: \/tmp\/seeker-direct-certificates/);
 assert.match(directTls, /read_only: true/);
 
-const mcpDockerfile = readFileSync(join(ROOT, "mcp-server/Dockerfile"), "utf8");
+const mcpDockerfile = readFileSync(
+  join(ROOT, "servers/mcp-server/Dockerfile"),
+  "utf8",
+);
 assert.match(
   mcpDockerfile,
-  /CMD \["node", "mcp-server\/dist\/healthcheck\.js"\]/,
+  /CMD \["node", "servers\/mcp-server\/dist\/healthcheck\.js"\]/,
 );
 assert.doesNotMatch(mcpDockerfile, /fetch\(['"]http:\/\/127\.0\.0\.1/);
 
@@ -311,12 +314,12 @@ assert.match(skrStaking, /name: seeker-agent-connect-skr-staking_skr-data/);
 assert.match(skrStaking, /SKR_STAKING_PORT: "?8090"?/);
 
 const skrDockerfile = readFileSync(
-  join(ROOT, "skr-staking-server/Dockerfile"),
+  join(ROOT, "servers/mcp-skr-staking/Dockerfile"),
   "utf8",
 );
 assert.match(
   skrDockerfile,
-  /CMD \["node", "skr-staking-server\/dist\/healthcheck\.js"\]/,
+  /CMD \["node", "servers\/mcp-skr-staking\/dist\/healthcheck\.js"\]/,
 );
 assert.doesNotMatch(skrDockerfile, /fetch\(['"]http:\/\/127\.0\.0\.1/);
 

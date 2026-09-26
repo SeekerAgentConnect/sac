@@ -98,7 +98,7 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 ### The wrong JDK
 
 - **Too old to start Gradle.** Gradle 9.7 needs Java 17 or newer to start. With an older JDK in `JAVA_HOME`, the wrapper stops and asks for a newer Java version. Point `JAVA_HOME` at Android Studio's JDK or at Temurin 21. This case wasn't reproduced, because the verification Mac has no JDK older than 17.
-- **A different JDK for the build.** Any JDK 17 or newer can start Gradle. The build itself always runs on the pinned Temurin 21 (`android/gradle/gradle-daemon-jvm.properties`), which Gradle downloads on the first build. If that download fails, for example when you're offline, install it yourself with `brew install --cask temurin@21`, and Gradle finds it. Android Studio Panda 1 and newer follow the same pin.
+- **A different JDK for the build.** Any JDK 17 or newer can start Gradle. The build itself always runs on the pinned Temurin 21 (`apps/android/gradle/gradle-daemon-jvm.properties`), which Gradle downloads on the first build. If that download fails, for example when you're offline, install it yourself with `brew install --cask temurin@21`, and Gradle finds it. Android Studio Panda 1 and newer follow the same pin.
 
 ### `SDK location not found`
 
@@ -113,8 +113,8 @@ Could not determine the dependencies of task ':app:compileDebugJavaWithJavac'.
 Use any one of these fixes:
 
 - Add `export ANDROID_HOME="$HOME/Library/Android/sdk"` to `~/.zshrc` (quickstart step 5) and open a new terminal.
-- Open the `android` folder in Android Studio once. Studio writes `android/local.properties` for you.
-- Create `android/local.properties` with the line `sdk.dir=/Users/<you>/Library/Android/sdk`. Git ignores this file; don't commit it.
+- Open the `android` folder in Android Studio once. Studio writes `apps/android/local.properties` for you.
+- Create `apps/android/local.properties` with the line `sdk.dir=/Users/<you>/Library/Android/sdk`. Git ignores this file; don't commit it.
 
 After `ANDROID_HOME` changes, Gradle prints `configuration cache cannot be reused because environment variable 'ANDROID_HOME' has changed`. That's expected, and harmless.
 
@@ -207,7 +207,7 @@ OFFLINE: no phone is watching; open the live-test screen and connect
 [ELIFECYCLE] Command failed with exit code 4.
 ```
 
-No phone is connected. Open Seeker Agent Connect and tap **Connect**, and check that the status reads "Connected". Every exit code is listed in [`test-agent/README.md`](../../test-agent/README.md).
+No phone is connected. Open Seeker Agent Connect and tap **Connect**, and check that the status reads "Connected". Every exit code is listed in [`tools/test-agent/README.md`](../../tools/test-agent/README.md).
 
 ## Live and background updates
 
@@ -233,7 +233,7 @@ Background work opens no wallet. A pending request still waits for your manual r
 
 ### Request notifications are missing or a tap is stale
 
-Notifications require an APK built with `android/app/google-services.json`, at least one usable
+Notifications require an APK built with `apps/android/app/google-services.json`, at least one usable
 connection, Android notification permission, and an enabled **Requests waiting for review**
 channel. If permission or the channel was denied, enable it in Android Settings. Denial does not
 stop foreground streams, manual Refresh, unary Sync, periodic recovery, registration, or
@@ -243,7 +243,7 @@ Check the boundaries in this order:
 
 1. The sidecar startup line says `FCM sender is configured through Application Default
    Credentials`. If it says FCM is off, set `FCM_PROJECT_ID` and restart that sidecar.
-2. The installed APK was built while the matching `android/app/google-services.json` existed. A
+2. The installed APK was built while the matching `apps/android/app/google-services.json` existed. A
    file copied in after assembly cannot configure an already-built APK.
 3. The connection is usable and has had a registration update. Do not print or query the target;
    the protocol intentionally has no read API for it.

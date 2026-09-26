@@ -52,7 +52,7 @@ type Config struct {
 	// question. The manifest names where *phones read*, which is public and compared character for
 	// character. This is where a publication *goes*, which may be a private address on a tunnel,
 	// on a VPN, or the gateway's own second port on a machine running both: an operator who keeps
-	// publishing off the internet deletes the proxy route and points this at it (feed-gateway/
+	// publishing off the internet deletes the proxy route and points this at it (services/gateway/
 	// Caddyfile).
 	//
 	// Getting it wrong is the one mistake with no error message on the gateway's side: a read
@@ -221,7 +221,7 @@ func Load(lookup Lookup) (*Config, []string) {
 // start is fixed in one pass.
 //
 // It is a type rather than a closure, and it is exported, because there are two loaders — this
-// one, and the Prediction demo's own half (demo-prediction/internal/config) — and a secret read
+// one, and the Prediction demo's own half (examples/demo-prediction/internal/config) — and a secret read
 // two slightly different ways would be a deployment's worst kind of surprise. A demo that adds
 // settings of its own reads them through this, so that a missing variable, a `_FILE` secret and a
 // number out of range are reported identically wherever they are configured.
@@ -366,7 +366,7 @@ func Origin(raw string) (string, error) {
 // here, and the reason to say so out loud is that it is a weaker rule: what keeps the credential off
 // the network is the network it is on, which is the deployment's job and is documented as such
 // (docs/development/demos.md). The gateway applies the same distinction to its broker's address
-// (feed-gateway/internal/config).
+// (services/gateway/internal/config).
 //
 // Still no path, query, fragment or user information: this is an origin the client appends its own
 // procedure paths to, and a base URL carrying half a request would produce requests nobody meant.

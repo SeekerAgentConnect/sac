@@ -23,7 +23,7 @@ Android is now a two-module build. `:app` owns behavior and depends on `:designs
 `:designsystem` owns only visual tokens and Compose theme code and has no dependency in the other
 direction. Its only library dependency is Compose Material 3, so it cannot import app models,
 ViewModels, storage, transports, network clients, or wallet code. The module layout and the exact
-font provenance are documented in [`android/designsystem/README.md`](../../android/designsystem/README.md).
+font provenance are documented in [`apps/android/designsystem/README.md`](../../apps/android/designsystem/README.md).
 
 `SeekerTheme` supplies the light/dark colour roles, the source-chip palette, the full extracted
 spacing and radius scales, and the styles that do not fit Material's standard slots. Roboto and
@@ -94,8 +94,8 @@ Run the complete joined suite with `pnpm test:updates`; keep running `pnpm test:
 ## Optional Firebase registration, Sync, and notifications (SAW-054–SAW-058)
 
 The app pins the current Firebase Android BoM and its main `firebase-messaging` module. The Google
-Services plugin is present but conditional: `android/app/build.gradle.kts` applies it only when the
-deployment supplies the ignored `android/app/google-services.json`. A clean checkout therefore
+Services plugin is present but conditional: `apps/android/app/build.gradle.kts` applies it only when the
+deployment supplies the ignored `apps/android/app/google-services.json`. A clean checkout therefore
 builds the same debug and test APKs with no Firebase project configuration, while a configured
 operator build gets the resources generated from its own project file.
 
@@ -590,8 +590,8 @@ Roborazzi baselines are source-controlled under each Android module's
 `src/test/snapshots/images/`. Record only after reviewing the design references:
 
 ```bash
-android/gradlew -p android :designsystem:recordRoborazziDebug :app:recordRoborazziDebug
-android/gradlew -p android designCompare
+apps/android/gradlew -p apps/android :designsystem:recordRoborazziDebug :app:recordRoborazziDebug
+apps/android/gradlew -p apps/android designCompare
 ```
 
 Ordinary verification, including `pnpm check:android` and CI, runs both
@@ -635,7 +635,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `LiveCommandViewModelTest` | The ViewModel against a fake transport, on virtual time: showing text and sending one OK, a rapid second tap, the deadline, a command that is already expired, the sidecar's answers to an OK, connection loss clearing the command, a wrong token, a replaced stream, reconnect, disconnect, background and foreground, and input validation |
 | `LiveCommandScreenTest` | Compose tests on Robolectric: exact plain-text display, the one-tap OK, the disabled states, the 4096-byte maximum text, and every status and error message |
 | `MainActivityTest` | The live-test screen in the activity, with a fake transport, on Robolectric: rotation during a command, a rapid double tap, background then foreground, and leaving the screen |
-| `ConnectLiveCommandTransportTest` | The real transport against the real sidecar (`node mcp-server/src/cli.ts start`), with an MCP SDK client as the agent: text in, the same command's OK out. Also covers a wrong token, an unknown command, and a sidecar stop. It needs Node 24 and `pnpm install`. `ConnectLiveCommandTransportUnreachableTest` covers a closed port. |
+| `ConnectLiveCommandTransportTest` | The real transport against the real sidecar (`node servers/mcp-server/src/cli.ts start`), with an MCP SDK client as the agent: text in, the same command's OK out. Also covers a wrong token, an unknown command, and a sidecar stop. It needs Node 24 and `pnpm install`. `ConnectLiveCommandTransportUnreachableTest` covers a closed port. |
 | `GrpcBidiInteropTest` | The SAW-048 transport proof: the generated Connect-Kotlin 0.9.0 bidirectional client and OkHttp 5.4.0 use the real loopback h2c transport with explicit HTTP/2 prior knowledge against the Connect Node 2.2.0 adapter. Subscribe/ready and two heartbeat pairs interleave before the client half-closes its send side. Closing the receive side cancels the one Node stream and starts no replacement. The production-listener tests separately cover TLS/ALPN. This is a test harness, not the production transport added by SAW-049. |
 | `Stage52AcceptanceTest` | The SAW-053 joined acceptance path: real sidecar processes, real MCP SDK calls, the production h2c gRPC service, and production Android synchronization/lifecycle/storage. It covers foreground changes without Refresh, two-sidecar isolation, restart/expiry, intentional background closure, worker-only unary recovery, persisted cache reload, bounded retry, existing-result delivery, and cleanup. Run it with the sidecar update suites through `pnpm test:updates`. |
 | `Stage53AcceptanceTest` | The SAW-059 joined push-recovery path: real MCP requests enter two real sidecar processes and Android's production h2c transport, synchronization repository, persistent cache, and headless runners fetch authoritative state. It covers connection-scoped registration/rotation calls, delayed cancel-before-delivery, dropped hints recovered by the Stage 5.2 periodic path, duplicate idempotence, process-reloaded recovery, revocation isolation, and secret-free process logs. `pnpm test:push` combines it with the configured-sidecar invalidation, callback, permission, branded native notification, tap, and stage-boundary suites. Firebase and OS delivery remain physical-device-only. |
@@ -647,7 +647,7 @@ Then enter `http://127.0.0.1:8080` and the phone token in the app, and tap **Con
 | `ConnectionsViewModelTest` | The pairing flow (malformed codes, confirmation, a known server, a refused code, a retry), SEE-107's pairing/feed/neither routing, every feed reference/add/check outcome, one-call confirmation, no-call cancel and retryability, plus disconnect/removal, rename and lifecycle refresh |
 | `ConnectionsScreenTest`, `ConnectionDetailsScreenTest`, `AddConnectionRouteTest` | Compose on Robolectric: the statuses, rename errors, and every dialog; camera denial and grant through the activity result registry, and a phone without a camera; pairing- and feed-specific malformed input; feed public-boundary confirmation; Added/Already/refused/failed/no-gateway copy; no token or credential on screen; required plugins; and (SEE-97) a feed saying which promise it keeps, the switch offered only where its publisher serves both, and a direct connection saying nothing about environments at all |
 | `ConnectionsActivityTest` | The activity with the app's own storage and a fake sidecar: pairing, rotation, rename, disconnect, and where the secrets are on disk |
-| `ConnectConnectionGatewayTest`, `TwoSidecarsTest` | The real client against the real sidecar, `node mcp-server/src/cli.ts start`. A code printed by `pnpm pair` is read by the app's parser and paired. They also cover pending requests, authenticated FCM target register/rotate/compare-clear with redacted logs, a reused code, a code for another address, revocation by the phone and by `pnpm pair revoke`, a replaced phone, a stopped sidecar, and two sidecars at once. |
+| `ConnectConnectionGatewayTest`, `TwoSidecarsTest` | The real client against the real sidecar, `node servers/mcp-server/src/cli.ts start`. A code printed by `pnpm pair` is read by the app's parser and paired. They also cover pending requests, authenticated FCM target register/rotate/compare-clear with redacted logs, a reused code, a code for another address, revocation by the phone and by `pnpm pair revoke`, a replaced phone, a stopped sidecar, and two sidecars at once. |
 | `FcmRegistrationManagerTest`, `ConnectionRepositoryTest` | Registration waits for loaded usable connections, covers initial registration, refresh/rotation, invalid callbacks, stale compare-clear, last-connection unregistration, independent bounded retry of a failed sidecar, per-sidecar credential isolation, and target plus notification cleanup on removal/revocation. |
 | `ConnectConnectionGatewayTlsTest` | HTTPS with MockWebServer: an untrusted certificate and a certificate for another host name fail before anything is sent, and a trusted one pairs |
 | `QrDecoderTest` | QR codes drawn by ZXing, decoded from luminance planes with and without row padding |

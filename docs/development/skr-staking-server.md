@@ -1,8 +1,8 @@
 # Working on the SKR staking server (SEE-146)
 
-`skr-staking-server/` is the repository's second direct server. It exists to show that Seeker Agent
+`servers/mcp-skr-staking/` is the repository's second direct server. It exists to show that Seeker Agent
 Connect supports independent servers with different capabilities through one approval path, and it is
-built to be run beside `mcp-server/` rather than instead of it.
+built to be run beside `servers/mcp-server/` rather than instead of it.
 
 - What it offers an agent: [integrations/skr-staking.md](../integrations/skr-staking.md)
 - What the phone does with a request: [wiki/skr-staking.md](../wiki/skr-staking.md)
@@ -28,12 +28,12 @@ built to be run beside `mcp-server/` rather than instead of it.
 | `src/skr/provider.ts` | Chain reads, each operation's preconditions, and preparation. |
 
 Everything specific to SKR is under `src/skr/`. Everything else is the Direct Server SDK
-(`server-sdk/`), which owns pairing, the pairing page, the request lifecycle, preparation, results
-and confirmation — the same package `mcp-server/` uses, unchanged by this server's existence.
+(`packages/server-sdk/`), which owns pairing, the pairing page, the request lifecycle, preparation, results
+and confirmation — the same package `servers/mcp-server/` uses, unchanged by this server's existence.
 
 The pairing page is the clearest case of that rule. SEE-149 gave this server the HTTPS pairing link
 `mcp-server` has, and it did it by moving the page, the fragment codec and the tool's wording into
-`server-sdk/src/pairing/` rather than copying them here: the token-in-the-fragment rule, the CSP and
+`packages/server-sdk/src/pairing/` rather than copying them here: the token-in-the-fragment rule, the CSP and
 the refusal of a shortened or foreign code are security-carrying code, and two copies of those would
 drift. This package supplies the two things that are genuinely its own — the sentence saying which
 server the owner is pairing, and the path to its own `uqr` build — and registers its own MCP tool,
@@ -52,7 +52,7 @@ stops being a different one (8090 against 8080).
 
 ```bash
 pnpm install
-cp skr-staking-server/.env.example .env
+cp servers/mcp-skr-staking/.env.example .env
 pnpm --filter @seeker-vault/skr-staking-server run dev
 ```
 
@@ -72,10 +72,10 @@ Both run in `pnpm check` with the rest of the workspace. The tests are offline: 
 and the instruction builders run against bytes recorded from mainnet, and the share arithmetic against
 the cases that matter — a whole-position unstake, a flooring conversion, the cooldown boundary.
 
-The phone's half is Kotlin, under `android/app/src/test/java/io/github/brrenat/seekervault/skr/`:
+The phone's half is Kotlin, under `apps/android/app/src/test/java/io/github/brrenat/seekervault/skr/`:
 
 ```bash
-android/gradlew -p android :app:testDebugUnitTest --tests 'io.github.brrenat.seekervault.skr.*' \
+apps/android/gradlew -p apps/android :app:testDebugUnitTest --tests 'io.github.brrenat.seekervault.skr.*' \
   --tests 'io.github.brrenat.seekervault.inbox.StakingReviewScreenTest'
 ```
 

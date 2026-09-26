@@ -75,9 +75,9 @@ func Document(settings Settings, revision uint64) *serverv1.ServerManifest {
 			MaxContract: settings.Requirement.MostContract,
 		}},
 		// Exactly one, always. A deployment serves one environment, and a second one is a second
-		// deployment with its own server ID and its own database (publisher-support/store). An environment
+		// deployment with its own server ID and its own database (packages/publisher-support/store). An environment
 		// that came from nowhere is published as unspecified rather than as production, and the
-		// gateway refuses it (publisher-support/environment).
+		// gateway refuses it (packages/publisher-support/environment).
 		Environments: []serverv1.ServerEnvironment{settings.Environment.Wire()},
 		DisplayName:  settings.DisplayName,
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{

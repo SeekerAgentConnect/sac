@@ -1,12 +1,12 @@
 # Feed gateway
 
-`feed-gateway/` is the independently buildable shared public-feed service. Authenticated publisher
+`services/gateway/` is the independently buildable shared public-feed service. Authenticated publisher
 backends publish public manifests and feed documents once; anonymous clients read those documents.
 The gateway never routes a private request, holds a subscriber decision, or contacts a publisher.
-Portable orchestration lives under [`deploy/feed/`](../deploy/feed); optional public routing lives
-separately under [`deploy/ingress/feed/`](../deploy/ingress/feed).
+Portable orchestration lives under [`deploy/feed/`](../../deploy/feed); optional public routing lives
+separately under [`deploy/ingress/feed/`](../../deploy/ingress/feed).
 
-Use the canonical numbered [`deploy/README.md`](../deploy/README.md) for a clean-host feeds-only or
+Use the canonical numbered [`deploy/README.md`](../../deploy/README.md) for a clean-host feeds-only or
 combined deployment, including the collision-free ports, public stream, publisher registration,
 and restart checks.
 
@@ -20,7 +20,7 @@ The runtime is intentionally small:
 - optional Firebase Cloud Messaging for content-free wake-up hints.
 
 No client SDK is required. The published contract is ordinary Connect JSON over HTTP, defined in
-[`proto/seekervault/gateway/v1`](../proto/seekervault/gateway/v1). Generated code under
+[`packages/protocol/proto/seekervault/gateway/v1`](../../packages/protocol/proto/seekervault/gateway/v1). Generated code under
 `internal/gen/` is a build artifact of this Go service, not a reusable client module.
 
 ## Layout and durable boundary
@@ -49,7 +49,7 @@ therefore treat `(channel, document identity, revision)` as idempotent.
 From the repository root:
 
 ```sh
-cd feed-gateway
+cd services/gateway
 go build -o ./bin/feed-gateway ./cmd/feed-gateway
 go build -o ./bin/feed-gatewayctl ./cmd/feed-gatewayctl
 
@@ -77,7 +77,7 @@ refusals are structured on stderr; credentials and document values are never log
 The Dockerfile is self-contained and must be built with the repository root as its context:
 
 ```sh
-docker build -f feed-gateway/Dockerfile -t seeker-feed-gateway/gateway:local .
+docker build -f services/gateway/Dockerfile -t seeker-feed-gateway/gateway:local .
 docker volume create broadcast-data
 docker run --rm --name feed-gateway \
   --read-only --user 10001:10001 \
@@ -105,7 +105,7 @@ The proxyless stack starts the gateway, Centrifugo, and colocated Redis—no MCP
 Gateway read and authenticated publication ports bind host loopback; the broker API/stream and
 Redis have no host port. There is no published remote image assumed by this repository:
 `seeker-feed-gateway/gateway:local` is built locally. The independent
-[`deploy/ingress/feed/`](../deploy/ingress/feed) project adds a domain, certificates, and the
+[`deploy/ingress/feed/`](../../deploy/ingress/feed) project adds a domain, certificates, and the
 same-origin HTTPS/HTTP2 stream without coupling proxy and application lifecycle.
 
 The image is `FROM scratch`, runs as uid/gid `10001`, and writes only `/data`. A bind mount must be
@@ -167,7 +167,7 @@ The process reads these variables. Empty optional values use the stated default.
 The portable Compose files additionally use the host bind/port and physical volume/network names,
 `CENTRIFUGO_API_KEY`, `CENTRIFUGO_TOKEN_KEY`, `CENTRIFUGO_REDIS_URL`, its supported Redis TLS trust
 and client-identity settings, `REDIS_MAX_MEMORY`, and the optional host-side push credential. The exact contract is
-[`deploy/feed/.env.example`](../deploy/feed/.env.example). Redis authentication belongs in its
+[`deploy/feed/.env.example`](../../deploy/feed/.env.example). Redis authentication belongs in its
 `redis://`/`rediss://` URL; no Redis port is published.
 
 ## Register a publisher
@@ -413,7 +413,7 @@ docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml start fee
 The Compose project remains `seeker-broadcast` and defaults to the physical volume
 `seeker-broadcast_broadcast-data`, so the current standalone lineage reuses its data. The combined
 server lineage is selected explicitly with `BROADCAST_VOLUME_NAME`; see
-[`deploy/README.md`](../deploy/README.md#7-back-up-replace-and-roll-back). On first open, the
+[`deploy/README.md`](../../deploy/README.md#7-back-up-replace-and-roll-back). On first open, the
 gateway transactionally migrates the schema forward — v2 to v3 retires the removed private-routing
 tables; v3 to v4 adds a publisher's optional host as a column on its existing registration — while
 preserving all public manifests, feed items, publisher credentials, sequences, and pending notices.
@@ -427,12 +427,12 @@ adapter, explicit transaction/consistency design, an operator data migration, an
 work.
 
 **To hand a developer one link**, send them
-[`docs/guides/server-development.md`](../docs/guides/server-development.md): it is the canonical
+[`docs/guides/server-development.md`](../../docs/guides/server-development.md): it is the canonical
 third-party walkthrough — the onboarding conversation, what each value the operator gives them
 means, publishing with nothing but an HTTP client, the lifecycle, every refusal the API can answer,
 how to share the feed without the credential, rotation, and what to do after the demo loses its
 data.
 
 For the deeper invariants and protocol rationale, see
-[`docs/wiki/feed-gateway.md`](../docs/wiki/feed-gateway.md). Developer internals and verification
-live in [`docs/development/feed-gateway.md`](../docs/development/feed-gateway.md).
+[`docs/wiki/feed-gateway.md`](../../docs/wiki/feed-gateway.md). Developer internals and verification
+live in [`docs/development/feed-gateway.md`](../../docs/development/feed-gateway.md).

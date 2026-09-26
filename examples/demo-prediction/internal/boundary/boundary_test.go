@@ -2,7 +2,7 @@
 // prose in a README (SEE-96, SEE-134, AGENTS.md).
 //
 // The rules every public-feed publisher obeys are the shared library's, said once over the library
-// (publisher-support/api/boundary_test.go). These are the rules about *this* module: it is one of
+// (packages/publisher-support/api/boundary_test.go). These are the rules about *this* module: it is one of
 // two independent demonstrations, it builds and runs without the other, it reads one provider in
 // one place, and it holds no phone.
 package boundary_test

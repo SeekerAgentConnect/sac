@@ -1,7 +1,7 @@
 // Package deploy is the topology a run measures (SEE-99).
 //
 // Everything in it is the shipped thing: the `broadcast` binary on its own SQLite file, the pinned
-// Centrifugo release on `feed-gateway/centrifugo.yaml` unchanged, real Redis on the settings
+// Centrifugo release on `services/gateway/centrifugo.yaml` unchanged, real Redis on the settings
 // `deploy/feed/compose.yaml` gives it, and `feed-gatewayctl` as the only way a publisher comes to exist.
 // A load run against a stack assembled for the load run would measure the assembly.
 //
@@ -53,7 +53,7 @@ type Binaries struct {
 	// is what makes two nodes one broker.
 	Redis string
 	// The broker configuration to start the nodes on. Empty means this checkout's own
-	// `feed-gateway/centrifugo.yaml`, which is the only file a measurement should be made against —
+	// `services/gateway/centrifugo.yaml`, which is the only file a measurement should be made against —
 	// it is here for an operator running the harness from outside a checkout.
 	BrokerConfig string
 }
@@ -92,7 +92,7 @@ type Options struct {
 	MaxProposals int
 	// Whether the push relay runs against the stand-in (push.go).
 	Push bool
-	// The broker configuration to start the nodes on. Empty means `feed-gateway/centrifugo.yaml`,
+	// The broker configuration to start the nodes on. Empty means `services/gateway/centrifugo.yaml`,
 	// found by walking up from the working directory — the shipped one, which is the only one a
 	// measurement should be made against.
 	BrokerConfig string
@@ -466,7 +466,7 @@ func free() (int, error) {
 	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 
-// shippedConfig finds `feed-gateway/centrifugo.yaml` by walking up from the working directory.
+// shippedConfig finds `services/gateway/centrifugo.yaml` by walking up from the working directory.
 //
 // It is deliberately not compiled in and not derived from the executable's path: `pnpm test:load`
 // builds the harness into a temporary directory, and a run against a configuration that was not
@@ -478,14 +478,14 @@ func shippedConfig() (string, error) {
 		return "", fmt.Errorf("deploy: finding the broker configuration: %w", err)
 	}
 	for {
-		candidate := filepath.Join(at, "broadcast", "centrifugo.yaml")
+		candidate := filepath.Join(at, "services", "gateway", "centrifugo.yaml")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, nil
 		}
 		parent := filepath.Dir(at)
 		if parent == at {
 			return "", fmt.Errorf(
-				"deploy: feed-gateway/centrifugo.yaml is not above %s — run this from the "+
+				"deploy: services/gateway/centrifugo.yaml is not above %s — run this from the "+
 					"repository, or name the file with --broker-config", at)
 		}
 		at = parent

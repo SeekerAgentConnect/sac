@@ -13,8 +13,8 @@ From this repository:
 
 ```sh
 pnpm --filter @seeker-vault/server-sdk run build
-npm pack --dry-run --json ./server-sdk
-npm pack --json ./server-sdk --pack-destination /absolute/reviewed/directory
+npm pack --dry-run --json ./packages/server-sdk
+npm pack --json ./packages/server-sdk --pack-destination /absolute/reviewed/directory
 ```
 
 Then, from a separate project outside this repository:

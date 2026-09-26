@@ -21,10 +21,10 @@ import {
   RequestService,
 } from "@seeker-vault/server-sdk/protocol";
 import { startSidecar, type Sidecar } from "../server.ts";
-import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
+import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";
 import { ConnectError } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
+import { PairingStore } from "../../../../packages/server-sdk/src/storage/pairing-store.ts";
 
 let sidecar: Sidecar;
 let proxy: Server;

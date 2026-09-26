@@ -4,7 +4,7 @@ services:
   feed-gateway:
     build:
       context: ../..
-      dockerfile: feed-gateway/Dockerfile
+      dockerfile: services/gateway/Dockerfile
     image: ${BROADCAST_IMAGE:-seeker-feed-gateway/gateway:local}
     restart: unless-stopped
     environment:
@@ -74,7 +74,7 @@ services:
       CENTRIFUGO_ENGINE_REDIS_TLS_CERT_PEM: ${CENTRIFUGO_REDIS_TLS_CERT_PEM:-}
       CENTRIFUGO_ENGINE_REDIS_TLS_KEY_PEM: ${CENTRIFUGO_REDIS_TLS_KEY_PEM:-}
     volumes:
-      - ../../feed-gateway/centrifugo.yaml:/etc/centrifugo/centrifugo.yaml:ro
+      - ../../services/gateway/centrifugo.yaml:/etc/centrifugo/centrifugo.yaml:ro
     networks:
       - feed-ingress
       - feed-private
@@ -119,7 +119,7 @@ services:
     profiles: [operator]
     build:
       context: ../..
-      dockerfile: feed-gateway/Dockerfile
+      dockerfile: services/gateway/Dockerfile
     image: ${BROADCAST_IMAGE:-seeker-feed-gateway/gateway:local}
     entrypoint: ["/feed-gatewayctl"]
     environment:

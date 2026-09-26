@@ -7,10 +7,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * The real MCP server from this repository (`node mcp-server/src/cli.ts start`) on a free loopback
- * port with a throwaway database and tokens, plus the operator's `pnpm pair` commands against it.
- * It serves the demo tool `vault_request_ack` (MCP_DEMO_TOOLS), and [stop] and [start] restart it
- * on the same port and database. Needs Node 24 on PATH and `pnpm install`.
+ * The real MCP server from this repository (`node servers/mcp-server/src/cli.ts start`) on a free
+ * loopback port with a throwaway database and tokens, plus the operator's `pnpm pair` commands
+ * against it. It serves the demo tool `vault_request_ack` (MCP_DEMO_TOOLS), and [stop] and [start]
+ * restart it on the same port and database. Needs Node 24 on PATH and `pnpm install`.
  */
 class RealSidecar(private val productionUpdates: Boolean = false) : AutoCloseable {
     private val sidecarDir =
@@ -18,7 +18,7 @@ class RealSidecar(private val productionUpdates: Boolean = false) : AutoCloseabl
             checkNotNull(System.getProperty("seekervault.repoRoot")) {
                 "run this test through Gradle"
             },
-            "mcp-server",
+            "servers/mcp-server",
         )
     private val port = ServerSocket(0).use { it.localPort }
     val url = "http://127.0.0.1:$port"
@@ -53,8 +53,8 @@ class RealSidecar(private val productionUpdates: Boolean = false) : AutoCloseabl
 
     /**
      * Starts the sidecar on its port and database. [clockAheadSeconds] runs its clock that far
-     * ahead of the real one (`mcp-server/src/testing/clock.ts`), for time that passed while it was
-     * down. The clock never goes back.
+     * ahead of the real one (`servers/mcp-server/src/testing/clock.ts`), for time that passed while
+     * it was down. The clock never goes back.
      */
     fun start(clockAheadSeconds: Long = this.clockAheadSeconds) {
         check(process == null) { "the sidecar is already running" }

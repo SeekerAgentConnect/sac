@@ -19,7 +19,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
 )
 
-// The cross-runtime fixtures for the gateway's own contract (proto/fixtures/seekervault/gateway/v1,
+// The cross-runtime fixtures for the gateway's own contract (packages/protocol/proto/fixtures/seekervault/gateway/v1,
 // docs/protocol.md#cross-runtime-fixtures).
 //
 // They are not written by hand and then hoped about: this test runs the scenario they describe
@@ -210,7 +210,7 @@ func sameAsFixture(t *testing.T, message, name string, served proto.Message) {
 	}
 	if !proto.Equal(served, expected) {
 		answered, _ := protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(served)
-		t.Fatalf("proto/fixtures/seekervault/gateway/v1/%s/%s.json is not what the gateway "+
+		t.Fatalf("packages/protocol/proto/fixtures/seekervault/gateway/v1/%s/%s.json is not what the gateway "+
 			"answered with:\n%s", message, name, answered)
 	}
 }
@@ -224,7 +224,7 @@ func fixtureBytes(t *testing.T, relative string) []byte {
 func fixtureOf(t *testing.T, relative string) []byte {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join(
-		"..", "..", "..", "proto", "fixtures", "seekervault", relative))
+		"..", "..", "..", "..", "packages", "protocol", "proto", "fixtures", "seekervault", relative))
 	if err != nil {
 		t.Fatal(err)
 	}

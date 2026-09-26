@@ -1,15 +1,15 @@
 # The CopyTrading demo's image, and only this demo's. Build from the repository
 # root:
-#   docker build -f demo-copytrading/Dockerfile -t demo-copytrading:local .
+#   docker build -f examples/demo-signals/Dockerfile -t demo-copytrading:local .
 #
 # The context is the repository root for one documented reason: this module's
-# go.mod replaces the shared source library with ../publisher-support, so the
+# go.mod replaces the shared source library with ../../packages/publisher-support, so the
 # build needs that directory as well as this one. It needs nothing else — and
-# demo-prediction/ is never copied in, so no provider client, no discovery and
+# examples/demo-prediction/ is never copied in, so no provider client, no discovery and
 # no prediction binary exists anywhere in this image (SEE-134).
 #
-# This is none of the other images. `feed-gateway/` is the shared service this
-# publishes to (SEE-90); `mcp-server/` is one owner's own direct server
+# This is none of the other images. `services/gateway/` is the shared service this
+# publishes to (SEE-90); `servers/mcp-server/` is one owner's own direct server
 # (SEE-132). This is a developer's own publisher: it submits documents to that
 # gateway and serves its own small API to whoever writes the signals
 # (docs/wiki/copytrading-template.md).
@@ -19,7 +19,7 @@
 # HTML UI that calls its API (SEE-126); `/publishctl` is the operator's client
 # of that same API.
 
-# Pinned to the version demo-copytrading/go.mod requires, so a build from a clean
+# Pinned to the version examples/demo-signals/go.mod requires, so a build from a clean
 # checkout uses the toolchain the tests were run with
 # (docs/development/toolchain.md).
 ARG GO_VERSION=1.27.1
@@ -30,17 +30,17 @@ ARG GO_VERSION=1.27.1
 # The compiler runs on the building machine's own platform and cross-compiles
 # for the target: CGO is off, so GOOS/GOARCH is all it takes, and `docker buildx
 # build --platform linux/amd64` from an Apple silicon Mac needs no emulation (as
-# in mcp-server/Dockerfile).
+# in servers/mcp-server/Dockerfile).
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS build
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src
-COPY publisher-support/go.mod publisher-support/go.sum ./publisher-support/
-COPY demo-copytrading/go.mod demo-copytrading/go.sum ./demo-copytrading/
-WORKDIR /src/demo-copytrading
+COPY packages/publisher-support/go.mod packages/publisher-support/go.sum ./packages/publisher-support/
+COPY examples/demo-signals/go.mod examples/demo-signals/go.sum ./examples/demo-signals/
+WORKDIR /src/examples/demo-signals
 RUN go mod download
-COPY publisher-support/ /src/publisher-support/
-COPY demo-copytrading/ /src/demo-copytrading/
+COPY packages/publisher-support/ /src/packages/publisher-support/
+COPY examples/demo-signals/ /src/examples/demo-signals/
 # CGO off, so the SQLite driver's pure-Go implementation is what gets compiled and
 # the binary needs no libc at run time. -trimpath keeps the build machine's paths
 # out of it.
@@ -72,7 +72,7 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifica
 # empty one beside their publisher identity and their pending publications. A
 # deployment that prefers the module's own name sets PUBLISHER_DATABASE_PATH to
 # /data/copytrading.db and moves the file once, deliberately
-# (demo-copytrading/README.md).
+# (examples/demo-signals/README.md).
 ENV PUBLISHER_DATABASE_PATH=/data/publisher.db
 # The image's safe standalone default is loopback. The portable Compose preset
 # overrides it with an explicit container-network bind and publishes the API

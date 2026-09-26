@@ -5,7 +5,7 @@
 // difference between two tests' gateways would be a difference nobody meant. Nothing runs unless
 // SEEKERVAULT_FEED_GATEWAY names a built binary:
 //
-//	cd feed-gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway \
+//	cd services/gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway \
 //	                && go build -o /tmp/feed-gatewayctl ./cmd/feed-gatewayctl
 
 package publishertest

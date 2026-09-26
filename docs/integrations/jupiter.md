@@ -2,7 +2,7 @@
 
 One bundled execution provider gets its data from Jupiter, directly from the owner's phone: `jupiter`, serving two provider-neutral actions — `swap`, for which it fetches a route and a transaction, and `prediction.buy`, for which it fetches a market and an order. This page is what was verified about those APIs, what the app sends them, and what happens when they say no. What the app does with the answers is [wiki/jupiter-swap.md](../wiki/jupiter-swap.md) and [wiki/jupiter-prediction.md](../wiki/jupiter-prediction.md).
 
-**Everything on this page is behind the adapter.** Since SEE-145 the boundary in the app is a Solana execution-provider interface rather than a plugin named after this venue ([wiki/execution-providers.md](../wiki/execution-providers.md)): the endpoints, the request shapes, the program layouts, the error codes, the platform link, the stake tokens and the minimum order all live in [`jupiter/`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter) and nowhere else. The actions themselves, their payload schemas and the shared Solana machinery name no venue at all. Nothing on this page changed in SEE-145; where it is reached from did.
+**Everything on this page is behind the adapter.** Since SEE-145 the boundary in the app is a Solana execution-provider interface rather than a plugin named after this venue ([wiki/execution-providers.md](../wiki/execution-providers.md)): the endpoints, the request shapes, the program layouts, the error codes, the platform link, the stake tokens and the minimum order all live in [`jupiter/`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter) and nowhere else. The actions themselves, their payload schemas and the shared Solana machinery name no venue at all. Nothing on this page changed in SEE-145; where it is reached from did.
 
 One thing here is not the phone's: the Prediction publisher template reads the same API's **listing**, from a server, to discover markets to publish (SEE-96). It is a different half of the same API — public information about which markets exist, rather than an order for somebody — and it is [its own section below](#prediction-discovery-see-96).
 
@@ -43,7 +43,7 @@ One more endpoint, and it is not Jupiter's: a Solana RPC, `getMultipleAccounts`,
 
 ## Prediction discovery (SEE-96)
 
-The publisher template in [`demo-prediction/`](../../demo-prediction) reads two of these endpoints from a server, to find markets worth publishing. It is the only part of this repository that calls Jupiter from anything but a phone, and what it asks for is public: which markets exist, and what one market currently is. The provider's endpoints for orders, positions, history and profiles are not compiled into that module at all — the phone places the order, and the template never learns that one was placed.
+The publisher template in [`examples/demo-prediction/`](../../examples/demo-prediction) reads two of these endpoints from a server, to find markets worth publishing. It is the only part of this repository that calls Jupiter from anything but a phone, and what it asks for is public: which markets exist, and what one market currently is. The provider's endpoints for orders, positions, history and profiles are not compiled into that module at all — the phone places the order, and the template never learns that one was placed.
 
 | Call | Request | What is read from the answer |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ The publisher template in [`demo-prediction/`](../../demo-prediction) reads two 
 
 **Pagination is an offset and an exclusive bound**, not a page number: `start=0&end=25` then `start=25&end=50`, with `hasNext` saying whether to continue. A range of more than 100 items is refused (`"Range cannot exceed 100 items"`), and a `start` past the end answers `{"data":[],"pagination":{…,"hasNext":false}}` — which is how a walk finishes rather than an error.
 
-**The live API accepts more categories than the published schema lists.** The schema names eight; `category=nonsense` is refused with a message naming twelve: `all`, `crypto`, `sports`, `politics`, `esports`, `culture`, `economics`, `tech`, `finance`, `climate & science`, `weather`, `mentions`. The template's own list is that refusal, and [the refusal is committed as a fixture](../../demo-prediction/internal/jupiter/testdata/events-bad-parameter.json) so a test reads it rather than trusting this paragraph.
+**The live API accepts more categories than the published schema lists.** The schema names eight; `category=nonsense` is refused with a message naming twelve: `all`, `crypto`, `sports`, `politics`, `esports`, `culture`, `economics`, `tech`, `finance`, `climate & science`, `weather`, `mentions`. The template's own list is that refusal, and [the refusal is committed as a fixture](../../examples/demo-prediction/internal/jupiter/testdata/events-bad-parameter.json) so a test reads it rather than trusting this paragraph.
 
 **The named filters** are `new` (created in the last 24 hours), `live` (begun), `trending` (recent trade activity) and `upcoming` (not begun), and the venues are `polymarket` (the default), `kalshi` and `bisonfi` (Jupiter Forecast). The template always sends the venue explicitly, because a default that changed under it would change what it publishes.
 
@@ -62,9 +62,9 @@ The publisher template in [`demo-prediction/`](../../demo-prediction) reads two 
 
 **There is no stream.** The published OpenAPI document has no websocket, no webhook and no subscription: the only "live" things in it are the `live` filter and the score endpoints. So discovery is bounded polling, paced inside the keyless allowance, and a rate limit is an answer rather than a reason to try harder. Checked on 2026-09-17.
 
-**The API is in beta**, by its own documentation: "The Prediction Market API is currently in beta and subject to breaking changes." What the template does about that is skip a market it cannot read, with the market named in the log, rather than crash or publish half an answer. Seven real answers are committed under [`demo-prediction/internal/jupiter/testdata`](../../demo-prediction/internal/jupiter/testdata) — two pages, an empty page, a refused parameter, an open market, a settled one and a missing one — captured by `node scripts/capture-jupiter.mjs --events`, with the request that produced each recorded beside it. An opt-in test (`SEEKERVAULT_JUPITER=1`) reads the live provider and checks that the fields discovery depends on are all still there.
+**The API is in beta**, by its own documentation: "The Prediction Market API is currently in beta and subject to breaking changes." What the template does about that is skip a market it cannot read, with the market named in the log, rather than crash or publish half an answer. Seven real answers are committed under [`examples/demo-prediction/internal/jupiter/testdata`](../../examples/demo-prediction/internal/jupiter/testdata) — two pages, an empty page, a refused parameter, an open market, a settled one and a missing one — captured by `node scripts/capture-jupiter.mjs --events`, with the request that produced each recorded beside it. An opt-in test (`SEEKERVAULT_JUPITER=1`) reads the live provider and checks that the fields discovery depends on are all still there.
 
-**A key is optional here too.** The keyless host serves these endpoints without one, which is what the template defaults to; `PREDICTION_API_KEY` raises the allowance on the keyed host. It goes in one `x-api-key` header and nowhere else — never in a manifest, a document, a log line or an answer — and [a test presents one and searches every answer and the whole log for it](../../demo-prediction/internal/api/discovery_test.go).
+**A key is optional here too.** The keyless host serves these endpoints without one, which is what the template defaults to; `PREDICTION_API_KEY` raises the allowance on the keyed host. It goes in one `x-api-key` header and nowhere else — never in a manifest, a document, a log line or an answer — and [a test presents one and searches every answer and the whole log for it](../../examples/demo-prediction/internal/api/discovery_test.go).
 
 ## The platform's own addresses, and its app (SEE-157)
 
@@ -134,7 +134,7 @@ If that happens, the adapter **stops preparing**: the answer is refused as unusa
 `JupiterLiveTest` is the early-warning test for exactly this. It is opt-in — a check that needs the internet is not a check — and it makes one real quote and one real build and asserts the review still verifies the result:
 
 ```
-android/gradlew -p android :app:testDebugUnitTest \
+apps/android/gradlew -p apps/android :app:testDebugUnitTest \
   --tests '*JupiterLiveTest' -Dseekervault.jupiter=https://lite-api.jup.ag
 ```
 
@@ -146,7 +146,7 @@ Four real swap transactions are committed under `fixtures/jupiter/swaps.json` �
 
 They are what makes the claim honest: a transaction the tests built themselves would be readable by construction.
 
-The publisher template's own fixtures are separate, and they are answers rather than transactions: seven of them under `demo-prediction/internal/jupiter/testdata`, each with the request that produced it, because what they are for is the shape of a listing and the shape of a refusal ([above](#prediction-discovery-see-96)).
+The publisher template's own fixtures are separate, and they are answers rather than transactions: seven of them under `examples/demo-prediction/internal/jupiter/testdata`, each with the request that produced it, because what they are for is the shape of a listing and the shape of a refusal ([above](#prediction-discovery-see-96)).
 
 ```
 node scripts/capture-jupiter.mjs            # recapture the swaps

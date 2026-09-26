@@ -13,7 +13,7 @@ import (
 )
 
 // The discovery half of the store: the markets the Prediction template is tracking, and what its
-// last cycle did (SEE-96, demo-prediction/internal/discovery).
+// last cycle did (SEE-96, examples/demo-prediction/internal/discovery).
 //
 // Every write here puts the market row and the signal in one transaction, because they are one
 // fact. A market this template tracks *is* a proposal it publishes: a state in which the row
@@ -129,7 +129,7 @@ func (s *Store) Refresh(
 // about the signal changes: the market is there, so the proposal stands.
 //
 // The instant it writes is what makes the direct checks a round robin — [Markets] reads it back,
-// and the reconciler asks about the ones it has left longest (demo-prediction/internal/discovery).
+// and the reconciler asks about the ones it has left longest (examples/demo-prediction/internal/discovery).
 func (s *Store) Checked(
 	ctx context.Context,
 	provider, marketID, state string,

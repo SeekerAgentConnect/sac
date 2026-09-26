@@ -33,7 +33,7 @@ const Version = "1"
 const MostBytes = 4 * 1024
 
 // MostTargetBytes is the bound on an FCM registration, matching the sidecar's own
-// (server-sdk/src/storage/pairing-store.ts: MAX_FCM_TOKEN_BYTES). The phone hands the same string
+// (packages/server-sdk/src/storage/pairing-store.ts: MAX_FCM_TOKEN_BYTES). The phone hands the same string
 // to a directly paired server and to this gateway, so the two must not disagree about what one is.
 const MostTargetBytes = 4096
 

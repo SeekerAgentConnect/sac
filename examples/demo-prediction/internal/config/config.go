@@ -4,7 +4,7 @@
 // Everything both demos need — the publisher's identity, the gateway, the environment, the
 // database, the API and its token — is the support library's Config, read by the same code in both
 // demos so that a secret or a bad number is reported identically wherever it is set
-// (publisher-support/config). This package adds the settings only a publisher that discovers its
+// (packages/publisher-support/config). This package adds the settings only a publisher that discovers its
 // own signals has, and nothing here is known to the CopyTrading demo.
 package config
 

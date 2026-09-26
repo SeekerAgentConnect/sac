@@ -265,7 +265,7 @@ func TestSuccessfulLoginsDoNotConsumeFailureLimits(t *testing.T) {
 }
 
 func TestTailscaleProxyPreservesThePublicPortForOriginChecks(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "deploy", "server", "Caddyfile.tailscale")
+	path := filepath.Join("..", "..", "..", "..", "deploy", "server", "Caddyfile.tailscale")
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		t.Skipf("the server deployment is not beside this copied-out publisher module: %v", err)

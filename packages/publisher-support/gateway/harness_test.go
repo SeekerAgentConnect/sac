@@ -11,7 +11,7 @@ import (
 
 // The fake gateway, the credential and the documents are the support library's shared test
 // material, so that this client, the drainer and both demos are tested against one opinion of what
-// the real gateway does (publisher-support/publishertest).
+// the real gateway does (packages/publisher-support/publishertest).
 
 const (
 	credential = publishertest.Credential

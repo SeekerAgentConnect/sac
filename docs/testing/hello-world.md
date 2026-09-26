@@ -1,6 +1,6 @@
 # Hello-world tests
 
-This page describes how to test the Stage 1 transport without an LLM. The test agent (`pnpm agent`) calls the sidecar's MCP tool, the phone shows the text, and the agent prints the acknowledgement. The client is the same MCP interface that Hermes uses; see [`test-agent/README.md`](../../test-agent/README.md). The same flow with Hermes itself is in [`stage-1.md`](stage-1.md).
+This page describes how to test the Stage 1 transport without an LLM. The test agent (`pnpm agent`) calls the sidecar's MCP tool, the phone shows the text, and the agent prints the acknowledgement. The client is the same MCP interface that Hermes uses; see [`test-agent/README.md`](../../tools/test-agent/README.md). The same flow with Hermes itself is in [`stage-1.md`](stage-1.md).
 
 ## Automated tests
 

@@ -179,7 +179,7 @@ func (f *FakeGateway) PublishProposal(
 	proposal := request.Msg.GetProposal()
 	// The gateway's own rule: a cancelled status is not a publication. Withdrawing is a transition
 	// and CancelProposal is where it happens, so publishing a withdrawn document is refused rather
-	// than stored (proto/seekervault/gateway/v1/publish.proto, rules.Proposal).
+	// than stored (packages/protocol/proto/seekervault/gateway/v1/publish.proto, rules.Proposal).
 	if proposal.GetStatus() == proposalv1.ProposalStatus_PROPOSAL_STATUS_CANCELLED {
 		return nil, Problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_CANCEL_ON_PUBLISH,
 			connect.CodeInvalidArgument, "status")

@@ -59,8 +59,8 @@ In `gateway_feed` mode the phone calls nothing of yours, so there is no path for
 **On your machine:**
 
 - **Nothing at all, if you are writing your own backend.** A program in any language that can make an outbound HTTPS request is the whole requirement: no SDK, no phone-facing server, no sidecar, no inbound port. [Step 2](#publish-with-nothing-but-an-http-client) is that path end to end, with `curl`.
-- **Go 1.27.1 or newer**, to build and run one of the demo templates instead. Every Go module here pins it (`publisher-support/go.mod`, `demo-copytrading/go.mod`, `demo-prediction/go.mod`, `feed-gateway/go.mod`).
-- **Node 24.21.0 and pnpm**, if you want to run this repository's checks (`pnpm check:publisher-support`, `pnpm check:copytrading`, `pnpm check:prediction`, `pnpm test:integration`). Versions and setup are in [`docs/development/toolchain.md`](../development/toolchain.md).
+- **Go 1.27.1 or newer**, to build and run one of the demo templates instead. Every Go module here pins it (`packages/publisher-support/go.mod`, `examples/demo-signals/go.mod`, `examples/demo-prediction/go.mod`, `services/gateway/go.mod`).
+- **Node 24.21.0 and pnpm**, if you want to run this repository's checks (`pnpm check:publisher-support`, `pnpm check:demo-signals`, `pnpm check:demo-prediction`, `pnpm test:integration`). Versions and setup are in [`docs/development/toolchain.md`](../development/toolchain.md).
 - **Docker Engine 24+ with Compose v2**, if you want the packaged deployment rather than a process you started yourself. Optional for everything in this guide, required for nothing.
 - `curl` and `openssl`, which every example below uses.
 
@@ -73,7 +73,7 @@ In `gateway_feed` mode the phone calls nothing of yours, so there is no path for
 
 **Three roles, and they are usually three people.** The **gateway operator** runs the shared service and decides who may publish. The **publisher developer** — you — runs a template and says what is proposed. The **phone owner** subscribes, decides, and approves. This guide is written for the second role and tells you exactly what to ask the first for.
 
-**One naming trap, once.** `feed-gateway/` is the shared feed application: what you publish to and
+**One naming trap, once.** `services/gateway/` is the shared feed application: what you publish to and
 what phones read from. Its portable project and optional public ingress are separate directories
 under `deploy/`. The direct MCP server is a different service and operator.
 
@@ -103,14 +103,14 @@ The portable base starts three services: the gateway, Centrifugo, and Redis. It 
 demo, or MCP server. **Starting it creates no publisher** — that takes step 2, a deliberate local
 act through the operator profile with no network surface.
 
-What to read rather than have repeated here: [`feed-gateway/README.md`](../../feed-gateway/README.md)
+What to read rather than have repeated here: [`services/gateway/README.md`](../../services/gateway/README.md)
 and [`deploy/README.md`](../../deploy/README.md). A public domain must already resolve to the host
 and ports 80 and 443 must be reachable before the optional ingress obtains a certificate.
 
 Without Docker, the same thing as two processes and a broker:
 
 ```sh
-cd feed-gateway
+cd services/gateway
 BROADCAST_PUBLIC_URL=http://127.0.0.1:8090 BROADCAST_DATABASE_PATH=./broadcast.db go run ./cmd/feed-gateway
 ```
 
@@ -142,14 +142,14 @@ self-registration: onboarding is a conversation with the operator, and only they
 Either surface does the same thing through the same database, and each sees the other's work:
 
 ```sh
-# in feed-gateway/, or `docker compose ... --profile operator run --rm gateway-ctl …`
+# in services/gateway/, or `docker compose ... --profile operator run --rm gateway-ctl …`
 go run ./cmd/feed-gatewayctl register --database ./broadcast.db \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label "copy trading" \
   --host https://copytrading.example.com
 ```
 
 or **Add server** on the gateway's admin page, when the deployment configured one
-([`feed-gateway/README.md`](../../feed-gateway/README.md#with-the-admin-page)). Registering takes
+([`services/gateway/README.md`](../../services/gateway/README.md#with-the-admin-page)). Registering takes
 effect immediately: the gateway is not restarted and none of its environment changes. Registering a
 server ID that already exists is refused on both surfaces rather than quietly adding a credential to
 it.
@@ -332,25 +332,26 @@ the new credential is installed.
 
 ## 3. Copy a template out
 
-`demo-copytrading/` and `demo-prediction/` are each a **Go module of its own**, not a command inside the gateway, precisely so that one can be copied out and still build. What travels with a demo is `publisher-support/`, the source library the two share: it has no command, no image and no deployment of its own, and each demo's `go.mod` resolves it with a `replace` pointing at the directory next door.
+`examples/demo-signals/` and `examples/demo-prediction/` are each a **Go module of its own**, not a command inside the gateway, precisely so that one can be copied out and still build. What travels with a demo is `packages/publisher-support/`, the source library the two share: it has no command, no image and no deployment of its own, and each demo's `go.mod` resolves it with a `replace` pointing at `../../packages/publisher-support`.
 
 ```sh
 mkdir -p ~/my-signals
-cp -R demo-copytrading publisher-support ~/my-signals
-cd ~/my-signals/demo-copytrading
+cp -R examples/demo-signals packages/publisher-support ~/my-signals
+cd ~/my-signals/demo-signals
+go mod edit -replace github.com/BrRenat/SeekerAgentWallet/publisher-support=../publisher-support
 go build ./... && go test ./...
 ```
 
-Keep the two beside each other and the `replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../publisher-support` line in the demo's `go.mod` still resolves; put the library anywhere else and that one line is what you change. The Prediction demo is copied out exactly the same way, with `demo-prediction` in place of `demo-copytrading`, and neither demo ever needs the other.
+In the repository the demo's `go.mod` says `replace github.com/BrRenat/SeekerAgentWallet/publisher-support => ../../packages/publisher-support`; the `go mod edit` above points the copy at the library beside it, and wherever else you put the library, that one line is what you change. The Prediction demo is copied out exactly the same way, with `examples/demo-prediction` in place of `examples/demo-signals`, and neither demo ever needs the other.
 
-A demo shares the protocol with the gateway and nothing else. Only the generated code in `publisher-support/gen/` and the document rules in `publisher-support/signals/` come from this repository's contract, and one test there reads the gateway's own source to catch a drift in those bounds — that test skips when the file is not there, "which is what a copied-out template looks like". There is deliberately **no feed client compiled into either of them**: a template publishes, and a boundary test in each demo fails if anything in it could read a feed, reach a subscriber, or acquire an address other than its own provider's.
+A demo shares the protocol with the gateway and nothing else. Only the generated code in `packages/publisher-support/gen/` and the document rules in `packages/publisher-support/signals/` come from this repository's contract, and one test there reads the gateway's own source to catch a drift in those bounds — that test skips when the file is not there, "which is what a copied-out template looks like". There is deliberately **no feed client compiled into either of them**: a template publishes, and a boundary test in each demo fails if anything in it could read a feed, reach a subscriber, or acquire an address other than its own provider's.
 
 Each module builds its own template and its own copy of the one CLI:
 
 | Binary                             | What it is                                                                                  |
 | ---------------------------------- | --------------------------------------------------------------------------------------------- |
-| `demo-copytrading/cmd/copytrading` | Publishes what a person or a program tells it to, through its own authenticated API (SEE-95) |
-| `demo-prediction/cmd/prediction`   | Discovers Jupiter Prediction markets through its operator's filters and publishes those (SEE-96) |
+| `examples/demo-signals/cmd/copytrading` | Publishes what a person or a program tells it to, through its own authenticated API (SEE-95) |
+| `examples/demo-prediction/cmd/prediction`   | Discovers Jupiter Prediction markets through its operator's filters and publishes those (SEE-96) |
 | `cmd/publishctl`                   | The operator's CLI, built by each module against its own API. Every command is one HTTP call  |
 
 Then configure it. `cp .env.example .env` and fill it in; the file documents every setting where it sits, including why each one exists, so read it rather than this table. **Six settings have no default and nothing starts without them:**
@@ -375,7 +376,7 @@ The complete settings reference, with every default and range, is [`docs/develop
 ## 4. Start it, and read the two things it prints
 
 ```sh
-cd ~/my-signals/demo-copytrading
+cd ~/my-signals/demo-signals
 PUBLISHER_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
@@ -506,7 +507,7 @@ curl -sS http://127.0.0.1:8092/v1/requests \
                 "max_slippage_bps":"75","least_input":"5000000"}}'
 ```
 
-The same answer shape. The status code carries the publication's fate: **201** created and published, **202** created and not yet published (stored here, and it will go when the gateway answers), **502** created and refused by the gateway, **200** nothing changed. The answer's `request` is the common envelope; the CLI and `demo-copytrading/sdk.Client.CreateRequest` call this same endpoint. The complete request, answer and status-code contract, with a working Python strategy loop, is [`docs/integrations/signal-api.md`](../integrations/signal-api.md#creating-a-request).
+The same answer shape. The status code carries the publication's fate: **201** created and published, **202** created and not yet published (stored here, and it will go when the gateway answers), **502** created and refused by the gateway, **200** nothing changed. The answer's `request` is the common envelope; the CLI and `examples/demo-signals/sdk.Client.CreateRequest` call this same endpoint. The complete request, answer and status-code contract, with a working Python strategy loop, is [`docs/integrations/signal-api.md`](../integrations/signal-api.md#creating-a-request).
 
 ### What a signal may say, and what it may not
 
@@ -523,12 +524,12 @@ Bounds: at most 32 terms, each key a short lowercase name, each value at most 51
 
 ## 7. The other template: markets you did not write
 
-`demo-prediction/cmd/prediction` is the same core — literally `publisher-support/`, the library both demos are built on — with one thing changed: who writes its signals. It reads Jupiter's prediction listing through its operator's filters and publishes one proposal per market that matches. Its API is read-only about signals — `create`, `update` and `cancel` answer **403 `written_by_discovery`** rather than "no such route", so a caller is told why.
+`examples/demo-prediction/cmd/prediction` is the same core — literally `packages/publisher-support/`, the library both demos are built on — with one thing changed: who writes its signals. It reads Jupiter's prediction listing through its operator's filters and publishes one proposal per market that matches. Its API is read-only about signals — `create`, `update` and `cancel` answer **403 `written_by_discovery`** rather than "no such route", so a caller is told why.
 
-It is the other module, so this one runs from the Prediction demo's own directory — `demo-prediction/` in a checkout of this repository, or the copy you took out beside `publisher-support/`:
+It is the other module, so this one runs from the Prediction demo's own directory — `examples/demo-prediction/` in a checkout of this repository, or the copy you took out beside `packages/publisher-support/`:
 
 ```sh
-cd demo-prediction
+cd examples/demo-prediction
 PUBLISHER_SERVER_ID=<a second server ID, registered separately> \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
 PUBLISHER_ENVIRONMENT=sandbox PUBLISHER_DATABASE_PATH=./prediction.db \
@@ -849,8 +850,8 @@ Three failures that are not refusals and are worth recognising:
 
 ```sh
 pnpm check:publisher-support  # the shared library's own formatting, vet and tests. Needs Go
-pnpm check:copytrading        # the CopyTrading demo's
-pnpm check:prediction         # the Prediction demo's
+pnpm check:demo-signals        # the CopyTrading demo's
+pnpm check:demo-prediction         # the Prediction demo's
 pnpm test:integration         # the gateway, both demos, two subscribers, the sidecar and an agent
 ```
 
@@ -859,7 +860,7 @@ pnpm test:integration         # the gateway, both demos, two subscribers, the si
 To run the opt-in tests against real things — the publication path is the shared library's, and the Prediction demo has one of its own against the same gateway:
 
 ```sh
-cd feed-gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway && go build -o /tmp/feed-gatewayctl ./cmd/feed-gatewayctl
+cd services/gateway && go build -o /tmp/feed-gateway ./cmd/feed-gateway && go build -o /tmp/feed-gatewayctl ./cmd/feed-gatewayctl
 cd ../publisher-support && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./publish/ -run Gateway -v
 cd ../demo-prediction && SEEKERVAULT_FEED_GATEWAY=/tmp/feed-gateway go test ./internal/discovery/ -run Gateway -v
 SEEKERVAULT_JUPITER=1 go test ./internal/jupiter/ -run Live -v
