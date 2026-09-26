@@ -21,18 +21,18 @@
     <string name="action_prediction_outcome_label">Which side</string>
     <string name="action_prediction_outcome_yes">Yes</string>
     <string name="action_prediction_outcome_no">No</string>
-    <string name="action_prediction_deposit_label">Amount to stake</string>
+    <string name="action_prediction_deposit_label">Amount</string>
 
     <string name="action_prediction_terms_missing">This signal does not say which market it is about.</string>
     <string name="action_prediction_terms_not_an_identifier">This signal names a market by something that is not a market identifier.</string>
 
     <!-- What the owner chose, when it cannot be acted on. -->
     <string name="action_choice_no_amount">Enter how much to swap.</string>
-    <string name="action_choice_no_stake">Enter how much to stake.</string>
+    <string name="action_choice_no_stake">Enter an amount.</string>
     <string name="action_choice_too_little">That is below the smallest amount this signal is for.</string>
     <string name="action_choice_too_much">That is above the largest amount this signal is for.</string>
     <string name="action_choice_bad_slippage">Choose how far the price may move, within what this signal allows.</string>
-    <string name="action_choice_no_outcome">Choose which side of this market to buy.</string>
+    <string name="action_choice_no_outcome">Choose which side of this market to trade.</string>
     <string name="action_choice_bad_outcome">That is not one of this market\'s two sides.</string>
     <string name="action_choice_stake_too_little">That is below the smallest order this provider accepts, or below the smallest this signal is for.</string>
 </resources>

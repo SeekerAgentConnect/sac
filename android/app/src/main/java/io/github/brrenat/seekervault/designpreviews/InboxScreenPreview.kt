@@ -56,7 +56,7 @@ private fun inboxDesignFixture() =
                     model =
                         InboxRowModel(
                             title = "Bitcoin under \$68,000",
-                            supportingText = "you pick the side and the stake",
+                            supportingText = "you pick the side and the amount",
                             sourceName = "Jupiter Prediction demo",
                             timestampAndExpiryText = "9:37 PM · expires in 2 hours",
                             environmentText = "Sandbox · no funds will move",

@@ -151,7 +151,7 @@ object ReviewSheetFixtures {
             title = "Prediction",
             headline = "Bitcoin under $68,000",
             subline =
-                "Jupiter Prediction, market POLY-4470843, closing 6:00 PM. The side and the stake " +
+                "Jupiter Prediction, market POLY-4470843, closing 6:00 PM. The side and the amount " +
                     "are yours.",
             headerChips =
                 listOf(
@@ -184,7 +184,7 @@ object ReviewSheetFixtures {
                     ReviewSheetInfoBlock(
                         "The market, its prices and its rules were read on this phone. Nothing " +
                             "here was taken from the publisher on trust, and neither the side nor " +
-                            "the stake comes from the signal."
+                            "the amount comes from the signal."
                     )
                 ),
             factRows =
@@ -203,7 +203,7 @@ object ReviewSheetFixtures {
                 ),
             expiry = "in 2 hours",
             confirmationCheckbox = WarningConfirmation,
-            primaryAction = ReviewSheetAction("Simulate the stake", enabled = false),
+            primaryAction = ReviewSheetAction("Simulate the trade", enabled = false),
             secondaryAction = ReviewSheetAction("Dismiss"),
             footerCaption =
                 "Dismissing keeps the decision on this phone. Jupiter Prediction demo is never " +

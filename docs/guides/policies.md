@@ -46,7 +46,7 @@ There is no union option. For example, global programs with a local recipient pr
 
 ## Actions
 
-Which kinds of request every connection may make by default, or which kinds this connection may make after replacing the global section: acknowledge text, sign a message, transfer funds, swap.
+Which kinds of request every connection may make by default, or which kinds this connection may make after replacing the global section: acknowledge text, sign a message, transfer funds, SKR staking, swap, prediction order. Every kind is listed, so a publisher's swap or prediction signal can be expected like any other request (SEE-160).
 
 Start here. It is the one rule that applies to every request, including the ones that move nothing. An agent that should only ever ask you to sign a message gets a rule you can write in two taps.
 

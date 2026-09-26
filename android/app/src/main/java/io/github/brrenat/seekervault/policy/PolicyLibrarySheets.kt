@@ -763,28 +763,25 @@ private fun actionSection(
         switchLabel = "Only these actions may be asked for",
         statusText = if (enabled) "On in global rules" else "Off in global rules",
         supportingText = "On. Anything not listed is flagged for attention.",
+        // Every kind a request or a plugin operation can be (SEE-160). An action the owner cannot
+        // tick here is one that always warns "not on your list" once the list is on.
         items =
-            listOf(
-                    PolicyAction.Acknowledgement,
-                    PolicyAction.MessageSignature,
-                    PolicyAction.Transfer,
+            PolicyAction.entries.map { action ->
+                val checked = action in actions
+                RulesSheetItem(
+                    id = action.code,
+                    model =
+                        RuleRowModel(
+                            title = actionText(action),
+                            supportingText = if (checked) "Expected" else "Not expected",
+                            iconName = if (checked) "check_box" else "check_box_outline_blank",
+                        ),
+                    kind = RuleRowKind.Action,
+                    checked = checked,
+                    readOnly = override == false,
+                    tag = PolicyTags.action(action),
                 )
-                .map { action ->
-                    val checked = action in actions
-                    RulesSheetItem(
-                        id = action.code,
-                        model =
-                            RuleRowModel(
-                                title = actionText(action),
-                                supportingText = if (checked) "Expected" else "Not expected",
-                                iconName = if (checked) "check_box" else "check_box_outline_blank",
-                            ),
-                        kind = RuleRowKind.Action,
-                        checked = checked,
-                        readOnly = override == false,
-                        tag = PolicyTags.action(action),
-                    )
-                },
+            },
         sectionTag = PolicyTags.section("actions"),
         switchTag = PolicyTags.restrict("actions"),
         inheritTag = PolicyTags.inherit("actions"),

@@ -376,6 +376,7 @@ fun SeekerVaultApp(
                                 !policyState.readyForLibrarySheet(sheetRoute.connectionId)) ||
                             (sheetRoute is AppSheet.GlobalRules &&
                                 !globalPolicyState.readyForLibrarySheet()),
+                    aboveKeyboard = sheetRoute is AppSheet.OwnerInput,
                 ) {
                     when (val activeRoute = sheetRoute) {
                         is AppSheet.ConnectionDetail -> {
@@ -710,6 +711,7 @@ private fun RequestReviewRoute(
                 }
             } else if (open.record.reviewedAsPrediction) {
                 val connection = state.connections.firstOrNull { it.id == identity.connectionId }
+                val linkContext = LocalContext.current
                 PredictionReviewScreen(
                     review = open,
                     source =
@@ -735,6 +737,7 @@ private fun RequestReviewRoute(
                     },
                     onAcknowledge = operations::acknowledge,
                     onRules = { navigator.openConnectionRules(identity.connectionId) },
+                    onOpenLink = { url, deepLink -> openDestination(linkContext, deepLink, url) },
                     onBack = {
                         operations.close()
                         onBack()

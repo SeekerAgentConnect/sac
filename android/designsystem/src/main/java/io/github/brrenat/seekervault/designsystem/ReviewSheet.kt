@@ -109,6 +109,8 @@ data class ReviewSheetFactRow(
     val valueStyle: FactRowValueStyle = FactRowValueStyle.Plain,
     /** The full value a tap copies, when the row offers one; [value] may be shortened. */
     val copyValue: String? = null,
+    /** An address a tap opens, handed to `onOpenLink`; takes the place of [copyValue]. */
+    val link: String? = null,
 )
 
 /** The quoted operation: rows once a quote exists, or the line saying what one will show. */
@@ -173,6 +175,7 @@ fun ReviewSheet(
     modifier: Modifier = Modifier,
     layout: ReviewSheetLayout = ReviewSheetLayout.Unrolled,
     onCopy: (String) -> Unit = {},
+    onOpenLink: (String) -> Unit = {},
     onConfirmedChange: (Boolean) -> Unit = {},
     onRefreshQuote: () -> Unit = {},
 ) {
@@ -264,7 +267,9 @@ fun ReviewSheet(
                         label = row.label,
                         value = row.value,
                         valueStyle = row.valueStyle,
-                        onClick = row.copyValue?.let { copy -> { onCopy(copy) } },
+                        onClick =
+                            row.link?.let { link -> { onOpenLink(link) } }
+                                ?: row.copyValue?.let { copy -> { onCopy(copy) } },
                     )
                 }
                 state.note?.let { ReviewSheetNote(it) }

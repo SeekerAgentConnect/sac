@@ -31,7 +31,7 @@
     <string name="notification_proposal_swap_title">Swap signal</string>
     <string name="notification_proposal_swap_summary">Review the swap terms and choose your amount.</string>
     <string name="notification_proposal_prediction_title">Prediction signal</string>
-    <string name="notification_proposal_prediction_summary">Review the market before choosing a side and stake.</string>
+    <string name="notification_proposal_prediction_summary">Review the market before choosing a side and amount.</string>
     <string name="notification_proposal_unknown_title">Signal ready for review</string>
     <string name="notification_proposal_unknown_summary">A publisher signal is ready for your review.</string>
     <string name="in_app_notification_request_subtitle">New request · %1$s · %2$s</string>

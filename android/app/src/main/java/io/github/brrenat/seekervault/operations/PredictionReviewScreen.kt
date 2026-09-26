@@ -77,6 +77,7 @@ fun PredictionReviewScreen(
     onAcknowledge: (Boolean) -> Unit,
     onRules: () -> Unit,
     onBack: () -> Unit,
+    onOpenLink: (url: String, deepLink: String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val resources = LocalContext.current.resources
@@ -102,6 +103,9 @@ fun PredictionReviewScreen(
         layout = ReviewSheetLayout.Pinned,
         onCopy = { value ->
             scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, value))) }
+        },
+        onOpenLink = { url ->
+            onOpenLink(url, review.destinations.firstOrNull { it.url == url }?.deepLink)
         },
         onConfirmedChange = onAcknowledge,
         onRefreshQuote = onPrepare,
@@ -216,6 +220,7 @@ fun PredictionParametersSheet(
                 options = listOf(PredictionReviewTags.YES, PredictionReviewTags.NO),
                 amount = PredictionReviewTags.AMOUNT,
             ),
+        focusAmount = true,
         modifier = modifier.testTag(PredictionReviewTags.PARAMS),
     )
 }

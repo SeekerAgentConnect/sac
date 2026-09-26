@@ -27,6 +27,9 @@ enum class FactRowValueStyle {
     Plain,
     Mono,
     MonoWrap,
+
+    /** A place to open, drawn in the accent colour so it reads as something to tap. */
+    Link,
 }
 
 @Composable
@@ -38,6 +41,7 @@ fun FactRow(
     /** A tap on the whole row, e.g. to copy the full value a shortened one stands for. */
     onClick: (() -> Unit)? = null,
 ) {
+    val link = valueStyle == FactRowValueStyle.Link
     val labelModifier =
         if (valueStyle == FactRowValueStyle.MonoWrap && label.any { it.isWhitespace() }) {
             Modifier.widthIn(max = SeekerTheme.spacing.huge + SeekerTheme.spacing.xxxl)
@@ -52,7 +56,11 @@ fun FactRow(
                 .background(SeekerTheme.colors.surface1)
                 .then(
                     if (onClick == null) Modifier
-                    else Modifier.clickable(onClickLabel = "Copy", onClick = onClick)
+                    else
+                        Modifier.clickable(
+                            onClickLabel = if (link) "Open" else "Copy",
+                            onClick = onClick,
+                        )
                 )
                 .semantics(mergeDescendants = true) {}
                 .padding(
@@ -71,7 +79,9 @@ fun FactRow(
         Text(
             text = value,
             modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.onSurface,
+            color =
+                if (link) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface,
             textAlign =
                 if (valueStyle == FactRowValueStyle.MonoWrap) TextAlign.Start else TextAlign.End,
             softWrap = valueStyle == FactRowValueStyle.MonoWrap,
@@ -83,7 +93,8 @@ fun FactRow(
 @Composable
 private fun FactRowValueStyle.textStyle(): TextStyle =
     when (this) {
-        FactRowValueStyle.Plain -> MaterialTheme.typography.bodyMedium
+        FactRowValueStyle.Plain,
+        FactRowValueStyle.Link -> MaterialTheme.typography.bodyMedium
         FactRowValueStyle.Mono ->
             SeekerTheme.typography.identifier.copy(
                 fontSize = MaterialTheme.typography.bodyMedium.fontSize,

@@ -20,7 +20,7 @@ Stage 5's `ConnectionPolicy` (`policy/Policy.kt`) remains the flat compatibility
 | Field | Type | What it restricts |
 | --- | --- | --- |
 | `connectionId` | The sidecar's connection UUID | Which connection the rules belong to |
-| `actions` | `Allowlist<PolicyAction>?` | The kinds of action this connection may ask for: `ack`, `sign_message`, `transfer`, `swap` |
+| `actions` | `Allowlist<PolicyAction>?` | The kinds of action this connection may ask for: `ack`, `sign_message`, `transfer`, `staking`, `swap`, `prediction` |
 | `assets` | `Allowlist<PolicyAsset>?` | Which assets may move |
 | `recipients` | `Allowlist<String>?` | Which wallets may receive funds — the owner of the funds, never a token account |
 | `programs` | `Allowlist<String>?` | Which programs the transaction may call |
@@ -118,7 +118,7 @@ A policy is applied to facts the phone established for itself, and to nothing el
 | Fact | Read from |
 | --- | --- |
 | the request identity used to exclude an existing attempt | the structured request reference, qualified by its connection |
-| the kind of action | the structured request: `ack`, `sign_message`, `transfer`, `swap` — or, for a broadcast proposal, the operation's own name, which is the same word (SEE-93) |
+| the kind of action | the structured request: `ack`, `sign_message`, `transfer`, `staking`, `swap` — or, for a broadcast proposal, the rule its operation maps to: `swap` → `swap`, `prediction.buy` → `prediction` (SEE-93, SEE-145) |
 | the asset, the amount, the recipient, the programs called | the prepared transaction's own bytes, decoded on the phone (SAW-020) |
 | the chain | the wallet the owner connected on this phone |
 | whether the whole transaction was read | how many instructions the phone accounted for |

@@ -190,7 +190,7 @@ class InAppNotificationHostTest {
             .assertContentDescriptionEquals("Prediction signal, open signal")
         compose
             .onNodeWithText(
-                "New signal · Copy trading · Review the market before choosing a side and stake.",
+                "New signal · Copy trading · Review the market before choosing a side and amount.",
                 useUnmergedTree = true,
             )
             .assertExists()

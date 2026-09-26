@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.ui
 
 import android.graphics.drawable.ColorDrawable
 import android.view.WindowManager
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -58,6 +60,7 @@ import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -493,9 +496,15 @@ fun SeekerSheet(
     onDismiss: () -> Unit,
     onPeekClick: (() -> Unit)? = null,
     chrome: Boolean = true,
+    /**
+     * Rides up on the keyboard instead of being covered by it. For the short sheets where an amount
+     * is typed; a tall sheet would be pushed off the top instead.
+     */
+    aboveKeyboard: Boolean = false,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    if (aboveKeyboard) KeyboardResizesWindow()
     val topInset =
         (SeekerTheme.dimensions.dp100 - SeekerTheme.dimensions.dp14 * back.toFloat()).coerceAtLeast(
             SeekerTheme.dimensions.dp30
@@ -575,7 +584,11 @@ fun SeekerSheet(
         // Max height is 100dp from the top, minus 14dp per stacked sheet (floor 30dp).
         // The sheet wraps content and slides by its own height.
         Box(
-            Modifier.fillMaxSize().padding(top = animatedTop, bottom = animatedBottom),
+            Modifier.fillMaxSize()
+                .padding(top = animatedTop, bottom = animatedBottom)
+                // The keyboard's inset covers the navigation bar's, and consuming it here keeps
+                // the sheet's own navigation-bar padding from adding a second gap above it.
+                .then(if (aboveKeyboard) Modifier.imePadding() else Modifier),
             contentAlignment = Alignment.BottomCenter,
         ) {
             AnimatedVisibility(
@@ -616,6 +629,25 @@ fun SeekerSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * While composed, the keyboard resizes the window instead of panning it. The activity sets no soft
+ * input mode, so Android pans the whole window to uncover a focused field, and a sheet that also
+ * pads by the keyboard's inset then floats a second keyboard-height above it. Scoped to the sheet,
+ * so screens that rely on panning keep it.
+ */
+@Composable
+private fun KeyboardResizesWindow() {
+    val window = LocalActivity.current?.window ?: return
+    DisposableEffect(window) {
+        val previous = window.attributes.softInputMode
+        window.setSoftInputMode(
+            (previous and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        )
+        onDispose { window.setSoftInputMode(previous) }
     }
 }
 

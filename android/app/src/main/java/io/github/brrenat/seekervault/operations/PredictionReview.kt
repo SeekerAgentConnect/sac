@@ -102,7 +102,9 @@ fun OperationReview.toPredictionSheet(
 
     return ReviewSheetState(
         title = resources.getString(R.string.prediction_review_title),
-        headline = stake ?: proposal.title.ifBlank { terms?.marketId ?: proposal.key.proposalId },
+        // The market stays the headline; the owner's side and stake are on the "your part" card
+        // (SEE-160).
+        headline = proposal.title.ifBlank { terms?.marketId ?: proposal.key.proposalId },
         subline =
             resources.getString(
                 R.string.prediction_review_subline,
@@ -191,12 +193,16 @@ fun OperationReview.toPredictionSheet(
                 enabled = record.dismissed == null && !executed && !sending,
             ),
         footerCaption = resources.getString(R.string.prediction_dismiss_note, source.name),
+        // Placed, dismissed, withdrawn or expired: a signal in History is read, not answered, so
+        // the
+        // decision footer goes with it.
+        actionsShown = standing is ProposalStanding.Open,
     )
 }
 
 /**
- * "5 USDC on Yes" once both halves of the owner's part are chosen, and null until then: the design
- * shows the market's name as the headline before, and the stake after.
+ * "5 USDC on Yes" once both halves of the owner's part are chosen, and null until then. It is the
+ * summary on the "your part" card; the headline stays the market's name.
  */
 private fun OperationReview.stakeOf(terms: PredictionPayload?, resources: Resources): String? {
     val side =
@@ -472,6 +478,18 @@ private fun OperationReview.factsOf(
         }
     } else {
         mono(R.string.prediction_fact_action, proposal.action.value)
+    }
+    // Where the market is on the provider's own site or app, as history shows it once an order is
+    // placed (SEE-157), so the owner can look before approving too.
+    destinations.forEach {
+        add(
+            ReviewSheetFactRow(
+                label = resources.getString(it.label),
+                value = resources.getString(R.string.prediction_fact_open),
+                valueStyle = FactRowValueStyle.Link,
+                link = it.url,
+            )
+        )
     }
     // Anything the publisher said that this build does not read as a prediction term, still shown
     // once, under a label made from its name rather than the name itself.

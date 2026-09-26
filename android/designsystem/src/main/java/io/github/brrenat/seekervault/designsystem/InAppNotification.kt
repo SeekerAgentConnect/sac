@@ -396,7 +396,7 @@ internal fun InAppNotificationSignalPreview() =
     InAppNotificationPreview(
         kind = InAppNotificationKind.Signal,
         title = "Bitcoin under \$68,000",
-        subtitle = "New signal · Jupiter Prediction demo · you pick the side and the stake",
+        subtitle = "New signal · Jupiter Prediction demo · you pick the side and the amount",
         openActionLabel = "Bitcoin under \$68,000, open signal",
     )
 

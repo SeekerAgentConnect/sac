@@ -220,7 +220,7 @@ private fun Request.primaryLabel(
     when {
         environment == EnvChipEnvironment.Sandbox && capability == "swap" -> "Simulate the swap"
         environment == EnvChipEnvironment.Sandbox && capability == "prediction" ->
-            "Simulate the stake"
+            "Simulate the trade"
         capability == "transfer" -> "Approve and send"
         capability == "sign_message" -> "Approve and sign"
         capability == "ack" -> "Acknowledge"

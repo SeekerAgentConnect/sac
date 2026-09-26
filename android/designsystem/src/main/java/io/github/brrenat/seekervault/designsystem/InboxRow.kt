@@ -285,7 +285,7 @@ internal fun InboxRowSignalThreeWarningsPreview() =
         model =
             InboxRowModel(
                 title = "Ethereum above \$4,000 at the October close",
-                supportingText = "you pick the side and the stake",
+                supportingText = "you pick the side and the amount",
                 sourceName = "Jupiter Prediction demo",
                 timestampAndExpiryText = "9:37 PM · expires in 2 hours",
                 environmentText = "Sandbox · no funds will move",

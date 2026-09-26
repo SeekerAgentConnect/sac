@@ -98,13 +98,13 @@ fun OwnerInputCard(
 private fun OwnerInputCardKind.title(): String =
     when (this) {
         OwnerInputCardKind.Swap -> "Your part · amount"
-        OwnerInputCardKind.Prediction -> "Your part · side and stake"
+        OwnerInputCardKind.Prediction -> "Your part · side and amount"
     }
 
 private fun OwnerInputCardKind.chooseLabel(): String =
     when (this) {
         OwnerInputCardKind.Swap -> "Choose an amount"
-        OwnerInputCardKind.Prediction -> "Choose side and stake"
+        OwnerInputCardKind.Prediction -> "Choose side and amount"
     }
 
 /** A prediction's chosen part says "Change", as its review asks (SEE-158); a swap keeps "Edit". */
@@ -119,7 +119,7 @@ private fun OwnerInputCardKind.description(): String =
         OwnerInputCardKind.Swap ->
             "The signal names the route and caps slippage, not the amount. That is yours to choose."
         OwnerInputCardKind.Prediction ->
-            "The signal names the market, not your side or your stake. Both are yours to choose."
+            "The signal names the market, not your side or your amount. Both are yours to choose."
     }
 
 private const val OwnerInputCardPreviewDarkMode = Configuration.UI_MODE_NIGHT_YES
