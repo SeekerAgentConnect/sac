@@ -42,6 +42,28 @@
     <string name="activity_outcome_unknown">Outcome unknown</string>
     <string name="activity_outcome_not_delivered">Never reached the server</string>
     <string name="activity_outcome_superseded">The request had already ended</string>
+    <string name="activity_outcome_expired">Expired, never landed</string>
+    <string name="activity_outcome_unresolved">Sent, network status unresolved</string>
+
+    <!-- What the phone itself found on chain (SEE-165). -->
+    <string name="activity_field_chain">Network check</string>
+    <string name="activity_chain_awaiting">Waiting for the wallet to send it.</string>
+    <string name="activity_chain_checking">Not confirmed yet.</string>
+    <string name="activity_chain_processed">Processed by a node, not confirmed yet.</string>
+    <string name="activity_chain_delayed">Status check delayed: the network endpoint didn’t answer usably.</string>
+    <string name="activity_chain_no_endpoint">This build has no network endpoint for its cluster, so it can’t be checked here.</string>
+    <string name="activity_chain_wrong_cluster">The configured endpoint serves another cluster, so its answer doesn’t count.</string>
+    <string name="activity_chain_confirmed">The approved transaction succeeded on chain (%1$s).</string>
+    <string name="activity_chain_failed">The approved transaction ran on chain and failed.</string>
+    <string name="activity_chain_expired">It never landed and now can’t: its blockhash expired and the network has no record of it. Nothing was spent.</string>
+    <string name="activity_chain_mismatch">The network holds a different transaction under this signature. Look it up on an explorer and don’t send a replacement.</string>
+    <string name="activity_chain_missing_context">Sent before this phone kept what it needs to verify it, so it can’t be checked here.</string>
+    <string name="activity_chain_gave_up">Automatic checks stopped without an answer.</string>
+    <string name="activity_chain_checked_at">Checked %1$s.</string>
+    <string name="activity_chain_next_at">Next check around %1$s.</string>
+    <string name="activity_check_status">Check status</string>
+    <string name="activity_checking">Checking…</string>
+    <string name="activity_no_signature">No signature reached this phone, so the network can’t be asked about it. Your wallet’s own history shows whether it was sent; nothing here will send it again.</string>
 
     <string name="activity_cluster_mainnet">Solana mainnet</string>
     <string name="activity_cluster_devnet">Solana devnet</string>

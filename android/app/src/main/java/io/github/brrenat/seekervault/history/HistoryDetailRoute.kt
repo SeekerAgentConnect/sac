@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import io.github.brrenat.seekervault.ReviewIdentity
 import io.github.brrenat.seekervault.activity.openLink
+import io.github.brrenat.seekervault.confirmations.ChainCheck
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.designsystem.DetailScreenScaffold
@@ -47,6 +48,12 @@ fun HistoryDetailRoute(
     onCheckStatus: (RequestKey) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** What the phone itself last found on chain, by request (SEE-165). */
+    chainChecks: Map<RequestKey, ChainCheck> = emptyMap(),
+    /** Requests whose owner-requested chain check is still out. */
+    checkingChain: Set<RequestKey> = emptySet(),
+    /** Asks the network about one transaction now; it never signs or sends. */
+    onCheckChain: (RequestKey) -> Unit = {},
     clock: HistoryDetailClock = HistoryDetailClock(),
     /** How often a transaction still waiting on the network is asked about while open. */
     pollMillis: Long = HISTORY_POLL_MILLIS,
@@ -75,6 +82,8 @@ fun HistoryDetailRoute(
                         connection = connection,
                         clock = clock,
                         sending = key in inboxState.sending,
+                        chain = chainChecks[key],
+                        checkingChain = key in checkingChain,
                     )
                 }
             }
@@ -85,12 +94,15 @@ fun HistoryDetailRoute(
                             it.key.proposalId == identity.requestId
                     }
                     ?.let { record ->
+                        val key = RequestKey(record.connectionId, record.key.proposalId)
                         signalHistoryDetail(
                             record = record,
                             standing = feedStanding(record),
                             connection = connection,
                             choice = signalChoice(record),
                             clock = clock,
+                            chain = chainChecks[key],
+                            checkingChain = key in checkingChain,
                         )
                     }
         }
@@ -130,6 +142,13 @@ fun HistoryDetailRoute(
                     }
                 },
                 onOpenExplorer = { url -> openLink(context, url) },
+                onCheckStatus = {
+                    val key = RequestKey(identity.connectionId, identity.requestId)
+                    // The phone's own check first; for a direct request the server is asked too,
+                    // and whichever settles it first is what the page shows.
+                    onCheckChain(key)
+                    if (identity is ReviewIdentity.Private) onCheckStatus(key)
+                },
             ),
         modifier = modifier,
     )

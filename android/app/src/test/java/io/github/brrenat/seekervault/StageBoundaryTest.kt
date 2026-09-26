@@ -218,6 +218,10 @@ class StageBoundaryTest {
                 // publisher's request ID, the state and its time — and no secret: the device key
                 // is in the Keystore and the session is sealed in the credential vault's format.
                 File(main, "java/io/github/brrenat/seekervault/access/storage"),
+                // The transactions this phone follows to the chain (SEE-165). Public facts only:
+                // the approved message, a signature, the cluster it was bound to, and what an
+                // endpoint's host said — never an endpoint URL, which can carry a key.
+                File(main, "java/io/github/brrenat/seekervault/confirmations/storage"),
             )
         val syncPackage = File(main, "java/io/github/brrenat/seekervault/sync")
         val storagePackages =
@@ -315,6 +319,8 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.designsystem.RulesSheetSection",
                 "io.github.brrenat.seekervault.designsystem.ScopeChipSource",
                 "io.github.brrenat.seekervault.designsystem.theme.SeekerTheme",
+                // In-app notices replaced the editor's own snackbar host (SEE-161).
+                "io.github.brrenat.seekervault.notifications.LocalInAppNotices",
                 "io.github.brrenat.seekervault.request.v1.Action",
                 "io.github.brrenat.seekervault.request.v1.ActionRequest",
                 "io.github.brrenat.seekervault.request.v1.Network",
@@ -329,7 +335,6 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.ui.SeekerButton",
                 "io.github.brrenat.seekervault.ui.SeekerButtonRole",
                 "io.github.brrenat.seekervault.ui.SeekerCard",
-                "io.github.brrenat.seekervault.ui.SeekerSnackbarHost",
                 "io.github.brrenat.seekervault.ui.SolidDialog",
                 "io.github.brrenat.seekervault.ui.seekerListItemColors",
                 "io.github.brrenat.seekervault.ui.seekerTextFieldColors",
@@ -465,6 +470,9 @@ class StageBoundaryTest {
                     // was bound to; the authentication origin it was made at is read off the
                     // manifest the gateway serves, every time, and never off this disk.
                     "access/storage",
+                    // What the confirmation tracker keeps (SEE-165): an endpoint's host, never its
+                    // URL.
+                    "confirmations/storage",
                 )
                 .map { File(main, "java/io/github/brrenat/seekervault/$it") }
         assertEquals(
@@ -473,6 +481,61 @@ class StageBoundaryTest {
                 .flatMap { it.walk().filter { file -> file.extension == "kt" } }
                 .filter { Regex("""https?://""").containsMatchIn(withoutComments(it)) }
                 .map { it.name },
+        )
+    }
+
+    @Test
+    fun theConfirmationReaderOnlyReads() {
+        // SEE-165 lets the phone follow its own sent transactions to the chain. That is four reads
+        // and nothing else: which cluster an endpoint serves, a signature's status, the transaction
+        // under it, and whether its blockhash still counts. The tracker is told what the wallet
+        // was handed and what it answered; it never asks the wallet anything, and it can't sign,
+        // build, simulate or send (docs/wiki/chain-confirmation.md).
+        val confirmations = File(main, "java/io/github/brrenat/seekervault/confirmations")
+        assertTrue(confirmations.isDirectory)
+        val sources = confirmations.walk().filter { it.extension == "kt" }.toList()
+        val code = sources.joinToString("\n") { withoutComments(it) }
+        assertEquals(
+            listOf(
+                "\"getGenesisHash\"",
+                "\"getSignatureStatuses\"",
+                "\"getTransaction\"",
+                "\"isBlockhashValid\"",
+            ),
+            Regex(""""(get|send|simulate|is)[A-Z][A-Za-z]+"""")
+                .findAll(code)
+                .map { it.value }
+                .distinct()
+                .sorted()
+                .toList(),
+        )
+        val acting =
+            Regex(
+                """\b(sendTransaction|sendRawTransaction|simulateTransaction|requestAirdrop|""" +
+                    """getLatestBlockhash|WalletAdapter|WalletRepository|WalletSession|""" +
+                    """signAndSend|signAndSendTransactions|signMessage|withWallet|""" +
+                    """ConnectionGateway|CredentialVault|UpdateTransport|FeedGateway)\b"""
+            )
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { acting.containsMatchIn(withoutComments(it)) }.map { it.name },
+        )
+        // Its endpoints are the application's own, from the build, through the composition root.
+        val composition = File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt")
+        val text = composition.readText()
+        listOf("SOLANA_RPC_MAINNET", "SOLANA_RPC_DEVNET", "SOLANA_RPC_TESTNET").forEach {
+            assertTrue(it, text.contains("BuildConfig.$it"))
+        }
+        assertTrue(text.contains("HttpChainReader(httpClient, url)"))
+        // And the one place that knows a genesis hash says only which cluster is which.
+        assertEquals(
+            listOf("ChainReader.kt"),
+            File(main, "java")
+                .walk()
+                .filter { it.extension == "kt" }
+                .filter { it.readText().contains("5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d") }
+                .map { it.name }
+                .toList(),
         )
     }
 
@@ -1452,6 +1515,12 @@ class StageBoundaryTest {
                 // the wallet's one signature over text that says it is not a transaction, and
                 // after that only statements signed by this installation's device key.
                 "FeedAccessApi.kt",
+                // The chain endpoints this build was configured with, asked what became of a
+                // transaction this phone's wallet already sent (SEE-165). Reads only — a status,
+                // the
+                // transaction under a signature, whether a blockhash still counts, and which
+                // cluster it serves — and never a publisher's or a server's endpoint.
+                "ChainReader.kt",
             )
         val clients = sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.toSet()
         assertTrue(clients.all { it in allowed })
@@ -1573,9 +1642,10 @@ class StageBoundaryTest {
         // makes no signature of its own, and reaches no chain — it has no RPC endpoint at all, and
         // couldn't broadcast or simulate anything if it wanted to. Swaps are Stage 6.
         //
-        // SAW-022 lifts nothing here. Following a sent transaction is the sidecar's work, and this
-        // app only asks it (`RequestService.CheckStatus`): it reads no chain of its own, and a
-        // status check never reaches a wallet.
+        // SAW-022 lifted nothing here, and neither does SEE-165, which lets the phone follow a sent
+        // transaction to the chain itself: it reads a status and the transaction under a
+        // signature, and it can't send, simulate or fetch a blockhash to build with. A status
+        // check never reaches a wallet, whether it asks the sidecar or the chain.
         val spending =
             Regex(
                 """signTransactions\b|sendTransaction|sendRawTransaction|""" +

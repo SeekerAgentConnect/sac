@@ -195,8 +195,11 @@ per device, whatever came of it. It carries no signature, and so it offers no ex
 rehearsal has nothing to look up, and this app invents neither
 ([environments.md](environments.md)).
 
-Nothing in this build follows a proposal's transaction to the chain, and nothing pretends to: `Sent`
-is where it stops. A signed message's signature is still never called a payment, and an operation's
+Since SEE-165 the phone follows a proposal's transaction to the chain itself, from the bytes it
+captured before the wallet was opened, and records `Confirmed`, `ChainFailed` or an honest
+unresolved state beside the execution ([chain-confirmation.md](chain-confirmation.md)). The
+execution itself stays exactly as it was: confirmation never reopens a proposal. A signed message's
+signature is still never called a payment, and an operation's
 is, because its bytes were a transaction — which is also why it gets an explorer link for its own
 cluster.
 

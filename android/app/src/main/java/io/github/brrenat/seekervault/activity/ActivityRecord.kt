@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.activity
 
+import io.github.brrenat.seekervault.confirmations.ChainCheck
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.request.v1.Network
@@ -145,6 +146,23 @@ data class ReviewedOperation(
     val references: List<ReviewedValue> = emptyList(),
 )
 
+/**
+ * The staking action the owner approved (SEE-165): the wallet and the cluster its transaction was
+ * bound to, and which of the four actions it was. Before it, a staking record said neither, so its
+ * signature could not be given an explorer link or checked on the right cluster.
+ *
+ * It is not part of [ActivityRecord.identity]: records written before it have none, and a later
+ * write that adds it is the same record, better described.
+ */
+data class ReviewedStaking(
+    val wallet: String,
+    val network: Network,
+    /** The protocol's own name for the action, such as `STAKING_OPERATION_UNSTAKE`. */
+    val operation: String,
+    /** SKR base units as the request named them; empty for the actions that take no amount. */
+    val amount: String = "",
+)
+
 /** One parameter the owner chose, as a name and the text of what they chose. */
 data class ReviewedValue(val key: String, val text: String)
 
@@ -231,6 +249,14 @@ data class ActivityRecord(
     val detail: String? = null,
     /** The host whose word a confirmed or failed transfer rests on; null when nothing checked. */
     val checkedWith: String? = null,
+    /** The staking action's terms; null for everything else (SEE-165). */
+    val staking: ReviewedStaking? = null,
+    /**
+     * What this phone itself found on chain about the transaction (SEE-165). It is a separate fact
+     * from the outcome: the outcome also says what the owner decided and whether a server was told,
+     * and a chain check says neither. Only the confirmation tracker writes it.
+     */
+    val chain: ChainCheck? = null,
 ) {
     val key: RequestKey
         get() = RequestKey(connectionId, requestId)
@@ -241,7 +267,13 @@ data class ActivityRecord(
      */
     val signatureIsTransaction: Boolean
         get() =
-            (kind == ActivityKind.Transfer || kind == ActivityKind.Operation) && signature != null
+            (kind == ActivityKind.Transfer ||
+                kind == ActivityKind.Operation ||
+                kind == ActivityKind.Staking) && signature != null
+
+    /** The cluster the record's transaction was bound to, when the record says. */
+    val network: Network?
+        get() = transfer?.network ?: operation?.network ?: staking?.network
 
     /**
      * What makes this the same record and not another: the connection it came from, the wallet that

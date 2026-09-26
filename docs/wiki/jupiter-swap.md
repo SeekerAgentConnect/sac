@@ -98,7 +98,7 @@ Changing any parameter throws away what was prepared for the old one, because by
 - **Direct routes only.** Some pairs have no direct route at some sizes, and the answer is "there is no route for this right now" rather than a worse transaction.
 - **One minute of freshness.** The wallet round trip has to start within it.
 - **The keyless allowance is 0.5 requests a second, 30 a minute.** Ample for a person deciding about a signal; not ample for polling, and nothing here polls — including the boundary's own `status`, which this provider answers `Unsupported` and which nothing in the app calls.
-- **Nothing follows the transaction to the chain.** A submitted swap is submitted, not confirmed, and the record says exactly that.
+- **The provider's status is not asked; the chain is.** Jupiter's `status` stays `Unsupported`. Since SEE-165 the phone follows the swap's transaction to the chain itself and verifies it against the bytes it approved ([chain-confirmation.md](chain-confirmation.md)); until then a submitted swap is submitted, not confirmed, and the record says exactly that.
 - **No screen lists a position.** What the owner gets is their own record of what this phone did.
 - **A direct-mode swap request is still not executable.** Bundling this provider changed nothing for an `ActionRequest`: core prepares no swap, so the facts stay unread and the verdict can never be `ALLOWED`. Stage 6 was not resurrected, and `InboxViewModelTest` holds that.
 

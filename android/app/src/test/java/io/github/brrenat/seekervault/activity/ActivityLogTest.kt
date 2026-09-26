@@ -74,6 +74,22 @@ class ActivityLogTest {
     }
 
     @Test
+    fun aStakingActionKeepsItsClusterAndALostWalletAnswerIsUnknownNotUnsigned() {
+        // SEE-165: a staking transaction may have been sent when the phone lost the wallet, like a
+        // transfer's, so it is Unknown rather than "not signed"; and its record names its cluster.
+        val request = stakingRequest()
+        log.record(
+            result(request, signing = SigningOutcome.Unresolved("the app closed")),
+            connection(),
+        )
+        val stored = store.get(CONNECTION, REQUEST)!!
+        assertEquals(ActivityKind.Staking, stored.kind)
+        assertEquals(ActivityOutcome.Unknown, stored.outcome)
+        assertEquals(Network.NETWORK_MAINNET, stored.staking?.network)
+        assertEquals(WALLET, stored.staking?.wallet)
+    }
+
+    @Test
     fun clearingIsAHistoryTheOwnerKnowsIsEmpty() {
         log.load()
         log.record(result(transferRequest()), connection())

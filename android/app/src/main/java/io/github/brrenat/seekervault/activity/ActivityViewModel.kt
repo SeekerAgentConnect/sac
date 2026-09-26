@@ -2,6 +2,8 @@ package io.github.brrenat.seekervault.activity
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.brrenat.seekervault.confirmations.ChainCheck
+import io.github.brrenat.seekervault.confirmations.ConfirmationTracker
 import io.github.brrenat.seekervault.connections.RequestKey
 import java.io.IOException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -24,6 +26,8 @@ data class ActivityUiState(
     val unreadable: Boolean = false,
     /** Nothing on this phone could open the last link. */
     val linkFailed: Boolean = false,
+    /** Transactions the owner asked the chain about, while the answer is out (SEE-165). */
+    val checking: Set<RequestKey> = emptySet(),
 ) {
     fun record(key: RequestKey): ActivityRecord? = records.firstOrNull { it.key == key }
 }
@@ -35,20 +39,52 @@ data class ActivityUiState(
 class ActivityViewModel(
     private val log: ActivityLog,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * What follows sent transactions to the chain (SEE-165). The only thing this screen asks of it
+     * is a check the owner requested; it opens no wallet and sends nothing.
+     */
+    private val confirmations: ConfirmationTracker? = null,
 ) : ViewModel() {
     private data class Screen(
         val loaded: Boolean = false,
         val unreadable: Boolean = false,
         val linkFailed: Boolean = false,
+        val checking: Set<RequestKey> = emptySet(),
     )
 
     private val screen = MutableStateFlow(Screen())
 
     val state: StateFlow<ActivityUiState> =
         combine(log.records, screen) { records, now ->
-                ActivityUiState(records, now.loaded, now.unreadable, now.linkFailed)
+                ActivityUiState(records, now.loaded, now.unreadable, now.linkFailed, now.checking)
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, ActivityUiState(log.records.value))
+
+    /**
+     * What the phone last found on chain, by request, for the screens built from answers and
+     * proposals rather than from History records (Inbox History and its details).
+     */
+    val chainChecks: StateFlow<Map<RequestKey, ChainCheck>> =
+        confirmations?.checks ?: MutableStateFlow(emptyMap())
+
+    /**
+     * The owner asked whether [key]'s transaction landed. It asks the chain now, whatever the
+     * schedule says, and the answer arrives through the records and [chainChecks] like any other.
+     */
+    fun checkChain(key: RequestKey) {
+        val tracker = confirmations ?: return
+        if (key in screen.value.checking) return
+        screen.update { it.copy(checking = it.checking + key) }
+        viewModelScope.launch {
+            try {
+                withContext(io) { tracker.check(key) }
+            } catch (_: IOException) {
+                // The tracking record couldn't be written; the last check still stands.
+            } finally {
+                screen.update { it.copy(checking = it.checking - key) }
+            }
+        }
+    }
 
     init {
         refresh()

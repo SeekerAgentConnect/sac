@@ -157,7 +157,7 @@ private fun ActivityRecord.toScreenRow(): ActivityScreenRow =
         supportingText =
             stringResource(
                 R.string.activity_summary,
-                stringResource(outcomeText(outcome)),
+                stringResource(recordOutcomeText(this)),
                 activityTimeFormatter.format(answeredAt),
             ),
         kind = activityRowKind(this),

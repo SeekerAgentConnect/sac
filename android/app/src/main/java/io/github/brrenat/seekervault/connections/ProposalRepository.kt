@@ -6,6 +6,9 @@ import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.activity.ActivityRecord
 import io.github.brrenat.seekervault.activity.ReviewedOperation
 import io.github.brrenat.seekervault.activity.ReviewedValue
+import io.github.brrenat.seekervault.confirmations.Submission
+import io.github.brrenat.seekervault.confirmations.SubmissionTracking
+import io.github.brrenat.seekervault.confirmations.TrackingOrigin
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterValue
@@ -152,6 +155,12 @@ class ProposalRepository(
     private val history: ActivityLog? = null,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * What follows an executed operation's transaction to the chain from this phone (SEE-165). It
+     * is told the bytes before the wallet is opened and the signature after, and nothing else; it
+     * outlives the feed.
+     */
+    private val tracking: SubmissionTracking? = null,
 ) {
     private val lock = Mutex()
     private val _proposals = MutableStateFlow<List<ProposalRecord>>(emptyList())
@@ -378,6 +387,13 @@ class ProposalRepository(
         proposalId: String,
         binding: ExecutionBinding,
         wallet: SelectedWallet?,
+        /**
+         * The exact bytes the wallet is about to be handed, for a production execution; null for a
+         * rehearsal, which hands the wallet nothing (SEE-165). They are kept for the confirmation
+         * tracker only, before the wallet is opened, so what the chain holds afterwards can be
+         * compared with what was approved.
+         */
+        transaction: ByteArray? = null,
     ): ExecutionOutcome = locked {
         val connection = operationConnection(connectionId) ?: return@locked ExecutionOutcome.Gone
         val record = stored(connection, proposalId) ?: return@locked ExecutionOutcome.Gone
@@ -408,6 +424,17 @@ class ProposalRepository(
             .also {
                 write(it, connection)
                 publish()
+                if (transaction != null && binding.environment == PluginEnvironment.Production) {
+                    tracking?.expect(
+                        Submission(
+                            key = RequestKey(connectionId, proposalId),
+                            origin = TrackingOrigin.Operation,
+                            network = binding.network,
+                            wallet = binding.wallet,
+                            transaction = transaction,
+                        )
+                    )
+                }
             }
             .let(ExecutionOutcome::Begun)
     }
@@ -450,6 +477,14 @@ class ProposalRepository(
         val execution = checkNotNull(record.execution)
         return record.copy(execution = execution.copy(outcome = outcome, settledAt = now())).also {
             write(it, connections().firstOrNull { c -> c.id == it.connectionId })
+            // The signature is on disk now; the tracker follows it from here. Anything else sent
+            // nothing, or never said what it sent, and there is nothing to look up (SEE-165).
+            val key = RequestKey(it.connectionId, it.key.proposalId)
+            when (outcome) {
+                is ProposalOutcome.Submitted ->
+                    tracking?.submitted(key, outcome.signature.toByteArray())
+                else -> tracking?.abandoned(key)
+            }
         }
     }
 

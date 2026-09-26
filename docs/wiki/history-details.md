@@ -42,7 +42,11 @@ The order is fixed. An optional section with nothing to show is left out, with n
    re-sends the stored answer (`InboxViewModel.sendAgain`) and never changes it. A connection the
    server no longer accepts gets the explanation and no button.
 5. **Execution result**: only when something ran: confirmed, waiting, failed (with a readable
-   reason), signed, or simulated.
+   reason), expired (never landed), unresolved, signed, or simulated. Since SEE-165 a sent
+   transaction's result comes first from **this phone's own check** of the chain, then from the
+   server's settled word, and it says which; while unsettled it says why and when it was last and
+   will next be checked, and offers **Check status**
+   ([chain-confirmation.md](chain-confirmation.md)).
 6. **Original request or signal**, *as received*: the agent's note or the publisher's, and the
    operation's values. Addresses and messages are mono blocks that wrap and are never cut.
 7. **Transactions**: one card per transaction, with a status chip, the shortened signature, a copy
@@ -52,7 +56,8 @@ The order is fixed. An optional section with nothing to show is left out, with n
 10. **Footnote**: the record doesn't change with today's rules or prices. For a sandbox, it notes
     that nothing was signed or sent.
 
-The only actions on the page are Back, copy, the explorer link, and Send again. Nothing on it can
+The only actions on the page are Back, copy, the explorer link, Send again, and Check status (which
+asks the network and, for a direct request, the server — never the wallet). Nothing on it can
 approve, decline, edit or simulate.
 
 ## Built from stored records only
@@ -62,7 +67,10 @@ approve, decline, edit or simulate.
 - a private request's `LocalResult`: the answer, when it was given, delivery, the wallet's outcome,
   and the sidecar's latest copy of the request with its outcome and confirmation; or
 - a signal's `ProposalRecord`: the publisher's terms, the dismissal, and the execution with its
-  binding and outcome.
+  binding and outcome;
+
+and, for either, what the phone's own confirmation tracker last found on chain (`ChainCheck`,
+SEE-165).
 
 It calls no rules engine, no quote service, no provider read and no setting. The two facts it takes
 from the connection are the owner's own name and colour for it. For a signal nothing was ever

@@ -47,6 +47,10 @@ fun ActivityDetailsScreen(
     /** Nothing on this phone could open the last link. */
     linkFailed: Boolean = false,
     onMessageShown: () -> Unit = {},
+    /** Whether a chain check the owner asked for is still out (SEE-165). */
+    checking: Boolean = false,
+    /** Asks the network about this record's transaction now. It never signs or sends. */
+    onCheckStatus: () -> Unit = {},
 ) {
     val notices = LocalInAppNotices.current
     val failed = stringResource(R.string.activity_link_failed)
@@ -78,7 +82,7 @@ fun ActivityDetailsScreen(
     ) { innerPadding ->
         Column(Modifier.padding(innerPadding).verticalScroll(rememberScrollState())) {
             Text(
-                stringResource(outcomeText(record.outcome)),
+                stringResource(recordOutcomeText(record)),
                 style = MaterialTheme.typography.bodyLarge,
                 modifier =
                     Modifier.padding(
@@ -156,6 +160,44 @@ fun ActivityDetailsScreen(
                     signature,
                     ActivityTags.SIGNATURE,
                     monospace = true,
+                )
+            }
+            // What the phone itself found on chain, apart from the outcome: the outcome also says
+            // what the owner decided and whether a server was told, and this says neither
+            // (SEE-165).
+            record.chain?.let { chain ->
+                Field(R.string.activity_field_chain, chainText(chain), ActivityTags.CHAIN)
+                if (chain.checkable && record.signatureIsTransaction) {
+                    SeekerButton(
+                        text =
+                            stringResource(
+                                if (checking) R.string.activity_checking
+                                else R.string.activity_check_status
+                            ),
+                        onClick = onCheckStatus,
+                        role = SeekerButtonRole.Neutral,
+                        enabled = !checking,
+                        modifier =
+                            Modifier.padding(SeekerTheme.dimensions.dp16)
+                                .testTag(ActivityTags.CHECK_STATUS),
+                    )
+                }
+            }
+            // A transaction the wallet may have sent without this phone learning its signature:
+            // there is nothing to look up, and the wallet's own history is where to look.
+            if (
+                record.signature == null &&
+                    record.outcome == ActivityOutcome.Unknown &&
+                    (record.kind == ActivityKind.Transfer ||
+                        record.kind == ActivityKind.Staking ||
+                        record.kind == ActivityKind.Operation)
+            ) {
+                Text(
+                    stringResource(R.string.activity_no_signature),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier =
+                        Modifier.padding(SeekerTheme.dimensions.dp16)
+                            .testTag(ActivityTags.NO_SIGNATURE),
                 )
             }
             record.checkedWith?.let {

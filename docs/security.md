@@ -694,10 +694,12 @@ never changes, and against the wallet the owner selected. Nothing the sidecar sa
 transaction is consulted, and the agent's note is rendered apart from the facts and labelled as
 unverified.
 
-**It reads nothing from a chain, and says what that costs.** The phone has no RPC endpoint of any
-kind (`StageBoundaryTest` proves it from the sources), so every claim below is either read out of the
-bytes or enforced by a program on chain when the transaction runs. Nothing rests on the sidecar's
-word.
+**It reads nothing from a chain to review a transfer, and says what that costs.** The review uses no
+RPC endpoint (`StageBoundaryTest` proves it from the sources), so every claim below is either read
+out of the bytes or enforced by a program on chain when the transaction runs. Nothing rests on the
+sidecar's word. (After the wallet has sent a transaction, the phone does read the chain — to learn
+whether it landed, never to review or build one: [wiki/chain-confirmation.md](wiki/chain-confirmation.md),
+SEE-165.)
 
 - **Where SOL goes is in the instruction.** The System `Transfer` names the receiving account
   outright, so the owner's own address is the fact.

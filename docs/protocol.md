@@ -358,6 +358,8 @@ A `SubmitResult` carries one result:
 
 A transfer succeeds only as CONFIRMED. The wallet's `transaction_submission` says it sent something and names the signature; what became of that signature is a separate question, and SAW-022 is what answers it.
 
+**The phone also checks for itself (SEE-165).** Everything below is the sidecar's check. Independently of it, the phone follows the same signature to the chain with its own read-only endpoint and the same standard — status, then the transaction body compared with the approved message byte for byte — and keeps what it finds on the phone. It never sends that to the sidecar, and a sidecar's later answer never rolls it back; see [wiki/chain-confirmation.md](wiki/chain-confirmation.md).
+
 **Nothing runs on its own.** The sidecar has no background worker (AGENTS.md), so its knowledge advances when somebody asks. Two people ask, and both run the same check:
 
 - the **agent**, every time it reads a SUBMITTED transfer with `vault_get_request`. At most one chain check per request every two seconds, so a tight polling loop gets the stored answer in between.

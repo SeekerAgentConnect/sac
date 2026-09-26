@@ -202,7 +202,15 @@ data class HistoryDetailExecution(
     val rows: List<HistoryDetailRow> = emptyList(),
     /** For [HistoryDetailExecutionState.Failed]: the readable reason, never the raw error. */
     val failureReason: String? = null,
+    /**
+     * Whether the owner can ask the network about this transaction now (SEE-165); null when there
+     * is nothing a check could change. It asks, and never signs or sends anything.
+     */
+    val checkStatus: HistoryDetailCheckStatus? = null,
 )
+
+/** The execution card's "Check status" control, and whether a check is already out. */
+data class HistoryDetailCheckStatus(val checking: Boolean = false)
 
 /** A7 — one transaction, in execution order. */
 data class HistoryDetailTransaction(
@@ -244,6 +252,8 @@ data class HistoryDetailCallbacks(
     val onSendAgain: () -> Unit = {},
     val onCopy: (String) -> Unit = {},
     val onOpenExplorer: (String) -> Unit = {},
+    /** Asks the network about the transaction again; it never signs or sends (SEE-165). */
+    val onCheckStatus: () -> Unit = {},
 )
 
 object HistoryDetailTags {
@@ -254,6 +264,7 @@ object HistoryDetailTags {
     const val Delivery = "historyDetailDelivery"
     const val SendAgain = "historyDetailSendAgain"
     const val Execution = "historyDetailExecution"
+    const val CheckStatus = "historyDetailCheckStatus"
     const val Original = "historyDetailOriginal"
     const val Transactions = "historyDetailTransactions"
     const val Timeline = "historyDetailTimeline"
@@ -309,7 +320,7 @@ fun HistoryDetailBody(
         HistoryDetailStatusCard(model.status, model.header.sourceName)
         HistoryDetailResponseCard(model.response)
         model.delivery?.let { HistoryDetailDeliveryCard(it, callbacks.onSendAgain) }
-        model.execution?.let { HistoryDetailExecutionCard(it) }
+        model.execution?.let { HistoryDetailExecutionCard(it, callbacks.onCheckStatus) }
         HistoryDetailOriginalCard(
             origin = model.header.origin,
             description = model.originalDescription,
@@ -528,7 +539,7 @@ private fun HistoryDetailDeliveryCard(model: HistoryDetailDelivery, onSendAgain:
 // A5 ------------------------------------------------------------------------------------------
 
 @Composable
-private fun HistoryDetailExecutionCard(model: HistoryDetailExecution) {
+private fun HistoryDetailExecutionCard(model: HistoryDetailExecution, onCheckStatus: () -> Unit) {
     val container =
         when (model.state) {
             HistoryDetailExecutionState.Failed -> SeekerTheme.colors.destructiveContainer
@@ -586,6 +597,17 @@ private fun HistoryDetailExecutionCard(model: HistoryDetailExecution) {
                 container = SeekerTheme.colors.onDestructive,
                 content = content,
                 labelColor = content,
+            )
+        }
+        // The delivery card's control, for the network rather than the server (SEE-165).
+        model.checkStatus?.let {
+            SeekerButton(
+                label = if (it.checking) "Checking…" else "Check status",
+                onClick = onCheckStatus,
+                variant = SeekerButtonVariant.Tertiary,
+                size = SeekerButtonSize.Md,
+                enabled = !it.checking,
+                modifier = Modifier.testTag(HistoryDetailTags.CheckStatus),
             )
         }
     }

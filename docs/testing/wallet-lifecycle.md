@@ -60,9 +60,10 @@ This page is what is checked automatically, what only the Seeker can show, and t
   `Verified` (SAW-020) can be approved, checked once when the button is offered and again when it
   is tapped.
 - **Sending is not succeeding, and a check settles it or nothing (SAW-022).** A transfer the
-  wallet sent stops at SUBMITTED until the chain says otherwise. Only the sidecar reads the chain,
-  and only when the agent reads the request or the owner taps **Check status**; the phone reaches
-  no chain and opens no wallet to check one. A check reports CONFIRMED only when the transaction on
+  wallet sent stops at SUBMITTED until the chain says otherwise. The sidecar reads the chain when
+  the agent reads the request or the owner taps **Check status**; since SEE-165 the phone also
+  reads it itself, from its own endpoint and in the background, and neither opens a wallet to check
+  one ([chain-confirmation.md](../wiki/chain-confirmation.md)). A check reports CONFIRMED only when the transaction on
   chain under that signature is byte for byte the one the approval named, and an endpoint that
   didn't answer, a status that isn't there yet, and a signature naming something else all leave the
   request exactly as it was. Nothing anywhere builds a replacement transaction.

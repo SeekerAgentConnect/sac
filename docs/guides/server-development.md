@@ -769,6 +769,8 @@ And the app stops at honest submission. Under the links it says so:
 
 > This app submitted the transaction and stops there. It does not follow whether an order filled, what a position is worth, how a market settles, or whether anything is paid out — open the links above to see any of that.
 
+Since SEE-165 the phone does follow the *transaction* itself to the chain and tells the owner whether it succeeded, failed or never landed ([chain-confirmation.md](../wiki/chain-confirmation.md)). That is still not a fill: History says so under every confirmed order, and never labels one "Filled".
+
 For a prediction, the handoff is to the market's page on Jupiter, and there is deliberately **no position link** — the platform has no per-position address, and inventing one would be the single dishonest thing on offer. "Order submitted" means the wallet reported that it signed and sent a transaction. It does not mean the order filled, that the prediction is right, or that anything will pay out, and nothing in this system will ever tell you otherwise. Do not build a product story on a fill you are not told about.
 
 **What a private MCP request still does** is worth stating beside this, because the two kinds of server are easy to conflate. A paired sidecar asked for a signature *is* owed an answer and gets one: the phone submits the result back to the server that asked, which is the existing private workflow and is unchanged. A public feed is not owed one and does not get one. Both can run on the same phone at the same time, and a private request is never converted into a broadcast one ([`docs/wiki/mcp-adapter.md`](../wiki/mcp-adapter.md#two-different-kinds-of-server-and-why-the-distinction-matters)).
