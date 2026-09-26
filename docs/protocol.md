@@ -568,6 +568,7 @@ is the contract.
 | `direct.url` | Where a direct server is reached | The connection's own server URL, character for character, in the pairing code's normalized form. |
 | `feed.gateway_url` | The shared gateway's origin | The origin the feed was added through, with no path, query, user info, or fragment. |
 | `feed.channel` | The channel the publisher publishes on | `server/<server_id>` for this manifest's own `server_id`: a publisher may name only its own. |
+| `feed.access` | Who may read the feed (SEE-156) | Absent means public, which is what every manifest before SEE-156 said. A restricted feed carries `FEED_ACCESS_POLICY_RESTRICTED` and the HTTPS origin its subscribers prove a wallet at. The gateway writes the field from the operator's registration, so a publisher cannot claim it and a feed reference cannot supply it (`## Restricted feeds`). |
 
 **`PairingService.GetServerManifest`** serves it, authenticated with the phone credential and scoped
 to the caller's connection like `GetConnectionCapabilities`: a `connection_id` that isn't the
@@ -910,10 +911,11 @@ different relationship from the durable request above — nobody is addressed, a
 [`docs/guides/server-development.md`](guides/server-development.md) is the numbered walkthrough for
 a developer publishing to one; this section is the contract.
 
-**The two services are separate on purpose, and separately deployed.** `FeedService` is read-only
-and unauthenticated; `PublisherService` takes a credential scoped to one server. They listen on
-different sockets, and `publish.proto` is generated for Go alone — the phone is not a publisher, so
-no publisher client is compiled for it.
+**The two services are separate on purpose, and separately deployed.** `FeedService` is read-only,
+and unauthenticated for a public feed; a restricted feed's reads carry a session instead of a
+credential (`## Restricted feeds`, SEE-156). `PublisherService` takes a credential scoped to one
+server. They listen on different sockets, and `publish.proto` is generated for Go alone — the phone
+is not a publisher, so no publisher client is compiled for it.
 
 ### PublisherService
 
@@ -931,6 +933,9 @@ runs the real gateway to keep the two honest about it.
 | `PublishRequest` | Primary create/update operation | A v2 feed-audience request with `SIGNAL` presentation and `DEVICE_LOCAL` result handling. It is validated, rebuilt, revision-checked and committed with its notice exactly like the compatibility operation |
 | `CancelRequest` | Primary final withdrawal operation | Request ID and a higher revision; the stored v2 request is returned cancelled |
 | `CancelProposal` | Withdraws one | Takes an ID and a revision, so a publisher that no longer holds the document can still withdraw it. The gateway keeps every other field and writes the status and the update time. |
+| `DescribeAccess` | Says which access policy this gateway enforces for the caller's feed (SEE-156) | The operator's registration, explicitly either way, and the longest grant this gateway allows. A restricted publisher asks before it publishes anything and publishes nothing unless the answer is restricted |
+| `GrantAccess` | Records or renews one approved device's grant on the caller's own channel (SEE-156) | Idempotent: the same grant again extends it, within the gateway's bound. A revoked grant is never renewed, a grant another publisher holds is never touched, and a public feed's publisher is refused |
+| `RevokeAccess` | Ends grants on the caller's own channel (SEE-156) | Final. The channel's access epoch moves in the same write, so a listener already attached stops receiving anything on the stream name it holds. Already revoked is answered as done; one the caller does not hold is refused and changes nothing |
 
 **The revision is the idempotency key.** It is already the publisher's promise about its content, so
 a retry needs no second one: the same revision with the same content answers
@@ -941,8 +946,8 @@ publication over a withdrawal, are refused.
 
 Every refusal carries a `GatewayErrorDetail` with one `GatewayProblem`, the field it was about, and
 the revision the gateway holds where that is the point. The Connect code groups them: `unauthenticated`,
-`permission_denied` for another server or channel, `failed_precondition` for a revision or lifecycle
-rule, `not_found`, `resource_exhausted` for a rate limit, and `invalid_argument` for everything a
+`permission_denied` for another server or channel, `failed_precondition` for a revision, lifecycle
+or access rule, `not_found`, `resource_exhausted` for a rate limit, and `invalid_argument` for everything a
 document got wrong.
 
 ### FeedService
@@ -956,6 +961,7 @@ document got wrong.
 | `GetRequest` | One common request, by channel and request ID | — |
 | `GetStreamTicket` | Permission to listen to channels this gateway hosts (SEE-91) | — |
 | `GetFeedTopics` | Where hints about those channels arrive (SEE-92) | — |
+| `SetFeedPushTarget` | Where one approved device's hints arrive for a restricted channel, which has no topic (SEE-156) | — |
 
 **The snapshot boundary is documented and not a transaction.** Every page of one walk reports the
 `snapshot_sequence` the walk began at — the channel's count of accepted publications, which never
@@ -974,8 +980,10 @@ a feed stays current would be a second opinion about what a publisher is proposi
 withdrawn ones included, so a phone that was switched off learns that a proposal was taken back
 rather than simply failing to find it. Nothing on a phone is deleted by it.
 
-**Nothing about a subscriber can be submitted.** There is no field for an address, a chosen
-quantity, a decision or a signature; the JSON codec refuses a field the contract does not have; an
+**Nothing about a subscriber can be submitted.** A restricted feed's reader presents exactly one
+thing, the opaque `session` its publisher handed it (SEE-156), and that is the whole of what any
+reader sends. There is no field for an address, a chosen quantity, a decision or a signature; the
+JSON codec refuses a field the contract does not have; an
 unknown protobuf field is dropped, because every document is rebuilt from what was validated rather
 than relayed; and there is no endpoint that would take any of it. A Go boundary test reads these
 protos and fails if the field set changes or a forbidden word appears.
@@ -985,7 +993,8 @@ protos and fails if the field set changes or a forbidden word appears.
 Two more pieces of the same package carry the fan-out.
 
 **`event.proto` — what a subscriber receives.** `FeedEvent` is a channel sequence and a `oneof` of
-the manifest or the proposal, rebuilt by the gateway from the fields it validated. The envelope is
+the manifest, the common request or the proposal — and, on a restricted channel, of
+`access_changed` (SEE-156) — rebuilt by the gateway from the fields it validated. The envelope is
 ours rather than the broker's so that a phone parses one type and runs what is inside through the
 same validators a read goes through; an event of a kind a client does not know is not read as an
 empty document, it is a reason to read the snapshot. Its field set is pinned by the gateway's
@@ -1034,6 +1043,105 @@ which feed changed is the topic the message arrived on, which is a routing field
 payload. There is no fixture for it and no generated type: instead, an Android test reads the
 relay's own Go source and fails if the two literals drift apart
 (`push/FeedHintContractTest.kt`).
+
+### Restricted feeds (SEE-156)
+
+A feed's access policy is the gateway operator's registration, and not anything a document claims:
+the gateway stamps it onto the manifest it serves and refuses a publication that states another one.
+[`docs/wiki/restricted-feeds.md`](wiki/restricted-feeds.md) is why it is shaped that way; this is
+what is on the wire. All of it is additive: a public feed's manifest, reads and events are byte for
+byte what they were.
+
+**The manifest says who may read** ([`manifest.proto`](../proto/seekervault/server/v1/manifest.proto)).
+
+| Field | What it is |
+| --- | --- |
+| `GatewayFeed.access` = 3 | A `FeedAccess`, or absent. Absent is public, which is what every manifest published before SEE-156 says |
+| `FeedAccess.policy` = 1 | `FEED_ACCESS_POLICY_UNSPECIFIED` = 0, never written; `FEED_ACCESS_POLICY_PUBLIC` = 1; `FEED_ACCESS_POLICY_RESTRICTED` = 2 |
+| `FeedAccess.auth_origin` = 2 | For a restricted feed, the registered authentication origin: an absolute HTTPS origin with no path, query, user info or fragment. Empty for a public feed |
+
+The gateway writes both from its own registration whatever the stored document says, so a feed
+switched to restricted after its manifest was published is never served as public, and a publication
+whose manifest claims another policy or another origin is `GATEWAY_PROBLEM_ACCESS_MISMATCH`. A
+client reads an absent `FeedAccess` as public, because that is what every manifest before SEE-156
+meant, and reads an unspecified or unknown policy as one it does not support — never as public.
+
+**A reader presents one thing, and it is a session** ([`feed.proto`](../proto/seekervault/gateway/v1/feed.proto)).
+It is an opaque bearer value the feed's publisher handed an approved device; the gateway holds only
+its SHA-256, against a grant the publisher registered, so it names no wallet and no person.
+
+| Field | Where it goes |
+| --- | --- |
+| `ListRequests.session` = 5 | On every page: a walk that began with access does not keep it through a revocation half way through |
+| `GetRequest.session` = 3 | One point read |
+| `ListProposals.session` = 5 | The legacy view is the same rows, so it is the same check, and also on every page |
+| `GetProposal.session` = 3 | One point read |
+| `GetStreamTicketRequest.sessions` = 2 | A repeated `ChannelSession`: the session for each restricted channel among the ones asked for |
+| `GetFeedStatusRequest.sessions` = 2 | The same, for presence (SEE-150) |
+| `ChannelSession.channel` = 1, `.session` = 2 | One restricted channel's session |
+| `SetFeedPushTargetRequest.channel` = 1, `.session` = 2, `.push_target` = 3 | Where one grant's hints go, under the session that grant was issued with. An empty target clears it |
+| `SetFeedPushTargetResponse` | No fields |
+
+A public channel needs none, and a session offered for one is ignored. `GetServerManifest` takes
+none either: it is the onboarding metadata a phone needs in order to know that it must prove itself
+and where, and it is answered to anyone. Three answers change shape rather than gaining a field:
+`GetFeedTopics` leaves a restricted channel out **always**, because it has no public topic;
+`GetStreamTicketResponse.channels` leaves out a restricted channel with no live grant exactly as it
+leaves out a channel this gateway does not host, and its `lifetime_seconds` is no longer than the
+shortest grant the ticket carries — unless every channel asked for was one the caller may not read,
+when the access problem is answered rather than an empty ticket; and `GetFeedStatusResponse.statuses`
+leaves out a restricted channel the caller has no live session for. A granted restricted channel's
+`StreamChannel.stream_channel` carries the channel's access epoch, which the gateway moves on every
+revocation, so a listener attached under an earlier name receives nothing more.
+
+**The publisher grants and revokes with the credential it already publishes with**
+([`publish.proto`](../proto/seekervault/gateway/v1/publish.proto)), and only for its own channel.
+
+| Message | Fields |
+| --- | --- |
+| `DescribeAccessRequest` | No fields |
+| `DescribeAccessResponse` | `access` = 1, the registered `FeedAccess`, explicit either way; `most_grant_seconds` = 2, the longest a grant may run without renewal |
+| `GrantAccessRequest` | `grant_id` = 1, a lowercase UUID the publisher minted; `subscriber_ref` = 2 and `device_ref` = 3, opaque publisher-scoped references of 1 to 64 printable ASCII characters that the gateway stores and never interprets; `session_digest` = 4, the SHA-256 of the session the publisher handed the device; `lifetime_seconds` = 5, at most the bound above |
+| `GrantAccessResponse` | `lifetime_seconds` = 1, how long the grant now runs, which may be less than was asked |
+| `RevokeAccessRequest` | `grant_ids` = 1: 1 to 64 grants, all on the caller's channel |
+| `RevokeAccessResponse` | `revoked` = 1, how many of them this call revoked; the rest were already revoked |
+| `PublishManifestResponse.access` = 3 | The access the gateway stamped on the manifest it now holds |
+
+**One event.** `FeedEvent.access_changed` = 5 carries an `AccessChanged`
+([`event.proto`](../proto/seekervault/gateway/v1/event.proto)), a message with no fields at all: it
+is published once, on the stream name a revocation retires, and which grant ended is the publisher's
+business. A listener that receives it asks for a fresh ticket and is granted the channel again only
+if its own grant is still live.
+
+**Eight problems, numbered 47 to 54** after the retired 35–46 range, which stays retired
+([`problem.proto`](../proto/seekervault/gateway/v1/problem.proto)). None of them reuses a number or
+a meaning that range carried.
+
+| Problem | When | Connect code |
+| --- | --- | --- |
+| `GATEWAY_PROBLEM_ACCESS_REQUIRED` = 47 | Restricted, and no session — or one this gateway does not hold for that channel. One code for both, so a caller learns nothing about sessions it does not hold | `permission_denied` |
+| `GATEWAY_PROBLEM_ACCESS_REVOKED` = 48 | The publisher revoked it. Final: that session is never accepted again | `permission_denied` |
+| `GATEWAY_PROBLEM_ACCESS_EXPIRED` = 49 | The grant ran out without renewal. Not final: the same grant renewed works again | `permission_denied` |
+| `GATEWAY_PROBLEM_ACCESS_MISMATCH` = 50 | A manifest claiming a policy or an origin the operator did not register | `failed_precondition` |
+| `GATEWAY_PROBLEM_NOT_RESTRICTED` = 51 | A grant call, or a push target, for a feed that is public | `failed_precondition` |
+| `GATEWAY_PROBLEM_NO_SUCH_GRANT` = 52 | A grant the caller does not hold: never granted, or another publisher's. One code for both, so a publisher cannot probe another's grants | `not_found` |
+| `GATEWAY_PROBLEM_GRANT_REVOKED` = 53 | A renewal of a grant this gateway already revoked | `failed_precondition` |
+| `GATEWAY_PROBLEM_BAD_GRANT` = 54 | A grant whose identity, references, session digest or lifetime is malformed | `invalid_argument` |
+
+The order of the first three is the order a phone acts on: ask the publisher for access, accept that
+access ended, or wait for a renewal. `SetFeedPushTarget` on a deployment that relays nothing answers
+`GATEWAY_PROBLEM_NO_PUSH`, as `GetFeedTopics` does.
+
+**Both old sides fail closed.** An old client sends no `session`,
+so every read of a restricted channel answers `ACCESS_REQUIRED`: there is no anonymous fallback and
+no method that skips the check, and a client that does not know `access_changed` sees an unrecognized
+event and reads the snapshot, which checks the same grant. In the other direction an old gateway
+answers `unimplemented` to `DescribeAccess` and sends no `PublishManifestResponse.access`, which is
+why a restricted publisher asks first and refuses to publish until a gateway confirms it enforces
+this feed as restricted at this origin — so a gateway that would serve those documents to anyone
+never receives them. A gateway with no restricted registration serves every call exactly as it did
+before SEE-156. The Go boundary test that pins each file's field set was extended for these fields
+rather than relaxed.
 
 ## Retired gateway-private identifiers (SEE-130)
 
