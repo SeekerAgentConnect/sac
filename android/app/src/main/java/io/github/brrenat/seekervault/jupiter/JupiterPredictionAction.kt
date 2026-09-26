@@ -125,10 +125,10 @@ internal class JupiterPredictionAction(
      *
      * The deep link and the web address are the same kind of thing here, and deliberately so.
      * Jupiter publishes no private scheme; what it publishes is
-     * `https://jup.ag/.well-known/assetlinks.json`, which delegates its addresses to its own Android
-     * app. So a `jup.ag` address *is* Jupiter's deep link, verifiably, and opening one app-first
-     * lands in Jupiter when Jupiter is installed and in a browser when it is not. No scheme is
-     * invented to make this look more native than it is
+     * `https://jup.ag/.well-known/assetlinks.json`, which delegates its addresses to its own
+     * Android app. So a `jup.ag` address *is* Jupiter's deep link, verifiably, and opening one
+     * app-first lands in Jupiter when Jupiter is installed and in a browser when it is not. No
+     * scheme is invented to make this look more native than it is
      * (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
      *
      * ## The order, and why it is the portfolio
@@ -176,8 +176,9 @@ internal class JupiterPredictionAction(
      * Null is the important half: it is how a publisher that named somewhere else gets sent
      * nowhere, rather than getting the owner sent there.
      */
-    private fun ownLink(named: String): String? =
-        named.takeIf { it.isNotEmpty() && isSecureLinkTo(it, JUPITER_HOST) }
+    private fun ownLink(named: String): String? = named.takeIf {
+        it.isNotEmpty() && isSecureLinkTo(it, JUPITER_HOST)
+    }
 
     suspend fun prepare(
         operation: ActionOperation,
