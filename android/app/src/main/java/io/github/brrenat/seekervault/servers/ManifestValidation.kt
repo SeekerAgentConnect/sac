@@ -6,6 +6,8 @@ import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.isPluginId
 import io.github.brrenat.seekervault.server.v1.ConnectionMode as WireMode
+import io.github.brrenat.seekervault.server.v1.FeedAccessPolicy as WireAccessPolicy
+import io.github.brrenat.seekervault.server.v1.GatewayFeed as WireFeed
 import io.github.brrenat.seekervault.server.v1.ServerEnvironment as WireEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
 
@@ -45,6 +47,13 @@ data class ManifestExpectation(
      * would otherwise restore settings the server has moved on from.
      */
     val heldRevision: Long? = null,
+    /**
+     * The phone already knows this feed is restricted — the reference it is being added from said
+     * so, or the manifest it holds does (SEE-156). A manifest that now describes the feed as public
+     * is refused ([ManifestProblem.AccessDowngraded]) rather than acted on: access only ever
+     * tightens on its own.
+     */
+    val restricted: Boolean = false,
 )
 
 sealed interface ManifestResult {
@@ -93,6 +102,17 @@ enum class ManifestProblem(val code: String) {
     BadEnvironment("bad_environment"),
     /** A name too long, or one that isn't printable text. */
     BadName("bad_name"),
+    /**
+     * An access policy this build does not know, or a restricted feed whose authentication origin
+     * is not an origin this phone may send a wallet proof to (SEE-156). Never read as public.
+     */
+    BadAccess("bad_access"),
+    /**
+     * A feed that was restricted — by the reference it was added from, or by the manifest this
+     * phone already holds — now described as public. A link or a gateway cannot open a feed to this
+     * phone by saying less (SEE-156).
+     */
+    AccessDowngraded("access_downgraded"),
 }
 
 /**
@@ -194,6 +214,9 @@ private fun referenceProblem(
             else if (message.feed.gatewayUrl != expect.origin) ManifestProblem.OtherEndpoint
             else if (message.feed.channel != channelFor(message.serverId))
                 ManifestProblem.ForeignChannel
+            else if (accessOf(message.feed) == null) ManifestProblem.BadAccess
+            else if (expect.restricted && accessOf(message.feed) !is FeedAccess.Restricted)
+                ManifestProblem.AccessDowngraded
             else null
         }
     }
@@ -212,8 +235,42 @@ private fun reference(message: WireManifest, mode: ConnectionMode): ServerRefere
     when (mode) {
         ConnectionMode.Direct -> ServerReference.Direct(message.direct.url)
         ConnectionMode.GatewayFeed ->
-            ServerReference.Feed(message.feed.gatewayUrl, message.feed.channel)
+            ServerReference.Feed(
+                message.feed.gatewayUrl,
+                message.feed.channel,
+                checkNotNull(accessOf(message.feed)),
+            )
     }
+
+/**
+ * A feed's access policy (SEE-156), or null when it is not one this phone will act on.
+ *
+ * No field is public, which is every manifest before restricted feeds existed. A restricted feed's
+ * authentication origin is the one address this phone will send a wallet proof to, so it is held to
+ * a gateway's own rules — an origin, with no path — and to the gateway's scheme: HTTPS, or plain
+ * HTTP only when the gateway itself is plain HTTP, which only a development build's cleartext
+ * policy ever admitted. An unspecified or unknown policy is null, never public.
+ */
+private fun accessOf(feed: WireFeed): FeedAccess? {
+    if (!feed.hasAccess()) return FeedAccess.Public
+    val access = feed.access
+    return when (access.policy) {
+        WireAccessPolicy.FEED_ACCESS_POLICY_PUBLIC ->
+            FeedAccess.Public.takeIf { access.authOrigin.isEmpty() }
+        WireAccessPolicy.FEED_ACCESS_POLICY_RESTRICTED -> {
+            val origin = access.authOrigin
+            val scheme = origin.substringBefore("://", "").lowercase()
+            val gatewayScheme = feed.gatewayUrl.substringBefore("://", "").lowercase()
+            when {
+                origin.isEmpty() -> null
+                FeedReferences.gatewayUrlProblem(origin, CLEARTEXT_ALREADY_DECIDED) != null -> null
+                scheme != "https" && !(scheme == "http" && gatewayScheme == "http") -> null
+                else -> FeedAccess.Restricted(PairingCodes.normalizeServerUrl(origin))
+            }
+        }
+        else -> null
+    }
+}
 
 /**
  * Whether [name] is something the app can show: short enough, and text rather than control

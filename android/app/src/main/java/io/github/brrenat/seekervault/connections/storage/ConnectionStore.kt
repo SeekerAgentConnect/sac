@@ -10,11 +10,11 @@ import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.isPluginId
 import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.FeedAccess
 import io.github.brrenat.seekervault.servers.MAX_REQUIRED_PLUGINS
 import io.github.brrenat.seekervault.servers.ManifestProblem
 import io.github.brrenat.seekervault.servers.PluginRequirement
 import io.github.brrenat.seekervault.servers.ServerManifest
-import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.manifest
 import java.io.File
@@ -187,6 +187,14 @@ class ConnectionStore(private val dir: File) {
                         is ServerReference.Feed -> {
                             put("gatewayUrl", reference.gatewayUrl)
                             put("channel", reference.channel)
+                            // Additive (SEE-156): a public feed writes nothing new, so the record
+                            // is what it always was, and the format version does not move — an
+                            // older build reads a restricted feed as public, and the gateway
+                            // refuses its reads, which is the safe way round.
+                            (reference.access as? FeedAccess.Restricted)?.let {
+                                put("access", "restricted")
+                                put("authOrigin", it.authOrigin)
+                            }
                         }
                     }
                 }
@@ -347,7 +355,18 @@ class ConnectionStore(private val dir: File) {
                         val channel = json.optString("channel")
                         val gateway = json.optString("gatewayUrl")
                         if (gateway.isEmpty() || channel.isEmpty()) return null
-                        ServerReference.Feed(gateway, channel)
+                        val access =
+                            when (json.optString("access")) {
+                                "" -> FeedAccess.Public
+                                "restricted" ->
+                                    FeedAccess.Restricted(
+                                        json.optString("authOrigin").ifEmpty {
+                                            return null
+                                        }
+                                    )
+                                else -> return null
+                            }
+                        ServerReference.Feed(gateway, channel, access)
                     }
                 }
             val requirements = json.optJSONArray("required") ?: JSONArray()

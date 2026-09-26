@@ -18,9 +18,10 @@ import io.github.brrenat.seekervault.plugins.PluginId
  * an unknown field and is dropped, not guessed at.
  *
  * What a manifest cannot say is the point of it being data. There is nothing here that installs
- * code, asks for a permission, carries a policy, relaxes one, or names a wallet endpoint: what the
- * phone will do with a server is decided by the build it is running and by the owner
- * (docs/security.md).
+ * code, asks for a permission, relaxes a policy, or names a wallet endpoint: what the phone will do
+ * with a server is decided by the build it is running and by the owner (docs/security.md). The one
+ * policy a feed's manifest carries is who may read it ([FeedAccess], SEE-156), which the gateway
+ * stamps from its operator's registration rather than taking it from the publisher.
  */
 data class ServerManifest(
     /**
@@ -111,9 +112,15 @@ sealed interface ServerReference {
 
     /**
      * A publisher's feed, read from [gatewayUrl] on [channel]. The publisher's own address is
-     * deliberately absent: there is nothing here for the phone to contact.
+     * deliberately absent for a public feed: there is nothing here for the phone to contact. A
+     * restricted feed ([access]) names the one origin the phone may prove a wallet to, which the
+     * gateway vouches for.
      */
-    data class Feed(val gatewayUrl: String, val channel: String) : ServerReference {
+    data class Feed(
+        val gatewayUrl: String,
+        val channel: String,
+        val access: FeedAccess = FeedAccess.Public,
+    ) : ServerReference {
         override val mode: ConnectionMode
             get() = ConnectionMode.GatewayFeed
 
@@ -121,6 +128,27 @@ sealed interface ServerReference {
             get() = gatewayUrl
     }
 }
+
+/**
+ * Who may read a feed (SEE-156, docs/wiki/restricted-feeds.md).
+ *
+ * A manifest without the field is public, which is what every feed before SEE-156 was; a policy
+ * this build does not know is refused rather than read as public ([ManifestProblem.BadAccess]).
+ */
+sealed interface FeedAccess {
+    /** Anyone holding the feed reference may read it. */
+    data object Public : FeedAccess
+
+    /**
+     * Only a device the publisher approved may read it. [authOrigin] is where the phone proves the
+     * owner's wallet — an origin the gateway's operator registered, never one a link supplied.
+     */
+    data class Restricted(val authOrigin: String) : FeedAccess
+}
+
+/** The feed's access policy, or null for a direct server. */
+val ServerManifest.feedAccess: FeedAccess?
+    get() = (reference as? ServerReference.Feed)?.access
 
 /**
  * One bundled plugin a server's operations need, named by the stable ID the plugin declares

@@ -19,7 +19,24 @@ import java.net.URISyntaxException
  * the contract it speaks, the plugins its operations need — comes from the manifest the gateway
  * holds, so a reference cannot say anything about the server that the server didn't publish.
  */
-data class FeedReference(val gatewayUrl: String, val serverId: String) {
+data class FeedReference(
+    val gatewayUrl: String,
+    val serverId: String,
+    /**
+     * The reference says the feed is restricted (`&access=restricted`, SEE-156). It is a hint the
+     * owner is shown before anything is stored, and a floor: a feed added from a restricted
+     * reference whose manifest says public is refused ([ManifestProblem.AccessDowngraded]). It
+     * never supplies the authentication origin — that comes only from the manifest the gateway
+     * serves.
+     */
+    val restricted: Boolean = false,
+    /**
+     * A single-use invitation this reference carries (`&invitation=…`), for a device that already
+     * asked for access and is redeeming its approval by link or QR code. It is bound to that
+     * device's key, so on any other phone it does nothing.
+     */
+    val invitation: String? = null,
+) {
     /** The channel this server publishes on, which is the only one its manifest may name. */
     val channel: String
         get() = channelFor(serverId)
@@ -51,6 +68,10 @@ enum class FeedReferenceProblem {
     /** The gateway URL isn't HTTPS, and this build doesn't allow plain HTTP to it. */
     InsecureGatewayUrl,
     BadServerId,
+    /** An `access` parameter other than `restricted` (SEE-156). */
+    BadAccess,
+    /** An `invitation` parameter that is not an invitation's shape (SEE-156). */
+    BadInvitation,
 }
 
 /**
@@ -82,12 +103,26 @@ object FeedReferences {
         if (query["v"] != VERSION) return invalid(FeedReferenceProblem.OtherVersion)
         val gateway = query["gateway"].orEmpty()
         val serverId = query["server"].orEmpty()
+        val access = query["access"]
+        val invitation = query["invitation"]
         val problem =
             gatewayUrlProblem(gateway, cleartextPermitted)
                 ?: FeedReferenceProblem.BadServerId.takeUnless { isConnectionId(serverId) }
+                ?: FeedReferenceProblem.BadAccess.takeUnless {
+                    access == null || access == "restricted"
+                }
+                ?: FeedReferenceProblem.BadInvitation.takeUnless {
+                    invitation == null || isInvitation(invitation)
+                }
         if (problem != null) return invalid(problem)
         return FeedReferenceResult.Valid(
-            FeedReference(PairingCodes.normalizeServerUrl(gateway), serverId)
+            FeedReference(
+                PairingCodes.normalizeServerUrl(gateway),
+                serverId,
+                // An invitation is only ever for a restricted feed.
+                restricted = access == "restricted" || invitation != null,
+                invitation = invitation,
+            )
         )
     }
 
@@ -115,4 +150,8 @@ object FeedReferences {
     }
 
     private fun invalid(problem: FeedReferenceProblem) = FeedReferenceResult.Invalid(problem)
+
+    /** An invitation's shape: 32 random bytes, base64url without padding. */
+    private fun isInvitation(text: String): Boolean =
+        text.length == 43 && text.all { it.isLetterOrDigit() || it == '-' || it == '_' }
 }
