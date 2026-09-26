@@ -193,6 +193,18 @@ class ProposalRepository(
                 .filter { it.execution?.outcome == ProposalOutcome.Pending }
                 .forEach { settle(it, ProposalOutcome.Unresolved(APP_CLOSED)) }
             publish()
+            // The outcome is written before the tracker is told, so a process that stopped in
+            // between left the capture waiting for a signature that is on disk: hand it over. A
+            // capture that already has one is left as it is (SEE-165).
+            _proposals.value.forEach {
+                val execution = it.execution ?: return@forEach
+                val outcome = execution.outcome as? ProposalOutcome.Submitted ?: return@forEach
+                tracking?.recovered(
+                    RequestKey(it.connectionId, it.key.proposalId),
+                    outcome.signature.toByteArray(),
+                    execution.settledAt ?: execution.startedAt,
+                )
+            }
         }
         _loaded.value = true
     }

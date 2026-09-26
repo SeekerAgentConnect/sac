@@ -117,7 +117,7 @@ It is asked three times, and what it can do differs each time:
 | --- | --- |
 | A wallet answers a challenge (`Service.Request`) | `Eligible` approves and invites, `Ineligible` rejects, `Undecided` leaves it pending |
 | The device redeems its invitation (`Service.Redeem`) | Only `Ineligible` acts: the device is revoked and the redemption answers `not_approved`. It cannot approve a device an operator has not |
-| A grant comes up for renewal (`Syncer.renew`) | Only `Ineligible` acts: the device is revoked rather than its grant rolled forward |
+| A grant comes up for renewal (`Syncer.renew`) | `Ineligible` revokes the device rather than rolling its grant forward. Only a device whose rule answered is renewed: an error leaves its grant's expiry exactly as it is, and the rule is asked again after a backoff |
 
 An error is not a decision. The request stays exactly as it is and the question is asked again
 later, so a rule that depends on a database you cannot reach fails towards *nothing changes* rather
@@ -263,8 +263,12 @@ One refusal is final: `grant_revoked` means the gateway already revoked that gra
 records `GrantRevokedByGateway` and stops asking. A renewal can never bring it back.
 
 Grants are renewed when a third of the lifetime is left, and only grants the gateway has already
-confirmed, belonging to devices that are still approved, are renewed at all. With the default six
-hours that is a call every four hours per device.
+confirmed, belonging to devices that are still approved and whose eligibility rule answered, are
+renewed at all. With the default six hours that is a call every four hours per device. The lifetime
+is the one the gateway granted, not the one you asked for: `GrantAccess` answers the lifetime left
+after `BROADCAST_MAX_GRANT_HOURS`, the syncer records that expiry, and when the gateway caps grants
+shorter than `PUBLISHER_ACCESS_GRANT_HOURS` it renews at a third of the cap instead — a one-hour cap
+is a renewal about every forty minutes, not a grant that lapses at hour one.
 
 **"Not yet confirmed" is the state you must be honest about.** A grant whose gateway state is behind
 is `grant_pending`, and a revocation the gateway has not confirmed is `revocation_pending` — which

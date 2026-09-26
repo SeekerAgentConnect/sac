@@ -42,6 +42,14 @@ interface SubmissionTracking {
     /** The wallet sent it and named [signature]. The first signature recorded stands. */
     fun submitted(key: RequestKey, signature: ByteArray)
 
+    /**
+     * A wallet answer that reached storage, recorded at [at], whose [submitted] may never have run:
+     * the outcome is written first, so a process that stopped in between left the capture waiting
+     * for a signature that is on disk. It repairs that capture, and changes nothing that already
+     * has a signature.
+     */
+    fun recovered(key: RequestKey, signature: ByteArray, at: Instant)
+
     /** Nothing was sent — declined, refused, rehearsed — so there is nothing to look up. */
     fun abandoned(key: RequestKey)
 }
@@ -75,7 +83,10 @@ class Submission(
  * when that transaction's message is byte for byte the one the owner approved does it settle
  * anything. `processed` is not a result. A missing status is not a result either, until the
  * approved message's blockhash is no longer valid on the finalized chain *and* a search of the
- * ledger has no record of the signature — then it can never land, and that is said.
+ * ledger has no record of the signature *and* the endpoint's own ledger reaches back past the
+ * submission — then it can never land, and that is said. A ledger that has been pruned since, or a
+ * miss in the long-term storage an endpoint falls back on, is no proof of absence: the transaction
+ * may have landed and been forgotten, so it stays unresolved.
  *
  * Everything an endpoint fails to answer — a timeout, a 429, a malformed body, the wrong cluster —
  * is not evidence about the transaction. The record keeps what it had, says what stopped the check,
@@ -146,28 +157,39 @@ class ConfirmationTracker(
     }
 
     override fun submitted(key: RequestKey, signature: ByteArray) {
-        val check =
-            synchronized(lock) {
-                val tracking = store.get(key) ?: return
-                if (tracking.signature != null) return
-                val at = now()
-                val check =
-                    ChainCheck(
-                        state = ChainState.Checking,
-                        nextCheckAt = at.plus(FIRST_CHECK),
-                    )
-                store.put(
-                    tracking.copy(
-                        signature = encodeBase58(signature),
-                        submittedAt = at,
-                        check = check,
-                    )
-                )
-                history.confirm(key, check)
-                publishAll()
-                check
-            }
-        if (check.nextCheckAt != null) onDue()
+        val at = now()
+        val armed = synchronized(lock) { attach(key, signature, at, at.plus(FIRST_CHECK)) }
+        if (armed) onDue()
+    }
+
+    override fun recovered(key: RequestKey, signature: ByteArray, at: Instant) {
+        val armed = synchronized(lock) { attach(key, signature, at, now()) }
+        if (armed) onDue()
+    }
+
+    /**
+     * Gives a capture that has no signature yet the one the wallet named, and arms its first check
+     * at [firstCheck]. Answers whether it did. Call under the lock.
+     */
+    private fun attach(
+        key: RequestKey,
+        signature: ByteArray,
+        submittedAt: Instant,
+        firstCheck: Instant,
+    ): Boolean {
+        val tracking = store.get(key) ?: return false
+        if (tracking.signature != null) return false
+        val check = ChainCheck(state = ChainState.Checking, nextCheckAt = firstCheck)
+        store.put(
+            tracking.copy(
+                signature = encodeBase58(signature),
+                submittedAt = submittedAt,
+                check = check,
+            )
+        )
+        history.confirm(key, check)
+        publishAll()
+        return true
     }
 
     override fun abandoned(key: RequestKey) {
@@ -192,9 +214,11 @@ class ConfirmationTracker(
      * check it honestly (SEE-165's backfill).
      *
      * A direct request whose stored answer still carries the approved transaction and the wallet's
-     * signature is tracked from that. A History record with a transaction signature and nothing to
-     * compare it against is marked as missing that context rather than checked: its status alone
-     * would say something *landed* under the signature, not that it was what the owner approved.
+     * signature is tracked from that — and a capture already waiting for that signature, because
+     * the process stopped between storing the answer and telling the tracker, is given it. A
+     * History record with a transaction signature and nothing to compare it against is marked as
+     * missing that context rather than checked: its status alone would say something *landed* under
+     * the signature, not that it was what the owner approved.
      */
     fun backfill(results: List<LocalResult>, records: List<ActivityRecord>) {
         val due =
@@ -202,7 +226,11 @@ class ConfirmationTracker(
                 var armed = false
                 results.forEach { result ->
                     val sent = result.signing as? SigningOutcome.Sent ?: return@forEach
-                    if (store.get(result.key) != null) return@forEach
+                    if (store.get(result.key) != null) {
+                        val signature = sent.signature.toByteArray()
+                        if (attach(result.key, signature, result.answeredAt, now())) armed = true
+                        return@forEach
+                    }
                     if (result.request.state in SERVER_SETTLED) return@forEach
                     val submission = directSubmission(result) ?: return@forEach
                     val message = messageBytes(submission.transaction) ?: return@forEach
@@ -414,6 +442,13 @@ class ConfirmationTracker(
                     slot = searched.slot,
                 )
             else seen(reader, tracking, searched, manual)
+        }
+        // The search only proves absence over the ledger the endpoint still holds. The submission
+        // can't have landed before it was captured, so a ledger that reaches back past the capture
+        // covers every slot it could have landed in.
+        val retained = reader.retainedSince()
+        if (retained == null || !retained.isBefore(tracking.capturedAt.minus(COVERAGE_MARGIN))) {
+            return inconclusive(tracking, ChainReason.HistoryNotRetained, reader.host, manual)
         }
         return settled(
             tracking,
@@ -628,6 +663,13 @@ class ConfirmationTracker(
          * not valid *yet*; this is well past both that lag and the blockhash's own window.
          */
         val EXPIRY_GRACE: Duration = Duration.ofMinutes(3)
+
+        /**
+         * How far before the capture the endpoint's ledger has to reach for a miss to count, so
+         * block times, which are validators' estimates, and this phone's clock can't disagree their
+         * way into a conclusion.
+         */
+        val COVERAGE_MARGIN: Duration = Duration.ofMinutes(10)
 
         const val MOST_SIGNATURES = 256
 

@@ -288,6 +288,92 @@ class ConfirmationTrackerTest {
     }
 
     @Test
+    fun aLandedTransactionMissingFromAPrunedLedgerIsNeverCalledExpired() = runBlocking {
+        send()
+        // Resumed days later. The transaction landed, but this endpoint has pruned the ledger
+        // since, and its long-term storage (if any) had nothing: the search comes back empty.
+        advance(Duration.ofDays(3))
+        chain.status = null
+        chain.blockhashValid = false
+        chain.history = null
+        chain.retainedSince = now.minus(Duration.ofDays(1))
+        tracker.check(key)
+
+        assertEquals(ChainState.Checking, check().state)
+        assertEquals(ChainReason.HistoryNotRetained, check().reason)
+        assertEquals(ActivityOutcome.Sent, record().outcome)
+        assertNotNull(check().nextCheckAt)
+
+        // An endpoint that can't say how far back it reaches proves nothing either.
+        chain.retainedSince = null
+        tracker.check(key)
+        assertEquals(ChainState.Checking, check().state)
+        assertEquals(ChainReason.HistoryNotRetained, check().reason)
+
+        // Another endpoint still has it: it is found, verified and settled.
+        chain.history = SignatureStatus(5, ChainLevel.Finalized, null)
+        chain.body = ChainTransaction(5, signedWire(), null)
+        tracker.check(key)
+        assertEquals(ChainState.Confirmed, check().state)
+        assertEquals(ActivityOutcome.Confirmed, record().outcome)
+    }
+
+    @Test
+    fun aCaptureTheProcessStoppedBeforeSigningIsRepairedFromTheStoredAnswer() = runBlocking {
+        // The direct path: the capture is written, the wallet answers, the answer is stored — and
+        // the process stops before the tracker is told the signature.
+        val direct =
+            result(
+                transferRequest(),
+                signing = SigningOutcome.Sent(sig()),
+                approvedTransaction = approved(),
+            )
+        tracker.expect(submission())
+        log.record(direct, connection())
+        assertNull(trackingStore.get(key)!!.signature)
+
+        // The next start reconciles the stored answer into the capture it was meant for.
+        tracker.load()
+        tracker.backfill(listOf(direct), log.records.value)
+
+        val repaired = trackingStore.get(key)!!
+        assertEquals(encodeBase58(SIGNATURE), repaired.signature)
+        assertEquals(ANSWERED, repaired.submittedAt)
+        assertEquals(ChainState.Checking, repaired.check.state)
+        assertEquals(now, tracker.nextDue())
+        chain.status = SignatureStatus(7, ChainLevel.Finalized, null)
+        chain.body = ChainTransaction(7, signedWire(), null)
+        tracker.checkDue()
+        assertEquals(ChainState.Confirmed, check().state)
+    }
+
+    @Test
+    fun aFeedOperationsStoredSignatureRepairsItsCaptureAndNothingElse() = runBlocking {
+        tracker.expect(
+            Submission(
+                key,
+                TrackingOrigin.Operation,
+                Network.NETWORK_DEVNET,
+                WALLET,
+                unsignedWire(),
+            )
+        )
+        val settledAt = SENT_AT.minusSeconds(30)
+        tracker.recovered(key, SIGNATURE, settledAt)
+        assertEquals(encodeBase58(SIGNATURE), trackingStore.get(key)!!.signature)
+        assertEquals(settledAt, trackingStore.get(key)!!.submittedAt)
+        assertEquals(now, tracker.nextDue())
+
+        // Told again, with anything, it changes nothing: the first signature recorded stands.
+        tracker.recovered(key, ByteArray(64) { 1 }, SENT_AT)
+        assertEquals(encodeBase58(SIGNATURE), trackingStore.get(key)!!.signature)
+        assertEquals(settledAt, trackingStore.get(key)!!.submittedAt)
+        // And there is nothing to repair where nothing was captured.
+        tracker.recovered(RequestKey(CONNECTION, OTHER_REQUEST), SIGNATURE, SENT_AT)
+        assertNull(trackingStore.get(RequestKey(CONNECTION, OTHER_REQUEST)))
+    }
+
+    @Test
     fun anOldSignatureIsFoundByALedgerSearchAndStillVerified() = runBlocking {
         send()
         advance(Duration.ofHours(2))
@@ -552,6 +638,8 @@ class ConfirmationTrackerTest {
         var history: SignatureStatus? = null
         var body: ChainTransaction? = null
         var blockhashValid = true
+        /** How far back the endpoint's own ledger reaches; by default, all the way. */
+        var retainedSince: Instant? = Instant.EPOCH
         var failure: SolanaException? = null
         var beforeStatus: () -> Unit = {}
         var suspendStatus: CompletableDeferred<Unit>? = null
@@ -586,6 +674,8 @@ class ConfirmationTrackerTest {
             blockhashCalls++
             return blockhashValid
         }
+
+        override suspend fun retainedSince(): Instant? = retainedSince
     }
 
     private companion object {

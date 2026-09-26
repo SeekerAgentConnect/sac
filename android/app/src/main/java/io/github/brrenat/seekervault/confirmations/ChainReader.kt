@@ -5,6 +5,7 @@ import io.github.brrenat.seekervault.solana.SolanaException
 import io.github.brrenat.seekervault.solana.SolanaProblem
 import java.io.IOException
 import java.net.URI
+import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineDispatcher
@@ -46,6 +47,13 @@ interface ChainReader {
 
     /** Whether [blockhash] can still be used by a transaction, judged by the finalized chain. */
     suspend fun blockhashValid(blockhash: String): Boolean
+
+    /**
+     * When the oldest block the endpoint's own ledger still holds was produced, or null when it
+     * can't say. A history search older than this is answered from long-term storage, if at all,
+     * and a miss there is not evidence that a transaction never landed.
+     */
+    suspend fun retainedSince(): Instant?
 }
 
 data class SignatureStatus(val slot: Long, val level: ChainLevel, val chainError: String?)
@@ -235,6 +243,16 @@ class HttpChainReader(
     }
 
     /** One JSON-RPC call: its `result`, which may be JSON null. */
+    override suspend fun retainedSince(): Instant? {
+        // minimumLedgerSlot is the node's own ledger, unlike getFirstAvailableBlock, which also
+        // counts a long-term store whose misses are what this is meant to rule out.
+        val lowest =
+            (call("minimumLedgerSlot", JSONArray()) as? Number)?.toLong()?.takeIf { it >= 0 }
+                ?: throw SolanaException(SolanaProblem.Unusable, "no ledger slot")
+        val seconds = call("getBlockTime", JSONArray().put(lowest))
+        return (seconds as? Number)?.toLong()?.let(Instant::ofEpochSecond)
+    }
+
     private suspend fun call(method: String, params: JSONArray): Any? {
         val body =
             JSONObject()
