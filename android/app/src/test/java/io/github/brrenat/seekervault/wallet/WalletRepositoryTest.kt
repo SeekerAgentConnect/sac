@@ -745,6 +745,51 @@ class WalletRepositoryTest {
     }
 
     @Test
+    fun switchingWalletAppsDoesNotOfferTheOldAppsAuthorizationToTheNewOne() = runBlocking {
+        pair()
+        adapter.installed = listOf(SEEKER, OTHER)
+        adapter.issuers[SECRET] = SEEKER.packageName
+        adapter.answerConnected(
+            WALLET,
+            authToken = SECRET,
+            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
+        )
+        repository.connect(WalletNetwork.Devnet, SEEKER)
+        adapter.answerConnected(
+            OTHER_WALLET,
+            authToken = REFRESHED,
+            route = WalletRouting(null, OTHER.packageName, OTHER.label),
+        )
+
+        val result = repository.connect(WalletNetwork.Devnet, OTHER)
+
+        // The new app is asked to authorize afresh: the old app's token is not its to honour, and
+        // offering it would be refused and read as the selection being gone.
+        assertTrue(result is WalletResult.Connected)
+        assertEquals(null, adapter.connects.last().second)
+        assertEquals(OTHER_WALLET, repository.wallet.value?.address)
+        assertEquals(OTHER.label, repository.walletApp.value)
+    }
+
+    @Test
+    fun reconnectingTheSameWalletAppOffersItsOwnAuthorization() = runBlocking {
+        pair()
+        adapter.installed = listOf(SEEKER, OTHER)
+        adapter.issuers[SECRET] = SEEKER.packageName
+        adapter.answerConnected(
+            WALLET,
+            authToken = SECRET,
+            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
+        )
+        repository.connect(WalletNetwork.Devnet, SEEKER)
+
+        repository.connect(WalletNetwork.Devnet, SEEKER)
+        repository.connect(WalletNetwork.Devnet)
+
+        assertEquals(listOf(SECRET, SECRET), adapter.connects.drop(1).map { it.second })
+    }
+
+    @Test
     fun disconnectingTakesTheRouteWithIt() = runBlocking {
         pair()
         adapter.installed = listOf(SEEKER, OTHER)

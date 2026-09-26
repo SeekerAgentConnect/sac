@@ -100,11 +100,17 @@ class WalletRepository(
      * [app] is the wallet app the owner chose here, from [installedWallets]; it is stored with the
      * account, and every later signing opens that app and no other (SEE-159). Without one, the app
      * the owner already had is opened again.
+     *
+     * An authorization is offered only to the wallet app that issued it: Mobile Wallet Adapter
+     * scopes a token to its wallet, and another app would refuse it — which [connected] reads as
+     * the stored session being gone — so switching apps asks the new one to authorize afresh.
      */
     suspend fun connect(network: WalletNetwork, app: InstalledWallet? = null): WalletResult =
         lock.withLock {
             val stored = withContext(io) { store.session() }
-            val result = adapter.connect(network, stored?.authToken, aim(app, stored?.route))
+            val authToken =
+                stored?.authToken?.takeIf { app == null || app.packageName == stored.route.packageName }
+            val result = adapter.connect(network, authToken, aim(app, stored?.route))
             connected(network, result)
         }
 
