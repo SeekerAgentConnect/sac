@@ -294,10 +294,7 @@ class OperationViewModel(
                     read is ActionPayloadResult.Invalid -> ParameterForm(problem = read.finding)
                     else -> ParameterForm()
                 },
-            destinations =
-                if (resolved != null && operation != null)
-                    resolved.destinations(operation, references)
-                else emptyList(),
+            destinations = destinationsOf(record, payload, references),
             served = resolved != null,
         )
     }
