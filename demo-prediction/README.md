@@ -287,7 +287,9 @@ docker compose run --rm ctl create --in 2h   # 403 written_by_discovery
 signals already published to subscribers, searches the provider listing with typed filters, and
 asks discovery to publish a selected market. It is a client, not a second writer: `POST /v1/requests`
 stays 403. Side and stake stay on the phone. App Platform serves it at `/trader`; Compose starts it
-only with `--profile admin`.
+only with `--profile admin`. It uses the feed gateway's admin look, from its own copies of the
+stylesheet, script and fonts in `internal/admin/assets/` (the templates are in
+`internal/admin/templates/`), all embedded in the binary.
 
 The same calls over plain HTTP, which is all the CLI does:
 

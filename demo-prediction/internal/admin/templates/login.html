@@ -1,0 +1,25 @@
+{{template "head" .}}
+<section class="login-wrap" aria-labelledby="login-title">
+  <div class="login-brand">
+    {{template "mark"}}
+    <div><strong>Prediction admin</strong><code>Sandbox demo</code></div>
+  </div>
+  <div class="login-card">
+    <h1 id="login-title">Log in</h1>
+    {{with .Message}}<div class="flash problem" role="alert"><span aria-hidden="true">!</span><p>{{.}}</p></div>{{end}}
+    <form method="post" action="{{.Path}}/login" autocomplete="username">
+      <div class="field">
+        <label for="name">Name</label>
+        <input id="name" name="name" required maxlength="64" autocomplete="username" autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="button primary terminal">Log in</button>
+    </form>
+  </div>
+  <p class="login-explanation">Sandbox demo. Side and stake stay on the phone. This page never
+  sees the API token.</p>
+</section>
+{{template "foot" .}}

@@ -281,6 +281,9 @@ execution begins.
 client, not a second writer: it holds the API token and calls the same endpoints, so validation, the
 identity, the revision and the publication cannot be gone around through it. It is optional, it is
 started only where a deployment asks for it, and it has its own passwords file and session secret.
+It uses the feed gateway's admin look, from its own copies of the stylesheet, script and fonts in
+`internal/admin/assets/` (the templates are in `internal/admin/templates/`), all embedded in the
+binary.
 
 ## 9. Optional operator access
 

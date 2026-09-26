@@ -3,7 +3,6 @@ package admin
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"net/http"
 	"net/url"
 
@@ -125,7 +124,11 @@ type devicesView struct {
 	Devices []Device
 }
 
-var devicesPage = template.Must(template.New("devices").Parse(layoutHTML + devicesHTML))
+// LoggedIn decides whether the frame draws the sidebar.
+func (devicesView) LoggedIn() bool { return true }
+
+// Section is the sidebar entry this page highlights.
+func (devicesView) Section() string { return "devices" }
 
 // devices lists every request.
 func (a *API) devices() (string, []Device, error) {
@@ -249,52 +252,3 @@ func (s *Server) devicesOK(writer http.ResponseWriter, request *http.Request, me
 func (s *Server) devicesErr(writer http.ResponseWriter, request *http.Request, message string) {
 	http.Redirect(writer, request, s.path+"/devices?error="+queryToken(message), http.StatusSeeOther)
 }
-
-const devicesHTML = `
-<div class="bar">
-  <div>
-    <h1>Devices · feed access</h1>
-    <p class="muted">Signed in as {{.Name}}. This feed is restricted: a device reads it only after it proved its wallet and you approved it. <a href="{{.Path}}">Signals</a></p>
-  </div>
-  <form method="post" action="{{.Path}}/logout"><button class="secondary" type="submit">Log out</button></form>
-</div>
-{{if .Error}}<p class="flash bad">{{.Error}}</p>{{end}}
-{{if .Message}}<p class="flash ok">{{.Message}}</p>{{end}}
-<div class="card">
-  <p>Every request below was signed by the wallet it names. The device label is what the phone calls itself — a claim, not a proof; the installation is the fingerprint of the device key the wallet signed for. Approving one device never approves another, even of the same wallet.</p>
-  {{if not .Devices}}<p class="muted">No device has asked for access yet.</p>{{else}}
-  <table>
-    <thead><tr><th>Wallet</th><th>Device</th><th>Requested</th><th>Access</th><th></th></tr></thead>
-    <tbody>
-    {{range .Devices}}
-      <tr>
-        <td><code title="{{.Wallet}}">{{.Wallet}}</code></td>
-        <td>{{.Label}}<div class="muted">label (user-supplied)</div><div class="muted">installation {{.Installation}}</div></td>
-        <td>{{.RequestedAt}}{{if .DecidedAt}}<div class="muted">decided {{.DecidedAt}}{{if .DecidedBy}} by {{.DecidedBy}}{{end}}</div>{{end}}{{if .RevokedAt}}<div class="muted">revoked {{.RevokedAt}}</div>{{end}}</td>
-        <td><span class="{{if .Bad}}warn{{end}}">{{.Sentence}}</span>
-          {{if .Link}}<div class="muted">Invitation (single use, for this device only, until {{.Invitation.ExpiresAt}}):</div><input class="ref" readonly value="{{.Link}}" aria-label="Invitation link"><div class="qr-box">{{.InvitationQR}}</div>{{end}}
-        </td>
-        <td>
-          <div class="actions">
-            {{if .Pending}}
-            <form method="post" action="{{$.Path}}/devices/{{.RequestID}}/approve"><button type="submit">Approve</button></form>
-            <form method="post" action="{{$.Path}}/devices/{{.RequestID}}/reject"><button class="secondary" type="submit">Reject</button></form>
-            {{end}}
-            {{if .Reissuable}}
-            <form method="post" action="{{$.Path}}/devices/{{.RequestID}}/reissue"><button class="secondary" type="submit">Reissue invitation</button></form>
-            {{end}}
-            {{if .Revocable}}
-            <form method="post" action="{{$.Path}}/devices/{{.RequestID}}/revoke"><button class="secondary" type="submit">Revoke device</button></form>
-            <form method="post" action="{{$.Path}}/wallets/{{.Wallet}}/revoke"><button class="secondary" type="submit">Revoke all devices of this wallet</button></form>
-            {{end}}
-          </div>
-        </td>
-      </tr>
-    {{end}}
-    </tbody>
-  </table>
-  {{end}}
-</div>
-</body>
-</html>
-`

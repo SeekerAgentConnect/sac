@@ -311,6 +311,54 @@ func TestHealthzIsNotThePublicTraderPage(t *testing.T) {
 	}
 }
 
+// The page loads its own stylesheet, script and fonts from this origin, before and after login,
+// under a policy that allows nothing inline and nothing from anywhere else.
+func TestTheStylesheetScriptAndFontsComeOutOfTheBinary(t *testing.T) {
+	ui, _ := startUI(t, nil)
+	login := get(t, ui, "", "/trader/login")
+	for _, expected := range []string{
+		`<link rel="stylesheet" href="/trader/assets/admin.css">`,
+		`<script src="/trader/assets/admin.js" defer></script>`,
+	} {
+		if !strings.Contains(login.body, expected) {
+			t.Fatalf("login page does not load %q:\n%s", expected, login.body)
+		}
+	}
+	policy := login.header.Get("Content-Security-Policy")
+	for _, directive := range []string{"default-src 'none'", "style-src 'self'", "script-src 'self'",
+		"font-src 'self'"} {
+		if !strings.Contains(policy, directive) {
+			t.Fatalf("csp %s", policy)
+		}
+	}
+	if strings.Contains(policy, "unsafe-inline") {
+		t.Fatalf("csp still allows inline code: %s", policy)
+	}
+	for _, asset := range []struct{ name, kind string }{
+		{"admin.css", "text/css; charset=utf-8"},
+		{"admin.js", "text/javascript; charset=utf-8"},
+		{"roboto-variable.ttf", "font/ttf"},
+		{"roboto-mono-variable.ttf", "font/ttf"},
+	} {
+		answered := get(t, ui, "", "/trader/assets/"+asset.name)
+		if answered.status != http.StatusOK || answered.header.Get("Content-Type") != asset.kind ||
+			answered.body == "" {
+			t.Fatalf("%s: %d %q", asset.name, answered.status, answered.header.Get("Content-Type"))
+		}
+	}
+	css := get(t, ui, "", "/trader/assets/admin.css").body
+	for _, expected := range []string{"--lime: #e7fc6e;", `font-family: "Roboto";`, ".sidebar", ".qr-box"} {
+		if !strings.Contains(css, expected) {
+			t.Fatalf("admin.css does not carry %q", expected)
+		}
+	}
+	for _, name := range []string{"passwords", "pages.go", "admin.css.map"} {
+		if answered := get(t, ui, "", "/trader/assets/"+name); answered.status != http.StatusNotFound {
+			t.Fatalf("%s answered %d", name, answered.status)
+		}
+	}
+}
+
 type stubAPI struct {
 	mu         sync.Mutex
 	lastAuth   string
