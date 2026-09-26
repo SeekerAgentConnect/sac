@@ -10,6 +10,7 @@ import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFailure
+import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.PreparedOperation
 import io.github.brrenat.seekervault.plugins.actions.ActionPayload
 import io.github.brrenat.seekervault.plugins.actions.PredictionChoiceProblem
@@ -166,6 +167,94 @@ class JupiterPredictionActionTest {
 
         assertEquals(1, destinations.size)
         assertEquals("https://jup.ag/prediction/$MARKET_ID", destinations.single().url)
+        // And the same address is the deep link, because `jup.ag` delegates its addresses to
+        // Jupiter's own Android app. No scheme is invented to make it look more native (SEE-157).
+        assertEquals("https://jup.ag/prediction/$MARKET_ID", destinations.single().deepLink)
+    }
+
+    @Test
+    fun aPublishersAddressIsUsedOnlyWhenItIsJupitersOwn() {
+        // The publisher read Jupiter's listing, so it knows the page's real address and this build
+        // does not: left to itself the adapter composes one out of the market identifier, which
+        // lands near the market rather than on it (SEE-157).
+        val page = "https://jup.ag/prediction/fed-decision-in-october"
+        val named =
+            plugin()
+                .destinations(
+                    subject(
+                        values =
+                            terms +
+                                mapOf(
+                                    PredictionTermNames.PROVIDER_DEEP_LINK to page,
+                                    PredictionTermNames.PROVIDER_WEB_URL to page,
+                                )
+                    )
+                )
+                .single()
+
+        assertEquals(page, named.url)
+        assertEquals(page, named.deepLink)
+    }
+
+    @Test
+    fun aPublisherCannotSendTheOwnerSomewhereThatIsNotJupiter() {
+        // The whole of the risk in letting a stranger name a destination. An address that is not
+        // Jupiter's is ignored — not shown, not offered, not followed — and the adapter's own
+        // address stands, so the owner still has somewhere real to go.
+        //
+        // Every one of these is an address core is happy to carry: they are well-formed `https`
+        // and they are not Jupiter's, which is exactly the case core cannot decide and this
+        // adapter can. What core refuses outright — code, storage, a page without the guarantee —
+        // never reaches here at all (`PredictionActionTest`).
+        for (elsewhere in
+            listOf(
+                "https://notjup.ag/prediction/x",
+                "https://jup.ag.example.com/prediction/x",
+                "https://evil.example.com/?next=https://jup.ag/prediction/x",
+                "https://evil.example.com/jup.ag/prediction/x",
+            )) {
+            val destination =
+                plugin()
+                    .destinations(
+                        subject(
+                            values =
+                                terms +
+                                    mapOf(
+                                        PredictionTermNames.PROVIDER_DEEP_LINK to elsewhere,
+                                        PredictionTermNames.PROVIDER_WEB_URL to elsewhere,
+                                    )
+                        )
+                    )
+                    .single()
+
+            assertEquals(elsewhere, "https://jup.ag/prediction/$MARKET_ID", destination.url)
+            assertEquals(elsewhere, "https://jup.ag/prediction/$MARKET_ID", destination.deepLink)
+        }
+    }
+
+    @Test
+    fun theOrderIsOfferedOnlyOnceThereIsOne() {
+        // Nothing has been ordered, so there is nowhere to go and look at one: the market is the
+        // only destination, and an "Open order" with nothing behind it is not shown (SEE-157).
+        assertEquals(1, plugin().destinations(subject()).size)
+
+        val afterwards =
+            plugin()
+                .destinations(
+                    subject(),
+                    listOf(PluginReference(ORDER_ACCOUNT, "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9")),
+                )
+
+        assertEquals(2, afterwards.size)
+        // Jupiter has no per-order page, so the order's destination is the portfolio the order is
+        // actually in. An address with an order account in it would be a page nobody serves.
+        assertEquals("https://jup.ag/prediction/portfolio", afterwards[1].url)
+        assertEquals("https://jup.ag/prediction/portfolio", afterwards[1].deepLink)
+        // A reference with nothing in it is not an order.
+        assertEquals(
+            1,
+            plugin().destinations(subject(), listOf(PluginReference(ORDER_ACCOUNT, ""))).size,
+        )
     }
 
     @Test

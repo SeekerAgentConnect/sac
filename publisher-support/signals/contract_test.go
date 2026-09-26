@@ -91,14 +91,25 @@ func TestTheChannelIsTheGatewaysOwn(t *testing.T) {
 //
 // It reads the phone's source for the same reason the gateway's is read above, and skips the same
 // way when the source is not there.
-const phoneSwapTerms = "../../android/app/src/main/java/io/github/brrenat/seekervault/" +
-	"jupiter/SwapTerms.kt"
+//
+// The rules are in two files each, and deliberately so since SEE-145: an action's own schema — its
+// term names and what a publisher may write — belongs to the action, in `plugins/actions/`, and
+// what the venue will actually accept — which mints, what its smallest order is — belongs to
+// whoever executes it, in `jupiter/`. This side has to agree with both, so both are read.
+const phoneSource = "../../android/app/src/main/java/io/github/brrenat/seekervault/"
 
-const phonePredictionTerms = "../../android/app/src/main/java/io/github/brrenat/seekervault/" +
-	"jupiter/PredictionTerms.kt"
+var phoneSwapTerms = []string{
+	phoneSource + "plugins/actions/SwapAction.kt",
+	phoneSource + "jupiter/JupiterExecutionProvider.kt",
+}
+
+var phonePredictionTerms = []string{
+	phoneSource + "plugins/actions/PredictionAction.kt",
+	phoneSource + "jupiter/JupiterExecutionProvider.kt",
+}
 
 func TestThePredictionRulesAreThePhonesOwn(t *testing.T) {
-	source := phoneSource(t, phonePredictionTerms)
+	source := phoneRules(t, phonePredictionTerms)
 
 	// The two tokens the provider takes, and the set being exactly those two.
 	for name, held := range map[string]string{
@@ -108,7 +119,7 @@ func TestThePredictionRulesAreThePhonesOwn(t *testing.T) {
 		pattern := regexp.MustCompile(`const val ` + name + `: String = "([1-9A-HJ-NP-Za-km-z]+)"`)
 		match := pattern.FindStringSubmatch(source)
 		if match == nil {
-			t.Fatalf("%s is no longer declared in %s", name, phonePredictionTerms)
+			t.Fatalf("%s is no longer declared in %s", name, strings.Join(phonePredictionTerms, ", "))
 		}
 		if match[1] != held {
 			t.Fatalf("%s is %s on the phone and %s here: a template that published a deposit "+
@@ -119,14 +130,14 @@ func TestThePredictionRulesAreThePhonesOwn(t *testing.T) {
 	if !regexp.MustCompile(`DEPOSIT_MINTS: Set<String> = setOf\(JUP_USD_MINT, USDC_MINT\)`).
 		MatchString(source) {
 		t.Fatalf("the phone's set of deposit mints is no longer exactly those two (%s)",
-			phonePredictionTerms)
+			strings.Join(phonePredictionTerms, ", "))
 	}
 
 	// The provider's own smallest order, which this side publishes rather than assumes.
 	floor := regexp.MustCompile(`const val LEAST_ORDER_DEPOSIT: ULong = ([0-9_]+)UL`).
 		FindStringSubmatch(source)
 	if floor == nil {
-		t.Fatalf("LEAST_ORDER_DEPOSIT is no longer declared in %s", phonePredictionTerms)
+		t.Fatalf("LEAST_ORDER_DEPOSIT is no longer declared in %s", strings.Join(phonePredictionTerms, ", "))
 	}
 	theirs, err := strconv.ParseUint(strings.ReplaceAll(floor[1], "_", ""), 10, 64)
 	if err != nil {
@@ -141,10 +152,23 @@ func TestThePredictionRulesAreThePhonesOwn(t *testing.T) {
 	// The identifier a market or an event is named by, which is the one rule this side reimplements
 	// rather than shares. The pattern is quoted here so that a change to it fails a test rather
 	// than passing silently.
+	// And the longest destination either side will read, which is the protocol's own cap on one
+	// value said in both readers (SEE-157).
+	bound := regexp.MustCompile(`const val MOST_LINK_LENGTH: Int = (\d+)`).FindStringSubmatch(
+		phoneRules(t, []string{phoneSource + "plugins/actions/ProviderLink.kt"}))
+	if bound == nil {
+		t.Fatalf("MOST_LINK_LENGTH is no longer declared in the phone's link rule")
+	}
+	if theirLink, err := strconv.Atoi(bound[1]); err != nil {
+		t.Fatal(err)
+	} else if theirLink != MostLinkBytes {
+		t.Fatalf("a destination may be %d on the phone and %d here", theirLink, MostLinkBytes)
+	}
+
 	if !regexp.MustCompile(`Regex\("""\[A-Za-z0-9\]\[A-Za-z0-9\._:-\]\{0,63\}"""\)`).
 		MatchString(source) {
 		t.Fatalf("the phone's market-identifier pattern has changed (%s); IsMarketID here is "+
-			"written against [A-Za-z0-9][A-Za-z0-9._:-]{0,63}", phonePredictionTerms)
+			"written against [A-Za-z0-9][A-Za-z0-9._:-]{0,63}", strings.Join(phonePredictionTerms, ", "))
 	}
 
 	// And the term names themselves: every one the phone reads, spelled the same on this side.
@@ -162,6 +186,10 @@ func TestThePredictionRulesAreThePhonesOwn(t *testing.T) {
 		"DEPOSIT_SYMBOL":   DepositSymbol,
 		"LEAST_DEPOSIT":    LeastDeposit,
 		"MOST_DEPOSIT":     MostDeposit,
+		// Where the owner carries on, which is the one pair of terms that leaves the phone: a
+		// misspelling here is a destination published and never offered (SEE-157).
+		"PROVIDER_DEEP_LINK": ProviderDeepLink,
+		"PROVIDER_WEB_URL":   ProviderWebURL,
 	} {
 		if names[phone] != held {
 			t.Fatalf("the phone reads %s as %q and this template publishes %q", phone,
@@ -173,7 +201,7 @@ func TestThePredictionRulesAreThePhonesOwn(t *testing.T) {
 // The two bounds both kinds share, which live in the phone's swap file and are applied to a
 // prediction market's labels as well.
 func TestTheLabelBoundsAreThePhonesOwn(t *testing.T) {
-	source := phoneSource(t, phoneSwapTerms)
+	source := phoneRules(t, phoneSwapTerms)
 	for name, held := range map[string]int{
 		"MOST_DECIMALS":      mostDecimals,
 		"MOST_SYMBOL_LENGTH": mostSymbolUnits,
@@ -181,7 +209,7 @@ func TestTheLabelBoundsAreThePhonesOwn(t *testing.T) {
 		pattern := regexp.MustCompile(`const val ` + name + `: Int = (\d+)`)
 		match := pattern.FindStringSubmatch(source)
 		if match == nil {
-			t.Fatalf("%s is no longer declared in %s", name, phoneSwapTerms)
+			t.Fatalf("%s is no longer declared in %s", name, strings.Join(phoneSwapTerms, ", "))
 		}
 		theirs, err := strconv.Atoi(match[1])
 		if err != nil {
@@ -193,12 +221,16 @@ func TestTheLabelBoundsAreThePhonesOwn(t *testing.T) {
 	}
 }
 
-func phoneSource(t *testing.T, path string) string {
+func phoneRules(t *testing.T, paths []string) string {
 	t.Helper()
-	source, err := os.ReadFile(path)
-	if err != nil {
-		t.Skipf("the phone's source is not here (%v), which is what a copied-out template "+
-			"looks like", err)
+	read := make([]string, 0, len(paths))
+	for _, path := range paths {
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Skipf("the phone's source is not here (%v), which is what a copied-out template "+
+				"looks like", err)
+		}
+		read = append(read, string(source))
 	}
-	return string(source)
+	return strings.Join(read, "\n")
 }
