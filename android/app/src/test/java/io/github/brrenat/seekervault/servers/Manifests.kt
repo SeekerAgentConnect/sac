@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.servers
 
 import io.github.brrenat.seekervault.server.v1.ConnectionMode
+import io.github.brrenat.seekervault.server.v1.FeedAccess as WireAccess
 import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest
 import io.github.brrenat.seekervault.server.v1.directServer
@@ -56,6 +57,11 @@ fun feedManifest(
     required: List<Pair<String, IntRange>> = listOf(SWAP_PLUGIN to 1..1),
     environments: List<ServerEnvironment> = listOf(ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION),
     name: String = "",
+    /**
+     * Who may read the feed (SEE-156). Null leaves the field out, which is what every manifest
+     * published before restricted feeds existed looks like and is read as public.
+     */
+    access: WireAccess? = null,
 ): ServerManifest = serverManifest {
     this.serverId = serverId
     protocolVersion = protocol
@@ -64,6 +70,7 @@ fun feedManifest(
     feed = gatewayFeed {
         gatewayUrl = gateway
         this.channel = channel
+        access?.let { this.access = it }
     }
     requiredPlugins.addAll(required.map(::requirement))
     this.environments.addAll(environments)

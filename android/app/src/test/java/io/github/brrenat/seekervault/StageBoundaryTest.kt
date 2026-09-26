@@ -31,8 +31,11 @@ import org.w3c.dom.Element
  * library" limit for the Mobile Wallet Adapter client, on purpose: the app drives the wallet the
  * owner already has. It still holds no wallet key of its own, and Seed Vault's own SDK stays out.
  * SEE-114 moves visual authority into a separate design-system module with no dependency back into
- * app behavior. These checks fail when a limit is crossed early; the stage that lifts one changes
- * them.
+ * app behavior. SEE-156 adds one storage package, `access/storage/`, for where a restricted feed's
+ * access stands, and one carve-out from the no-keys rule: `access/DeviceKeys.kt`, a per-feed
+ * signing key generated in the Keystore that proves an installation to the publisher that approved
+ * it. It is not a wallet key — nothing it signs is a transaction — and the carve-out is the one
+ * file. These checks fail when a limit is crossed early; the stage that lifts one changes them.
  */
 class StageBoundaryTest {
     private val repoRoot =
@@ -181,6 +184,11 @@ class StageBoundaryTest {
         // No wallet key of the app's own. SAW-015 drives the wallet the owner already has; a key
         // never reaches this app.
         val keys = Regex("""KeyPairGenerator|PrivateKey|SecretKeySpec""")
+        // SEE-156's one exception, and it is not a wallet key: a per-feed P-256 key generated
+        // inside the Keystore, usable only for signing, never exported, and never used to sign
+        // anything a chain would accept. It is what makes an installation provable to a publisher
+        // that approved it. The carve-out is one file, checked below to still be what it claims.
+        val deviceKeys = File(main, "java/io/github/brrenat/seekervault/access/DeviceKeys.kt")
         // Stage 5.2's background work is WorkManager only, and only from sync/. A foreground
         // service, Android service, JobScheduler, alarm, or receiver remains outside the stage.
         val forbiddenBackground =
@@ -205,6 +213,11 @@ class StageBoundaryTest {
                 // revocations this phone still owes a gateway it could not reach. No request, no
                 // decision, no FCM registration and no push handle is kept here.
                 File(main, "java/io/github/brrenat/seekervault/push/storage"),
+                // Where a restricted feed's access stands (SEE-156). A decision and what it was
+                // bound to — the wallet that proved it, the device key's fingerprint, the
+                // publisher's request ID, the state and its time — and no secret: the device key
+                // is in the Keystore and the session is sealed in the credential vault's format.
+                File(main, "java/io/github/brrenat/seekervault/access/storage"),
             )
         val syncPackage = File(main, "java/io/github/brrenat/seekervault/sync")
         val storagePackages =
@@ -216,8 +229,22 @@ class StageBoundaryTest {
                 "${file.name}:${index + 1}: ${line.trim()}".takeIf { pattern.containsMatchIn(line) }
             }
         }
-        assertEquals(emptyList<String>(), hits(storage, sources.filterNot(::inStorage)))
-        assertEquals(emptyList<String>(), hits(keys, sources))
+        assertEquals(
+            emptyList<String>(),
+            hits(storage, sources.filterNot { inStorage(it) || it == deviceKeys }),
+        )
+        assertEquals(emptyList<String>(), hits(keys, sources.filterNot { it == deviceKeys }))
+        // The carve-out holds only while the file is still the thing it was let through for: a
+        // signing key, generated in the Keystore, that nothing asks for the private half of.
+        val deviceKeyText = deviceKeys.readText()
+        assertTrue(deviceKeyText.contains("KeyProperties.PURPOSE_SIGN"))
+        assertEquals(
+            emptyList<String>(),
+            hits(
+                Regex("""PURPOSE_DECRYPT|PURPOSE_ENCRYPT|PURPOSE_AGREE_KEY|SecretKeySpec"""),
+                listOf(deviceKeys),
+            ),
+        )
         assertEquals(emptyList<String>(), hits(forbiddenBackground, sources))
         assertEquals(
             emptyList<String>(),
@@ -429,7 +456,16 @@ class StageBoundaryTest {
         // No URL is ever persisted. A link read back off disk is a link something else could have
         // written, so every destination is built at the moment it is shown (SEE-94).
         val stores =
-            listOf("activity/storage", "connections/storage", "policy/storage", "wallet/storage")
+            listOf(
+                    "activity/storage",
+                    "connections/storage",
+                    "policy/storage",
+                    "wallet/storage",
+                    // A restricted feed's access record (SEE-156) holds the decision and what it
+                    // was bound to; the authentication origin it was made at is read off the
+                    // manifest the gateway serves, every time, and never off this disk.
+                    "access/storage",
+                )
                 .map { File(main, "java/io/github/brrenat/seekervault/$it") }
         assertEquals(
             emptyList<String>(),
@@ -1053,6 +1089,11 @@ class StageBoundaryTest {
                 // up, never parsed out of the name (SEE-145).
                 "io.github.brrenat.seekervault.plugins.legacyCapabilityOf",
                 "io.github.brrenat.seekervault.server.v1.ConnectionMode",
+                // A feed's access policy and the message that carries it (SEE-156). Still data:
+                // this package decides whether the policy is one this build supports, and an
+                // unknown one is refused rather than read as public.
+                "io.github.brrenat.seekervault.server.v1.FeedAccessPolicy",
+                "io.github.brrenat.seekervault.server.v1.GatewayFeed",
                 "io.github.brrenat.seekervault.server.v1.ServerEnvironment",
                 "io.github.brrenat.seekervault.server.v1.ServerManifest",
             ),
@@ -1100,14 +1141,24 @@ class StageBoundaryTest {
                 "url",
                 "gateway_url",
                 "channel",
+                // Who may read the feed (SEE-156), and nothing else about it: the policy, and the
+                // one origin a restricted feed's subscriber proves a wallet to.
+                "access",
+                "policy",
+                "auth_origin",
                 "plugin_id",
                 "min_contract",
                 "max_contract",
             ),
             fields,
         )
+        // The document itself is still bounded, and the one exception is the one SEE-156 argued
+        // for here: a feed's access policy, which says who may read the feed and nothing about
+        // what the phone may do with it. The gateway stamps it from its operator's registration,
+        // so it is not the publisher's claim either. Anything else would have to be added here
+        // first, which is the whole point of the list.
         assertEquals(
-            emptyList<String>(),
+            listOf("policy"),
             Regex("""(?i)\b(permission|policy|wallet|credential|token|secret|install|script)\b""")
                 .findAll(proto)
                 .map { it.value }
