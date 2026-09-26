@@ -91,9 +91,13 @@ Flags that exist, and their rules:
 
 `--access` on `rotate` is refused — *"--access belongs to `register` and `access`: rotation adds a
 credential and changes nothing else about a server"*. `go run ./cmd/feed-gatewayctl list` then shows
-the policy and the live grant count for a restricted publisher, and the gateway's own admin page
-shows the same sentence and says the policy is set with `feed-gatewayctl access`
-([`internal/admin/pages.go`](../../feed-gateway/internal/admin/pages.go)).
+the policy and the live grant count for a restricted publisher.
+
+**Or from the gateway's admin page** (SEE-162), when one is configured: **Add server** has a *Who may
+read its feed* choice with the authentication origin, and an existing publisher's page has a **Who
+may read** form. Choose *Restricted*, enter the origin, type the server ID to confirm, **Save
+access**. The rules and the result are the CLI's
+([`internal/admin/admin.go`](../../feed-gateway/internal/admin/admin.go)).
 
 ### If you forget this step
 
@@ -380,9 +384,10 @@ and `DEMO_ADMIN_PWD` from `~/.env` ([emulator-e2e.md](../development/emulator-e2
 beside the API on the one public port and `/trader` routed to `copytrading-admin` by the ingress.
 
 Two things to check before expecting any of §5 to work there, rather than assuming. **The gateway's
-registration:** the feed must be registered `restricted` at exactly that origin, with
-`feed-gatewayctl access` run against the gateway's own database — a `BROADCAST_DATABASE_URL` for
-that deployment, so `--database <postgres url>` from somewhere that can reach it. Whether it has
+registration:** the feed must be registered `restricted` at exactly that origin — from the
+gateway's admin page at `https://seeker-gateway-sg8g3.ondigitalocean.app/admin` (§2, SEE-162), or
+with `feed-gatewayctl access` in the gateway component's App Platform console, where
+`BROADCAST_DATABASE_URL` is already set. Whether it has
 been done is recorded nowhere in this repository, and until it is, the publisher publishes nothing
 and says `access_unconfirmed`. **The image:**
 [`deploy/signals-demo.yaml`](../../deploy/signals-demo.yaml) pins `copytrading-0.1.5`, and the

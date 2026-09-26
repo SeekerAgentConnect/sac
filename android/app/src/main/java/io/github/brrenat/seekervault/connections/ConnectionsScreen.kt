@@ -9,11 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -60,7 +57,6 @@ import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import io.github.brrenat.seekervault.sync.UpdateAvailability
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
-import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import java.time.Instant
 import java.time.ZoneId
@@ -228,9 +224,8 @@ fun HomeRoute(
 ) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    val snackbar = remember { SnackbarHostState() }
     val itemById = pendingItems.associateBy(PendingItem::homeId)
-    MessageEffect(connectionsState.message, snackbar, callbacks.onMessageShown)
+    MessageEffect(connectionsState.message, callbacks.onMessageShown)
 
     Box(modifier.fillMaxSize()) {
         HomeScreen(
@@ -274,7 +269,6 @@ fun HomeRoute(
                 ),
             modifier = Modifier.fillMaxSize(),
         )
-        SeekerSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 }
 
@@ -544,8 +538,13 @@ private fun Connection.toHomeServerState(
     // Access the publisher ended is the row's whole story: nothing on this phone is wrong, and
     // nothing about the gateway is either (SEE-156). Waiting for a decision is not disconnected —
     // it is the flow working — so it keeps the connected row and says what it is waiting for.
+    // A restricted feed with no request at all — the owner closed the wallet instead of signing —
+    // reads nothing, so it is not connected either, and the row says the request is what is
+    // missing.
+    val notRequested = accessNotRequested(access)
     val accessEnded =
-        access?.state == FeedAccessStore.State.Rejected ||
+        notRequested ||
+            access?.state == FeedAccessStore.State.Rejected ||
             access?.state == FeedAccessStore.State.Revoked ||
             access?.state == FeedAccessStore.State.Expired
     val rowState =
@@ -556,15 +555,17 @@ private fun Connection.toHomeServerState(
             else -> ServerRowState.Connected
         }
     val accessStatus =
-        when (access?.state) {
-            FeedAccessStore.State.Pending -> HomeCopy.AccessPending
-            FeedAccessStore.State.Approved -> HomeCopy.AccessApproved
-            FeedAccessStore.State.Rejected -> HomeCopy.AccessRejected
-            FeedAccessStore.State.Revoked -> HomeCopy.AccessRevoked
-            FeedAccessStore.State.Expired -> HomeCopy.AccessExpired
-            FeedAccessStore.State.Connected,
-            null -> null
-        }
+        if (notRequested) HomeCopy.AccessNotRequested
+        else
+            when (access?.state) {
+                FeedAccessStore.State.Pending -> HomeCopy.AccessPending
+                FeedAccessStore.State.Approved -> HomeCopy.AccessApproved
+                FeedAccessStore.State.Rejected -> HomeCopy.AccessRejected
+                FeedAccessStore.State.Revoked -> HomeCopy.AccessRevoked
+                FeedAccessStore.State.Expired -> HomeCopy.AccessExpired
+                FeedAccessStore.State.Connected,
+                null -> null
+            }
     val status =
         accessStatus
             ?: when (rowState) {
@@ -719,6 +720,7 @@ object HomeCopy {
      * A restricted feed's access, as one line (SEE-156). The sentence that says what to do about
      * each is on the connection's own screen, where there is room for it.
      */
+    const val AccessNotRequested = "Not paired · request access"
     const val AccessPending = "Waiting for approval"
     const val AccessApproved = "Approved · connecting"
     const val AccessRejected = "Not approved"

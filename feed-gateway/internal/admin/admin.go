@@ -167,6 +167,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST "+at+"/servers", s.guarded(s.registerServer))
 	mux.HandleFunc("GET "+at+"/servers/{server}", s.guarded(s.showServer))
 	mux.HandleFunc("POST "+at+"/servers/{server}/capabilities", s.guarded(s.setCapabilities))
+	mux.HandleFunc("POST "+at+"/servers/{server}/access", s.guarded(s.setAccess))
 	mux.HandleFunc("POST "+at+"/servers/{server}/rotate", s.guarded(s.rotateCredential))
 	mux.HandleFunc("POST "+at+"/servers/{server}/revoke", s.guarded(s.revokeCredential))
 	mux.HandleFunc("POST "+at+"/servers/{server}/forget", s.guarded(s.forgetServer))
@@ -571,6 +572,83 @@ func capabilityNotice(publishing, relaying bool) string {
 			"call; none is revoked, so enabling a capability again makes them work. Its feed is " +
 			"still served and its bindings still exist."
 	}
+}
+
+// setAccess is feed-gatewayctl access on this page (SEE-162): the operator choosing who may read a
+// feed, and where its subscribers prove who they are.
+//
+// It is not a switch like the capabilities above. Changing the policy or the origin moves the
+// channel's access epoch, so every stream name issued under the old policy is retired and every
+// listener attached under it goes silent — which is why a change needs the server ID typed back,
+// as forgetting does. Asking for what is already held changes nothing and needs no confirmation.
+func (s *Server) setAccess(writer http.ResponseWriter, request *http.Request, at *visit) {
+	serverID := request.PathValue("server")
+	if !rules.IsID(serverID) {
+		s.notFound(writer)
+		return
+	}
+	access, problem := accessOf(strings.TrimSpace(request.PostFormValue("access")),
+		strings.TrimSpace(request.PostFormValue("auth_origin")))
+	if problem != "" {
+		s.back(writer, request, at, serverID, problem, true)
+		return
+	}
+	held, err := s.options.Store.Publisher(request.Context(), serverID)
+	if err != nil {
+		s.failed(writer, "read publisher", err)
+		return
+	}
+	if held == nil {
+		s.notFound(writer)
+		return
+	}
+	if held.Access.Restricted() == access.Restricted() && held.Access.AuthOrigin == access.AuthOrigin {
+		s.back(writer, request, at, serverID, "Nothing changed: this feed already is "+
+			describeAccess(access)+".", false)
+		return
+	}
+	if access.Restricted() && !held.Publishing {
+		s.back(writer, request, at, serverID, "Only a feed can be restricted. Enable publishing "+
+			"for this server first.", true)
+		return
+	}
+	if strings.TrimSpace(request.PostFormValue("confirm")) != serverID {
+		s.back(writer, request, at, serverID, "Type this publisher's server ID exactly to confirm "+
+			"the change: it retires every stream name issued under the current policy.", true)
+		return
+	}
+	err = s.options.Store.SetAccess(request.Context(), serverID, access)
+	switch {
+	case errors.Is(err, storage.ErrNoPublisher):
+		s.record("access", serverID, "refused: no such publisher")
+		s.notFound(writer)
+	case err != nil:
+		s.record("access", serverID, "failed")
+		s.failed(writer, "set access", err)
+	default:
+		s.record("access", serverID, describeAccess(access))
+		s.back(writer, request, at, serverID, accessNotice(access), false)
+	}
+}
+
+// accessNotice says what just changed and what the publisher has to do about it, in the words
+// feed-gatewayctl access prints.
+func accessNotice(access storage.Access) string {
+	said := "This feed is now " + describeAccess(access) + ". Every stream name issued under the " +
+		"old policy is retired. The publisher should publish its manifest again so the policy it " +
+		"states matches this one."
+	if access.Restricted() {
+		said += " Its PUBLISHER_AUTH_ORIGIN must be " + access.AuthOrigin + " character for " +
+			"character, or it publishes nothing."
+	}
+	return said
+}
+
+func describeAccess(access storage.Access) string {
+	if access.Restricted() {
+		return "restricted, authenticated at " + access.AuthOrigin
+	}
+	return "public"
 }
 
 func registrationOf(publisher storage.Publisher) storage.Registration {

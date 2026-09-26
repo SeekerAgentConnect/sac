@@ -19,6 +19,9 @@ sealed interface InAppNotificationTarget {
 
     /** A server that ended the pairing: Add connection, because pairing again is the only way. */
     data class PairAgain(val connectionId: String) : InAppNotificationTarget
+
+    /** A service message: there is nowhere to go, so a tap only puts it away. */
+    data object Dismiss : InAppNotificationTarget
 }
 
 /**

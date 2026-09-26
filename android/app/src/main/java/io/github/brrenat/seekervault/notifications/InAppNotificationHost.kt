@@ -65,6 +65,7 @@ fun InAppNotifications(
     reviewOpen: (ReviewIdentity) -> Boolean,
     onOpen: (InAppNotificationTarget) -> Unit,
     modifier: Modifier = Modifier,
+    notices: InAppNotices = LocalInAppNotices.current,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -112,6 +113,23 @@ fun InAppNotifications(
         }
     }
 
+    // Service messages join the same queue, one banner at a time, while the app is looked at.
+    LaunchedEffect(lifecycleOwner, queue, notices) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val dismiss = context.getString(R.string.in_app_notification_dismiss)
+            notices.texts.collect { text ->
+                queue.notify(
+                    kind = InAppNotificationKind.Info,
+                    target = InAppNotificationTarget.Dismiss,
+                    title = text,
+                    subtitle = null,
+                    openActionLabel = dismiss,
+                    dismissActionLabel = dismiss,
+                )
+            }
+        }
+    }
+
     // Plain collection: the queue is already emptied when the app leaves the foreground, so a
     // lifecycle-aware collector would only hold the last banner on a screen nobody is looking at.
     val notes by queue.notes.collectAsState()
@@ -127,7 +145,7 @@ fun InAppNotifications(
             leaving = visible.leaving,
             onOpen = {
                 queue.dismiss(visible.id)
-                onOpen(visible.target)
+                if (visible.target != InAppNotificationTarget.Dismiss) onOpen(visible.target)
             },
             onDismiss = { queue.dismiss(visible.id) },
             modifier = modifier.inAppNotificationSafeArea(),

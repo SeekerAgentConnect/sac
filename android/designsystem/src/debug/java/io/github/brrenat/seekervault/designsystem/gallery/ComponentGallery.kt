@@ -237,6 +237,9 @@ internal val componentGallerySpecimens =
         GallerySpecimen(component = "notification", variant = "kind=disconnected") {
             InAppNotificationDisconnectedPreview()
         },
+        GallerySpecimen(component = "notification", variant = "kind=info") {
+            InAppNotificationInfoPreview()
+        },
         GallerySpecimen(component = "owner-input-card", variant = "state=chosen kind=prediction") {
             OwnerInputCardPredictionChosenPreview()
         },
