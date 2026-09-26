@@ -10,7 +10,7 @@ import (
 // bundled `jupiter.swap` plugin (SEE-93).
 //
 // The terms are the contract in docs/protocol.md#a-swap-signals-terms-see-93, and the rules are
-// `jupiter/SwapTerms.kt`'s, on this side. Two of them are the whole shape of a signal:
+// `plugins/actions/SwapAction.kt`'s, on this side. Two of them are the whole shape of a signal:
 //
 //   - **An asset is a mint.** "BTC" names a dozen things on Solana and nothing off it, so a term
 //     here is an exact base58 32-byte mint address and only that. A symbol, if it is given, is a
