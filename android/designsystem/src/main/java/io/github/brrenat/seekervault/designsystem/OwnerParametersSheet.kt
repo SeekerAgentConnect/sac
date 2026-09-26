@@ -8,7 +8,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -61,7 +65,11 @@ fun OwnerParametersSheet(
     callbacks: OwnerParametersSheetCallbacks,
     modifier: Modifier = Modifier,
     tags: OwnerParametersSheetTags = OwnerParametersSheetTags(),
+    /** Focuses the amount when the sheet opens, which brings up the keyboard with it. */
+    focusAmount: Boolean = false,
 ) {
+    val amountFocus = remember { FocusRequester() }
+    if (focusAmount) LaunchedEffect(amountFocus) { amountFocus.requestFocus() }
     SheetScaffold(
         title = state.title,
         variant = SheetScaffoldVariant.StackedOverBlurred,
@@ -115,7 +123,10 @@ fun OwnerParametersSheet(
                 placeholder = "0",
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 reserveErrorSpace = false,
-                inputModifier = tags.amount?.let { Modifier.testTag(it) } ?: Modifier,
+                inputModifier =
+                    (tags.amount?.let { Modifier.testTag(it) } ?: Modifier).focusRequester(
+                        amountFocus
+                    ),
             )
             Text(
                 text = state.amountHelp,

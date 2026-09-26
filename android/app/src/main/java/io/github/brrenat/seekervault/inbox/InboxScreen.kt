@@ -1,13 +1,20 @@
 package io.github.brrenat.seekervault.inbox
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import io.github.brrenat.seekervault.connections.Answer
@@ -35,6 +42,7 @@ import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.ScreenScaffold
 import io.github.brrenat.seekervault.designsystem.ScreenScrollBody
 import io.github.brrenat.seekervault.designsystem.SeekerTabBar
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -109,47 +117,77 @@ fun InboxScreen(
                 onSelect = callbacks.onSelectTab,
                 modifier = Modifier.testTag(InboxScreenTags.Tabs),
             )
-            ScreenScrollBody(Modifier.weight(1f).testTag(InboxTags.LIST)) {
-                when (state.selectedTab) {
-                    InboxTab.Pending -> {
-                        if (state.pending.isEmpty()) {
-                            EmptyState(
-                                screen = EmptyStateScreen.Inbox,
-                                title = InboxCopy.EmptyPendingTitle,
-                                body = InboxCopy.EmptyPendingBody,
-                                modifier = Modifier.testTag(InboxTags.EMPTY),
-                            )
-                        } else {
-                            state.pending.forEach { item ->
-                                InboxRow(
-                                    model = item.model,
-                                    kind = item.kind,
-                                    origin = item.origin,
-                                    verdict = item.verdict,
-                                    titleLines = item.titleLines,
-                                    onReview = { callbacks.onReview(item.id) },
-                                    modifier = Modifier.testTag(InboxScreenTags.pending(item.id)),
+            // A swipe left or right moves between the tabs, and a tap on a tab moves the pages: the
+            // selected tab stays the one source of truth, and the pager follows it both ways.
+            val pager =
+                rememberPagerState(initialPage = state.selectedTab.ordinal) {
+                    InboxTab.entries.size
+                }
+            val select by rememberUpdatedState(callbacks.onSelectTab)
+            LaunchedEffect(state.selectedTab) {
+                if (pager.targetPage != state.selectedTab.ordinal) {
+                    pager.animateScrollToPage(state.selectedTab.ordinal)
+                }
+            }
+            LaunchedEffect(pager) {
+                snapshotFlow { pager.settledPage }.collect { select(InboxTab.entries[it]) }
+            }
+            HorizontalPager(
+                state = pager,
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.Top,
+            ) { page ->
+                ScreenScrollBody(Modifier.fillMaxSize().testTag(InboxTags.LIST)) {
+                    // The first row sits as far below the tabs as the rows sit from the screen's
+                    // sides: the body's own top padding plus one row gap make the side margin.
+                    Spacer(
+                        Modifier.height(
+                            SeekerTheme.spacing.xl - SeekerTheme.spacing.xs - SeekerTheme.spacing.lg
+                        )
+                    )
+                    when (InboxTab.entries[page]) {
+                        InboxTab.Pending -> {
+                            if (state.pending.isEmpty()) {
+                                EmptyState(
+                                    screen = EmptyStateScreen.Inbox,
+                                    title = InboxCopy.EmptyPendingTitle,
+                                    body = InboxCopy.EmptyPendingBody,
+                                    modifier = Modifier.testTag(InboxTags.EMPTY),
                                 )
+                            } else {
+                                state.pending.forEach { item ->
+                                    InboxRow(
+                                        model = item.model,
+                                        kind = item.kind,
+                                        origin = item.origin,
+                                        verdict = item.verdict,
+                                        titleLines = item.titleLines,
+                                        onReview = { callbacks.onReview(item.id) },
+                                        modifier =
+                                            Modifier.testTag(InboxScreenTags.pending(item.id)),
+                                    )
+                                }
+                                ScreenCaption(InboxCopy.FooterCaption)
                             }
-                            ScreenCaption(InboxCopy.FooterCaption)
                         }
-                    }
-                    InboxTab.History -> {
-                        if (state.history.isEmpty()) {
-                            EmptyState(
-                                screen = EmptyStateScreen.Activity,
-                                title = InboxCopy.EmptyHistoryTitle,
-                                body = InboxCopy.EmptyHistoryBody,
-                                modifier = Modifier.testTag(InboxScreenTags.EmptyHistory),
-                            )
-                        } else {
-                            state.history.forEach { item ->
-                                HistoryRow(
-                                    model = item.model,
-                                    state = item.rowState,
-                                    onClick = { callbacks.onOpenHistory(item.id) },
-                                    modifier = Modifier.testTag(InboxScreenTags.history(item.id)),
+                        InboxTab.History -> {
+                            if (state.history.isEmpty()) {
+                                EmptyState(
+                                    screen = EmptyStateScreen.Activity,
+                                    title = InboxCopy.EmptyHistoryTitle,
+                                    body = InboxCopy.EmptyHistoryBody,
+                                    modifier = Modifier.testTag(InboxScreenTags.EmptyHistory),
                                 )
+                            } else {
+                                state.history.forEach { item ->
+                                    HistoryRow(
+                                        model = item.model,
+                                        state = item.rowState,
+                                        onClick = { callbacks.onOpenHistory(item.id) },
+                                        modifier =
+                                            Modifier.testTag(InboxScreenTags.history(item.id)),
+                                    )
+                                }
                             }
                         }
                     }
@@ -352,7 +390,7 @@ private fun LocalResult.toInboxHistoryRow(
             signing is SigningOutcome.Sent -> "Sent to the network"
             signing is SigningOutcome.Signed -> "Signed by your wallet"
             signing == SigningOutcome.Declined -> "Declined in the wallet"
-            signing is SigningOutcome.Unresolved -> "Unknown: no answer from the wallet"
+            signing is SigningOutcome.Unresolved -> "Wallet declined"
             signing is SigningOutcome.Failed -> "Wallet did not complete it"
             else -> "Waiting for the wallet"
         }
@@ -392,8 +430,7 @@ private fun ProposalRecord.toInboxHistoryRow(
                     ProposalOutcome.Declined -> HistoryRowState.Unknown to "Declined in the wallet"
                     is ProposalOutcome.Failed ->
                         HistoryRowState.Unknown to "Wallet did not complete it"
-                    is ProposalOutcome.Unresolved ->
-                        HistoryRowState.Unknown to "Unknown: no answer from the wallet"
+                    is ProposalOutcome.Unresolved -> HistoryRowState.Unknown to "Wallet declined"
                     ProposalOutcome.Pending -> HistoryRowState.Unknown to "In progress"
                 }
             is ProposalStanding.Dismissed -> HistoryRowState.Dismissed to "Dismissed on this phone"

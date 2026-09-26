@@ -38,6 +38,7 @@ import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.policy.AmountEntry
 import io.github.brrenat.seekervault.policy.readAmount
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
+import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.executable
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.ui.Identifier
@@ -392,7 +393,7 @@ fun ProposalReviewScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (review.record.dismissed == null && executed == null) {
+                if (review.standing is ProposalStanding.Open && executed == null) {
                     SeekerButton(
                         text = stringResource(R.string.operation_dismiss),
                         onClick = onDismiss,

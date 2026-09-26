@@ -175,7 +175,7 @@ class FeedNotificationsTest {
         assertTrue(
             platform.activeNotifications.all {
                 it.notification.extras[Notification.EXTRA_TEXT] ==
-                    "Review the market before choosing a side and stake."
+                    "Review the market before choosing a side and amount."
             }
         )
     }

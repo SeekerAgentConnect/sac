@@ -235,7 +235,7 @@ internal fun RequestCarouselRestPreview() {
                     RequestTileModel(
                         title = "BTC < \$68k",
                         sourceName = "Jupiter Prediction demo",
-                        supportingText = "You pick side and stake",
+                        supportingText = "You pick side and amount",
                         warningCount = 1,
                     ),
             ),

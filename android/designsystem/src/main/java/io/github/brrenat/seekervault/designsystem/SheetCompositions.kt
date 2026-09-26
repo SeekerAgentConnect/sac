@@ -463,7 +463,8 @@ private fun ConnectionFactCard(fact: ConnectionDetailFact) {
 @Composable
 private fun FactRowValueStyle.connectionFactTextStyle(): TextStyle =
     when (this) {
-        FactRowValueStyle.Plain -> MaterialTheme.typography.bodyMedium
+        FactRowValueStyle.Plain,
+        FactRowValueStyle.Link -> MaterialTheme.typography.bodyMedium
         FactRowValueStyle.Mono,
         FactRowValueStyle.MonoWrap -> SeekerTheme.typography.identifier
     }

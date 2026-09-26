@@ -220,13 +220,13 @@ class PredictionReviewTest {
     }
 
     @Test
-    fun theHeadlineIsTheMarketUntilASideAndStakeAreChosen() {
+    fun theHeadlineStaysTheMarketWhenASideAndStakeAreChosen() {
         val before = sheet()
         assertEquals(record.proposal.title, before.headline)
         assertEquals(OwnerInputCardState.Unchosen, before.yourPart?.state)
 
         val after = sheet(review(choice = chosen))
-        assertEquals("5 USDC on Yes", after.headline)
+        assertEquals(record.proposal.title, after.headline)
         assertEquals("5 USDC on Yes", after.yourPart?.summary)
     }
 
@@ -319,7 +319,7 @@ class PredictionReviewTest {
     @Test
     fun theWordsArePredictionWordsNeverSwapWords() {
         val live = sheet(review(choice = chosen, prepared = true))
-        assertEquals("Approve and stake", live.primaryAction.label)
+        assertEquals("Approve and trade", live.primaryAction.label)
         assertEquals("Dismiss", live.secondaryAction.label)
         assertEquals(
             "Dismissing keeps the decision on this phone. CopyTrading is never told either way.",
@@ -327,7 +327,7 @@ class PredictionReviewTest {
         )
         val sandbox =
             sheet(review(choice = chosen, prepared = true, environment = PluginEnvironment.Sandbox))
-        assertEquals("Simulate the stake", sandbox.primaryAction.label)
+        assertEquals("Simulate the trade", sandbox.primaryAction.label)
         assertTrue(sandbox.sandboxNotice != null)
         val everything =
             listOf(live, sandbox).flatMap { state ->
@@ -385,19 +385,20 @@ class PredictionReviewTest {
                     },
                     onRules = {},
                     onBack = {},
+                    onOpenLink = { _, _ -> },
                 )
             }
         }
         // On an 800dp-tall phone the body is far longer than the screen, and the decision is still
         // on it without scrolling.
-        compose.onNodeWithText("Approve and stake").assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithText("Approve and trade").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText("Dismiss").assertIsDisplayed()
-        compose.onNodeWithText("Approve and stake").performClick()
+        compose.onNodeWithText("Approve and trade").performClick()
         assertEquals(0, approvals)
 
         compose.onNodeWithText("I have read the warning and want to approve anyway").performClick()
         assertEquals(true, acknowledged)
-        compose.onNodeWithText("Approve and stake").assertIsEnabled().performClick()
+        compose.onNodeWithText("Approve and trade").assertIsEnabled().performClick()
         assertEquals(1, approvals)
 
         compose.onNodeWithText("Change").performClick()
@@ -412,8 +413,8 @@ class PredictionReviewTest {
                 PredictionParametersSheet(review = review(), onUse = { used = it }, onClose = {})
             }
         }
-        compose.onNodeWithText("Your side and stake").assertIsDisplayed()
-        compose.onNodeWithText("How much to stake", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Your side and amount").assertIsDisplayed()
+        compose.onNodeWithText("The amount is yours alone", substring = true).assertIsDisplayed()
         compose.onNodeWithTag(PredictionReviewTags.USE).assertIsNotEnabled()
 
         compose.onNodeWithTag(PredictionReviewTags.YES).performClick()
