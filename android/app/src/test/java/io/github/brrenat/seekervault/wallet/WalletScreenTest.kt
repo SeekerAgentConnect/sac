@@ -38,6 +38,7 @@ class WalletScreenTest {
                 state = walletScreenState(state),
                 callbacks =
                     WalletScreenCallbacks(
+                        onChooseWalletApp = { actions += "app:$it" },
                         onChooseNetwork = { actions += "network:${it.name}" },
                         onConnect = { actions += "connect" },
                         onDisconnect = { actions += "disconnect" },
