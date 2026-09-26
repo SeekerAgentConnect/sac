@@ -837,3 +837,86 @@ func TestACheckInOnlyMovesForwardAndToleratesAStranger(t *testing.T) {
 		t.Fatalf("an unregistered server reads as seen at %v", unknown)
 	}
 }
+
+// Every registration that existed before restricted feeds did is public, with no authentication
+// origin and no epoch (SEE-156). That is the migration's whole promise: a gateway that upgrades
+// does not quietly restrict a feed, and does not quietly open one either.
+func TestTheAccessColumnsAreAddedWithoutLosingAnythingOrChangingWhoMayRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broadcast.db")
+
+	// A database at version 6: the schema as it was, with a publisher and a credential in it.
+	older, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, `PRAGMA user_version = 6`,
+	} {
+		if _, err := older.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := older.Exec(
+		`INSERT INTO publisher (server_id, label, created_at_ms, host, publishing, relaying)
+		 VALUES (?, ?, ?, '', 1, 0)`,
+		publisher, "from an older gateway", milliseconds(published)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := older.Exec(
+		`INSERT INTO publisher_credential
+		   (credential_hash, server_id, label, created_at_ms, revoked_at_ms, capability)
+		 VALUES (?, ?, ?, ?, NULL, 'publish')`,
+		hashOf(publisher), publisher, "old", milliseconds(published)); err != nil {
+		t.Fatal(err)
+	}
+	if err := older.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	documents, err := Open(path)
+	if err != nil {
+		t.Fatalf("a version 6 database could not be opened: %v", err)
+	}
+	t.Cleanup(func() { _ = documents.Close() })
+	ctx := context.Background()
+
+	held, err := documents.Publisher(ctx, publisher)
+	if err != nil || held == nil || held.Label != "from an older gateway" {
+		t.Fatalf("the existing registration is gone: %+v, %v", held, err)
+	}
+	if resolved, err := documents.PublisherFor(ctx, hashOf(publisher)); err != nil ||
+		resolved != publisher {
+		t.Fatalf("the existing credential stopped resolving: %q, %v", resolved, err)
+	}
+	access, err := documents.Access(ctx, publisher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if access.Restricted() || access.AuthOrigin != "" || access.Epoch != 0 {
+		t.Fatalf("a registration made before SEE-156 migrated to %+v", access)
+	}
+	if grants, err := documents.Grants(ctx, publisher); err != nil || len(grants) != 0 {
+		t.Fatalf("a migrated registration has grants: %v, %v", grants, err)
+	}
+
+	// And the operator's own decision, made after the migration, survives a restart on the file.
+	restricted := storage.Access{
+		Policy:     storage.RestrictedAccess,
+		AuthOrigin: "https://auth.example.com",
+	}
+	if err := documents.SetAccess(ctx, publisher, restricted); err != nil {
+		t.Fatal(err)
+	}
+	if err := documents.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	back, err := reopened.Access(ctx, publisher)
+	if err != nil || !back.Restricted() || back.AuthOrigin != restricted.AuthOrigin {
+		t.Fatalf("the registration did not survive a restart: %+v, %v", back, err)
+	}
+}
