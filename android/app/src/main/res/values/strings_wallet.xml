@@ -17,6 +17,9 @@
     <string name="wallet_disconnect">Disconnect wallet</string>
     <string name="wallet_disconnecting">Disconnecting…</string>
     <string name="wallet_connected_summary">Connected %1$s · %2$s</string>
+    <string name="wallet_connected_summary_account">Connected %1$s · %2$s · account %3$s</string>
+    <string name="wallet_app_label">Wallet app</string>
+    <string name="wallet_app_explanation">This phone has more than one wallet app. Pick the one to connect: approvals will open it directly, and never ask you to choose again.</string>
     <string name="wallet_security_explanation">This app never sees your seed phrase or keys. It asks the wallet you already use, and keeps only the address you pick.</string>
 
     <string name="wallet_field_address">Address</string>

@@ -1,17 +1,27 @@
 package io.github.brrenat.seekervault.wallet
 
 /**
- * The authorization a wallet reported while a session was open: the token to keep from now on, and
- * the accounts the wallet says this app may use.
+ * The authorization a wallet reported while a session was open: the token to keep from now on, the
+ * accounts the wallet says this app may use, and where the wallet says associations for it belong.
  *
  * Mobile Wallet Adapter reauthorizes this app at the start of every session, so this is what the
  * wallet believes about the app *now*, not what this phone stored earlier. [token] is a secret: it
  * never leaves the phone, and it is never written to a log.
  */
-data class WalletAuthorization(val token: String?, val accounts: List<WalletAccount>) {
+data class WalletAuthorization(
+    val token: String?,
+    val accounts: List<WalletAccount>,
+    /**
+     * The wallet's own association URI, from `AuthorizationResult.walletUriBase`, or null when it
+     * reported none (SEE-159). It is kept only when Mobile Wallet Adapter would take it back as an
+     * association prefix, so the wallet's routing survives a restart instead of living in a client
+     * object until the process ends.
+     */
+    val uriBase: String? = null,
+) {
     override fun toString(): String {
         val held = if (token == null) "none" else "<redacted>"
-        return "WalletAuthorization(accounts=$accounts, token=$held)"
+        return "WalletAuthorization(accounts=$accounts, token=$held, uriBase=$uriBase)"
     }
 }
 
@@ -93,14 +103,20 @@ sealed interface WalletOutcome<out T> {
  * [MwaWalletAdapter] drives a wallet only through this, so authorization, the token the wallet
  * hands back, signing, sending, and cleanup are all exercised in tests without a wallet app.
  *
- * One client is one session with one wallet on one [network]. Mobile Wallet Adapter's own client
- * learns where the wallet answered from while it authorizes and keeps it for as long as the client
- * lives, so the client is kept for the session's lifetime rather than made again per operation
- * (docs/testing/wallet-lifecycle.md#wallet-targeting). It holds no transport open between calls.
+ * One client is one session with one wallet on one [network], aimed at one [target]. The session is
+ * kept for its lifetime rather than made again per operation, and it is never reused once either of
+ * those stops meaning the same wallet (docs/testing/wallet-lifecycle.md#wallet-targeting). It holds
+ * no transport open between calls.
  */
 interface WalletSessionClient {
     /** The network this session is for. A session is never reused for another one. */
     val network: WalletNetwork
+
+    /**
+     * Where this session's association is aimed (SEE-159). A session opened at one wallet app is
+     * never reused for another, so the target is fixed when the session is made.
+     */
+    val target: WalletTarget
 
     /**
      * The authorization offered to the wallet on the next call, or null to ask the owner afresh.
