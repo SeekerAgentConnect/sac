@@ -64,7 +64,9 @@ sealed interface ReviewSheetHeaderChip {
         val verbosity: EnvChipVerbosity = EnvChipVerbosity.Full,
     ) : ReviewSheetHeaderChip
 
-    data class Network(val value: NetworkChipNetwork) : ReviewSheetHeaderChip
+    /** [flagged] draws a test network in orange, as the prediction review does (SEE-158). */
+    data class Network(val value: NetworkChipNetwork, val flagged: Boolean = false) :
+        ReviewSheetHeaderChip
 }
 
 data class ReviewSheetYourPart(
@@ -438,7 +440,7 @@ private fun ReviewSheetHeaderChip(chip: ReviewSheetHeaderChip) {
         is ReviewSheetHeaderChip.Feed ->
             SourceChip(chip.name, colour = chip.colour, size = SourceChipSize.Compact)
         is ReviewSheetHeaderChip.Environment -> EnvChip(chip.value, chip.verbosity)
-        is ReviewSheetHeaderChip.Network -> NetworkChip(chip.value)
+        is ReviewSheetHeaderChip.Network -> NetworkChip(chip.value, flagged = chip.flagged)
     }
 }
 
