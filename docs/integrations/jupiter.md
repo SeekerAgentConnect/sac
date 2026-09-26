@@ -1,4 +1,4 @@
-# Jupiter, as this app uses it (SEE-93, SEE-94, SEE-96, SEE-145)
+# Jupiter, as this app uses it (SEE-93, SEE-94, SEE-96, SEE-145, SEE-157)
 
 One bundled execution provider gets its data from Jupiter, directly from the owner's phone: `jupiter`, serving two provider-neutral actions — `swap`, for which it fetches a route and a transaction, and `prediction.buy`, for which it fetches a market and an order. This page is what was verified about those APIs, what the app sends them, and what happens when they say no. What the app does with the answers is [wiki/jupiter-swap.md](../wiki/jupiter-swap.md) and [wiki/jupiter-prediction.md](../wiki/jupiter-prediction.md).
 
@@ -66,6 +66,20 @@ The publisher template in [`demo-prediction/`](../../demo-prediction) reads two 
 
 **A key is optional here too.** The keyless host serves these endpoints without one, which is what the template defaults to; `PREDICTION_API_KEY` raises the allowance on the keyed host. It goes in one `x-api-key` header and nowhere else — never in a manifest, a document, a log line or an answer — and [a test presents one and searches every answer and the whole log for it](../../demo-prediction/internal/api/discovery_test.go).
 
+## The platform's own addresses, and its app (SEE-157)
+
+Two of the app's destinations are not API calls at all: "this market on Jupiter" on a prediction under review, and "open order on Jupiter" once an order has been placed. Both are addresses on `jup.ag` handed to the phone, and what was verified about them is this:
+
+**Jupiter publishes no private scheme.** There is no documented `jupiter://`, and none is invented — an invented scheme resolves to nothing and looks more native than it is.
+
+**What it does publish is a delegation.** `https://jup.ag/.well-known/assetlinks.json` grants `delegate_permission/common.handle_all_urls` to the Android app `ag.jup.jupiter.android` (and to its `.debug`, `.dev` and `.staging` builds), each pinned to a signing certificate. Re-read on 2026-09-26, unchanged from SEE-157's first reading. So **a `jup.ag` address *is* Jupiter's deep link**, verifiably and by Android's own rules: a phone with Jupiter installed opens it in Jupiter, and a phone without it opens it in a browser.
+
+That is why the app asks for the app first and accepts the browser second (`activity/Explorer.kt`: `FLAG_ACTIVITY_REQUIRE_NON_BROWSER`, then the plain open), and why the publisher template sends the *same* address as both `provider_deep_link` and `provider_web_url` — the two terms stay separate because the next venue's two may differ.
+
+**The market's address comes from the publisher, and is still checked here.** The page is addressed by the event's slug, which the template reads from the listing and the phone cannot ask for; the adapter accepts a named address only when it is `https` on `jup.ag` or a subdomain, and otherwise composes `https://jup.ag/prediction/<marketId>` itself.
+
+**There is no per-order page.** The platform addresses an owner's positions as a portfolio and not one order at a time, so "open order" opens the prediction portfolio, and it is offered only once the record holds the order account this phone actually submitted. No per-order address is guessed.
+
 ## Authentication: none, deliberately
 
 Nothing the **app** sends is authenticated. Jupiter's keyless tier is what it uses, so **there is no secret in the APK to extract** and no proxy of the owner's requests through anything of ours — the two things the stage explicitly rules out. An operator who wants higher limits would supply their own key to their own build; that is a build's business and not this app's, and the endpoint is already a parameter.
@@ -91,6 +105,7 @@ The publisher template does poll, and the allowance is the reason its defaults l
 - **A market read** carries a market identifier, and nothing else at all.
 - **The build** — a swap's or an order's — additionally carries the owner's public address, because a transaction has to be built for the account that will sign it.
 - **Nothing else, ever.** Not which publisher proposed it, not the proposal's ID, not the signature afterwards, and no result of any kind — there is nothing to report to anybody.
+- **A destination is not a request.** Opening "this market on Jupiter" hands an address to another app or to a browser, which then fetches it as itself; this app opens no connection to `jup.ag` for it and learns nothing about what happened next.
 - **And nothing at all to the publisher or the shared gateway.** `OperationPrivacyTest` captures every request to both and searches it; `PredictionOperationTest` does the same for an order.
 
 ## When it says no
