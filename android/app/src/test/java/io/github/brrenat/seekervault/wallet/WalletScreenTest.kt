@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.wallet
 
 import android.content.Context
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -149,8 +150,73 @@ class WalletScreenTest {
         compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).assertIsNotEnabled()
     }
 
+    @Test
+    fun offersTheInstalledWalletAppsWhenThereIsMoreThanOne() {
+        show(
+            WalletUiState(
+                loaded = true,
+                apps = listOf(SEEKER, OTHER),
+                connections = listOf(CONNECTION),
+            )
+        )
+
+        compose.onNodeWithTag(WalletTags.app(SEEKER.packageName)).assertIsNotSelected()
+        compose.onNodeWithTag(WalletTags.app(OTHER.packageName)).performScrollTo().performClick()
+        // Connecting waits for the pick, so nothing goes out able to open Android's chooser.
+        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().assertIsNotEnabled()
+        assertEquals(listOf("app:${OTHER.packageName}"), actions)
+    }
+
+    @Test
+    fun showsThePickAndLetsTheOwnerConnectOnceOneIsMade() {
+        show(
+            WalletUiState(
+                loaded = true,
+                apps = listOf(SEEKER, OTHER),
+                chosen = SEEKER,
+                connections = listOf(CONNECTION),
+            )
+        )
+
+        compose.onNodeWithTag(WalletTags.app(SEEKER.packageName)).assertIsSelected()
+        compose
+            .onNodeWithTag(WalletTags.CONNECT)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        assertEquals(listOf("connect"), actions)
+    }
+
+    @Test
+    fun asksNothingWhenThisPhoneHasOneWalletApp() {
+        show(WalletUiState(loaded = true, apps = listOf(SEEKER), connections = listOf(CONNECTION)))
+
+        compose.onNodeWithTag(WalletTags.app(SEEKER.packageName)).assertDoesNotExist()
+        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().assertIsEnabled()
+    }
+
+    @Test
+    fun namesTheWalletAppRatherThanTheAccountLabel() {
+        show(
+            WalletUiState(
+                wallet = SELECTED,
+                walletApp = SEEKER.label,
+                loaded = true,
+                connections = listOf(CONNECTION),
+            )
+        )
+
+        // The card is the wallet, and "Account 1" is the account inside it (SEE-159).
+        compose.onNodeWithTag(WalletTags.STATUS).assertTextContains(SEEKER.label, substring = true)
+        compose
+            .onNodeWithTag(WalletTags.STATUS)
+            .assertTextContains(checkNotNull(SELECTED.label), substring = true)
+    }
+
     private companion object {
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
+
+        val SEEKER = InstalledWallet("com.example.seekerwallet", "Seeker Wallet")
+        val OTHER = InstalledWallet("com.example.otherwallet", "Other Wallet")
 
         val SELECTED =
             SelectedWallet(

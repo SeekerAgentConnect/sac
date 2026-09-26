@@ -197,7 +197,90 @@ class WalletViewModelTest {
         assertEquals(WALLET, server.wallet?.wallet)
     }
 
+    // SEE-159: which wallet app is connected, and who decides.
+
+    @Test
+    fun offersNoChoiceWhenThisPhoneHasOneWalletApp() {
+        pair()
+        adapter.installed = listOf(SEEKER)
+        val model = viewModel()
+
+        assertEquals(listOf(SEEKER), model.state.value.apps)
+        assertNull(model.state.value.chosen)
+        // One installed wallet needs no question, and connecting is not held up by one.
+        assertTrue(model.state.value.canConnect)
+    }
+
+    @Test
+    fun waitsForTheOwnerToPickWhenThisPhoneHasSeveral() {
+        pair()
+        adapter.installed = listOf(SEEKER, OTHER)
+        adapter.answerConnected(WALLET)
+        val model = viewModel()
+
+        // Connecting without a pick is what leaves Android asking them at every approval, so the
+        // owner picks here instead — once.
+        assertFalse(model.state.value.canConnect)
+        model.connect()
+        assertEquals(emptyList<Any>(), adapter.connects)
+
+        model.chooseWalletApp(OTHER.packageName)
+
+        assertEquals(OTHER, model.state.value.chosen)
+        assertTrue(model.state.value.canConnect)
+        model.connect()
+        assertEquals(
+            WalletRouting(packageName = OTHER.packageName, appLabel = OTHER.label),
+            adapter.routes.single(),
+        )
+    }
+
+    @Test
+    fun ignoresAPickThisPhoneNeverOffered() {
+        pair()
+        adapter.installed = listOf(SEEKER, OTHER)
+        val model = viewModel()
+
+        model.chooseWalletApp("com.example.nothinglikethat")
+
+        assertNull(model.state.value.chosen)
+    }
+
+    @Test
+    fun forgetsAPickWhoseWalletAppWasUninstalledWhileTheAppWasAway() {
+        pair()
+        adapter.installed = listOf(SEEKER, OTHER)
+        val model = viewModel()
+        model.chooseWalletApp(OTHER.packageName)
+
+        adapter.installed = listOf(SEEKER)
+        model.onAppHidden()
+        model.onAppVisible()
+
+        assertEquals(listOf(SEEKER), model.state.value.apps)
+        assertNull(model.state.value.chosen)
+    }
+
+    @Test
+    fun namesTheWalletAppTheSelectionBelongsTo() {
+        pair()
+        adapter.installed = listOf(SEEKER)
+        adapter.answerConnected(
+            WALLET,
+            label = "phantom",
+            route = WalletRouting(packageName = SEEKER.packageName, appLabel = SEEKER.label),
+        )
+        val model = viewModel()
+        model.connect()
+
+        // The account's own label is the account's; the wallet is the app that holds it (SEE-159).
+        assertEquals("phantom", model.state.value.wallet?.label)
+        assertEquals(SEEKER.label, model.state.value.walletApp)
+    }
+
     private companion object {
+        val SEEKER = InstalledWallet("com.example.seekerwallet", "Seeker Wallet")
+        val OTHER = InstalledWallet("com.example.otherwallet", "Other Wallet")
         const val URL = "http://127.0.0.1:8080"
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
     }
