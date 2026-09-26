@@ -351,7 +351,10 @@ The shipped demo's Devices / Feed access page is
 inside the existing password-gated trader UI, and it is the operator's whole surface: list, approve,
 reject, revoke, reissue, and revoke every device of a wallet. Its mutations go through the
 publisher's existing token-protected API path and through the one process that owns the store, so
-there is no second writer.
+there is no second writer. Since SEE-163 a live invitation is drawn as a QR code beside its link,
+so the device it belongs to scans it off the screen instead of its operator copying a long URL —
+which changes nothing about what an invitation is, because it is single use and bound to that one
+device key.
 
 It shows the wallet address, the device-key fingerprint, the **label the phone claimed** — shown as
 exactly that, a claim — the request and decision times, and one word for where access stands:

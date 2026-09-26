@@ -26,7 +26,10 @@ at the moment they look.
 
 `cmd/prediction-admin` (SEE-138) is a password-gated HTML client of that API: it lists the signals
 already on the feed, searches the provider listing with typed filters, and asks discovery to publish
-a named market. Callers still cannot `POST /v1/requests`. Side and stake stay on the phone.
+a named market. Callers still cannot `POST /v1/requests`. Side and stake stay on the phone. Beside
+the reference the panel also draws it as a QR code (SEE-163), so a phone pairs by pointing SAC's
+camera at the screen instead of typing; the code is an inline SVG that carries exactly what the
+input beside it carries, and the page still loads no images and no scripts.
 
 Everything else is shared, and deliberately: the configuration, the store, the outbox, the drainer,
 the manifest and the API are [`publisher-support/`](../../publisher-support), a source library that
