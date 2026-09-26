@@ -2,6 +2,8 @@ package io.github.brrenat.seekervault.connections
 
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.ActivityOutcome
+import io.github.brrenat.seekervault.confirmations.ConfirmationTracker
+import io.github.brrenat.seekervault.confirmations.SubmissionTracking
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
@@ -213,6 +215,13 @@ class ConnectionRepository(
      * where a restricted feed's access record, session and device key go with it (SEE-156).
      */
     private val onConnectionRemoved: suspend (String) -> Unit = {},
+    /**
+     * What follows a sent transaction to the chain from this phone (SEE-165). It is told what the
+     * wallet is about to be handed and what the wallet answered, and nothing else: it reaches no
+     * sidecar, reads no credential, and outlives the connection. Optional for the same reason
+     * [history] is.
+     */
+    private val tracking: SubmissionTracking? = null,
 ) : SynchronizationHost {
     private val lock = Mutex()
     private val loading = Mutex()
@@ -1367,6 +1376,26 @@ class ConnectionRepository(
     private fun save(result: LocalResult) {
         results.put(result)
         history?.record(result, store.get(result.connectionId))
+        track(result)
+    }
+
+    /**
+     * Tells the confirmation tracker about an approved transaction (SEE-165): what the wallet is
+     * about to be handed, once the sidecar accepted the approval — which is before the wallet is
+     * opened — and then the signature the wallet named, after the answer is stored and before it is
+     * delivered. A declined or failed signing had nothing sent, so there is nothing to follow.
+     */
+    private fun track(result: LocalResult) {
+        val tracker = tracking ?: return
+        val submission = ConfirmationTracker.directSubmission(result) ?: return
+        when (val signing = result.signing) {
+            null -> if (result.approved || result.approvalUncertain) tracker.expect(submission)
+            is SigningOutcome.Sent -> {
+                tracker.expect(submission)
+                tracker.submitted(result.key, signing.signature.toByteArray())
+            }
+            else -> tracker.abandoned(result.key)
+        }
     }
 
     // The answer as it's stored now, or null if it or its connection was removed while it was on

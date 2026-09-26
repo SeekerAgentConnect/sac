@@ -1,6 +1,8 @@
 package io.github.brrenat.seekervault.activity
 
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
+import io.github.brrenat.seekervault.confirmations.ChainCheck
+import io.github.brrenat.seekervault.confirmations.ChainState
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.Delivery
@@ -18,6 +20,7 @@ import io.github.brrenat.seekervault.transactions.transfer
 import io.github.brrenat.seekervault.wallet.encodeBase58
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +48,12 @@ class ActivityLog(
     private val named = ConcurrentHashMap<RequestKey, List<ReviewedValue>>()
 
     private val _loaded = MutableStateFlow(false)
+
+    // Every write reads the stored record and then replaces it, from more than one thread: a
+    // server's reply, a sync, a chain check and the owner clearing History. They take turns.
+    private val writes = Any()
+
+    private val clearListeners = CopyOnWriteArrayList<() -> Unit>()
 
     private val _unreadableRecords = MutableStateFlow(0)
 
@@ -83,10 +92,15 @@ class ActivityLog(
      */
     fun record(result: LocalResult, source: Connection?) {
         if (result.uncommittedTransfer) return
-        // The assessment the owner read when they answered, or the one already stored: a status
-        // checked ten times later must not quietly drop what the review said at the time.
-        val policy = shown[result.key] ?: store.get(result.connectionId, result.requestId)?.policy
-        publish(store.put(recordOf(result, source, now(), policy)))
+        synchronized(writes) {
+            val stored = store.get(result.connectionId, result.requestId)
+            if (stored == null && clearedSince(result.answeredAt)) return
+            // The assessment the owner read when they answered, or the one already stored: a
+            // status checked ten times later must not quietly drop what the review said at the
+            // time.
+            val policy = shown[result.key] ?: stored?.policy
+            publish(store.put(merged(recordOf(result, source, now(), policy), stored)))
+        }
     }
 
     /**
@@ -108,23 +122,28 @@ class ActivityLog(
      * Nothing about it is delivered anywhere. A proposal owes no server an answer, so there is no
      * outbox here and nothing to retry: this is the owner's own record and its only reader.
      */
-    fun record(record: ActivityRecord): ActivityRecord {
-        val key = RequestKey(record.connectionId, record.requestId)
-        val stored = store.get(record.connectionId, record.requestId)
-        val policy = record.policy ?: shown[key] ?: stored?.policy
-        val references =
-            record.operation?.references?.takeIf { it.isNotEmpty() }
-                ?: named[key]
-                ?: stored?.operation?.references
-        return publish(
-            store.put(
-                record.copy(
-                    policy = policy,
-                    operation = record.operation?.copy(references = references.orEmpty()),
+    fun record(record: ActivityRecord): ActivityRecord =
+        synchronized(writes) {
+            val key = RequestKey(record.connectionId, record.requestId)
+            val stored = store.get(record.connectionId, record.requestId)
+            if (stored == null && clearedSince(record.answeredAt)) return record
+            val policy = record.policy ?: shown[key] ?: stored?.policy
+            val references =
+                record.operation?.references?.takeIf { it.isNotEmpty() }
+                    ?: named[key]
+                    ?: stored?.operation?.references
+            publish(
+                store.put(
+                    merged(
+                        record.copy(
+                            policy = policy,
+                            operation = record.operation?.copy(references = references.orEmpty()),
+                        ),
+                        stored,
+                    )
                 )
             )
-        )
-    }
+        }
 
     /**
      * Advances an existing Activity record from server state observed by Sync. It never creates an
@@ -132,10 +151,18 @@ class ActivityLog(
      * locally authoritative field — reviewed terms, policy snapshot, signature, and answer time —
      * while using the same request-state interpretation as [record].
      */
-    fun reconcile(request: ActionRequest): ActivityRecord? {
+    fun reconcile(request: ActionRequest): ActivityRecord? =
+        synchronized(writes) { reconcileLocked(request) }
+
+    private fun reconcileLocked(request: ActionRequest): ActivityRecord? {
         if (!request.hasRef()) return null
         val existing = store.get(request.ref.connectionId, request.ref.requestId) ?: return null
-        if (existing.kind != ActivityKind.Transfer || existing.signature == null) return existing
+        if (
+            (existing.kind != ActivityKind.Transfer && existing.kind != ActivityKind.Staking) ||
+                existing.signature == null
+        ) {
+            return existing
+        }
         if (
             existing.outcome == ActivityOutcome.Confirmed ||
                 existing.outcome == ActivityOutcome.ChainFailed
@@ -159,8 +186,30 @@ class ActivityLog(
                 checkedWith =
                     confirmation?.endpoint?.takeIf(String::isNotEmpty) ?: existing.checkedWith,
             )
-        return publish(store.put(updated))
+        return publish(store.put(merged(updated, existing)))
     }
+
+    /**
+     * Records what the phone itself found on chain for [key] (SEE-165). It never creates a record —
+     * only something the owner did can — so a check that lands after History was cleared, or after
+     * a record was removed, writes nothing.
+     */
+    fun confirm(key: RequestKey, check: ChainCheck): ActivityRecord? =
+        synchronized(writes) {
+            val existing = store.get(key.connectionId, key.requestId) ?: return null
+            if (existing.chain == check) return existing
+            publish(store.put(merged(existing.copy(chain = check, recordedAt = now()), null)))
+        }
+
+    /** Called after the owner clears History, so what follows transactions can forget them too. */
+    fun onClear(listener: () -> Unit) {
+        clearListeners += listener
+    }
+
+    // Whether the owner cleared History after [answeredAt]: a record of something answered before
+    // that is one they deleted, and a late writer must not bring it back.
+    private fun clearedSince(answeredAt: Instant): Boolean =
+        store.clearedAt()?.let { !answeredAt.isAfter(it) } == true
 
     // Newest first, and one row per request: a record written again replaces the one it is about.
     private fun publish(stored: ActivityRecord): ActivityRecord {
@@ -197,16 +246,55 @@ class ActivityLog(
 
     /** Removes every record. The owner asked for it; nothing else calls it. */
     fun clear() {
-        store.clear()
-        shown.clear()
-        named.clear()
-        _records.value = emptyList()
-        _unreadableRecords.value = 0
-        // Cleared is read: the owner emptied it themselves, and an empty history is a known one.
-        _loaded.value = true
+        synchronized(writes) {
+            store.clear(now())
+            shown.clear()
+            named.clear()
+            _records.value = emptyList()
+            _unreadableRecords.value = 0
+            // Cleared is read: the owner emptied it themselves, and an empty history is a known
+            // one.
+            _loaded.value = true
+        }
+        clearListeners.forEach { it() }
     }
 
     private companion object {
+        /**
+         * The record as it will be stored, given what is stored already (SEE-165).
+         *
+         * The phone's own chain check is kept across every other writer, none of which knows it.
+         * And when it verified the approved transaction — succeeded, failed, or can never land —
+         * that is what the outcome says, whatever a server reported: the conflict rule is that the
+         * phone's own verification of the approved bytes wins, a server's word counts where the
+         * phone has none, and "sent" never overwrites either. An outcome about delivery or the
+         * owner's decision (not delivered, superseded) is left as it is, and the chain check is
+         * shown beside it, because one is not the other.
+         */
+        fun merged(record: ActivityRecord, stored: ActivityRecord?): ActivityRecord {
+            val chain = record.chain ?: stored?.chain
+            val base = record.copy(chain = chain)
+            if (chain == null || !base.signatureIsTransaction) return base
+            val outcome =
+                when (chain.state) {
+                    ChainState.Confirmed -> ActivityOutcome.Confirmed
+                    ChainState.Failed,
+                    ChainState.Expired -> ActivityOutcome.ChainFailed
+                    else -> return base
+                }
+            if (base.outcome !in CHAIN_OUTCOMES) return base
+            return base.copy(outcome = outcome, checkedWith = chain.host ?: base.checkedWith)
+        }
+
+        /** Outcomes that are only about the chain, which a verified check may replace. */
+        val CHAIN_OUTCOMES =
+            setOf(
+                ActivityOutcome.Sent,
+                ActivityOutcome.Unknown,
+                ActivityOutcome.Confirmed,
+                ActivityOutcome.ChainFailed,
+            )
+
         fun recordOf(
             result: LocalResult,
             source: Connection?,
@@ -233,6 +321,15 @@ class ActivityLog(
                             amount = it.amount.toULong().toString(),
                             mint = it.mint(),
                             preparedVersion = result.approvedTransaction?.version ?: 0,
+                        )
+                    },
+                staking =
+                    request.staking()?.let {
+                        ReviewedStaking(
+                            wallet = it.wallet,
+                            network = it.network,
+                            operation = it.operation.name,
+                            amount = it.amount,
                         )
                     },
                 policy = policy,
@@ -303,11 +400,19 @@ class ActivityLog(
                         is SigningOutcome.Sent -> sentOutcome(result)
                         SigningOutcome.Declined -> ActivityOutcome.DeclinedInWallet
                         is SigningOutcome.Failed -> ActivityOutcome.NotSigned
-                        // For a message nothing was signed; for a transfer nobody knows, and this
-                        // record says so rather than picking the comfortable answer.
+                        // For a message nothing was signed; for a transfer or a staking action
+                        // nobody knows, and this record says so rather than picking the
+                        // comfortable answer (a staking transaction is sent like a transfer's,
+                        // SEE-165).
                         is SigningOutcome.Unresolved ->
-                            if (result.request.transfer() != null) ActivityOutcome.Unknown
-                            else ActivityOutcome.NotSigned
+                            if (
+                                result.request.transfer() != null ||
+                                    result.request.staking() != null
+                            ) {
+                                ActivityOutcome.Unknown
+                            } else {
+                                ActivityOutcome.NotSigned
+                            }
                     }
             }
         }

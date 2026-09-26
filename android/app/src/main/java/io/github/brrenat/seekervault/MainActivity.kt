@@ -95,7 +95,8 @@ class MainActivity : ComponentActivity() {
     private val history: ActivityViewModel by viewModels {
         viewModelFactory {
             initializer {
-                ActivityViewModel((application as SeekerVaultApplication).activityLog)
+                val app = application as SeekerVaultApplication
+                ActivityViewModel(app.activityLog, confirmations = app.confirmations)
             }
         }
     }
@@ -233,6 +234,9 @@ class MainActivity : ComponentActivity() {
         // The history is read again when the app comes back: an answer settled while it was away
         // changed a record.
         history.refresh()
+        // And the chain is asked about anything this phone sent and hasn't seen settle, from the
+        // phone itself (SEE-165). This is also where a force-stopped app catches up.
+        (application as SeekerVaultApplication).onConfirmationsForeground()
     }
 
     override fun onStop() {
@@ -246,6 +250,7 @@ class MainActivity : ComponentActivity() {
             viewModel.onAppHidden()
             connections.onAppHidden()
             wallet.onAppHidden()
+            (application as SeekerVaultApplication).onConfirmationsBackground()
         }
     }
 

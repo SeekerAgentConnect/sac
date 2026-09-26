@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.history
 
 import io.github.brrenat.seekervault.activity.explorerUrl
+import io.github.brrenat.seekervault.confirmations.ChainCheck
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.Delivery
@@ -22,14 +23,12 @@ import io.github.brrenat.seekervault.designsystem.HistoryDetailStatus
 import io.github.brrenat.seekervault.designsystem.HistoryDetailStatusModel
 import io.github.brrenat.seekervault.designsystem.HistoryDetailTimelineEntry
 import io.github.brrenat.seekervault.designsystem.HistoryDetailTransaction
-import io.github.brrenat.seekervault.designsystem.HistoryDetailTransactionStatus
 import io.github.brrenat.seekervault.inbox.inboxTitle
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.request.v1.Action
-import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
@@ -85,6 +84,10 @@ fun privateHistoryDetail(
     connection: Connection?,
     clock: HistoryDetailClock = HistoryDetailClock(),
     sending: Boolean = false,
+    /** What this phone itself found on chain (SEE-165); null when it isn't following it. */
+    chain: ChainCheck? = null,
+    /** Whether a check the owner asked for is still out. */
+    checkingChain: Boolean = false,
 ): HistoryDetailModel {
     val request = result.request
     val server = connection?.label ?: result.connectionId
@@ -96,6 +99,16 @@ fun privateHistoryDetail(
     val sent = result.signing as? SigningOutcome.Sent
     val signed = result.signing as? SigningOutcome.Signed
     val delivered = result.delivery == Delivery.Accepted
+    val confirmation = request.outcome.confirmation.takeIf { request.outcome.hasConfirmation() }
+    val view =
+        chainView(
+            local = chain,
+            server = request.state,
+            serverAt =
+                confirmation?.checkedAt?.instantOrNull() ?: request.updatedAt.instantOrNull(),
+            serverError = confirmation?.chainError?.takeIf(String::isNotBlank),
+            serverReason = request.outcome.detail.takeIf(String::isNotBlank),
+        )
 
     val status =
         when {
@@ -130,7 +143,7 @@ fun privateHistoryDetail(
             else ->
                 HistoryDetailStatusModel(
                     status = HistoryDetailStatus.Approved,
-                    explanation = approvedExplanation(result),
+                    explanation = approvedExplanation(result, view),
                 )
         }
 
@@ -202,7 +215,20 @@ fun privateHistoryDetail(
                         "Signing a message doesn't touch the chain, so there is nothing to " +
                             "confirm and no funds moved.",
                 )
-            sent != null -> chainExecution(request, network, clock)
+            sent != null ->
+                chainExecution(
+                    view = view,
+                    network = network,
+                    clock = clock,
+                    caveat = request.action.confirmationCaveat(),
+                    checking = checkingChain,
+                    rows =
+                        if (request.action.hasSwap()) {
+                            listOf(HistoryDetailRow("Received", HistoryDetailCopy.Unknown))
+                        } else {
+                            emptyList()
+                        },
+                )
             else -> null
         }
 
@@ -213,15 +239,7 @@ fun privateHistoryDetail(
                 HistoryDetailTransaction(
                     label = request.action.transactionLabel(),
                     signature = signature,
-                    status =
-                        when (request.state) {
-                            RequestState.REQUEST_STATE_CONFIRMED,
-                            RequestState.REQUEST_STATE_COMPLETED ->
-                                HistoryDetailTransactionStatus.Confirmed
-                            RequestState.REQUEST_STATE_FAILED ->
-                                HistoryDetailTransactionStatus.Failed
-                            else -> HistoryDetailTransactionStatus.Pending
-                        },
+                    status = view.transactionStatus(),
                     explorerLabel = "View on explorer" + (network.word()?.let { " · $it" } ?: ""),
                     explorerUrl = explorerUrl(signature, network),
                 )
@@ -254,21 +272,7 @@ fun privateHistoryDetail(
         }
         if (sent != null) {
             add(entry(HistoryDetailEvent.Sent, "Sent to the network", result.answeredAt, clock))
-            val settled =
-                request.outcome.confirmation
-                    .takeIf { request.outcome.hasConfirmation() }
-                    ?.checkedAt
-                    ?.instantOrNull() ?: request.updatedAt.instantOrNull()
-            when (request.state) {
-                RequestState.REQUEST_STATE_CONFIRMED,
-                RequestState.REQUEST_STATE_COMPLETED ->
-                    settled?.let {
-                        add(entry(HistoryDetailEvent.Confirmed, "Confirmed", it, clock))
-                    }
-                RequestState.REQUEST_STATE_FAILED ->
-                    settled?.let { add(entry(HistoryDetailEvent.Failed, "Failed", it, clock)) }
-                else -> Unit
-            }
+            chainEntry(view, clock)?.let(::add)
         }
         if (delivered) {
             result.settledAt?.let {
@@ -309,11 +313,9 @@ fun privateHistoryDetail(
         signature?.let {
             add(HistoryDetailRow(if (signed != null) "Message signature" else "Signature", it))
         }
-        request.outcome.confirmation
-            .takeIf { request.outcome.hasConfirmation() }
-            ?.chainError
-            ?.takeIf(String::isNotBlank)
-            ?.let { add(HistoryDetailRow("Error", it)) }
+        if (sent != null && view.standing == ChainStanding.Failed) {
+            view.chainError?.let { add(HistoryDetailRow("Error", it)) }
+        }
     }
 
     return HistoryDetailModel(
@@ -339,17 +341,17 @@ fun privateHistoryDetail(
     )
 }
 
-private fun approvedExplanation(result: LocalResult): String =
+private fun approvedExplanation(result: LocalResult, view: ChainView): String =
     when (val signing = result.signing) {
         null -> "You approved on this phone. The wallet hasn't answered yet."
         is SigningOutcome.Signed -> "You approved. Your wallet signed the message."
         is SigningOutcome.Sent ->
-            when (result.request.state) {
-                RequestState.REQUEST_STATE_FAILED ->
+            when (view.standing) {
+                ChainStanding.Failed ->
                     "You approved on this phone. The network rejected the transaction."
-                RequestState.REQUEST_STATE_CONFIRMED,
-                RequestState.REQUEST_STATE_COMPLETED ->
-                    "You approved on this phone. Your wallet signed it."
+                ChainStanding.Expired ->
+                    "You approved on this phone. The transaction never landed, and now can't."
+                ChainStanding.Confirmed -> "You approved on this phone. Your wallet signed it."
                 else -> "You approved on this phone. Your wallet sent it to the network."
             }
         SigningOutcome.Declined ->
@@ -358,59 +360,36 @@ private fun approvedExplanation(result: LocalResult): String =
             "You approved on this phone. The wallet didn't complete it: ${signing.detail}"
         is SigningOutcome.Unresolved ->
             "You approved on this phone. This phone never learned what the wallet did: " +
-                signing.detail
+                signing.detail +
+                if (result.request.action.hasTransfer() || result.request.action.hasStaking()) {
+                    " $NO_SIGNATURE_GUIDANCE"
+                } else {
+                    ""
+                }
+    }
+
+/** The timeline's entry for how the chain settled it, when it has. */
+private fun chainEntry(view: ChainView, clock: HistoryDetailClock) =
+    view.settledAt?.let {
+        when (view.standing) {
+            ChainStanding.Confirmed -> entry(HistoryDetailEvent.Confirmed, "Confirmed", it, clock)
+            ChainStanding.Failed -> entry(HistoryDetailEvent.Failed, "Failed", it, clock)
+            ChainStanding.Expired ->
+                entry(HistoryDetailEvent.Failed, "Expired · never landed", it, clock)
+            else -> null
+        }
     }
 
 /**
- * What the sidecar has learned from the chain, and only that. Until it has confirmed or failed the
- * transaction, it is waiting — approving it is not the network's word that it went through.
+ * What a confirmation of this action does not prove. Confirming an unstake means the unstake
+ * started, not that its cooldown ended (SEE-165).
  */
-private fun chainExecution(
-    request: ActionRequest,
-    network: Network?,
-    clock: HistoryDetailClock,
-): HistoryDetailExecution {
-    val confirmation = request.outcome.confirmation.takeIf { request.outcome.hasConfirmation() }
-    val checkedAt = confirmation?.checkedAt?.instantOrNull()
-    return when (request.state) {
-        RequestState.REQUEST_STATE_CONFIRMED,
-        RequestState.REQUEST_STATE_COMPLETED ->
-            HistoryDetailExecution(
-                state = HistoryDetailExecutionState.Confirmed,
-                title = network.word()?.let { "Confirmed on $it" } ?: "Confirmed",
-                body =
-                    checkedAt?.let { "Confirmed by ${clock.preciseTime(it)}." }
-                        ?: "The network confirmed it.",
-            )
-        RequestState.REQUEST_STATE_FAILED ->
-            HistoryDetailExecution(
-                state = HistoryDetailExecutionState.Failed,
-                title = "Failed on the network",
-                body =
-                    (checkedAt?.let { "Rejected by ${clock.preciseTime(it)}. " } ?: "") +
-                        "Nothing moved except the network fee.",
-                failureReason =
-                    request.outcome.detail.takeIf(String::isNotBlank)
-                        ?: "The network didn't say why.",
-            )
-        else ->
-            HistoryDetailExecution(
-                state = HistoryDetailExecutionState.Pending,
-                title = "Waiting for network confirmation",
-                body =
-                    "Sent and not confirmed yet. " +
-                        (checkedAt?.let { "Last checked ${clock.time(it)}. " }
-                            ?: "Not checked yet. ") +
-                        "Approving it doesn't mean it went through.",
-                rows =
-                    if (request.action.hasSwap()) {
-                        listOf(HistoryDetailRow("Received", HistoryDetailCopy.Unknown))
-                    } else {
-                        emptyList()
-                    },
-            )
+private fun Action.confirmationCaveat(): String? =
+    when {
+        hasStaking() && staking.operation == StakingOperation.STAKING_OPERATION_UNSTAKE ->
+            "The unstake started; that doesn't mean its cooldown has finished."
+        else -> null
     }
-}
 
 /** The request's own operation, as stored. Addresses and messages are never cut. */
 private fun Action.originalRows(): List<HistoryDetailRow> = buildList {
@@ -520,6 +499,9 @@ fun signalHistoryDetail(
     connection: Connection?,
     choice: List<HistoryDetailRow> = emptyList(),
     clock: HistoryDetailClock = HistoryDetailClock(),
+    /** What this phone itself found on chain (SEE-165); null when it isn't following it. */
+    chain: ChainCheck? = null,
+    checkingChain: Boolean = false,
 ): HistoryDetailModel {
     val proposal = record.proposal
     val feed = connection?.label ?: proposal.key.serverId
@@ -537,6 +519,8 @@ fun signalHistoryDetail(
     val submitted = outcome as? ProposalOutcome.Submitted
     val envelope = proposal.commonEnvelope()
     val executedAt = execution?.let { it.settledAt ?: it.startedAt }
+    // A feed owes nobody a result and reports none, so the chain's word here is the phone's own.
+    val view = chainView(local = chain)
 
     val status =
         when (standing) {
@@ -546,7 +530,17 @@ fun signalHistoryDetail(
                     explanation =
                         when (val it = standing.outcome) {
                             is ProposalOutcome.Submitted ->
-                                "You approved on this phone. Your wallet sent it to the network."
+                                when (view.standing) {
+                                    ChainStanding.Failed ->
+                                        "You approved on this phone. The network rejected the " +
+                                            "transaction."
+                                    ChainStanding.Expired ->
+                                        "You approved on this phone. The transaction never " +
+                                            "landed, and now can't."
+                                    else ->
+                                        "You approved on this phone. Your wallet sent it to the " +
+                                            "network."
+                                }
                             ProposalOutcome.Simulated ->
                                 "You approved the simulation on this phone. Nothing was signed."
                             ProposalOutcome.Declined ->
@@ -556,7 +550,7 @@ fun signalHistoryDetail(
                                 "You approved on this phone. Nothing was signed: ${it.detail}"
                             is ProposalOutcome.Unresolved ->
                                 "You approved on this phone. This phone never learned whether " +
-                                    "the wallet sent it."
+                                    "the wallet sent it. $NO_SIGNATURE_GUIDANCE"
                             ProposalOutcome.Pending ->
                                 "You approved on this phone. The wallet hasn't answered yet."
                         },
@@ -627,19 +621,19 @@ fun signalHistoryDetail(
             else -> HistoryDetailResponse.None("You didn't act on it. Nothing was signed.")
         }
 
-    // Nothing in this build follows a signal's transaction to the chain, so a sent one stays
-    // waiting: the page says so rather than implying a check that will never come.
+    // The phone follows a signal's transaction to the chain itself (SEE-165). What it proves is
+    // that the transaction ran; a provider's order lifecycle is a separate question it doesn't
+    // answer, and the caveat says so.
     val executionModel =
         when {
             executedAt == null -> null
             outcome is ProposalOutcome.Submitted ->
-                HistoryDetailExecution(
-                    state = HistoryDetailExecutionState.Pending,
-                    title = "Waiting for network confirmation",
-                    body =
-                        "Sent at ${clock.preciseTime(executedAt)}. This phone doesn't follow a " +
-                            "signal's transaction on the network; the explorer shows where it " +
-                            "stands. Approving it doesn't mean it went through.",
+                chainExecution(
+                    view = view,
+                    network = network,
+                    clock = clock,
+                    caveat = signalCaveat(proposal.action.value),
+                    checking = checkingChain,
                 )
             outcome == ProposalOutcome.Simulated ->
                 HistoryDetailExecution(
@@ -659,7 +653,7 @@ fun signalHistoryDetail(
                 HistoryDetailTransaction(
                     label = actionLabel(proposal.action.value),
                     signature = signature,
-                    status = HistoryDetailTransactionStatus.Pending,
+                    status = view.transactionStatus(),
                     explorerLabel = "View on explorer" + (network.word()?.let { " · $it" } ?: ""),
                     explorerUrl = explorerUrl(signature, network),
                 )
@@ -674,8 +668,10 @@ fun signalHistoryDetail(
             add(entry(HistoryDetailEvent.Approved, "You approved", execution.startedAt, clock))
             val settled = executedAt ?: execution.startedAt
             when (outcome) {
-                is ProposalOutcome.Submitted ->
+                is ProposalOutcome.Submitted -> {
                     add(entry(HistoryDetailEvent.Sent, "Sent to the network", settled, clock))
+                    chainEntry(view, clock)?.let(::add)
+                }
                 ProposalOutcome.Simulated ->
                     add(entry(HistoryDetailEvent.Simulated, "Simulated", settled, clock))
                 else -> Unit
@@ -707,6 +703,9 @@ fun signalHistoryDetail(
             add(HistoryDetailRow("Market ID", it))
         }
         signature?.let { add(HistoryDetailRow("Signature", it)) }
+        if (view.standing == ChainStanding.Failed) {
+            view.chainError?.let { add(HistoryDetailRow("Chain error", it)) }
+        }
         when (outcome) {
             is ProposalOutcome.Failed -> add(HistoryDetailRow("Error", outcome.detail))
             is ProposalOutcome.Unresolved -> add(HistoryDetailRow("Error", outcome.detail))
@@ -751,6 +750,18 @@ fun signalHistoryDetail(
     )
 }
 
+/**
+ * What a confirmed signal transaction does not prove. A prediction order's transaction can succeed
+ * and the order still not fill, and the market settles later still (SEE-165).
+ */
+private fun signalCaveat(action: String): String? =
+    when {
+        action.startsWith("prediction") ->
+            "The order's transaction succeeded; that doesn't mean the order filled or the market " +
+                "settled."
+        else -> null
+    }
+
 private fun actionLabel(action: String): String =
     when {
         action.startsWith("prediction") -> "Place order"
@@ -768,7 +779,7 @@ private fun entry(
 ): Pair<Instant, HistoryDetailTimelineEntry> =
     at to HistoryDetailTimelineEntry(event = event, text = text, timeText = clock.time(at))
 
-private fun Network?.word(): String? =
+internal fun Network?.word(): String? =
     when (this) {
         Network.NETWORK_MAINNET -> "Mainnet"
         Network.NETWORK_DEVNET -> "Devnet"

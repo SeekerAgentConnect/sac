@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import io.github.brrenat.seekervault.ReviewIdentity
+import io.github.brrenat.seekervault.confirmations.ChainCheck
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.Delivery
@@ -52,6 +53,9 @@ import io.github.brrenat.seekervault.designsystem.ScreenScaffold
 import io.github.brrenat.seekervault.designsystem.ScreenScrollBody
 import io.github.brrenat.seekervault.designsystem.SeekerTabBar
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.history.chainView
+import io.github.brrenat.seekervault.history.rowStatus
+import io.github.brrenat.seekervault.history.rowText
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -294,6 +298,8 @@ fun InboxRoute(
     callbacks: InboxRouteCallbacks,
     modifier: Modifier = Modifier,
     view: InboxViewState = rememberInboxViewState(),
+    /** What the phone itself last found on chain, by request (SEE-165). */
+    chainChecks: Map<RequestKey, ChainCheck> = emptyMap(),
 ) {
     val initial =
         inboxInitialTab(
@@ -312,6 +318,7 @@ fun InboxRoute(
             selectedTab = selected,
             now = now,
             sourceFilter = view.sourceFilter,
+            chainChecks = chainChecks,
         )
     val recordById = feedRecords.associateBy(::signalId)
 
@@ -365,13 +372,24 @@ fun inboxScreenState(
     now: Instant,
     formatTime: (Instant) -> String = ::inboxShortTime,
     sourceFilter: String? = null,
+    /** What the phone itself last found on chain, by request (SEE-165). */
+    chainChecks: Map<RequestKey, ChainCheck> = emptyMap(),
 ): InboxScreenState {
     val connections = state.connections.associateBy(Connection::id)
     // A filter for a connection that is gone narrows to nothing, so it is dropped instead.
     val filter = sourceFilter?.takeIf { it in connections }
     val unfiltered =
         if (filter == null) null
-        else inboxScreenState(state, feedRecords, feedStanding, selectedTab, now, formatTime)
+        else
+            inboxScreenState(
+                state,
+                feedRecords,
+                feedStanding,
+                selectedTab,
+                now,
+                formatTime,
+                chainChecks = chainChecks,
+            )
     val privateItems = inboxItems(state.inbox, filter)
     val shownRecords = feedRecords.filter { filter == null || it.connectionId == filter }
     val pending =
@@ -398,6 +416,7 @@ fun inboxScreenState(
             result.toInboxHistoryRow(
                 sourceName = connections[result.connectionId]?.label,
                 formatTime = formatTime,
+                chain = chainChecks[result.key],
             )
         }
     val signalHistory = shownRecords.mapNotNull { record ->
@@ -409,6 +428,7 @@ fun inboxScreenState(
                 sourceName = connections[record.connectionId]?.label,
                 standing = standing,
                 formatTime = formatTime,
+                chain = chainChecks[RequestKey(record.connectionId, record.key.proposalId)],
             )
         }
     }
@@ -480,7 +500,10 @@ private fun PendingItem.toInboxPendingRow(
 private fun LocalResult.toInboxHistoryRow(
     sourceName: String?,
     formatTime: (Instant) -> String,
+    chain: ChainCheck? = null,
 ): TimedHistoryRow {
+    // The phone's own verified answer first, then the server's settled word (SEE-165).
+    val view = chainView(local = chain, server = request.state)
     val cancelled =
         delivery == Delivery.Superseded && request.state == RequestState.REQUEST_STATE_CANCELLED
     val expired =
@@ -508,11 +531,7 @@ private fun LocalResult.toInboxHistoryRow(
             delivery == Delivery.Waiting -> "Waiting to tell the server"
             answer == Answer.Acknowledge -> "Acknowledged"
             answer == Answer.Reject -> "Rejected"
-            signing is SigningOutcome.Sent &&
-                request.state == RequestState.REQUEST_STATE_CONFIRMED -> "Confirmed on the network"
-            signing is SigningOutcome.Sent && request.state == RequestState.REQUEST_STATE_FAILED ->
-                "Failed on the network"
-            signing is SigningOutcome.Sent -> "Sent to the network"
+            signing is SigningOutcome.Sent -> view.rowText()
             signing is SigningOutcome.Signed -> "Signed by your wallet"
             signing == SigningOutcome.Declined -> "Declined in the wallet"
             signing is SigningOutcome.Unresolved -> "Wallet declined"
@@ -529,12 +548,7 @@ private fun LocalResult.toInboxHistoryRow(
                 when (signing) {
                     null -> HistoryRowStatus.Pending
                     is SigningOutcome.Signed -> HistoryRowStatus.Signed
-                    is SigningOutcome.Sent ->
-                        when (request.state) {
-                            RequestState.REQUEST_STATE_CONFIRMED -> HistoryRowStatus.Confirmed
-                            RequestState.REQUEST_STATE_FAILED -> HistoryRowStatus.Failed
-                            else -> HistoryRowStatus.Pending
-                        }
+                    is SigningOutcome.Sent -> view.rowStatus()
                     SigningOutcome.Declined -> HistoryRowStatus.Declined
                     is SigningOutcome.Failed -> HistoryRowStatus.Failed
                     is SigningOutcome.Unresolved -> HistoryRowStatus.Unknown
@@ -565,12 +579,14 @@ private fun ProposalRecord.toInboxHistoryRow(
     sourceName: String?,
     standing: ProposalStanding,
     formatTime: (Instant) -> String,
+    chain: ChainCheck? = null,
 ): TimedHistoryRow {
+    val view = chainView(local = chain)
     val status =
         when (standing) {
             is ProposalStanding.Executed ->
                 when (standing.outcome) {
-                    is ProposalOutcome.Submitted,
+                    is ProposalOutcome.Submitted -> view.rowStatus()
                     ProposalOutcome.Pending -> HistoryRowStatus.Pending
                     ProposalOutcome.Simulated -> HistoryRowStatus.Simulated
                     ProposalOutcome.Declined -> HistoryRowStatus.Declined
@@ -588,7 +604,7 @@ private fun ProposalRecord.toInboxHistoryRow(
         when (standing) {
             is ProposalStanding.Executed ->
                 when (standing.outcome) {
-                    is ProposalOutcome.Submitted -> HistoryRowState.Sent to "Sent to the network"
+                    is ProposalOutcome.Submitted -> HistoryRowState.Sent to view.rowText()
                     ProposalOutcome.Simulated ->
                         HistoryRowState.Simulated to "Simulated on this phone · no funds moved"
                     ProposalOutcome.Declined -> HistoryRowState.Unknown to "Declined in the wallet"

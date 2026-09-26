@@ -8,10 +8,14 @@ import io.github.brrenat.seekervault.activity.MINT
 import io.github.brrenat.seekervault.activity.OTHER_REQUEST
 import io.github.brrenat.seekervault.activity.RECIPIENT
 import io.github.brrenat.seekervault.activity.REQUEST
+import io.github.brrenat.seekervault.activity.ReviewedStaking
 import io.github.brrenat.seekervault.activity.WALLET
 import io.github.brrenat.seekervault.activity.operationRecord
 import io.github.brrenat.seekervault.activity.record
 import io.github.brrenat.seekervault.activity.reviewedPolicy
+import io.github.brrenat.seekervault.confirmations.ChainCheck
+import io.github.brrenat.seekervault.confirmations.ChainLevel
+import io.github.brrenat.seekervault.confirmations.ChainState
 import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
 import java.time.Instant
@@ -208,9 +212,41 @@ class ActivityStoreTest {
         store.put(record())
         store.put(record(requestId = OTHER_REQUEST))
         assertTrue(store.list().isNotEmpty())
-        store.clear()
+        val at = Instant.parse("2026-09-26T12:00:00Z")
+        store.clear(at)
         assertEquals(emptyList<Any>(), store.list())
         assertEquals(emptySet<String>(), store.connectionIds())
+        // And when, so a late writer can't bring a cleared record back (SEE-165).
+        assertEquals(at, store.clearedAt())
+    }
+
+    @Test
+    fun keepsAStakingActionsTermsAndThePhonesOwnChainCheck() {
+        // SEE-165: both fields are additive, and a record written with them reads back whole.
+        val staking =
+            record()
+                .copy(
+                    kind = ActivityKind.Staking,
+                    transfer = null,
+                    staking =
+                        ReviewedStaking(
+                            wallet = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                            network = Network.NETWORK_MAINNET,
+                            operation = "STAKING_OPERATION_UNSTAKE",
+                            amount = "1000",
+                        ),
+                    chain =
+                        ChainCheck(
+                            state = ChainState.Confirmed,
+                            level = ChainLevel.Finalized,
+                            slot = 42L,
+                            checkedAt = Instant.parse("2026-09-26T12:01:00Z"),
+                            checks = 3,
+                            host = "rpc.example.com",
+                        ),
+                )
+        store.put(staking)
+        assertEquals(staking, store.get(CONNECTION, REQUEST))
     }
 
     @Test
