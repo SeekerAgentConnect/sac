@@ -126,7 +126,11 @@ fun OperationReview.toPredictionSheet(
                     WalletNetwork.Mainnet ->
                         add(ReviewSheetHeaderChip.Network(NetworkChipNetwork.Mainnet))
                     WalletNetwork.Devnet ->
-                        add(ReviewSheetHeaderChip.Network(NetworkChipNetwork.Devnet))
+                        // Only mainnet is neutral here: a test network is flagged in the
+                        // sandbox orange, as the ticket's chip row asks (SEE-158).
+                        add(
+                            ReviewSheetHeaderChip.Network(NetworkChipNetwork.Devnet, flagged = true)
+                        )
                     WalletNetwork.Testnet,
                     null -> Unit
                 }
