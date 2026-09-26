@@ -7,7 +7,10 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 
-/** A full-height destination. Tabs are peers; the other screens return to [Home] on Back. */
+/**
+ * A full-height destination. Tabs are peers; [HistoryDetail] returns to Inbox on Back and the other
+ * screens return to [Home].
+ */
 sealed interface AppScreen {
     sealed interface Tab : AppScreen
 
@@ -20,6 +23,12 @@ sealed interface AppScreen {
     data object Activity : Tab
 
     data object AddConnection : AppScreen
+
+    /**
+     * The read-only record behind one Inbox History row (SEE-161). A full page rather than a sheet,
+     * with no bottom navigation; Back returns to the History tab it was opened from.
+     */
+    data class HistoryDetail(val identity: ReviewIdentity) : AppScreen
 
     /** Retained for the explicit diagnostic activity entry; it has no in-app navigation edge. */
     data object LiveTest : AppScreen
@@ -145,6 +154,20 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
         return replace(NavigationState(AppScreen.AddConnection))
     }
 
+    /**
+     * A History row, or a notification about an item that has since closed (SEE-161). From Inbox
+     * itself, or in place of a review that turned out to be about a closed item; never over a sheet
+     * the owner is working in.
+     */
+    fun openHistoryDetail(identity: ReviewIdentity): Boolean {
+        val fromInbox = state.screen == AppScreen.Inbox && state.sheets.isEmpty()
+        val fromReview =
+            state.sheets.size == 1 &&
+                (state.sheets.single() as? AppSheet.RequestReview)?.identity == identity
+        if (!fromInbox && !fromReview) return false
+        return replace(NavigationState(AppScreen.HistoryDetail(identity)))
+    }
+
     /** Home carousel tiles and Inbox pending rows share this destination. */
     fun openReview(identity: ReviewIdentity): Boolean = push(AppSheet.RequestReview(identity))
 
@@ -191,10 +214,14 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
         return replace(state.copy(sheets = emptyList()))
     }
 
-    /** Pops one sheet, or returns a non-tab screen to Home. Back on a tab is left to Android. */
+    /**
+     * Pops one sheet, returns a record's details to Inbox, or returns another non-tab screen to
+     * Home. Back on a tab is left to Android.
+     */
     fun back(): Boolean =
         when {
             state.sheets.isNotEmpty() -> replace(state.copy(sheets = state.sheets.dropLast(1)))
+            state.screen is AppScreen.HistoryDetail -> replace(NavigationState(AppScreen.Inbox))
             state.screen !is AppScreen.Tab -> replace(NavigationState())
             else -> false
         }
@@ -273,6 +300,7 @@ private fun requireRouteId(name: String, value: String) {
 internal fun encodeNavigationState(state: NavigationState): List<String> = buildList {
     add(SAVE_VERSION)
     add(state.screen.savedTag())
+    (state.screen as? AppScreen.HistoryDetail)?.let { addIdentity(it.identity) }
     state.sheets.forEach { sheet ->
         when (sheet) {
             is AppSheet.RequestReview -> {
@@ -316,7 +344,12 @@ internal fun encodeNavigationState(state: NavigationState): List<String> = build
 internal fun decodeNavigationState(saved: List<String>): NavigationState? = runCatching {
     val cursor = SavedCursor(saved)
     check(cursor.next() == SAVE_VERSION)
-    var restored = NavigationState(cursor.next().restoredScreen())
+    val screen =
+        when (val tag = cursor.next()) {
+            SCREEN_HISTORY_DETAIL -> AppScreen.HistoryDetail(cursor.nextIdentity())
+            else -> tag.restoredScreen()
+        }
+    var restored = NavigationState(screen)
     while (cursor.hasNext()) {
         val sheet =
             when (cursor.next()) {
@@ -370,6 +403,7 @@ private fun AppScreen.savedTag(): String =
         AppScreen.Activity -> SCREEN_ACTIVITY
         AppScreen.AddConnection -> SCREEN_ADD_CONNECTION
         AppScreen.LiveTest -> SCREEN_LIVE_TEST
+        is AppScreen.HistoryDetail -> SCREEN_HISTORY_DETAIL
     }
 
 private fun String.restoredScreen(): AppScreen =
@@ -409,6 +443,7 @@ private const val SCREEN_WALLET = "wallet"
 private const val SCREEN_ACTIVITY = "activity"
 private const val SCREEN_ADD_CONNECTION = "add_connection"
 private const val SCREEN_LIVE_TEST = "live_test"
+private const val SCREEN_HISTORY_DETAIL = "history_detail"
 private const val SHEET_REVIEW = "review"
 private const val SHEET_HANDOFF = "wallet_handoff"
 private const val SHEET_OWNER_INPUT = "owner_input"

@@ -32,6 +32,8 @@ import androidx.compose.material.icons.outlined.DoNotDisturbOn
 import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.ExtensionOff
+import androidx.compose.material.icons.outlined.GppMaybe
 import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MarkEmailRead
@@ -91,6 +93,12 @@ enum class HistoryDetailStatus {
     Dismissed,
     Expired,
     Cancelled,
+
+    /** This phone refused a signal whose publisher contradicted itself. */
+    Refused,
+
+    /** This build can't carry out what the signal's server needs. */
+    Unsupported,
 }
 
 /** What ran after the decision (A5). */
@@ -182,6 +190,8 @@ data class HistoryDetailDelivery(
     val body: String,
     /** True while a resend is in flight, so the one button can't be tapped twice. */
     val sending: Boolean = false,
+    /** False when the server no longer accepts this phone, so sending again can't help. */
+    val canSendAgain: Boolean = true,
 )
 
 /** A5 — shown only when something ran: a transaction, a signature or a simulation. */
@@ -202,7 +212,8 @@ data class HistoryDetailTransaction(
     val status: HistoryDetailTransactionStatus,
     /** "View on explorer · Mainnet". */
     val explorerLabel: String,
-    val explorerUrl: String,
+    /** Null when the record names no cluster: a guessed link is a wrong link. */
+    val explorerUrl: String?,
 )
 
 /** A8 — one recorded event. */
@@ -382,7 +393,9 @@ private fun HistoryDetailStatusCard(model: HistoryDetailStatusModel, sourceName:
                         SeekerTheme.colors.destructive to SeekerTheme.colors.onDestructive
                     HistoryDetailStatus.Dismissed,
                     HistoryDetailStatus.Expired,
-                    HistoryDetailStatus.Cancelled ->
+                    HistoryDetailStatus.Cancelled,
+                    HistoryDetailStatus.Refused,
+                    HistoryDetailStatus.Unsupported ->
                         SeekerTheme.colors.surface3 to MaterialTheme.colorScheme.onSurface
                 }
             Box(
@@ -500,14 +513,15 @@ private fun HistoryDetailDeliveryCard(model: HistoryDetailDelivery, onSendAgain:
             )
         }
         Text(text = model.body, color = content, style = MaterialTheme.typography.bodyMedium)
-        SeekerButton(
-            label = "Send again",
-            onClick = onSendAgain,
-            variant = SeekerButtonVariant.Tertiary,
-            size = SeekerButtonSize.Md,
-            enabled = !model.sending,
-            modifier = Modifier.testTag(HistoryDetailTags.SendAgain),
-        )
+        if (model.canSendAgain)
+            SeekerButton(
+                label = "Send again",
+                onClick = onSendAgain,
+                variant = SeekerButtonVariant.Tertiary,
+                size = SeekerButtonSize.Md,
+                enabled = !model.sending,
+                modifier = Modifier.testTag(HistoryDetailTags.SendAgain),
+            )
     }
 }
 
@@ -697,10 +711,11 @@ private fun HistoryDetailTransactionCard(
                 modifier = Modifier.testTag(HistoryDetailTags.copy(index)),
             )
         }
+        val explorerUrl = transaction.explorerUrl ?: return@HistoryDetailCard
         Row(
             modifier =
                 Modifier.clip(RoundedCornerShape(SeekerTheme.radii.xs))
-                    .clickable(role = Role.Button) { onOpenExplorer(transaction.explorerUrl) }
+                    .clickable(role = Role.Button) { onOpenExplorer(explorerUrl) }
                     .testTag(HistoryDetailTags.explorer(index))
                     .padding(vertical = SeekerTheme.spacing.xs),
             horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.sm),
@@ -976,6 +991,8 @@ private fun HistoryDetailStatus.icon(): ImageVector =
         HistoryDetailStatus.Dismissed -> Icons.Outlined.DoNotDisturbOn
         HistoryDetailStatus.Expired -> Icons.Outlined.TimerOff
         HistoryDetailStatus.Cancelled -> Icons.Outlined.Block
+        HistoryDetailStatus.Refused -> Icons.Outlined.GppMaybe
+        HistoryDetailStatus.Unsupported -> Icons.Outlined.ExtensionOff
     }
 
 private fun HistoryDetailStatus.word(): String =
@@ -985,6 +1002,8 @@ private fun HistoryDetailStatus.word(): String =
         HistoryDetailStatus.Dismissed -> "Dismissed"
         HistoryDetailStatus.Expired -> "Expired"
         HistoryDetailStatus.Cancelled -> "Cancelled by server"
+        HistoryDetailStatus.Refused -> "Refused on this phone"
+        HistoryDetailStatus.Unsupported -> "Not supported"
     }
 
 private fun HistoryDetailExecutionState.icon(): ImageVector =
