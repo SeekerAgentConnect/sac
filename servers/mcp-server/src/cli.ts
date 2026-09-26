@@ -7,8 +7,8 @@ import {
 import { runPairingCommand } from "./pairing/cli.ts";
 import { startSidecar } from "./server.ts";
 import { loadConfigFile } from "./storage/config-file.ts";
+import { VERSION } from "./version.ts";
 
-const VERSION = "0.1.0";
 const USAGE = `Seeker Agent Connect MCP server ${VERSION}
 
 Usage:

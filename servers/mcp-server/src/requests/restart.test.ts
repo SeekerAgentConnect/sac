@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { RequestState } from "@seeker-vault/server-sdk/protocol";
+import { RequestState } from "@seeker_agent_connect/server-sdk/protocol";
 import {
   callTool,
   connectAgent,

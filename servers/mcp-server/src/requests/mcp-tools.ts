@@ -28,7 +28,7 @@ import {
   privateRequest,
   type AgentRequests,
   type AgentTransfers,
-} from "@seeker-vault/server-sdk";
+} from "@seeker_agent_connect/server-sdk";
 import {
   ActionSchema,
   AssetSchema,
@@ -40,7 +40,7 @@ import {
   type ActionRequest,
   type Confirmation,
   type WalletBinding,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 
 export const GET_ADDRESS_TOOL = "vault_get_address";
 export const GET_CAPABILITIES_TOOL = "vault_get_capabilities";

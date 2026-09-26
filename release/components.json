@@ -1,0 +1,167 @@
+{
+  "$comment": [
+    "The release manifest (SEE-168): every independently released component, its one version, and",
+    "the artifacts that version names. npm and GHCR artifacts for the same component share this",
+    "version and the commit the release tag points at, which is the ticket's consistency rule.",
+    "scripts/check-release.mjs proves the npm manifests agree with this file, and",
+    ".github/workflows/release.yml is driven by it. Versions are bumped here first."
+  ],
+  "registries": {
+    "npm": "https://registry.npmjs.org",
+    "npmScope": "@seeker_agent_connect",
+    "ghcr": "ghcr.io/seekeragentconnect"
+  },
+  "tagPattern": "<component>-v<version>",
+  "components": [
+    {
+      "id": "server-sdk",
+      "directory": "packages/server-sdk",
+      "version": "0.2.0-rc.1",
+      "description": "Embeddable TypeScript SDK for Seeker Agent Connect direct servers",
+      "npm": {
+        "name": "@seeker_agent_connect/server-sdk",
+        "packDirectory": "packages/server-sdk"
+      },
+      "image": null,
+      "dependsOn": [],
+      "previousArtifacts": [],
+      "versionConstants": []
+    },
+    {
+      "id": "mcp-server",
+      "directory": "servers/mcp-server",
+      "version": "0.2.0-rc.2",
+      "description": "Self-hosted Seeker Agent Connect MCP server",
+      "npm": {
+        "name": "@seeker_agent_connect/mcp-server",
+        "packDirectory": "servers/mcp-server/package"
+      },
+      "image": {
+        "name": "mcp-server",
+        "dockerfile": "servers/mcp-server/Dockerfile",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ]
+      },
+      "dependsOn": [
+        "server-sdk"
+      ],
+      "previousArtifacts": [
+        "docker.io/brenat/seeker-agent-connect:mcp-0.1.8"
+      ],
+      "versionConstants": [
+        "servers/mcp-server/src/version.ts"
+      ]
+    },
+    {
+      "id": "mcp-skr-staking",
+      "directory": "servers/mcp-skr-staking",
+      "version": "0.2.0-rc.1",
+      "description": "Standalone SKR staking MCP server for Seeker Agent Connect",
+      "npm": {
+        "name": "@seeker_agent_connect/mcp-skr-staking",
+        "packDirectory": "servers/mcp-skr-staking/package"
+      },
+      "image": {
+        "name": "mcp-skr-staking",
+        "dockerfile": "servers/mcp-skr-staking/Dockerfile",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ]
+      },
+      "dependsOn": [
+        "server-sdk"
+      ],
+      "previousArtifacts": [
+        "docker.io/brenat/seeker-agent-connect:skr-staking-mcp-0.1.3"
+      ],
+      "versionConstants": [
+        "servers/mcp-skr-staking/src/server.ts"
+      ]
+    },
+    {
+      "id": "gateway",
+      "directory": "services/gateway",
+      "version": "0.2.0-rc.1",
+      "description": "Seeker Agent Connect public feed gateway",
+      "npm": null,
+      "image": {
+        "name": "gateway",
+        "dockerfile": "services/gateway/Dockerfile",
+        "target": "console",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ]
+      },
+      "dependsOn": [],
+      "previousArtifacts": [
+        "docker.io/brenat/seeker-agent-connect:gateway-0.1.10"
+      ],
+      "versionConstants": []
+    },
+    {
+      "id": "gateway-centrifugo",
+      "directory": "services/gateway",
+      "version": "0.2.0-rc.1",
+      "description": "Centrifugo broker with the feed gateway's pinned configuration",
+      "npm": null,
+      "image": {
+        "name": "gateway-centrifugo",
+        "dockerfile": "services/gateway/Dockerfile.centrifugo",
+        "context": "services/gateway",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ]
+      },
+      "dependsOn": [],
+      "previousArtifacts": [
+        "docker.io/brenat/seeker-agent-connect:centrifugo-0.1.2"
+      ],
+      "versionConstants": []
+    },
+    {
+      "id": "demo-signals",
+      "directory": "examples/demo-signals",
+      "version": "0.2.0-rc.1",
+      "description": "CopyTrading signals publisher demo",
+      "npm": null,
+      "image": {
+        "name": "demo-signals",
+        "dockerfile": "examples/demo-signals/Dockerfile",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ]
+      },
+      "dependsOn": [],
+      "previousArtifacts": [
+        "docker.io/brenat/seeker-agent-connect:copytrading-0.1.7"
+      ],
+      "versionConstants": []
+    },
+    {
+      "id": "demo-prediction",
+      "directory": "examples/demo-prediction",
+      "version": "0.2.0-rc.1",
+      "description": "Jupiter Prediction markets publisher demo",
+      "npm": null,
+      "image": {
+        "name": "demo-prediction",
+        "dockerfile": "examples/demo-prediction/Dockerfile",
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ]
+      },
+      "dependsOn": [],
+      "previousArtifacts": [
+        "docker.io/brenat/seeker-agent-connect:prediction-0.1.9"
+      ],
+      "versionConstants": []
+    }
+  ]
+}

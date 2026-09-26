@@ -2,18 +2,20 @@
 
 This is the self-hosted server for one owner, their one currently paired phone, and their agents. It
 serves authenticated, sessionful MCP Streamable HTTP at `/mcp`, the direct phone API on the same
-listener, and `GET /healthz`. It embeds `@seeker-vault/server-sdk` in-process through the SDK's two
+listener, and `GET /healthz`. It embeds `@seeker_agent_connect/server-sdk` in-process through the SDK's two
 public entry points. The server holds no wallet key, cannot approve a request, and never signs.
 
-The same application entry point has three supported starts:
+The same application entry point has four supported starts:
 
 1. TypeScript source in this checkout;
-2. the standalone Docker image built from this checkout; or
-3. the executable npm tarball built locally from this checkout.
+2. the Docker image, built from this checkout or pulled from
+   `ghcr.io/seekeragentconnect/mcp-server`;
+3. the executable npm tarball built locally from this checkout; or
+4. the published package, `npx --package=@seeker_agent_connect/mcp-server -- seeker-agent-connect-mcp`.
 
-`@seeker-vault/mcp-server` and `@seeker-vault/server-sdk` are **not published to npm**, and no MCP
-image from SEE-132 is published to a registry. The commands below build local artifacts. They do
-not publish or upload either package.
+The commands below build **local** artifacts and publish nothing. For the published ones see
+[docs/guides/installation.md](../../docs/guides/installation.md), and for how they are produced,
+[docs/development/releases.md](../../docs/development/releases.md).
 
 For a clean-host container deployment, use the canonical numbered
 [`deploy/README.md`](../../deploy/README.md). It covers direct-only, feeds-only, and combined hosting,
@@ -151,7 +153,7 @@ mkdir -p ./artifacts
 npm pack --json --pack-destination ./artifacts ./servers/mcp-server/package
 ```
 
-The source workspace imports `@seeker-vault/server-sdk` through its public API. During the MCP build,
+The source workspace imports `@seeker_agent_connect/server-sdk` through its public API. During the MCP build,
 the SDK's built public runtime is copied under `dist/vendor/server-sdk` and emitted imports are
 rewritten to that vendored output. The distributed manifest therefore has no workspace, file, or
 unpublished registry SDK dependency. It is still the SDK implementation—not a copied/reimplemented
@@ -189,11 +191,10 @@ This `npm exec` starts a normal command. `seeker-agent-connect-mcp start` is a l
 server; it is **not an MCP stdio child process**. Do not put this command in an agent's MCP
 `command`/`args` fields.
 
-After a future registry release exists, the equivalent version-pinned command would be:
+The version-pinned command against the registry is the same shape (SEE-168):
 
 ```sh
-# FUTURE ONLY — @seeker-vault/mcp-server is not published by SEE-132
-npm exec --yes --package @seeker-vault/mcp-server@0.1.0 -- \
+npm exec --yes --package @seeker_agent_connect/mcp-server@0.2.0 -- \
   seeker-agent-connect-mcp start
 ```
 

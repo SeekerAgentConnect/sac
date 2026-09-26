@@ -136,11 +136,16 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 
 This is one product monorepo: the app, the protocol, the SDK, the servers and the demos change
 together in one pull request, and each component still installs, builds and ships on its own. A
-component's identifier is the same in its folder name, the root `pnpm` commands and (in the
-packaging follow-up) its published artifact. Existing npm package names, Go module paths, Docker
-image names and the Android application ID are unchanged. The old → new path mapping, component
-dependencies and the migration steps for deployments that used the old paths are in
+component's identifier is the same in its folder name, the root `pnpm` commands, its published
+artifact and its release tag. The old → new path mapping, component dependencies and the migration
+steps for deployments that used the old paths are in
 [`docs/development/monorepo-layout.md`](docs/development/monorepo-layout.md).
+
+Components are released independently and can be installed from a registry without this checkout:
+npm under `@seeker_agent_connect` and containers under `ghcr.io/seekeragentconnect`.
+[`docs/guides/installation.md`](docs/guides/installation.md) has the install, `npx`, Docker and
+Compose examples and the migration table from the previous Docker Hub names;
+[`docs/development/releases.md`](docs/development/releases.md) has the release process.
 
 | Component | Path | What it is | Build and check (from the root) |
 | --- | --- | --- | --- |
@@ -150,7 +155,7 @@ dependencies and the migration steps for deployments that used the old paths are
 | `server-sdk` | `packages/server-sdk/` | Embeddable TypeScript Direct Server SDK: durable lifecycle, pairing, phone APIs, updates and public package exports; see [`packages/server-sdk/README.md`](packages/server-sdk/README.md) and [`docs/development/server-sdk.md`](docs/development/server-sdk.md) | `pnpm build:server-sdk`; `pnpm test:server-sdk-package` |
 | `publisher-support` | `packages/publisher-support/` | The Go source library the two public-feed demos share: the durable publication/outbox engine, the gateway HTTP/Connect client, the feed document rules and the business-API frame. It has no command, no image and no deployment of its own, and it is not a published feed-publisher client. See [`packages/publisher-support/README.md`](packages/publisher-support/README.md). | `pnpm check:publisher-support` |
 | `mcp-server` | `servers/mcp-server/` | Self-hosted TypeScript/Node MCP product: one source/npm/Docker CLI, `/mcp`, `/healthz`, direct phone APIs, provider adapters, stable external state and artifact verification, consuming only the public SDK API; see its [`README`](servers/mcp-server/README.md) and [`docs/development/mcp-server.md`](docs/development/mcp-server.md) | `pnpm dev:mcp-server`; `pnpm test:mcp-server-package`; `docker build -f servers/mcp-server/Dockerfile .` |
-| `mcp-skr-staking` | `servers/mcp-skr-staking/` | A second, independent direct server (SEE-146): a standalone MCP server for one owner's SKR staking position, with five tools, its own connection, its own `SKR_STAKING_*` configuration and its own deployment. It builds unsigned transactions and never signs or sends; see its [`README`](servers/mcp-skr-staking/README.md), [`docs/wiki/skr-staking.md`](docs/wiki/skr-staking.md) and [`docs/development/skr-staking-server.md`](docs/development/skr-staking-server.md) | `pnpm dev:mcp-skr-staking`; `docker build -f servers/mcp-skr-staking/Dockerfile .` |
+| `mcp-skr-staking` | `servers/mcp-skr-staking/` | A second, independent direct server (SEE-146): a standalone MCP server for one owner's SKR staking position, with five tools, its own connection, its own `SKR_STAKING_*` configuration and its own deployment. It builds unsigned transactions and never signs or sends; see its [`README`](servers/mcp-skr-staking/README.md), [`docs/wiki/skr-staking.md`](docs/wiki/skr-staking.md) and [`docs/development/skr-staking-server.md`](docs/development/skr-staking-server.md) | `pnpm dev:mcp-skr-staking`; `pnpm test:skr-staking-package`; `docker build -f servers/mcp-skr-staking/Dockerfile .` |
 | `demo-signals` | `examples/demo-signals/` | The CopyTrading signals demo — an independent public-feed demo (SEE-95): its own module, image, database, and guide. The canonical portable preset is `deploy/copytrading`; it starts no feed, MCP server, Prediction demo, or ingress. | `pnpm check:demo-signals`; `docker build -f examples/demo-signals/Dockerfile .` |
 | `demo-prediction` | `examples/demo-prediction/` | An independent public-feed demo (SEE-96): its own module, image, database, and guide. The canonical portable preset is `deploy/prediction`; neither demo builds, starts, imports, or shares data with the other. | `pnpm check:demo-prediction`; `docker build -f examples/demo-prediction/Dockerfile .` |
 | `test-agent` | `tools/test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`tools/test-agent/README.md`](tools/test-agent/README.md). | `pnpm agent`; `pnpm test:hello`; `pnpm test:queue` |
@@ -188,6 +193,16 @@ restart verification, backup, rollback, and troubleshooting. The shorter
 [`self-hosting` reference](docs/guides/self-hosting.md) collects boundaries and external needs.
 
 Everything builds from this checkout, and nothing in the path is ours. It does need things from other people — a domain and a certificate authority to go public, somebody's Solana RPC endpoint for transfers, an authorization server for a hosted client — and [What this needs from outside](docs/guides/self-hosting.md#what-this-needs-from-outside) is the full list. Connecting an agent is [Hermes](docs/integrations/hermes.md) by default, or [Claude over OAuth](docs/integrations/claude.md) as an option.
+
+## Installing from a registry
+
+Nothing here needs this checkout. `npm install @seeker_agent_connect/server-sdk` embeds the Direct
+Server SDK in your own Node application; `npx --package=@seeker_agent_connect/mcp-server --
+seeker-agent-connect-mcp` runs the MCP server; `ghcr.io/seekeragentconnect/gateway` and the rest
+run the services. [`docs/guides/installation.md`](docs/guides/installation.md) has the full set,
+including a checkout-free Compose file, how to pin by digest, and the migration table from the
+previous Docker Hub names. [`docs/development/releases.md`](docs/development/releases.md) is how
+those artifacts are produced.
 
 ## Building a server of your own
 
@@ -236,6 +251,7 @@ The debug APK is written to `apps/android/app/build/outputs/apk/debug/app-debug.
 | `pnpm build` | Compiles the SDK, MCP server and test agent; the SDK runtime and declarations go to `packages/server-sdk/dist`, and the staged self-contained MCP package goes to `servers/mcp-server/package` | Works |
 | `pnpm test:server-sdk-package` | Runs real `npm pack --dry-run` and `npm pack`, audits the tarball, installs it outside the workspace, type-checks its public exports, verifies import has no side effects, and exercises pairing/lifecycle/restart/idempotency | Works; never publishes |
 | `pnpm test:mcp-server-package` | Builds the exact executable MCP tarball, audits its vendored SDK and dependencies, exercises local/global-style/transient installs, then drives health, pairing, MCP discovery, phone result, restart persistence, reinstall, and competing-store refusal outside the workspace | Works; never publishes |
+| `pnpm test:skr-staking-package` | Builds the exact SKR staking tarball, audits its published manifest and vendored SDK, installs it outside the workspace, and drives health, pairing, MCP discovery and a read-only `get_staking_status` round trip against a stub mainnet endpoint before a clean SIGTERM | Works; never publishes, reaches no cluster |
 | `docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --build` | Builds and starts only the direct MCP server on host loopback ([self-hosting](docs/guides/self-hosting.md)) | NOT RUN: Docker daemon socket permission denied |
 | `pnpm dev:mcp-server` | Starts the MCP server with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. `pnpm dev:sidecar` is a migration alias; `pnpm dev:mcp-skr-staking` starts the SKR staking server the same way. | Works |
 | `pnpm pair [status \| revoke]` | Shows a one-use pairing code for the phone, as a QR code and as text. `status` shows the paired phone, and `revoke` revokes it. See [`docs/development/mcp-server.md`](docs/development/mcp-server.md#pairing-a-phone), and for the app, [`docs/guides/pairing.md`](docs/guides/pairing.md). | Works |
@@ -283,7 +299,7 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 
 `.github/workflows/ci.yml` runs on pull requests and on pushes to `master` and `develop`:
 
-- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check:deployments`, `pnpm check`, `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer`, both exact package tests, `pnpm check:generated`, and `pnpm build`
+- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check:deployments`, `pnpm check:release`, `pnpm check`, `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer`, all three exact package tests, `pnpm check:generated`, and `pnpm build`
 - **Gateway:** `pnpm check:gateway`, with the Go version read from `services/gateway/go.mod`
 - **Publisher support:** `pnpm check:publisher-support`, with the Go version read from `packages/publisher-support/go.mod`
 - **Signals demo (CopyTrading):** `pnpm check:demo-signals` and its own `docker build`, from `examples/demo-signals/go.mod`
@@ -291,7 +307,11 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 - **Android:** `pnpm check:android` on Temurin 21
 - **Emulator:** `pnpm test:hello --device` on an Android 16 (API 36) emulator. An emulator run never counts as the physical Seeker check.
 
-The workflow has read-only repository permissions and never commits.
+The workflow has read-only repository permissions, never commits, and cannot publish: it holds no
+registry credential, and `pnpm check:release` fails if a publish step ever appears in it.
+
+`.github/workflows/release.yml` is the one workflow that publishes, and only a `<component>-v<version>`
+tag or a deliberate dispatch starts it. See [`docs/development/releases.md`](docs/development/releases.md).
 
 ## License
 

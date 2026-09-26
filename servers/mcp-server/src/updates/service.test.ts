@@ -27,13 +27,13 @@ import {
   ActionSchema,
   Network,
   RequestState,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 import {
   ListPendingResponseSchema,
   LiveCommandService,
   PairingService,
   RequestService,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 import {
   ClientHeartbeatSchema,
   ResumeDisposition,
@@ -45,7 +45,7 @@ import {
   UpdateService,
   type SubscribeRequest,
   type SubscribeResponse,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 import { startSidecar, type Sidecar } from "../server.ts";
 import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";
 import { PairingStore } from "../../../../packages/server-sdk/src/storage/pairing-store.ts";

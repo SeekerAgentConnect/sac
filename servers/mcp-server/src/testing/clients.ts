@@ -23,11 +23,11 @@ import {
   type AcknowledgeCommandResponse,
   type LiveCommand,
   type WatchCommandsResponse,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 import {
   PairingService,
   RequestService,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 import { DISPLAY_COMMAND_TOOL } from "../mcp-endpoint.ts";
 import { PairingStore } from "../../../../packages/server-sdk/src/storage/pairing-store.ts";
 import type { RequestView } from "../requests/mcp-tools.ts";

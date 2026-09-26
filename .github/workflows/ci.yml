@@ -30,6 +30,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:deployments
+      # The release manifest, the npm manifests, the in-source version constants and the two
+      # workflows have to agree before anything is built. It reads files only: no registry, no
+      # credential, nothing published (SEE-168).
+      - run: pnpm check:release
       - run: pnpm check
       - run: pnpm test:hello
       # The Stage 2 acceptance scenario: two sidecar processes with throwaway databases.
@@ -45,6 +49,9 @@ jobs:
       # This includes pairing, MCP discovery, a protocol-phone result, restart persistence, and
       # duplicate-store refusal; it neither publishes nor uses npm credentials.
       - run: pnpm test:mcp-server-package
+      # The staking server's own tarball, exercised the same way against a stub mainnet
+      # endpoint: pairing, MCP discovery and a read-only status round trip, with no cluster.
+      - run: pnpm test:skr-staking-package
       - run: pnpm check:generated
       - run: pnpm build
 

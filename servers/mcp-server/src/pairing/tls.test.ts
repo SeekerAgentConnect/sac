@@ -19,7 +19,7 @@ import { createConnectTransport } from "@connectrpc/connect-node";
 import {
   PairingService,
   RequestService,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 import { startSidecar, type Sidecar } from "../server.ts";
 import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";
 import { ConnectError } from "../testing/clients.ts";

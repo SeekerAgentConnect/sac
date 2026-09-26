@@ -17,13 +17,13 @@ identities that other people already depend on are deliberately **unchanged** by
 | `android` | `apps/android/` | `android/` | Gradle, Kotlin | The Android application (`app`), the visual-only `designsystem` module and shared preview test support (`preview-testing`) |
 | `gateway` | `services/gateway/` | `feed-gateway/` | Go module | The shared public-feed gateway: the read and publisher APIs, its service-owned admin UI (`internal/admin`), the push relay (`internal/relay`, `internal/pushrelay`), `feed-gatewayctl`, and the pinned Centrifugo configuration and image (`centrifugo.yaml`, `Dockerfile.centrifugo`) |
 | `protocol` | `packages/protocol/` | `proto/`, `buf.yaml`, `buf.gen*.yaml`, `third_party/centrifugo/` | Buf | The one canonical protocol source: the Buf module in `proto/`, cross-runtime fixtures in `proto/fixtures/`, `buf.yaml`, every generation template, and the vendored Centrifugo client schema in `third_party/centrifugo/` |
-| `server-sdk` | `packages/server-sdk/` | `server-sdk/` | pnpm, TypeScript | The embeddable Direct Server SDK (`@seeker-vault/server-sdk`) |
+| `server-sdk` | `packages/server-sdk/` | `server-sdk/` | pnpm, TypeScript | The embeddable Direct Server SDK (`@seeker_agent_connect/server-sdk`) |
 | `publisher-support` | `packages/publisher-support/` | `publisher-support/` | Go module | The source library both public-feed demos share. It is not a service and has no image |
-| `mcp-server` | `servers/mcp-server/` | `mcp-server/` | pnpm, TypeScript | The general self-hosted MCP server (`@seeker-vault/mcp-server`) |
-| `mcp-skr-staking` | `servers/mcp-skr-staking/` | `skr-staking-server/` | pnpm, TypeScript | The SKR staking MCP server (`@seeker-vault/skr-staking-server`) |
+| `mcp-server` | `servers/mcp-server/` | `mcp-server/` | pnpm, TypeScript | The general self-hosted MCP server (`@seeker_agent_connect/mcp-server`) |
+| `mcp-skr-staking` | `servers/mcp-skr-staking/` | `skr-staking-server/` | pnpm, TypeScript | The SKR staking MCP server (`@seeker_agent_connect/mcp-skr-staking`) |
 | `demo-signals` | `examples/demo-signals/` | `demo-copytrading/` | Go module | The CopyTrading signals demo: publisher, trader UI (`copytrading-admin`) and `publishctl` |
 | `demo-prediction` | `examples/demo-prediction/` | `demo-prediction/` | Go module | The Prediction demo: market discovery publisher, admin UI and `publishctl` |
-| `test-agent` | `tools/test-agent/` | `test-agent/` | pnpm, TypeScript | The MCP test client behind `pnpm agent` and the acceptance/integration suites (`@seeker-vault/test-agent`, private) |
+| `test-agent` | `tools/test-agent/` | `test-agent/` | pnpm, TypeScript | The MCP test client behind `pnpm agent` and the acceptance/integration suites (`@seeker_agent_connect/test-agent`, private) |
 | `loadtest` | `tools/loadtest/` | `loadtest/` | Go module | The gateway's load, isolation and failover harness |
 
 `servers/` holds independently runnable MCP servers; a new one goes in `servers/<component>/`.
@@ -78,7 +78,7 @@ gateway ◀──runs the binary in tests── publisher-support, demo-predicti
 
 - **Node workspace.** `pnpm-workspace.yaml` lists `packages/server-sdk`, `servers/mcp-server`,
   `servers/mcp-skr-staking` and `tools/test-agent`. The servers import the SDK only through its
-  public package exports (`@seeker-vault/server-sdk` and `/protocol`); the MCP server's build
+  public package exports (`@seeker_agent_connect/server-sdk` and `/protocol`); the MCP server's build
   vendors the built SDK into its own package (`servers/mcp-server/scripts/package.mjs`).
 - **Go modules.** Each Go component is its own module. The demos resolve `publisher-support`
   through `replace … => ../../packages/publisher-support`; no other Go module depends on another.
@@ -145,11 +145,11 @@ pnpm check:deployments                  # every Compose preset resolves
 | `protocol` | `pnpm generate` | — | — |
 | `server-sdk` | `pnpm build:server-sdk` | — (a library; `pnpm test:server-sdk-package` installs it outside the workspace) | — |
 | `publisher-support` | `pnpm check:publisher-support` | — (a library) | — |
-| `mcp-server` | `pnpm --filter @seeker-vault/mcp-server run build` | `pnpm dev:mcp-server`, `pnpm pair` | `docker build -f servers/mcp-server/Dockerfile .` |
-| `mcp-skr-staking` | `pnpm --filter @seeker-vault/skr-staking-server run build` | `pnpm dev:mcp-skr-staking` | `docker build -f servers/mcp-skr-staking/Dockerfile .` |
+| `mcp-server` | `pnpm --filter @seeker_agent_connect/mcp-server run build` | `pnpm dev:mcp-server`, `pnpm pair` | `docker build -f servers/mcp-server/Dockerfile .` |
+| `mcp-skr-staking` | `pnpm --filter @seeker_agent_connect/mcp-skr-staking run build` | `pnpm dev:mcp-skr-staking` | `docker build -f servers/mcp-skr-staking/Dockerfile .` |
 | `demo-signals` | `(cd examples/demo-signals && go build ./...)` | [`examples/demo-signals/README.md`](../../examples/demo-signals/README.md) | `docker build -f examples/demo-signals/Dockerfile .` |
 | `demo-prediction` | `(cd examples/demo-prediction && go build ./...)` | [`examples/demo-prediction/README.md`](../../examples/demo-prediction/README.md) | `docker build -f examples/demo-prediction/Dockerfile .` |
-| `test-agent` | `pnpm --filter @seeker-vault/test-agent run build` | `pnpm agent <command>` | `docker build -f tools/test-agent/Dockerfile .` |
+| `test-agent` | `pnpm --filter @seeker_agent_connect/test-agent run build` | `pnpm agent <command>` | `docker build -f tools/test-agent/Dockerfile .` |
 | `loadtest` | `(cd tools/loadtest && go build ./...)` | `pnpm test:load` | — |
 
 Every Dockerfile still builds from the repository root as its context, except the Centrifugo image,
@@ -157,10 +157,11 @@ whose context is `services/gateway/`. The Compose projects under `deploy/` build
 
 ## What did not change
 
-- **Package identities.** npm names stay `@seeker-vault/server-sdk`, `@seeker-vault/mcp-server`,
-  `@seeker-vault/skr-staking-server` and `@seeker-vault/test-agent`; only each manifest's
-  `repository.directory` now names the new folder. Renaming to the `@seekeragentconnect` scope and
-  publishing belong to the packaging task (SEE-168).
+- **Package identities.** SEE-167 changed only each manifest's `repository.directory`. The scope
+  itself changed in the packaging task that followed: the packages are `@seeker_agent_connect/…`
+  now, `skr-staking-server` was renamed to `mcp-skr-staking` so the package, the folder and the
+  image share one identifier, and all three are published. `@seeker_agent_connect/test-agent` stays
+  private. See [releases.md](releases.md).
 - **Go module paths** stay `github.com/BrRenat/SeekerAgentWallet/<old folder name>` (for example
   `…/feed-gateway`, `…/demo-copytrading`), so no import line changed. See the note under
   [Migrating](#go-module-paths) about fetching them by path.

@@ -1,4 +1,4 @@
-# `@seeker-vault/server-sdk`
+# `@seeker_agent_connect/server-sdk`
 
 An embeddable TypeScript engine for a Seeker Agent Connect direct server. Your backend calls the
 SDK in-process to create, read, cancel and observe requests. The owner's phone pairs with and calls
@@ -12,7 +12,7 @@ published. The supported runtime is Node.js `>=24.21.0 <25`, and the package is 
 From this repository:
 
 ```sh
-pnpm --filter @seeker-vault/server-sdk run build
+pnpm --filter @seeker_agent_connect/server-sdk run build
 npm pack --dry-run --json ./packages/server-sdk
 npm pack --json ./packages/server-sdk --pack-destination /absolute/reviewed/directory
 ```
@@ -29,8 +29,8 @@ that release exists.
 
 ## Public API
 
-The package exports only `@seeker-vault/server-sdk` and
-`@seeker-vault/server-sdk/protocol`. There are no supported source or private deep imports.
+The package exports only `@seeker_agent_connect/server-sdk` and
+`@seeker_agent_connect/server-sdk/protocol`. There are no supported source or private deep imports.
 
 `openDirectServer` explicitly opens and migrates the configured SQLite file. It requires a durable
 path, public origin, logger and the current request/pairing limits. Importing the package alone does
@@ -42,11 +42,11 @@ import {
   openDirectServer,
   privateRequest,
   startPhoneApi,
-} from "@seeker-vault/server-sdk";
+} from "@seeker_agent_connect/server-sdk";
 import {
   AckActionSchema,
   ActionSchema,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 import { create } from "@bufbuild/protobuf";
 
 const server = openDirectServer({
