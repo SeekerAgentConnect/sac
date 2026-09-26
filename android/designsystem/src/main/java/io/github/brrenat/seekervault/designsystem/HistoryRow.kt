@@ -11,11 +11,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Cancel
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.DoNotDisturbOn
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.Draw
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material.icons.outlined.NorthEast
+import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.TimerOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -40,6 +50,23 @@ enum class HistoryRowState {
     Unknown,
 }
 
+/**
+ * The status icon beside the outcome text (SEE-161). Every status has its own glyph, so the line
+ * never relies on colour alone.
+ */
+enum class HistoryRowStatus {
+    Confirmed,
+    Pending,
+    Failed,
+    Signed,
+    Simulated,
+    Declined,
+    Dismissed,
+    Expired,
+    Cancelled,
+    Unknown,
+}
+
 data class HistoryRowModel(
     val title: String,
     val sourceName: String,
@@ -54,6 +81,10 @@ fun HistoryRow(
     state: HistoryRowState,
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** The operation's own icon; null keeps the reference's icon for [state]. */
+    kind: InboxRowKind? = null,
+    /** An icon ahead of the outcome text; null draws the text alone, as the reference does. */
+    status: HistoryRowStatus? = null,
 ) {
     val rowModifier =
         modifier
@@ -74,7 +105,7 @@ fun HistoryRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = state.historyIcon(),
+            imageVector = kind?.historyIcon() ?: state.historyIcon(),
             contentDescription = null,
             modifier = Modifier.size(SeekerTheme.spacing.xxl + SeekerTheme.spacing.xxs),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -103,14 +134,61 @@ fun HistoryRow(
             ) {
                 SourceChip(sourceName = model.sourceName, size = SourceChipSize.Compact)
             }
-            Text(
-                text = "${model.outcomeText} · ${model.timestampText}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.sm),
+                verticalAlignment = Alignment.Top,
+            ) {
+                if (status != null) {
+                    Icon(
+                        imageVector = status.icon(),
+                        contentDescription = null,
+                        modifier =
+                            Modifier.padding(top = SeekerTheme.spacing.xxs / 2)
+                                .size(SeekerTheme.spacing.xl),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = "${model.outcomeText} · ${model.timestampText}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+        // A tappable row says so: the whole row is the hit target, and the chevron is its sign.
+        if (onClick != null) {
+            Icon(
+                imageVector = Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.size(SeekerTheme.spacing.xxxl),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
+
+private fun InboxRowKind.historyIcon(): ImageVector =
+    when (this) {
+        InboxRowKind.Acknowledgement -> Icons.Outlined.DoneAll
+        InboxRowKind.Prediction -> Icons.AutoMirrored.Outlined.TrendingUp
+        InboxRowKind.Transfer -> Icons.Outlined.NorthEast
+        InboxRowKind.Swap -> Icons.Outlined.SwapHoriz
+        InboxRowKind.Signature -> Icons.Outlined.Draw
+    }
+
+private fun HistoryRowStatus.icon(): ImageVector =
+    when (this) {
+        HistoryRowStatus.Confirmed -> Icons.Outlined.CheckCircle
+        HistoryRowStatus.Pending -> Icons.Outlined.HourglassTop
+        HistoryRowStatus.Failed -> Icons.Outlined.ErrorOutline
+        HistoryRowStatus.Signed -> Icons.Outlined.Draw
+        HistoryRowStatus.Simulated -> Icons.Outlined.Science
+        HistoryRowStatus.Declined -> Icons.Outlined.Cancel
+        HistoryRowStatus.Dismissed -> Icons.Outlined.DoNotDisturbOn
+        HistoryRowStatus.Expired -> Icons.Outlined.TimerOff
+        HistoryRowStatus.Cancelled -> Icons.Outlined.Block
+        HistoryRowStatus.Unknown -> Icons.AutoMirrored.Outlined.HelpOutline
+    }
 
 private fun HistoryRowState.historyIcon(): ImageVector =
     when (this) {
@@ -232,3 +310,53 @@ internal fun HistoryRowUnknownPreview() =
         ),
         HistoryRowState.Unknown,
     )
+
+@DesignRef(component = "history-row", variant = "tappable=confirmed")
+@Preview(
+    name = "history-row/tappable-confirmed",
+    widthDp = 358,
+    uiMode = HistoryRowPreviewDarkMode,
+)
+@Composable
+internal fun HistoryRowTappableConfirmedPreview() =
+    SeekerTheme(darkTheme = true) {
+        Surface(color = SeekerTheme.colors.surface0) {
+            HistoryRow(
+                model =
+                    HistoryRowModel(
+                        title = "Place 25 USDC on Yes: Will SOL close above \$250?",
+                        sourceName = "Prediction Signals",
+                        outcomeText = "Approved · confirmed",
+                        timestampText = "9:01 PM",
+                        isSignal = true,
+                    ),
+                state = HistoryRowState.Sent,
+                onClick = {},
+                kind = InboxRowKind.Prediction,
+                status = HistoryRowStatus.Confirmed,
+            )
+        }
+    }
+
+@DesignRef(component = "history-row", variant = "tappable=pending")
+@Preview(name = "history-row/tappable-pending", widthDp = 358, uiMode = HistoryRowPreviewDarkMode)
+@Composable
+internal fun HistoryRowTappablePendingPreview() =
+    SeekerTheme(darkTheme = true) {
+        Surface(color = SeekerTheme.colors.surface0) {
+            HistoryRow(
+                model =
+                    HistoryRowModel(
+                        title = "Swap 25 USDC for SOL",
+                        sourceName = "Trader Signals",
+                        outcomeText = "Approved · waiting for the network",
+                        timestampText = "9:14 PM",
+                        isSignal = true,
+                    ),
+                state = HistoryRowState.Sent,
+                onClick = {},
+                kind = InboxRowKind.Swap,
+                status = HistoryRowStatus.Pending,
+            )
+        }
+    }
