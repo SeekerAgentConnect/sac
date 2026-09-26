@@ -29,7 +29,7 @@ import (
 //
 // The challenge text is built from fields, never taken from somebody else's text: the publisher
 // and the phone each rebuild it from the same values and must arrive at the same bytes. A test on
-// each side pins the same fixture (fixtures/restricted-feeds/challenge.txt).
+// each side pins the same fixture (fixtures/restricted-feeds/challenge.json).
 
 // MessageVersion names the challenge format. It is the first line's last word, so a change to the
 // format is a change to what is signed.

@@ -120,6 +120,13 @@ func (s *Syncer) Pass(ctx context.Context) (int, error) {
 	if err := s.renew(ctx); err != nil {
 		return 0, err
 	}
+	// A challenge that expired can no longer be redeemed — the redemption requires an unused one
+	// that has not expired — so the row is spent history, and a publisher that ran for a year
+	// would otherwise be holding one for every challenge it ever issued. Its failure is not the
+	// pass's: telling the gateway about a grant matters more than tidying up after an attempt.
+	if _, err := s.store.SweepChallenges(ctx, s.now()); err != nil {
+		s.log.Warn("could not forget expired access challenges", "error", err)
+	}
 	due, err := s.store.GrantsDue(ctx, s.now(), 32)
 	if err != nil {
 		return 0, err
