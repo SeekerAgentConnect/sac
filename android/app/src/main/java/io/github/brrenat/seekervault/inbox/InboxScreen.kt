@@ -1,22 +1,29 @@
 package io.github.brrenat.seekervault.inbox
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import io.github.brrenat.seekervault.ReviewIdentity
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.Delivery
@@ -26,9 +33,11 @@ import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.connections.isSandboxEnvironment
 import io.github.brrenat.seekervault.designsystem.EmptyState
 import io.github.brrenat.seekervault.designsystem.EmptyStateScreen
+import io.github.brrenat.seekervault.designsystem.FilterBar
 import io.github.brrenat.seekervault.designsystem.HistoryRow
 import io.github.brrenat.seekervault.designsystem.HistoryRowModel
 import io.github.brrenat.seekervault.designsystem.HistoryRowState
+import io.github.brrenat.seekervault.designsystem.HistoryRowStatus
 import io.github.brrenat.seekervault.designsystem.InboxRow
 import io.github.brrenat.seekervault.designsystem.InboxRowKind
 import io.github.brrenat.seekervault.designsystem.InboxRowModel
@@ -73,12 +82,22 @@ data class InboxHistoryRowState(
     val id: String,
     val model: HistoryRowModel,
     val rowState: HistoryRowState,
+    val kind: InboxRowKind? = null,
+    val status: HistoryRowStatus? = null,
+)
+
+/** The source the Inbox is narrowed to, and how much of the selected tab that leaves showing. */
+data class InboxSourceFilterState(
+    val sourceName: String,
+    val visibleCount: Int,
+    val totalCount: Int,
 )
 
 data class InboxScreenState(
     val selectedTab: InboxTab,
     val pending: List<InboxPendingRowState>,
     val history: List<InboxHistoryRowState>,
+    val sourceFilter: InboxSourceFilterState? = null,
 )
 
 data class InboxScreenCallbacks(
@@ -86,6 +105,7 @@ data class InboxScreenCallbacks(
     val onReview: (String) -> Unit,
     val onOpenHistory: (String) -> Unit,
     val navigation: ScreenNavigationCallbacks,
+    val onClearFilter: () -> Unit = {},
 )
 
 data class InboxRouteCallbacks(
@@ -93,7 +113,58 @@ data class InboxRouteCallbacks(
     val onOpenRequest: (RequestKey) -> Unit,
     val onOpenSignal: (ProposalRecord) -> Unit,
     val navigation: ScreenNavigationCallbacks,
+    /** A History row: the read-only record, never the review (SEE-161). */
+    val onOpenHistory: (ReviewIdentity) -> Unit = {},
 )
+
+/**
+ * What the Inbox is showing: the tab, the source it is narrowed to, and how far History is
+ * scrolled. The app keeps it rather than the Inbox, so a visit to a record's details and Back — or
+ * the process being recreated in between — return to exactly this (SEE-161).
+ */
+@Stable
+class InboxViewState(tab: InboxTab? = null, sourceFilter: String? = null, historyScroll: Int = 0) {
+    /** Null until the Inbox has chosen its opening tab. */
+    var tab by mutableStateOf(tab)
+
+    /** A connection ID, or null for every source. */
+    var sourceFilter by mutableStateOf(sourceFilter)
+
+    var historyScroll by mutableStateOf(ScrollState(historyScroll))
+        private set
+
+    /** A fresh visit: the Inbox picks its tab again, for every source, from the top. */
+    fun reset(sourceFilter: String? = null) {
+        tab = null
+        this.sourceFilter = sourceFilter
+        historyScroll = ScrollState(0)
+    }
+
+    companion object {
+        val Saver: Saver<InboxViewState, Any> =
+            listSaver(
+                save = {
+                    listOf(
+                        it.tab?.name.orEmpty(),
+                        it.sourceFilter.orEmpty(),
+                        it.historyScroll.value,
+                    )
+                },
+                restore = { saved ->
+                    InboxViewState(
+                        tab =
+                            (saved[0] as String).takeIf(String::isNotEmpty)?.let(InboxTab::valueOf),
+                        sourceFilter = (saved[1] as String).takeIf(String::isNotEmpty),
+                        historyScroll = saved[2] as Int,
+                    )
+                },
+            )
+    }
+}
+
+@Composable
+fun rememberInboxViewState(): InboxViewState =
+    rememberSaveable(saver = InboxViewState.Saver) { InboxViewState() }
 
 /**
  * Stateless SEE-121 root Inbox. Connection-filtered sheets continue to use PendingRequestsScreen.
@@ -103,6 +174,7 @@ fun InboxScreen(
     state: InboxScreenState,
     callbacks: InboxScreenCallbacks,
     modifier: Modifier = Modifier,
+    historyScroll: ScrollState = rememberScrollState(),
 ) {
     ScreenScaffold(
         title = InboxCopy.Title,
@@ -137,7 +209,11 @@ fun InboxScreen(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.Top,
             ) { page ->
-                ScreenScrollBody(Modifier.fillMaxSize().testTag(InboxTags.LIST)) {
+                val tab = InboxTab.entries[page]
+                ScreenScrollBody(
+                    Modifier.fillMaxSize().testTag(InboxTags.LIST),
+                    state = if (tab == InboxTab.History) historyScroll else rememberScrollState(),
+                ) {
                     // The first row sits as far below the tabs as the rows sit from the screen's
                     // sides: the body's own top padding plus one row gap make the side margin.
                     Spacer(
@@ -145,7 +221,16 @@ fun InboxScreen(
                             SeekerTheme.spacing.xl - SeekerTheme.spacing.xs - SeekerTheme.spacing.lg
                         )
                     )
-                    when (InboxTab.entries[page]) {
+                    state.sourceFilter?.let { filter ->
+                        FilterBar(
+                            sourceName = filter.sourceName,
+                            visibleCount = filter.visibleCount,
+                            totalCount = filter.totalCount,
+                            onClear = callbacks.onClearFilter,
+                            modifier = Modifier.testTag(InboxScreenTags.Filter),
+                        )
+                    }
+                    when (tab) {
                         InboxTab.Pending -> {
                             if (state.pending.isEmpty()) {
                                 EmptyState(
@@ -186,6 +271,8 @@ fun InboxScreen(
                                         onClick = { callbacks.onOpenHistory(item.id) },
                                         modifier =
                                             Modifier.testTag(InboxScreenTags.history(item.id)),
+                                        kind = item.kind,
+                                        status = item.status,
                                     )
                                 }
                             }
@@ -206,6 +293,7 @@ fun InboxRoute(
     now: Instant,
     callbacks: InboxRouteCallbacks,
     modifier: Modifier = Modifier,
+    view: InboxViewState = rememberInboxViewState(),
 ) {
     val initial =
         inboxInitialTab(
@@ -213,7 +301,9 @@ fun InboxRoute(
             feedRecords = feedRecords,
             feedStanding = feedStanding,
         )
-    var selected by rememberSaveable { mutableStateOf(initial) }
+    // The opening tab is chosen once per visit, from what is there when the Inbox opens.
+    SideEffect { if (view.tab == null) view.tab = initial }
+    val selected = view.tab ?: initial
     val mapped =
         inboxScreenState(
             state = state,
@@ -221,6 +311,7 @@ fun InboxRoute(
             feedStanding = feedStanding,
             selectedTab = selected,
             now = now,
+            sourceFilter = view.sourceFilter,
         )
     val recordById = feedRecords.associateBy(::signalId)
 
@@ -229,18 +320,26 @@ fun InboxRoute(
         state = mapped,
         callbacks =
             InboxScreenCallbacks(
-                onSelectTab = { selected = it },
+                onSelectTab = { view.tab = it },
                 onReview = { id ->
                     privateKey(id)?.let(callbacks.onOpenRequest)
                         ?: recordById[id]?.let(callbacks.onOpenSignal)
                 },
                 onOpenHistory = { id ->
-                    privateKey(id)?.let(callbacks.onOpenRequest)
-                        ?: recordById[id]?.let(callbacks.onOpenSignal)
+                    val identity =
+                        privateKey(id)?.let {
+                            ReviewIdentity.Private(it.connectionId, it.requestId)
+                        }
+                            ?: recordById[id]?.let {
+                                ReviewIdentity.Signal(it.connectionId, it.key.proposalId)
+                            }
+                    identity?.let(callbacks.onOpenHistory)
                 },
                 navigation = callbacks.navigation,
+                onClearFilter = { view.sourceFilter = null },
             ),
         modifier = modifier,
+        historyScroll = view.historyScroll,
     )
 }
 
@@ -265,11 +364,19 @@ fun inboxScreenState(
     selectedTab: InboxTab,
     now: Instant,
     formatTime: (Instant) -> String = ::inboxShortTime,
+    sourceFilter: String? = null,
 ): InboxScreenState {
     val connections = state.connections.associateBy(Connection::id)
-    val privateItems = inboxItems(state.inbox, null)
+    // A filter for a connection that is gone narrows to nothing, so it is dropped instead.
+    val filter = sourceFilter?.takeIf { it in connections }
+    val unfiltered =
+        if (filter == null) null
+        else inboxScreenState(state, feedRecords, feedStanding, selectedTab, now, formatTime)
+    val privateItems = inboxItems(state.inbox, filter)
+    val shownRecords = feedRecords.filter { filter == null || it.connectionId == filter }
     val pending =
-        pendingItems(state.inbox, feedRecords, feedStanding)
+        pendingItems(state.inbox, shownRecords, feedStanding)
+            .filter { filter == null || it.connectionId == filter }
             .sortedWith(
                 compareByDescending<PendingItem> { it.at }
                     .thenBy { it.namespace }
@@ -293,7 +400,7 @@ fun inboxScreenState(
                 formatTime = formatTime,
             )
         }
-    val signalHistory = feedRecords.mapNotNull { record ->
+    val signalHistory = shownRecords.mapNotNull { record ->
         val standing = feedStanding(record)
         if (standing is ProposalStanding.Open) {
             null
@@ -305,10 +412,24 @@ fun inboxScreenState(
             )
         }
     }
+    val history = (privateHistory + signalHistory).sortedByDescending { it.at }.map { it.row }
     return InboxScreenState(
         selectedTab = selectedTab,
         pending = pending,
-        history = (privateHistory + signalHistory).sortedByDescending { it.at }.map { it.row },
+        history = history,
+        sourceFilter =
+            if (filter == null || unfiltered == null) {
+                null
+            } else {
+                InboxSourceFilterState(
+                    sourceName = connections.getValue(filter).label,
+                    visibleCount =
+                        if (selectedTab == InboxTab.History) history.size else pending.size,
+                    totalCount =
+                        if (selectedTab == InboxTab.History) unfiltered.history.size
+                        else unfiltered.pending.size,
+                )
+            },
     )
 }
 
@@ -387,6 +508,10 @@ private fun LocalResult.toInboxHistoryRow(
             delivery == Delivery.Waiting -> "Waiting to tell the server"
             answer == Answer.Acknowledge -> "Acknowledged"
             answer == Answer.Reject -> "Rejected"
+            signing is SigningOutcome.Sent &&
+                request.state == RequestState.REQUEST_STATE_CONFIRMED -> "Confirmed on the network"
+            signing is SigningOutcome.Sent && request.state == RequestState.REQUEST_STATE_FAILED ->
+                "Failed on the network"
             signing is SigningOutcome.Sent -> "Sent to the network"
             signing is SigningOutcome.Signed -> "Signed by your wallet"
             signing == SigningOutcome.Declined -> "Declined in the wallet"
@@ -394,22 +519,43 @@ private fun LocalResult.toInboxHistoryRow(
             signing is SigningOutcome.Failed -> "Wallet did not complete it"
             else -> "Waiting for the wallet"
         }
+    val status =
+        when {
+            cancelled -> HistoryRowStatus.Cancelled
+            expired -> HistoryRowStatus.Expired
+            answer == Answer.Reject -> HistoryRowStatus.Declined
+            answer == Answer.Acknowledge -> HistoryRowStatus.Confirmed
+            else ->
+                when (signing) {
+                    null -> HistoryRowStatus.Pending
+                    is SigningOutcome.Signed -> HistoryRowStatus.Signed
+                    is SigningOutcome.Sent ->
+                        when (request.state) {
+                            RequestState.REQUEST_STATE_CONFIRMED -> HistoryRowStatus.Confirmed
+                            RequestState.REQUEST_STATE_FAILED -> HistoryRowStatus.Failed
+                            else -> HistoryRowStatus.Pending
+                        }
+                    SigningOutcome.Declined -> HistoryRowStatus.Declined
+                    is SigningOutcome.Failed -> HistoryRowStatus.Failed
+                    is SigningOutcome.Unresolved -> HistoryRowStatus.Unknown
+                }
+        }
+    val envelope = request.commonEnvelope()
     return TimedHistoryRow(
         row =
             InboxHistoryRowState(
                 id = privateId(key),
                 model =
                     HistoryRowModel(
-                        title =
-                            request
-                                .commonEnvelope()
-                                .inboxTitle(request.commonEnvelope().action.capabilityId),
+                        title = envelope.inboxTitle(envelope.action.capabilityId),
                         sourceName = sourceName ?: connectionId,
                         outcomeText = outcome,
                         timestampText = formatTime(answeredAt),
                         isSignal = false,
                     ),
                 rowState = rowState,
+                kind = envelope.action.capabilityId.inboxKind(),
+                status = status,
             ),
         at = answeredAt,
     )
@@ -420,6 +566,24 @@ private fun ProposalRecord.toInboxHistoryRow(
     standing: ProposalStanding,
     formatTime: (Instant) -> String,
 ): TimedHistoryRow {
+    val status =
+        when (standing) {
+            is ProposalStanding.Executed ->
+                when (standing.outcome) {
+                    is ProposalOutcome.Submitted,
+                    ProposalOutcome.Pending -> HistoryRowStatus.Pending
+                    ProposalOutcome.Simulated -> HistoryRowStatus.Simulated
+                    ProposalOutcome.Declined -> HistoryRowStatus.Declined
+                    is ProposalOutcome.Failed -> HistoryRowStatus.Failed
+                    is ProposalOutcome.Unresolved -> HistoryRowStatus.Unknown
+                }
+            is ProposalStanding.Dismissed -> HistoryRowStatus.Dismissed
+            ProposalStanding.Cancelled -> HistoryRowStatus.Cancelled
+            ProposalStanding.Expired -> HistoryRowStatus.Expired
+            is ProposalStanding.Refused,
+            is ProposalStanding.Unsupported,
+            ProposalStanding.Open -> HistoryRowStatus.Unknown
+        }
     val (rowState, outcome) =
         when (standing) {
             is ProposalStanding.Executed ->
@@ -463,6 +627,8 @@ private fun ProposalRecord.toInboxHistoryRow(
                         isSignal = true,
                     ),
                 rowState = rowState,
+                kind = request.action.capabilityId.inboxKind(),
+                status = status,
             ),
         at = at,
     )
@@ -470,7 +636,7 @@ private fun ProposalRecord.toInboxHistoryRow(
 
 private data class TimedHistoryRow(val row: InboxHistoryRowState, val at: Instant)
 
-private fun Request.inboxTitle(capability: String): String =
+internal fun Request.inboxTitle(capability: String): String =
     when (capability) {
         InboxCapability.Acknowledgement -> "Acknowledge a message"
         InboxCapability.Prediction -> presentation.title
@@ -599,6 +765,7 @@ object InboxCopy {
 object InboxScreenTags {
     const val Tabs = "inboxRootTabs"
     const val EmptyHistory = "inboxHistoryEmpty"
+    const val Filter = "inboxSourceFilter"
 
     fun pending(id: String) =
         if (id.startsWith(PrivatePrefix)) {

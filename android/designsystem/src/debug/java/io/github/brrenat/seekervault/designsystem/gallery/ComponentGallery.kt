@@ -191,6 +191,48 @@ internal val componentGallerySpecimens =
         GallerySpecimen(component = "history-row", variant = "state=unknown") {
             HistoryRowUnknownPreview()
         },
+        GallerySpecimen(component = "history-detail", variant = "screen=long-content") {
+            HistoryDetailLongContentPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "screen=approved-pending") {
+            HistoryDetailApprovedPendingPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "screen=approved-confirmed") {
+            HistoryDetailApprovedConfirmedPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "screen=approved-failed") {
+            HistoryDetailApprovedFailedPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "screen=declined") {
+            HistoryDetailDeclinedPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "screen=expired") {
+            HistoryDetailExpiredPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "screen=cancelled") {
+            HistoryDetailCancelledPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "screen=dismissed-signal") {
+            HistoryDetailDismissedSignalPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "screen=signed-message") {
+            HistoryDetailSignedMessagePreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "screen=sandbox") {
+            HistoryDetailSandboxPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "body=approved-confirmed") {
+            HistoryDetailBodyApprovedConfirmedPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "body=cancelled") {
+            HistoryDetailBodyCancelledPreview()
+        },
+        GallerySpecimen(component = "history-row", variant = "tappable=confirmed") {
+            HistoryRowTappableConfirmedPreview()
+        },
+        GallerySpecimen(component = "history-row", variant = "tappable=pending") {
+            HistoryRowTappablePendingPreview()
+        },
         GallerySpecimen(component = "icon-probe", variant = "material-icons-outlined") {
             IconProbePreview()
         },

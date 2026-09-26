@@ -199,6 +199,28 @@ class OperationViewModel(
      */
     fun standing(record: ProposalRecord): ProposalStanding = proposals.standing(record)
 
+    /**
+     * The form a record's provider declares, from compiled code only, so a History record can put
+     * the owner's recorded choice into the provider's own words (SEE-161). Nothing is resolved,
+     * quoted or prepared.
+     */
+    fun parameterForm(record: ProposalRecord): ParameterForm {
+        // The provider, promise and chain the choice was bound under — not today's settings.
+        val binding = record.execution?.binding ?: return ParameterForm()
+        val payload =
+            (payloadOf(record) as? ActionPayloadResult.Valid)?.payload ?: return ParameterForm()
+        val provider = providers.byId(binding.provider) ?: return ParameterForm()
+        if (namedProvider(record.proposal, providers) == null) return ParameterForm()
+        return provider.inputs(
+            operationFor(record, payload)
+                .copy(
+                    provider = binding.provider,
+                    environment = binding.environment,
+                    network = binding.network,
+                )
+        )
+    }
+
     /** Reads the feed this proposal belongs to, through the gateway. It publishes nothing. */
     fun refresh(connectionId: String) {
         viewModelScope.launch {

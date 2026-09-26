@@ -245,6 +245,8 @@ data class InboxUiState(
 enum class NotificationOpenStatus {
     Loading,
     Current,
+    /** Answered on this phone and closed since: it opens as a History record (SEE-161). */
+    Closed,
     Gone,
     Removed,
     Revoked,
@@ -393,9 +395,10 @@ class InboxViewModel(
                     !connection.usable -> NotificationOpenStatus.Revoked
                     connection.lastCheck?.outcome != CheckOutcome.Ok ->
                         NotificationOpenStatus.Unavailable
-                    repository.inbox.value.result(key) != null ||
-                        repository.inbox.value.pendingRequest(key) != null ->
+                    repository.inbox.value.pendingRequest(key) != null ->
                         NotificationOpenStatus.Current
+                    // Answered here and no longer waiting: its History record, not a review.
+                    repository.inbox.value.result(key) != null -> NotificationOpenStatus.Closed
                     else -> NotificationOpenStatus.Gone
                 }
             updateNotificationOpen(key, status)

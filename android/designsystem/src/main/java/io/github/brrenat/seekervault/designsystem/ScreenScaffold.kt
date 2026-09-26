@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.designsystem
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,17 +75,42 @@ fun ScreenScaffold(
     }
 }
 
-/** Scroll body whose trailing space lets the final item clear the overlaid navigation bar. */
+/**
+ * A full-height page reached from a tab (SEE-161): the same app bar with Back, and no bottom
+ * navigation, so the page reads as a step into the tab rather than a peer of it.
+ */
+@Composable
+fun DetailScreenScaffold(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    backButtonModifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Column(modifier = modifier.fillMaxSize().background(SeekerTheme.colors.surface0)) {
+        Spacer(Modifier.height(SeekerTheme.spacing.huge))
+        ScreenAppBar(title = title, onBack = onBack, backButtonModifier = backButtonModifier)
+        Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+    }
+}
+
+/**
+ * Scroll body whose trailing space lets the final item clear the overlaid navigation bar.
+ *
+ * [state] is the caller's when the offset has to outlive this body, as the Inbox History tab's does
+ * across a visit to a record's details (SEE-161).
+ */
 @Composable
 fun ScreenScrollBody(
     modifier: Modifier = Modifier,
+    state: ScrollState = rememberScrollState(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
         modifier =
             modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(state)
                 .padding(
                     start = SeekerTheme.spacing.xl,
                     top = SeekerTheme.spacing.xs,

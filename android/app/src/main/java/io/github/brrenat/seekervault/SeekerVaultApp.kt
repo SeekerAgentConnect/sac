@@ -37,8 +37,10 @@ import io.github.brrenat.seekervault.connections.InboxSummary
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.connections.sourceColour
+import io.github.brrenat.seekervault.designsystem.InboxTab
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.SheetMotion
+import io.github.brrenat.seekervault.history.HistoryDetailRoute
 import io.github.brrenat.seekervault.inbox.InboxRoute
 import io.github.brrenat.seekervault.inbox.InboxRouteCallbacks
 import io.github.brrenat.seekervault.inbox.InboxViewModel
@@ -52,6 +54,7 @@ import io.github.brrenat.seekervault.inbox.inboxCounts
 import io.github.brrenat.seekervault.inbox.inboxItems
 import io.github.brrenat.seekervault.inbox.key
 import io.github.brrenat.seekervault.inbox.pendingItems
+import io.github.brrenat.seekervault.inbox.rememberInboxViewState
 import io.github.brrenat.seekervault.live.LiveCommandRoute
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
 import io.github.brrenat.seekervault.notifications.InAppNotices
@@ -65,6 +68,7 @@ import io.github.brrenat.seekervault.operations.PredictionParametersSheet
 import io.github.brrenat.seekervault.operations.PredictionReviewScreen
 import io.github.brrenat.seekervault.operations.PredictionReviewSource
 import io.github.brrenat.seekervault.operations.ProposalReviewScreen
+import io.github.brrenat.seekervault.operations.choiceRows
 import io.github.brrenat.seekervault.operations.requiresWalletHandoff
 import io.github.brrenat.seekervault.operations.reviewedAsPrediction
 import io.github.brrenat.seekervault.policy.PolicyAddressKind
@@ -119,6 +123,13 @@ fun SeekerVaultApp(
         )
     val navigation = navigator.state
     val sheets = navigation.sheets
+    // Kept here rather than in the Inbox, so a record's details and Back return to the same tab,
+    // source filter and History scroll offset (SEE-161).
+    val inboxView = rememberInboxViewState()
+    val openHistoryDetail: (ReviewIdentity) -> Unit = { identity ->
+        inboxView.tab = InboxTab.History
+        navigator.openHistoryDetail(identity)
+    }
     var closingTo by remember { mutableStateOf<Int?>(null) }
     var backplateTargetSize by remember { mutableStateOf<Int?>(null) }
     var requestedPolicyClose by remember { mutableStateOf<AppSheet?>(null) }
@@ -199,13 +210,27 @@ fun SeekerVaultApp(
             navigator.openConnectionDetail(key.connectionId)
         }
     }
-    LaunchedEffect(feedTap?.sequence, state.loaded) {
+    LaunchedEffect(feedTap?.sequence, state.loaded, operationsState.loaded) {
         val ref = feedTap?.ref ?: return@LaunchedEffect
-        if (!state.loaded) return@LaunchedEffect
+        if (!state.loaded || (operations != null && !operationsState.loaded)) return@LaunchedEffect
         resetTransientSheetState()
         navigator.selectTab(AppScreen.Home)
         val connection = state.connections.firstOrNull { it.id == ref.connectionId }
-        if (connection?.mode == ConnectionMode.GatewayFeed) {
+        val record =
+            operationsState.records.firstOrNull {
+                it.connectionId == ref.connectionId && it.key.proposalId == ref.proposalId
+            }
+        val closed =
+            record != null &&
+                operations?.standing(record)?.let {
+                    it !is io.github.brrenat.seekervault.proposals.ProposalStanding.Open
+                } == true
+        if (connection?.mode == ConnectionMode.GatewayFeed && closed) {
+            // A signal that has closed since the alert opens as its History record (SEE-161).
+            inboxView.reset()
+            navigator.selectTab(AppScreen.Inbox)
+            openHistoryDetail(ReviewIdentity.Signal(ref.connectionId, ref.proposalId))
+        } else if (connection?.mode == ConnectionMode.GatewayFeed) {
             navigator.openReview(ReviewIdentity.Signal(ref.connectionId, ref.proposalId))
         } else if (connection?.retirement != null) {
             navigator.openConnectionDetail(ref.connectionId)
@@ -259,7 +284,10 @@ fun SeekerVaultApp(
     val screenNavigationCallbacks =
         ScreenNavigationCallbacks(
             onHome = { selectTabAfterSheets(AppScreen.Home) },
-            onInbox = { selectTabAfterSheets(AppScreen.Inbox) },
+            onInbox = {
+                inboxView.reset()
+                selectTabAfterSheets(AppScreen.Inbox)
+            },
             onWallet = { selectTabAfterSheets(AppScreen.Wallet) },
             onActivity = { selectTabAfterSheets(AppScreen.Activity) },
         )
@@ -353,7 +381,39 @@ fun SeekerVaultApp(
                                     )
                                 },
                                 navigation = screenNavigationCallbacks,
+                                onOpenHistory = openHistoryDetail,
                             ),
+                        modifier = rootModifier,
+                        view = inboxView,
+                    )
+                is AppScreen.HistoryDetail ->
+                    HistoryDetailRoute(
+                        identity = navigation.screen.identity,
+                        connections = state.connections,
+                        inboxState = inboxState,
+                        feedRecords = operationsState.records,
+                        feedStanding = { record ->
+                            operations?.standing(record)
+                                ?: io.github.brrenat.seekervault.proposals.ProposalStanding.Expired
+                        },
+                        signalChoice = { record ->
+                            val context = LocalContext.current
+                            val choice = record.execution?.binding?.choice
+                            remember(record, operations) {
+                                if (choice == null || operations == null) {
+                                    emptyList()
+                                } else {
+                                    choiceRows(
+                                        choice,
+                                        operations.parameterForm(record),
+                                        context::getString,
+                                    )
+                                }
+                            }
+                        },
+                        onSendAgain = inbox::sendAgain,
+                        onCheckStatus = inbox::checkStatus,
+                        onBack = { navigator.back() },
                         modifier = rootModifier,
                     )
                 AppScreen.AddConnection ->
@@ -401,7 +461,10 @@ fun SeekerVaultApp(
                                     onRules = {
                                         navigator.openConnectionRules(activeRoute.connectionId)
                                     },
-                                    onInbox = { selectTabAfterSheets(AppScreen.Inbox) },
+                                    onInbox = {
+                                        inboxView.reset(sourceFilter = activeRoute.connectionId)
+                                        selectTabAfterSheets(AppScreen.Inbox)
+                                    },
                                     onPairDirect = {
                                         dismissSheetsThen(0) {
                                             navigator.selectTab(AppScreen.Home)
@@ -572,6 +635,10 @@ fun SeekerVaultApp(
                                     openOperation = openOperation,
                                     navigator = navigator,
                                     onBack = pop,
+                                    onClosed = { identity ->
+                                        inboxView.reset()
+                                        openHistoryDetail(identity)
+                                    },
                                 )
                             is AppSheet.WalletHandoff ->
                                 WalletHandoffRoute(
@@ -644,6 +711,8 @@ private fun RequestReviewRoute(
     openOperation: io.github.brrenat.seekervault.operations.OperationReview?,
     navigator: AppNavigator,
     onBack: () -> Unit,
+    /** A notification about an item answered and closed since: its History record instead. */
+    onClosed: (ReviewIdentity) -> Unit = {},
 ) {
     when (val identity = route.identity) {
         is ReviewIdentity.Private -> {
@@ -651,7 +720,9 @@ private fun RequestReviewRoute(
             val result = inboxState.inbox.result(key)
             val request = result?.request ?: inboxState.inbox.pendingRequest(key)
             val notificationOpen = inboxState.notificationOpen?.takeIf { it.key == key }
-            if (
+            if (notificationOpen?.status == NotificationOpenStatus.Closed) {
+                LaunchedEffect(key) { onClosed(identity) }
+            } else if (
                 notificationOpen?.status == NotificationOpenStatus.Loading ||
                     notificationOpen?.status == NotificationOpenStatus.Removed ||
                     notificationOpen?.status == NotificationOpenStatus.Revoked ||
