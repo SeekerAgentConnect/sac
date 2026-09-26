@@ -11,7 +11,8 @@ navigation, persistence, transports, and wallet SDK behavior stay with callers.
 | `request-tile` | `RequestTile` | five request kinds in rail or centred colour states |
 | `request-carousel` | `RequestCarousel` | 358dp lazy row with SEE-81 endpoint snapping and centred-state selection |
 | `inbox-row` | `InboxRow` | merged request/signal summary, context chips, expiry, and one Review action |
-| `history-row` | `HistoryRow` | sent, simulated, dismissed, cancelled, expired, and unknown outcomes |
+| `history-row` | `HistoryRow` | sent, simulated, dismissed, cancelled, expired, and unknown outcomes; optional kind and status icons, and a chevron when tappable (SEE-161) |
+| `history-detail` | `HistoryDetailScreen` | the read-only History record page and its atoms, from a typed model (SEE-161, [history details](history-details.md)) |
 | `server-row` | `ServerRow` | source avatar, connection status, and optional row action |
 | `rule-row` | `RuleRow` | action, asset, program, and recipient rule entries, including read-only state |
 | `verdict-card` | `VerdictCard` | OK or one/many warnings with scope chips and Rules action |
