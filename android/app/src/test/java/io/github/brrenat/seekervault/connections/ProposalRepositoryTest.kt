@@ -5,6 +5,8 @@ import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
+import io.github.brrenat.seekervault.confirmations.Submission
+import io.github.brrenat.seekervault.confirmations.SubmissionTracking
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
@@ -77,6 +79,7 @@ class ProposalRepositoryTest {
         withFeed: Boolean = true,
         plugins: ProviderRegistry = ProviderRegistry.of(jupiterLike()),
         store: ProposalStore = this.store,
+        tracking: SubmissionTracking? = null,
     ) =
         ProposalRepository(
             store = store,
@@ -86,6 +89,7 @@ class ProposalRepositoryTest {
             history = history,
             now = { clock },
             io = Dispatchers.Unconfined,
+            tracking = tracking,
         )
 
     private val repository by lazy { repository() }
@@ -309,6 +313,34 @@ class ProposalRepositoryTest {
 
         assertEquals(ProposalOutcome.Submitted(hash(9)), held().execution?.outcome)
         assertEquals(ActivityOutcome.Sent, history.records.value.single().outcome)
+    }
+
+    @Test
+    fun aSentOperationsSignatureIsHandedToTheTrackerAgainAtStartup() = runBlocking {
+        repository.apply(FEED, wireProposal())
+        val chose = choice(1_000_000u)
+        repository.review(FEED, PROPOSAL_A, chose)
+        repository.beginExecution(FEED, PROPOSAL_A, binding(held().proposal, chose), wallet)
+        // Stored, and then the process stopped before the tracker heard (SEE-165): this
+        // repository has no tracker at all, which is the same as the call never having run.
+        repository.recordOutcome(FEED, PROPOSAL_A, ProposalOutcome.Submitted(hash(9)))
+
+        val told = mutableListOf<Pair<RequestKey, List<Byte>>>()
+        val tracking =
+            object : SubmissionTracking {
+                override fun expect(submission: Submission) = Unit
+
+                override fun submitted(key: RequestKey, signature: ByteArray) = Unit
+
+                override fun abandoned(key: RequestKey) = Unit
+
+                override fun recovered(key: RequestKey, signature: ByteArray, at: Instant) {
+                    told += key to signature.toList()
+                }
+            }
+        repository(tracking = tracking).load()
+
+        assertEquals(listOf(RequestKey(FEED, PROPOSAL_A) to hash(9).toByteArray().toList()), told)
     }
 
     @Test

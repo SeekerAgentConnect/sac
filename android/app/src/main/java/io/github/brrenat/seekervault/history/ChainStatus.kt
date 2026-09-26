@@ -218,6 +218,10 @@ private fun waitingText(local: ChainCheck?, clock: HistoryDetailClock): String {
         ChainReason.ProcessedOnly ->
             parts += "A node has processed it, but no supermajority has voted on it yet."
         ChainReason.NotYetVisible -> parts += "The network has no status for it yet."
+        ChainReason.HistoryNotRetained ->
+            parts +=
+                "The network endpoint no longer keeps the history that would say whether it " +
+                    "landed."
         ChainReason.BodyNotServed ->
             parts += "Its status is in, and the transaction itself isn't served yet to compare."
         ChainReason.NoEndpoint ->

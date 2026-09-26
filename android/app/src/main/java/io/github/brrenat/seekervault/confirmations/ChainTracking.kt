@@ -89,6 +89,11 @@ enum class ChainReason(val code: String) {
     Mismatch("mismatch"),
     /** The record predates tracking and has no approved message to compare. */
     MissingContext("missing_context"),
+    /**
+     * No status, and its blockhash expired, but the endpoint's ledger no longer reaches back to it:
+     * whether it landed can't be told from here.
+     */
+    HistoryNotRetained("history_not_retained"),
     /** Automatic checks stopped; a manual check is still possible. */
     GaveUp("gave_up");
 

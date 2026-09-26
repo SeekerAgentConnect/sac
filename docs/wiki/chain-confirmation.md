@@ -77,12 +77,17 @@ The trust standard is the direct server's (SAW-022), applied on the phone:
 3. A confirmed result keeps being checked for a short while until `finalized` is observed.
 
 **Expiry is proven, never assumed.** A missing status proves nothing (signatures drop out of the
-status cache). A transaction is **Expired · never landed** only when all three hold:
+status cache). A transaction is **Expired · never landed** only when all four hold:
 
 - it was submitted more than three minutes ago (well past both the blockhash window and the lag
   between the confirmed and finalized chain);
 - `isBlockhashValid` at `finalized` says its blockhash can no longer be used;
-- a `searchTransactionHistory` lookup has no record of the signature.
+- a `searchTransactionHistory` lookup has no record of the signature;
+- the endpoint's own ledger reaches back past the capture — the block time of its
+  `minimumLedgerSlot` is at least ten minutes before the transaction was captured. A node that has
+  pruned its ledger since, or one that falls back on long-term storage and misses there, answers
+  the search with nothing for a transaction that did land, so without that coverage the check stays
+  inconclusive (`history_not_retained`) and ends unresolved rather than expired.
 
 A request's or proposal's own expiry is not a transaction's expiry and is never used here. A record
 whose blockhash can't be read is never concluded expired.
