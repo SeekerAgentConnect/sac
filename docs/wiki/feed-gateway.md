@@ -617,6 +617,16 @@ resolved by different code: 32 random bytes compared by SHA-256 on one side, a c
 stretched and compared in constant time on the other. Neither is accepted where the other belongs,
 and a test presents a real, valid publishing credential to every administrative route to say so.
 
+**Who may read a feed is set here too (SEE-162).** The register form takes a policy — public, or
+restricted with the origin its phones authenticate at — and each feed publisher's page has a **Who
+may read** form that does what `feed-gatewayctl access` does, through the same
+`PublisherAdminStore.SetAccess`. The rules are the CLI's: a restricted feed needs an HTTPS origin with
+no path, a public one refuses any, and a server that publishes no feed cannot be restricted. A change
+retires every stream name issued under the old policy, so it asks for the server ID typed back, as
+forgetting does; asking for the policy already held changes nothing and asks nothing. Without this, an
+operator on a platform whose container has no usable shell could register a restricted publisher
+only by reaching the database from somewhere else.
+
 **Sessions are held in the process.** A random token in an `HttpOnly`, `SameSite=Strict` cookie
 scoped to the admin path, stored as its SHA-256, with an absolute lifetime. That is a deliberate
 choice over a signed cookie: a signed cookie cannot be withdrawn, so logging out would only ask the

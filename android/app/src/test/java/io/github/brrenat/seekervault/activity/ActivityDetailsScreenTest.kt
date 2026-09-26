@@ -1,16 +1,19 @@
 package io.github.brrenat.seekervault.activity
 
 import android.content.Context
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.notifications.InAppNotices
+import io.github.brrenat.seekervault.notifications.LocalInAppNotices
 import io.github.brrenat.seekervault.request.v1.Network
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -28,14 +31,21 @@ class ActivityDetailsScreenTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val opened = mutableListOf<String>()
 
+    private val notices = InAppNotices()
+    private val noticed = mutableListOf<String>()
+
     private fun show(record: ActivityRecord, linkFailed: Boolean = false) = compose.setContent {
-        SeekerTheme {
-            ActivityDetailsScreen(
-                record = record,
-                onOpenExplorer = { opened += it },
-                linkFailed = linkFailed,
-                onBack = {},
-            )
+        // Listening before the screen composes, as the app's banner host does.
+        LaunchedEffect(Unit) { notices.texts.collect { noticed += it } }
+        CompositionLocalProvider(LocalInAppNotices provides notices) {
+            SeekerTheme {
+                ActivityDetailsScreen(
+                    record = record,
+                    onOpenExplorer = { opened += it },
+                    linkFailed = linkFailed,
+                    onBack = {},
+                )
+            }
         }
     }
 
@@ -220,7 +230,9 @@ class ActivityDetailsScreenTest {
     @Test
     fun saysSoWhenNothingOnThePhoneCanOpenTheLink() {
         show(record(), linkFailed = true)
-        compose.onNodeWithText(context.getString(R.string.activity_link_failed)).assertExists()
+        // Said in the app's top banner, as a service message.
+        compose.waitForIdle()
+        assertEquals(listOf(context.getString(R.string.activity_link_failed)), noticed)
         // And the record itself is unaffected: the signature is still there to copy.
         compose.onNodeWithTag(ActivityTags.SIGNATURE).assertExists()
     }

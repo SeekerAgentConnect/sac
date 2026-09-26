@@ -19,6 +19,17 @@ the two surfaces cannot say different things about the same event, and the banne
 privacy rule they were written under: the validated action kind and the owner's own local name for
 the server, never the request's body, note, bytes or identifiers.
 
+## Service messages
+
+Everything else the app has to say in passing — a connection added, paired, renamed or removed; why
+a restricted feed's access request stopped short; the publisher approving, rejecting or revoking
+this device; rules saved; an explorer link that would not open — is a *service message*. A screen
+posts the text to `LocalInAppNotices` (`notifications/InAppNotices.kt`) and the host shows it as an
+`Info` banner: the same shape at the top, on the theme's neutral `surface3` with `onSurface` ink, a
+title of up to three lines and no subtitle. It waits its turn behind any request, signal or
+disconnection banner, stays six seconds, and a tap or a swipe only dismisses it. None of these
+screens has a snackbar any more.
+
 ## Where each half lives
 
 `:designsystem`'s `InAppNotification` owns one banner on screen: its looks, the drag under the

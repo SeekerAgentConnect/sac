@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Sensors
@@ -65,6 +66,11 @@ enum class InAppNotificationKind {
     Request,
     Signal,
     Disconnected,
+    /**
+     * A service message: something the app did or learned — a connection added or renamed, a
+     * publisher's decision, a save — on the theme's neutral surface rather than an accent.
+     */
+    Info,
 }
 
 /** Durations and easings for one banner's life on screen (SEE-147). */
@@ -166,18 +172,21 @@ fun InAppNotification(
             InAppNotificationKind.Request,
             InAppNotificationKind.Signal -> SeekerTheme.colors.limeContainer
             InAppNotificationKind.Disconnected -> SeekerTheme.colors.orangeContainer
+            InAppNotificationKind.Info -> SeekerTheme.colors.surface3
         }
     val ink =
         when (kind) {
             InAppNotificationKind.Request,
             InAppNotificationKind.Signal -> SeekerTheme.colors.onLimeContainer
             InAppNotificationKind.Disconnected -> SeekerTheme.colors.onOrangeContainer
+            InAppNotificationKind.Info -> MaterialTheme.colorScheme.onSurface
         }
     val glyph =
         when (kind) {
             InAppNotificationKind.Request -> Icons.Outlined.NotificationsActive
             InAppNotificationKind.Signal -> Icons.Outlined.Sensors
             InAppNotificationKind.Disconnected -> Icons.Outlined.LinkOff
+            InAppNotificationKind.Info -> Icons.Outlined.Info
         }
     val shape = RoundedCornerShape(SeekerTheme.radii.lg)
     val shadow = SeekerTheme.colors.overlayShadow
@@ -308,10 +317,12 @@ fun InAppNotification(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xxs),
         ) {
+            // A service message is a sentence, not a headline, so it may wrap; the others keep the
+            // one line that holds every request banner at the same height.
             Text(
                 text = title,
                 color = ink,
-                maxLines = 1,
+                maxLines = if (kind == InAppNotificationKind.Info) InfoTitleLines else 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleMedium,
             )
@@ -345,6 +356,9 @@ private fun snapBack(
         )
     }
 }
+
+/** How many lines a service message may take before it is cut. */
+private const val InfoTitleLines = 3
 
 private const val InAppNotificationPreviewDarkMode = Configuration.UI_MODE_NIGHT_YES
 private const val InAppNotificationPreviewWidth = 374
@@ -413,4 +427,19 @@ internal fun InAppNotificationDisconnectedPreview() =
         title = "runner-node disconnected",
         subtitle = null,
         openActionLabel = "runner-node disconnected, open",
+    )
+
+@DesignRef(component = "notification", variant = "kind=info")
+@Preview(
+    name = "notification/kind-info",
+    widthDp = InAppNotificationPreviewWidth,
+    uiMode = InAppNotificationPreviewDarkMode,
+)
+@Composable
+internal fun InAppNotificationInfoPreview() =
+    InAppNotificationPreview(
+        kind = InAppNotificationKind.Info,
+        title = "CopyTrading approved this device. Its signals will arrive here.",
+        subtitle = null,
+        openActionLabel = "CopyTrading approved this device, dismiss",
     )

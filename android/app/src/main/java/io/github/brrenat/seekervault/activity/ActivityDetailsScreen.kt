@@ -11,13 +11,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -27,11 +25,11 @@ import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.environmentText
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.notifications.LocalInAppNotices
 import io.github.brrenat.seekervault.ui.Identifier
 import io.github.brrenat.seekervault.ui.SeekerButton
 import io.github.brrenat.seekervault.ui.SeekerButtonRole
 import io.github.brrenat.seekervault.ui.SeekerCard
-import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
 
 /**
  * One record in full: who asked, what the owner reviewed, which network it was on, how it ended,
@@ -50,11 +48,11 @@ fun ActivityDetailsScreen(
     linkFailed: Boolean = false,
     onMessageShown: () -> Unit = {},
 ) {
-    val snackbar = remember { SnackbarHostState() }
+    val notices = LocalInAppNotices.current
     val failed = stringResource(R.string.activity_link_failed)
     LaunchedEffect(linkFailed) {
         if (linkFailed) {
-            snackbar.showSnackbar(failed)
+            notices.show(failed)
             onMessageShown()
         }
     }
@@ -77,7 +75,6 @@ fun ActivityDetailsScreen(
                     ),
             )
         },
-        snackbarHost = { SeekerSnackbarHost(snackbar) },
     ) { innerPadding ->
         Column(Modifier.padding(innerPadding).verticalScroll(rememberScrollState())) {
             Text(

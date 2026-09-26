@@ -22,6 +22,7 @@ import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.servers.serverSupport
 import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -182,6 +183,15 @@ sealed interface ConnectionMessage {
      */
     data class AccessNotAsked(override val label: String, val reason: AccessProblem) :
         ConnectionMessage
+
+    /** The publisher approved this device, and the feed is now readable (SEE-156). */
+    data class AccessApproved(override val label: String) : ConnectionMessage
+
+    /** The publisher rejected this device's request (SEE-156). */
+    data class AccessRejected(override val label: String) : ConnectionMessage
+
+    /** The publisher revoked this device's access (SEE-156). */
+    data class AccessRevoked(override val label: String) : ConnectionMessage
 }
 
 /** Why asking for access stopped before the publisher had anything to decide (SEE-156). */
@@ -263,7 +273,24 @@ class ConnectionsViewModel(
         }
         feedAccess?.let { access ->
             viewModelScope.launch {
-                access.states.collect { current -> _state.update { it.copy(access = current) } }
+                access.states.collect { current ->
+                    _state.update {
+                        it.copy(
+                            access = current,
+                            message =
+                                accessChange(it.access, current, it.connections) ?: it.message,
+                        )
+                    }
+                }
+            }
+            // A decision reaches this phone only when it asks (SEE-156), so while the app is open
+            // a request that is waiting is asked about now and then, signed with the device key and
+            // never with the wallet. What it learns is said by the collector above.
+            viewModelScope.launch {
+                while (true) {
+                    delay(ACCESS_CHECK_INTERVAL)
+                    if (!hidden) checkWaitingAccess()
+                }
             }
         }
         viewModelScope.launch {
@@ -293,6 +320,55 @@ class ConnectionsViewModel(
      */
     fun checkAccess(id: String) = working(id) { checkNotNull(feedAccess).check(id) }
 
+    /**
+     * Asks about every request still waiting for the publisher, quietly: a check the owner did not
+     * ask for does not report that the publisher could not be reached.
+     */
+    private fun checkWaitingAccess() {
+        _state.value.access.values
+            .filter {
+                it.state == FeedAccessStore.State.Pending ||
+                    it.state == FeedAccessStore.State.Approved
+            }
+            .forEach { record ->
+                working(record.connectionId, quiet = true) {
+                    checkNotNull(feedAccess).check(record.connectionId)
+                }
+            }
+    }
+
+    /**
+     * What to tell the owner about a decision that just reached this phone, or null. Only a change
+     * to a request this phone already held counts: loading what is stored, or a new request, is not
+     * news.
+     */
+    private fun accessChange(
+        before: Map<String, FeedAccessStore.Record>,
+        after: Map<String, FeedAccessStore.Record>,
+        connections: List<Connection>,
+    ): ConnectionMessage? =
+        after.values.firstNotNullOfOrNull { record ->
+            val previous = before[record.connectionId]
+            if (
+                previous == null ||
+                    previous.requestId != record.requestId ||
+                    previous.state == record.state
+            ) {
+                return@firstNotNullOfOrNull null
+            }
+            val label =
+                connections.firstOrNull { it.id == record.connectionId }?.label
+                    ?: return@firstNotNullOfOrNull null
+            when (record.state) {
+                FeedAccessStore.State.Connected -> ConnectionMessage.AccessApproved(label)
+                FeedAccessStore.State.Rejected -> ConnectionMessage.AccessRejected(label)
+                FeedAccessStore.State.Revoked -> ConnectionMessage.AccessRevoked(label)
+                FeedAccessStore.State.Pending,
+                FeedAccessStore.State.Approved,
+                FeedAccessStore.State.Expired -> null
+            }
+        }
+
     /** Redeems an invitation that arrived as a link or a code rather than through a check. */
     fun redeemAccess(id: String, invitation: String) =
         working(id) { checkNotNull(feedAccess).redeem(id, invitation) }
@@ -313,7 +389,11 @@ class ConnectionsViewModel(
         return ConnectionMessage.AccessNotAsked(label, reason)
     }
 
-    private fun working(id: String, block: suspend () -> AccessResult): Job? {
+    private fun working(
+        id: String,
+        quiet: Boolean = false,
+        block: suspend () -> AccessResult,
+    ): Job? {
         if (feedAccess == null) return null
         if (id in _state.value.accessWorking) return null
         _state.update { it.copy(accessWorking = it.accessWorking + id) }
@@ -323,10 +403,12 @@ class ConnectionsViewModel(
                 it.copy(
                     accessWorking = it.accessWorking - id,
                     message =
-                        accessMessage(
-                            result,
-                            it.connections.firstOrNull { one -> one.id == id }?.label.orEmpty(),
-                        ) ?: it.message,
+                        if (quiet) it.message
+                        else
+                            accessMessage(
+                                result,
+                                it.connections.firstOrNull { one -> one.id == id }?.label.orEmpty(),
+                            ) ?: it.message,
                 )
             }
         }
@@ -346,6 +428,7 @@ class ConnectionsViewModel(
         if (!hidden) return
         hidden = false
         refreshAll()
+        checkWaitingAccess()
     }
 
     fun onCodeDraftChange(text: String) = _state.update { state ->
@@ -618,6 +701,9 @@ class ConnectionsViewModel(
         }
 
     private companion object {
+        /** How often a waiting access request is asked about while the app is open (SEE-156). */
+        const val ACCESS_CHECK_INTERVAL = 20_000L
+
         /** A retry can only help when the sidecar wasn't reached or the failure is unknown. */
         fun canRetry(failure: PairingFailure) =
             failure == PairingFailure.Unreachable || failure == PairingFailure.Other

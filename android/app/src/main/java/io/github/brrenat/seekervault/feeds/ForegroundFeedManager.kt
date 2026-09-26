@@ -107,6 +107,18 @@ class ForegroundFeedManager(
         synchronized(lifecycleLock) { closingJob = closing }
     }
 
+    /**
+     * Reopens every stream, when one is open, so each is ticketed again with the sessions held now
+     * (SEE-156): a stream keeps the channels it was opened with, and another wallet selected since
+     * does not read the restricted feeds the last one did.
+     */
+    fun restart() {
+        val running = synchronized(lifecycleLock) { foregroundJob?.isActive == true }
+        if (!running) return
+        onBackground()
+        onForeground()
+    }
+
     private fun isCurrent(expected: Long) = synchronized(lifecycleLock) { session == expected }
 
     /**

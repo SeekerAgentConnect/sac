@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/config"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/pushrelay"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
@@ -154,7 +155,7 @@ type PublisherRow struct {
 	Relay storage.RelayStatus
 
 	// Who may read the feed (SEE-156), and how many devices a restricted one admits right now: a
-	// count, never a list of anyone. Set with feed-gatewayctl access.
+	// count, never a list of anyone. Set on this page or with feed-gatewayctl access (SEE-162).
 	Access storage.Access
 	Grants int
 }
@@ -337,7 +338,14 @@ type RegistrationForm struct {
 	Generate   bool
 	Publishing bool
 	Relaying   bool
+	// Access and AuthOrigin are who may read the feed (SEE-162): the same choice as
+	// feed-gatewayctl register --access, with the same rules.
+	Access     string
+	AuthOrigin string
 }
+
+// Restricted says whether the form asked for a restricted feed, for the template.
+func (f RegistrationForm) Restricted() bool { return f.Access == string(storage.RestrictedAccess) }
 
 func registrationForm(request *http.Request) RegistrationForm {
 	return RegistrationForm{
@@ -347,7 +355,36 @@ func registrationForm(request *http.Request) RegistrationForm {
 		Generate:   request.PostFormValue("generate") != "",
 		Publishing: request.PostFormValue("publishing") != "",
 		Relaying:   request.PostFormValue("relaying") != "",
+		Access:     strings.TrimSpace(request.PostFormValue("access")),
+		AuthOrigin: strings.TrimSpace(request.PostFormValue("auth_origin")),
 	}
+}
+
+// accessOf reads a policy and an origin from a form, with the rules feed-gatewayctl applies to
+// --access and --auth-origin (SEE-156, SEE-162): a restricted feed names the origin its subscribers
+// prove who they are at, validated as strictly as the gateway's own public origin, because it is
+// the one address a phone will send a wallet proof to and it trusts it because this registration
+// vouches for it. A public feed names none. An empty policy is public, as on `register`.
+func accessOf(policy, origin string) (storage.Access, string) {
+	switch storage.AccessPolicy(policy) {
+	case "", storage.PublicAccess:
+		if origin != "" {
+			return storage.Access{}, "An authentication origin belongs to a restricted feed. " +
+				"Clear it, or choose restricted."
+		}
+		return storage.Access{Policy: storage.PublicAccess}, ""
+	case storage.RestrictedAccess:
+		if origin == "" {
+			return storage.Access{}, "A restricted feed needs the origin its subscribers " +
+				"authenticate at — the publisher's PUBLISHER_AUTH_ORIGIN."
+		}
+		written, err := config.Origin(origin)
+		if err != nil {
+			return storage.Access{}, "The authentication origin " + err.Error() + "."
+		}
+		return storage.Access{Policy: storage.RestrictedAccess, AuthOrigin: written}, ""
+	}
+	return storage.Access{}, "Choose who may read this feed: anyone, or approved devices only."
 }
 
 // parse turns the form into a registration, says whether the ID was minted here, or names the one
@@ -392,6 +429,18 @@ func (f RegistrationForm) parse() (storage.Registration, bool, string) {
 		return registration, generated, strings.ToUpper(err.Error()[:1]) + err.Error()[1:] + "."
 	}
 	registration.Host = host
+
+	access, problem := accessOf(f.Access, f.AuthOrigin)
+	if problem != "" {
+		return registration, generated, problem
+	}
+	// Who may read a feed means nothing for a server that publishes none, and recording a
+	// restricted policy on one would be an origin nobody's phone is ever sent to.
+	if access.Restricted() && !f.Publishing {
+		return registration, generated, "Only a feed can be restricted. Enable publishing, or " +
+			"leave the access public."
+	}
+	registration.Access = access
 	return registration, generated, ""
 }
 

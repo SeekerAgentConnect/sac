@@ -39,10 +39,10 @@ the gateway is not restarted.</p>
     <legend>What this server may do</legend>
     <label class="check">
       <input type="checkbox" name="publishing" value="on" {{if .Form.Publishing}}checked{{end}}>
-      Publish a public feed
+      Publish a feed
     </label>
-    <p class="hint">Its manifest and its proposals are served to anyone who adds its feed. This is
-    what a publisher registration has always been.</p>
+    <p class="hint">Its manifest and its proposals are served to whoever may read it — anyone who
+    adds it, or only approved devices, as chosen below.</p>
     <label class="check">
       <input type="checkbox" name="relaying" value="on" {{if .Form.Relaying}}checked{{end}}>
       Relay push to phones paired with it
@@ -52,6 +52,28 @@ the gateway is not restarted.</p>
     nothing else. The gateway relays no request, approval, signature or result, and the developer
     never receives this deployment's Firebase credential. A relay-only registration needs no
     manifest and publishes no feed.</p>
+  </fieldset>
+
+  <fieldset class="capabilities">
+    <legend>Who may read its feed</legend>
+    <label class="check">
+      <input type="radio" name="access" value="public" {{if not .Form.Restricted}}checked{{end}}>
+      Public — anyone holding the feed reference
+    </label>
+    <label class="check">
+      <input type="radio" name="access" value="restricted" {{if .Form.Restricted}}checked{{end}}>
+      Restricted — only devices the publisher approved
+    </label>
+    <p class="hint">A restricted feed is enforced here, on every read, page, stream ticket and push
+    target: a phone proves its wallet to the publisher, the publisher approves the device, and this
+    gateway admits only the devices it was granted. The policy is this registration's — a link or a
+    manifest cannot open a feed registered restricted.</p>
+    <label for="auth-origin">Authentication origin <span class="sub">(restricted only)</span></label>
+    <input id="auth-origin" name="auth_origin" value="{{.Form.AuthOrigin}}" spellcheck="false"
+           autocomplete="off" placeholder="https://signals.example.com">
+    <p class="hint">Where a phone proves which wallet it holds: the publisher's
+    <code>PUBLISHER_AUTH_ORIGIN</code>, character for character. HTTPS, no path. It is the one
+    address a phone will send a wallet proof to.</p>
   </fieldset>
 
   <label for="server">Server ID</label>

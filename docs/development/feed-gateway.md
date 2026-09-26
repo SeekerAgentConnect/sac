@@ -162,9 +162,9 @@ is why; this is what it is made of.
 
 | File | What is in it |
 | --- | --- |
-| `admin.go` | The routes, the guard that authenticates and checks CSRF before any handler runs, and the five actions — register, rotate, revoke one, revoke all, forget |
+| `admin.go` | The routes, the guard that authenticates and checks CSRF before any handler runs, and the six actions — register (with its access policy), set access, rotate, revoke one, revoke all, forget. `setAccess` is `feed-gatewayctl access` on the page (SEE-162): same rules, the server ID typed back to confirm a change, and a request for the policy already held writes nothing |
 | `session.go` | Server-side sessions: an opaque random token in the cookie, stored as its SHA-256, absolute expiry, a bounded count, real logout, and the one-shot hold a new credential is revealed from |
-| `pages.go` | The view models and the embedded templates. `PublisherRow.Credentials()` and `.Published()` are the only place the operator-facing state words are decided |
+| `pages.go` | The view models and the embedded templates. `accessOf` is the page's copy of the CLI's `--access` / `--auth-origin` rules, over the same `config.Origin`. `PublisherRow.Credentials()` and `.Published()` are the only place the operator-facing state words are decided |
 | `host.go` | What may be recorded as a publisher's host, and what may be rendered as a link |
 | `templates/`, `assets/` | The pages, one stylesheet and one script, all compiled into the binary |
 

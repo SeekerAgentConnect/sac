@@ -55,7 +55,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
@@ -85,10 +84,10 @@ import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.notifications.LocalInAppNotices
 import io.github.brrenat.seekervault.policy.storage.UnreadableReason
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.ui.SeekerCard
-import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
 import io.github.brrenat.seekervault.ui.SolidDialog
 import io.github.brrenat.seekervault.ui.seekerListItemColors
 import io.github.brrenat.seekervault.ui.seekerTextFieldColors
@@ -127,14 +126,14 @@ fun PolicyEditorScreen(
     onOpenAddress: (PolicyAddressKind) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val snackbar = remember { SnackbarHostState() }
+    val notices = LocalInAppNotices.current
     val inlineGlobalSaveFailure =
         state.scope == PolicyEditorScope.Global && state.message == PolicyMessage.SaveFailed
     val message =
         state.message?.takeUnless { inlineGlobalSaveFailure }?.let { messageText(it, state.scope) }
     LaunchedEffect(state.message, inlineGlobalSaveFailure) {
         if (message != null) {
-            snackbar.showSnackbar(message)
+            notices.show(message)
             onMessageShown()
         }
     }
@@ -180,7 +179,6 @@ fun PolicyEditorScreen(
                         ),
                 )
             },
-            snackbarHost = { SeekerSnackbarHost(snackbar) },
             bottomBar = {
                 if (
                     state.scope == PolicyEditorScope.Global &&

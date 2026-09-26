@@ -78,8 +78,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -351,7 +353,21 @@ class SeekerVaultApplication : Application() {
                 io = connectionIo,
             )
         CoroutineScope(SupervisorJob() + connectionIo).launch {
+            // Access belongs to the wallet it was proven with (SEE-156), so the selection is read
+            // first: a restricted feed is readable only while its wallet is the selected one.
+            walletRepository.load()
             checkNotNull(feedAccess).load()
+            var previous: String? = walletRepository.wallet.value?.address
+            walletRepository.wallet
+                .map { it?.address }
+                .distinctUntilChanged()
+                .collect { address ->
+                    checkNotNull(feedAccess).onWalletChanged()
+                    // An open stream carries the sessions it was ticketed with, so a switch
+                    // reopens it with the sessions of the wallet selected now.
+                    if (address != previous) foregroundFeeds.restart()
+                    previous = address
+                }
         }
         repository
     }
@@ -426,7 +442,8 @@ class SeekerVaultApplication : Application() {
                 proposalRepository.load()
                 // Before any read: a restricted feed read without its session is refused, and a
                 // background pass that raced the load would record a denial the gateway never
-                // meant (SEE-156).
+                // meant (SEE-156). The wallet is read first, because only its access is presented.
+                walletRepository.load()
                 feedAccessManager.load()
             },
             connections = { connectionRepository.connections.value },

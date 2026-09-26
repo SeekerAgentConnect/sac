@@ -14,7 +14,7 @@ Theme tokens and stock Compose layout/text primitives are always allowed. The de
 ## Kotlin API
 
 ```kotlin
-enum class InAppNotificationKind { Request, Signal, Disconnected }
+enum class InAppNotificationKind { Request, Signal, Disconnected, Info }
 
 @Composable
 fun InAppNotification(
@@ -43,6 +43,7 @@ visible and *how long* it stays belongs to the caller
 | `kind=request` | SEE-147 attachment | SEE-147 attachment |
 | `kind=signal` | SEE-147 attachment | SEE-147 attachment |
 | `kind=disconnected` | SEE-147 attachment | SEE-147 attachment |
+| `kind=info` | none yet (see below) | none yet (see below) |
 
 The exact-value specification for all three is the `In-app Notification.dc.html` specimen attached
 to SEE-147, with one PNG per kind beside it. They are not yet in `design/export/`, so
@@ -66,6 +67,15 @@ The specimen's request and signal boxes are 374 × 68 CSS px and the disconnecte
 Compose captures are 374 × 69 and 374 × 56: the named type scale carries the reference line height
 explicitly (19.2sp over 15.6sp), where the browser's `line-height: normal` for Roboto is a shade
 tighter. Matching the token scale is the guide's rule, so the 1dp is intended.
+
+## `kind=info`
+
+A service message — a connection added or renamed, a publisher's access decision, rules saved, a
+link that would not open — in the same banner, on `surface3` with `onSurface` ink and the
+`info` icon, rather than a snackbar at the bottom of the screen that raised it. It has no subtitle,
+its title may wrap to three lines because it is a sentence rather than a headline, it is armed for
+the same six seconds as a request, and a tap only dismisses it. The variant has no design export
+yet; the Compose preview `notification/kind-info` stands in until one is added.
 
 ## Gesture, motion, and lifetime
 
