@@ -76,6 +76,12 @@ func TestEveryWayAMarketsTermsCanBeWrong(t *testing.T) {
 		{"a ceiling of zero", predicting(MostDeposit, "0"), "impossible_amounts", MostDeposit},
 		{"a ceiling below the provider's own minimum", predicting(MostDeposit, "4000000"),
 			"impossible_amounts", MostDeposit},
+		{"a destination that is code", predicting(ProviderDeepLink, "javascript:alert(1)"),
+			"not_a_link", ProviderDeepLink},
+		{"a destination without the guarantee", predicting(ProviderWebURL,
+			"http://jup.ag/prediction/x"), "not_a_link", ProviderWebURL},
+		{"a destination that is somewhere on this phone",
+			predicting(ProviderDeepLink, "file:///data/data/x"), "not_a_link", ProviderDeepLink},
 		{"a term this kind does not know", predicting("side", "yes"), "unknown_term", "side"},
 		{"a misspelled term", predicting("market", "POLY-1"), "unknown_term", "market"},
 	} {

@@ -299,16 +299,12 @@ func TestTheDiscoveryAnswerSaysWhatItLooksForAndWhatItFound(t *testing.T) {
 		t.Fatalf("last_checked_at is %v although nothing has been asked about directly",
 			market["last_checked_at"])
 	}
-	// The link is here and not in the document: what a phone gets is the identifiers, which is
-	// what lets it look the market up for itself.
+	// The document carries identifiers, which is what lets a phone look the market up for itself,
+	// and since SEE-157 exactly two addresses: where the provider's own app and site keep this
+	// market. Nothing else in it is a URL — not in the note, not in the title, not anywhere a
+	// publisher's prose reaches — and that is what is checked here, term by term rather than by
+	// searching the whole document, so a URL appearing somewhere new still fails.
 	signal, _ := market["signal"].(map[string]any)
-	encoded, err := json.Marshal(signal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(encoded), "jup.ag") || strings.Contains(string(encoded), "http") {
-		t.Fatalf("the published signal carries a URL:\n%s", encoded)
-	}
 	terms, _ := signal["terms"].(map[string]any)
 	published := []string{}
 	for name := range terms {
@@ -316,8 +312,32 @@ func TestTheDiscoveryAnswerSaysWhatItLooksForAndWhatItFound(t *testing.T) {
 	}
 	sort.Strings(published)
 	if strings.Join(published, ",") != "deposit_decimals,deposit_mint,deposit_symbol,event_id,"+
-		"least_deposit,market_id,provider" {
+		"least_deposit,market_id,provider,provider_deep_link,provider_web_url" {
 		t.Fatalf("the published terms are %v", published)
+	}
+	for _, name := range []string{signals.ProviderDeepLink, signals.ProviderWebURL} {
+		if terms[name] != "https://jup.ag/prediction/fed-decision-in-october" {
+			t.Fatalf("%s is %v, and it has to be the market's own page on the provider",
+				name, terms[name])
+		}
+	}
+	for name, value := range terms {
+		if name == signals.ProviderDeepLink || name == signals.ProviderWebURL {
+			continue
+		}
+		if text, _ := value.(string); strings.Contains(text, "jup.ag") ||
+			strings.Contains(text, "http") {
+			t.Fatalf("the term %q carries a URL: %v", name, value)
+		}
+	}
+	encoded, err := json.Marshal(map[string]any{
+		"note": signal["note"], "title": signal["title"], "status": signal["status"],
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "jup.ag") || strings.Contains(string(encoded), "http") {
+		t.Fatalf("the publisher's own prose carries a URL:\n%s", encoded)
 	}
 }
 

@@ -38,6 +38,13 @@ const (
 	DepositSymbol   = "deposit_symbol"
 	LeastDeposit    = "least_deposit"
 	MostDeposit     = "most_deposit"
+
+	// Where the provider's own app keeps this market, and the same page on the web (SEE-157).
+	// They are the one pair of terms that leaves the phone: everything else a publisher writes is
+	// read and shown, and these two are handed to whatever opens them, after the phone's provider
+	// has recognized them as its own.
+	ProviderDeepLink = "provider_deep_link"
+	ProviderWebURL   = "provider_web_url"
 )
 
 // The two tokens the provider takes a deposit in: its own dollar token, and USDC. It is a closed
@@ -93,7 +100,7 @@ func (Prediction) Terms(raw map[string]string) (map[string]string, *Fault) {
 	for key := range raw {
 		switch key {
 		case MarketID, EventID, SourceProvider, DepositMint, DepositDecimals, DepositSymbol,
-			LeastDeposit, MostDeposit:
+			LeastDeposit, MostDeposit, ProviderDeepLink, ProviderWebURL:
 		default:
 			return nil, &Fault{Code: "unknown_term", Term: key}
 		}
@@ -183,6 +190,19 @@ func (Prediction) Terms(raw map[string]string) (map[string]string, *Fault) {
 		least = LeastOrderDeposit
 	}
 	terms[LeastDeposit] = strconv.FormatUint(least, 10)
+
+	// Where the owner may carry on with this market, when the publisher knows (SEE-157). Optional,
+	// independent of each other — a venue may have an app and no page worth linking, or the
+	// reverse — and held to the shape the phone holds them to, so a destination that is published
+	// is one a phone will actually offer.
+	for _, name := range []string{ProviderDeepLink, ProviderWebURL} {
+		if link := strings.TrimSpace(raw[name]); link != "" {
+			if !IsProviderLink(link) {
+				return nil, &Fault{Code: "not_a_link", Term: name}
+			}
+			terms[name] = link
+		}
+	}
 	return terms, nil
 }
 
