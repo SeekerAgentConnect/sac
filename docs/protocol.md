@@ -876,6 +876,16 @@ The second set, for `jupiter.prediction`, and the striking thing is how little o
 | `deposit_mint`, `deposit_decimals` | The token a stake is deposited in | One of the two the provider takes, as an exact base58 mint; 0 to 18 units, display only. |
 | `least_deposit`, `most_deposit` | Optional bounds, in base units | Whole numbers; the provider's own five-dollar minimum is a floor under both. |
 | `deposit_symbol` | An optional label | At most 16 characters, unverified. |
+| `provider_deep_link`, `provider_web_url` | Where the provider's own app and site keep this market (SEE-157) | Optional. A bounded absolute address, at most 512 bytes; `https` with a host, or a private scheme an app claims. Never `http`, `javascript:`, `data:`, `file:`, `content:` or `intent:`, and never with a credential in it. |
+
+**The two addresses are the only thing in the document that leaves the phone**, and they are
+believed about their *shape* and nothing else (SEE-157). A publisher reads the venue's listing and
+so knows the page a market is actually at; a phone knows only the market identifier. What core
+checks is that the value is an address something could be handed — the rules in the table above.
+Whose address it is, the *execution provider* decides: its adapter accepts one only when it is on
+its own property, and otherwise ignores it and builds its own. So a publisher can improve where an
+owner lands and cannot change who they land on
+([`wiki/jupiter-prediction.md`](wiki/jupiter-prediction.md#where-the-owner-continues)).
 
 **A publisher names which market and is believed about nothing else.** Whether it is open, what the
 sides cost, what the rules say, when it settles and whether it has already resolved are all read
