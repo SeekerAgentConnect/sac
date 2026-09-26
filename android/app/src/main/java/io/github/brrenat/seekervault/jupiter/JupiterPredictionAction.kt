@@ -12,10 +12,12 @@ import io.github.brrenat.seekervault.plugins.PluginDestination
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFailure
 import io.github.brrenat.seekervault.plugins.PluginFinding
+import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.PreparedOperation
 import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
 import io.github.brrenat.seekervault.plugins.actions.PredictionChoiceResult
 import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
+import io.github.brrenat.seekervault.plugins.actions.isSecureLinkTo
 import io.github.brrenat.seekervault.plugins.actions.message
 import io.github.brrenat.seekervault.plugins.actions.predictionBuyInputs
 import io.github.brrenat.seekervault.plugins.actions.predictionChoiceFrom
@@ -109,17 +111,73 @@ internal class JupiterPredictionAction(
         )
     }
 
-    fun destinations(payload: PredictionPayload): List<PluginDestination> =
-        // The market on Jupiter's own platform, built from an identifier core validated and Jupiter
-        // answered about. There is deliberately **no position link**: the platform has no
-        // per-position address, and inventing one would be the one dishonest thing on offer here
-        // (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
-        listOf(
+    /**
+     * Where the owner carries on, on Jupiter (SEE-94, SEE-157).
+     *
+     * ## The market, and whose address it is
+     *
+     * A publisher may name the page — it reads Jupiter's own listing, so it knows the market's slug
+     * and this app does not — and it is believed about it exactly as far as it can be checked:
+     * [ownLink] accepts an address only when it is `https` on Jupiter's own domain. Anything else
+     * is a publisher pointing the owner somewhere that is not Jupiter, and it is ignored rather
+     * than shown; the fallback is the address this adapter builds from the market identifier, which
+     * is what every prediction had before.
+     *
+     * The deep link and the web address are the same kind of thing here, and deliberately so.
+     * Jupiter publishes no private scheme; what it publishes is
+     * `https://jup.ag/.well-known/assetlinks.json`, which delegates its addresses to its own Android
+     * app. So a `jup.ag` address *is* Jupiter's deep link, verifiably, and opening one app-first
+     * lands in Jupiter when Jupiter is installed and in a browser when it is not. No scheme is
+     * invented to make this look more native than it is
+     * (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
+     *
+     * ## The order, and why it is the portfolio
+     *
+     * Once an order has been placed, [references] carry the order's own account, so this can offer
+     * somewhere about *that order* rather than about the market it was placed on. Where that is, on
+     * Jupiter, is the owner's prediction portfolio: the platform has **no per-order page**, and
+     * building an address for one would be inventing a page — the thing this file has refused to do
+     * since SEE-94. The portfolio is where a placed order actually is, so that is what is offered,
+     * and only once there is an order to look for.
+     */
+    fun destinations(
+        payload: PredictionPayload,
+        references: List<PluginReference>,
+    ): List<PluginDestination> = buildList {
+        val market =
+            ownLink(payload.providerWebUrl)
+                ?: ownLink(payload.providerDeepLink)
+                ?: "$JUPITER_PLATFORM/prediction/${payload.marketId}"
+        val app = ownLink(payload.providerDeepLink) ?: market
+        add(
             PluginDestination(
                 label = R.string.jupiter_destination_market,
-                url = "$JUPITER_PLATFORM/prediction/${payload.marketId}",
+                url = market,
+                deepLink = app,
             )
         )
+        // Only for an order that exists. A review nothing has been prepared for carries no
+        // references, and an owner who has not ordered anything is not shown somewhere to go and
+        // look at it.
+        if (references.any { it.key == ORDER_ACCOUNT && it.value.isNotBlank() }) {
+            add(
+                PluginDestination(
+                    label = R.string.jupiter_destination_order,
+                    url = JUPITER_ORDERS,
+                    deepLink = JUPITER_ORDERS,
+                )
+            )
+        }
+    }
+
+    /**
+     * [named], when it is an address on Jupiter's own domain over `https`, and null otherwise.
+     *
+     * Null is the important half: it is how a publisher that named somewhere else gets sent
+     * nowhere, rather than getting the owner sent there.
+     */
+    private fun ownLink(named: String): String? =
+        named.takeIf { it.isNotEmpty() && isSecureLinkTo(it, JUPITER_HOST) }
 
     suspend fun prepare(
         operation: ActionOperation,
@@ -263,6 +321,24 @@ internal class JupiterPredictionAction(
 
 /** Jupiter's own platform, which is where the owner continues. */
 const val JUPITER_PLATFORM: String = "https://jup.ag"
+
+/**
+ * The one domain an address has to be on to be Jupiter's.
+ *
+ * Written apart from [JUPITER_PLATFORM] because it is asked a different question: that one is what
+ * this build composes, and this one is what a publisher's address is measured against
+ * ([isSecureLinkTo], which matches the host or a subdomain of it and never the end of a string).
+ */
+const val JUPITER_HOST: String = "jup.ag"
+
+/**
+ * The owner's prediction portfolio on Jupiter, which is where a placed order is.
+ *
+ * Jupiter has no per-order page, so this is the nearest thing that exists rather than the nearest
+ * thing that could be composed: an address with an order account in it would be a page nobody
+ * serves (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
+ */
+const val JUPITER_ORDERS: String = "$JUPITER_PLATFORM/prediction/portfolio"
 
 /**
  * How long a prepared order stands.

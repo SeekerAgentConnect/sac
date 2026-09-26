@@ -24,7 +24,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.activity.ActivityRoute
 import io.github.brrenat.seekervault.activity.ActivityViewModel
-import io.github.brrenat.seekervault.activity.openLink
+import io.github.brrenat.seekervault.activity.openDestination
 import io.github.brrenat.seekervault.connections.AddConnectionRoute
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.ConnectionDetailLibraryScreen
@@ -769,7 +769,9 @@ private fun RequestReviewRoute(
                         operations.close()
                         onBack()
                     },
-                    onOpenLink = { openLink(linkContext, it) },
+                    onOpenLink = { url, deepLink ->
+                        openDestination(linkContext, deepLink, url)
+                    },
                 )
             }
         }

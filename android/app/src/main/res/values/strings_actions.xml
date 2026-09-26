@@ -15,6 +15,7 @@
     <string name="action_terms_bad_amount">This signal states an amount bound that is not a whole number of base units.</string>
     <string name="action_terms_impossible_amounts">This signal states a smallest amount above its own largest.</string>
     <string name="action_terms_bad_symbol">This signal carries a label too long to show.</string>
+    <string name="action_terms_not_a_link">This signal names somewhere to continue that is not an address this app would open, so it is not offered.</string>
 
     <!-- What a prediction order leaves to the owner. -->
     <string name="action_prediction_outcome_label">Which side</string>

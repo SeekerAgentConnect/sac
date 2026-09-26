@@ -54,6 +54,7 @@
     <string name="jupiter_finding_no_offer">This phone no longer holds the quote these bytes were built for, so there is nothing to check them against. Prepare again.</string>
     <!-- jupiter.prediction (SEE-94). -->
     <string name="jupiter_destination_market">This market on Jupiter</string>
+    <string name="jupiter_destination_order">Open order on Jupiter</string>
 
     <!-- What the phone read out of the order, for the owner to see. -->
     <string name="jupiter_fact_side_yes">Contracts bought on Yes</string>
