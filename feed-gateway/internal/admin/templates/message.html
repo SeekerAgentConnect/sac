@@ -1,5 +1,13 @@
 {{template "head" .}}
-<h1>{{.Title}}</h1>
-<p>{{.Body}}</p>
-{{if .Back}}<p><a href="{{if .Link}}{{.Link}}{{else}}{{at "/"}}{{end}}">Back</a></p>{{end}}
+<section class="login-wrap message-wrap">
+  <div class="login-brand">
+    {{template "mark"}}
+    <div><strong>Feed gateway</strong><code>{{.GatewayURL}}</code></div>
+  </div>
+  <div class="login-card message-card">
+    <h1>{{.Title}}</h1>
+    <p>{{.Body}}</p>
+    {{if .Back}}<p><a class="button secondary" href="{{if .Link}}{{.Link}}{{else}}{{at "/"}}{{end}}">Back</a></p>{{end}}
+  </div>
+</section>
 {{template "foot" .}}

@@ -1,34 +1,93 @@
-{{define "head"}}<!-- The page frame. The stylesheet and the script are the gateway's own files,
-served from this same route; nothing is loaded from anywhere else. -->
-<title>Feed gateway administration</title>
-<meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="{{at "/assets/admin.css"}}">
-<script src="{{at "/assets/admin.js"}}" defer></script>
-<header class="bar">
-  <div>
-    <strong>Feed gateway</strong>
-    {{with .GatewayURL}}<span class="origin">{{.}}</span>{{end}}
-  </div>
-  {{if .LoggedIn}}
-  <form method="post" action="{{at "/logout"}}">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <button type="submit" class="plain">Log out</button>
-  </form>
-  {{end}}
-</header>
-<main>
+{{define "mark"}}<svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true">
+  <rect x="4" y="5" width="28" height="7" rx="3.5"></rect>
+  <rect x="9" y="15" width="23" height="7" rx="3.5"></rect>
+  <rect x="4" y="25" width="28" height="7" rx="3.5"></rect>
+</svg>{{end}}
+
+{{define "copy-button"}}<button class="copy" type="button" data-copy="{{.}}">
+  <span class="copy-glyph" aria-hidden="true">▣</span><span class="copy-label">Copy</span>
+</button>{{end}}
+
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Feed gateway administration</title>
+  <link rel="stylesheet" href="{{at "/assets/admin.css"}}">
+  <script src="{{at "/assets/admin.js"}}" defer></script>
+</head>
+<body class="{{if .LoggedIn}}app-page{{else}}login-page{{end}}">
+{{if .LoggedIn}}
+<div class="shell">
+  <aside class="sidebar" aria-label="Gateway administration">
+    <div class="sidebar-brand">
+      {{template "mark"}}
+      <div><strong>Feed gateway</strong><span>Administration</span></div>
+    </div>
+
+    <div class="deployment-card">
+      <span>This deployment</span>
+      <div>
+        <code>{{.GatewayURL}}</code>
+        <button class="icon-copy copy" type="button" data-copy="{{.GatewayURL}}"
+                aria-label="Copy gateway address">
+          <span class="copy-glyph" aria-hidden="true">▣</span><span class="copy-label">Copy</span>
+        </button>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav" aria-label="Administration">
+      <a class="nav-item{{if .ServersActive}} active{{end}}" href="{{at "/"}}">
+        <span class="nav-glyph" aria-hidden="true">▤</span>
+        <span>Servers</span>
+        <span class="count">{{.ServerCount}}</span>
+      </a>
+      <a class="nav-item" href="{{at "/"}}#add-server" data-open-drawer>
+        <span class="nav-glyph" aria-hidden="true">＋</span>
+        <span>Add server</span>
+      </a>
+    </nav>
+
+    <p class="sidebar-explanation">Administration is this gateway only. A publisher configures
+    its own server ID, gateway URL and credential in its own backend; nothing here can change
+    another server's settings or restart it.</p>
+
+    <form method="post" action="{{at "/logout"}}" class="logout-form">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="nav-item logout">
+        <span class="nav-glyph" aria-hidden="true">↪</span>
+        <span>Log out</span>
+      </button>
+    </form>
+  </aside>
+  <main class="content">
+{{else}}
+<main class="login-main">
+{{end}}
 {{end}}
 
 {{define "flash"}}
-{{with .Problem}}<p class="problem" role="alert">{{.}}</p>{{end}}
-{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{with .Problem}}<div class="flash problem" role="alert"><span aria-hidden="true">!</span><p>{{.}}</p></div>{{end}}
+{{with .Notice}}<div class="flash notice" role="status"><span aria-hidden="true">✓</span><p>{{.}}</p></div>{{end}}
 {{end}}
 
 {{define "foot"}}
 </main>
-<footer>
-  <p>Administration is this gateway only. A publisher configures its own server ID, gateway URL
-  and credential in its own backend; nothing here can change another server's settings or restart
-  it.</p>
-</footer>
+{{if .LoggedIn}}</div>{{end}}
+<dialog id="confirmation-dialog" class="confirmation-dialog" role="alertdialog"
+        aria-modal="true" aria-labelledby="confirmation-title"
+        aria-describedby="confirmation-message">
+  <div class="dialog-card">
+    <h2 id="confirmation-title">Confirm this action</h2>
+    <p id="confirmation-message"></p>
+    <div class="dialog-actions">
+      <button type="button" class="button secondary" data-cancel-confirm>Cancel</button>
+      <button type="button" class="button danger-fill" data-run-confirm>Confirm</button>
+    </div>
+  </div>
+</dialog>
+</body>
+</html>
 {{end}}

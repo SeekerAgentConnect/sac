@@ -1,107 +1,146 @@
 {{template "head" .}}
-<h1>Registered servers</h1>
-{{template "flash" .}}
+<div class="page-heading">
+  <div><p class="eyebrow">Gateway administration</p><h1>Registered servers</h1></div>
+  <a class="button primary" href="#add-server" data-open-drawer>
+    <span aria-hidden="true">＋</span> Add server
+  </a>
+</div>
+{{with .Notice}}<div class="flash notice" role="status"><span aria-hidden="true">✓</span><p>{{.}}</p></div>{{end}}
 
 {{if .Publishers}}
-<table class="list">
-  <thead>
-    <tr><th>Server</th><th>Server ID</th><th>Enabled</th><th>Credentials</th><th>Feed</th><th>Push relay</th><th>Registered</th></tr>
-  </thead>
-  <tbody>
-  {{range .Publishers}}
-    <tr>
-      <td>
-        <a href="{{at "/servers/"}}{{.ServerID}}">{{.Label}}</a>
-        {{with .DisplayName}}<span class="sub">published as “{{.}}”</span>{{end}}
-        {{with .Host}}<span class="sub"><a href="{{.}}" rel="noreferrer noopener external">{{.}}</a></span>{{end}}
-      </td>
-      <td><code class="id">{{.ServerID}}</code></td>
-      <td><span class="state">{{.Capabilities}}</span></td>
-      <td><span class="state {{if .Working}}good{{else}}warn{{end}}">{{.Credentials}}</span></td>
-      <td>{{if .Publishing}}<span class="sub">{{.Published}}</span><br><code class="id">{{.Channel}}</code>
-          {{else}}<span class="sub">not a feed publisher</span>{{end}}</td>
-      <td><span class="sub">{{.Relayed}}</span></td>
-      <td><span class="sub">{{instant .Created}}</span></td>
-    </tr>
-  {{end}}
-  </tbody>
-</table>
+<div class="table-card">
+  <div class="table-scroll">
+    <table class="list servers-table">
+      <thead>
+        <tr><th>Server</th><th>Server ID</th><th>Enabled</th><th>Credentials</th><th>Feed</th><th>Push relay</th><th>Registered</th></tr>
+      </thead>
+      <tbody>
+      {{range .Publishers}}
+        <tr data-row-href="{{at "/servers/"}}{{.ServerID}}" tabindex="0"
+            aria-label="Open {{.Label}}">
+          <td class="server-name">
+            <a href="{{at "/servers/"}}{{.ServerID}}">{{.Label}}</a>
+            {{with .DisplayName}}<span class="sub">published as “{{.}}”</span>{{end}}
+            {{with .Host}}<span class="sub"><a href="{{.}}" rel="noreferrer noopener external">{{.}}</a></span>{{end}}
+          </td>
+          <td><code class="id">{{.ServerID}}</code></td>
+          <td><span class="pill neutral">{{.Capabilities}}</span></td>
+          <td><span class="pill {{if .Working}}good{{else}}warn{{end}}">{{.Credentials}}</span></td>
+          <td>{{if .Publishing}}<span class="sub">{{.Published}}</span><code class="id block">{{.Channel}}</code>
+              {{else}}<span class="sub">not a feed publisher</span>{{end}}</td>
+          <td><span class="sub">{{.Relayed}}</span></td>
+          <td><span class="sub nowrap">{{instant .Created}}</span></td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
 {{else}}
-<p class="empty">No servers are registered yet. Add one below — it takes effect immediately, and
-the gateway is not restarted.</p>
+<div class="empty-state">
+  <span class="empty-glyph" aria-hidden="true">▤</span>
+  <p>No servers are registered yet. Add one below — it takes effect immediately, and the gateway
+  is not restarted.</p>
+  <a class="button primary" href="#add-server" data-open-drawer>Add server</a>
+</div>
 {{end}}
 
-<h2 id="add">Add server</h2>
-<form method="post" action="{{at "/servers"}}" class="card">
-  <input type="hidden" name="csrf" value="{{.CSRF}}">
+<section id="add-server" class="drawer-shell{{if .Problem}} is-open{{end}}" role="dialog"
+         aria-modal="true" aria-labelledby="add-server-title"
+         {{if .Problem}}aria-hidden="false"{{end}} data-drawer>
+  <a class="drawer-backdrop" href="#" data-close-drawer tabindex="-1" aria-label="Close add server"></a>
+  <form method="post" action="{{at "/servers"}}" class="drawer-panel">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <header class="drawer-header">
+      <div><p class="eyebrow">Gateway administration</p><h2 id="add-server-title">Add server</h2></div>
+      <a class="icon-button" href="#" data-close-drawer aria-label="Close add server">×</a>
+    </header>
 
-  <fieldset class="capabilities">
-    <legend>What this server may do</legend>
-    <label class="check">
-      <input type="checkbox" name="publishing" value="on" {{if .Form.Publishing}}checked{{end}}>
-      Publish a feed
-    </label>
-    <p class="hint">Its manifest and its proposals are served to whoever may read it — anyone who
-    adds it, or only approved devices, as chosen below.</p>
-    <label class="check">
-      <input type="checkbox" name="relaying" value="on" {{if .Form.Relaying}}checked{{end}}>
-      Relay push to phones paired with it
-    </label>
-    <p class="hint">For an independently hosted direct MCP server. It lets that server wake a
-    phone that has explicitly authorized it, with a fixed “there is something to read” message and
-    nothing else. The gateway relays no request, approval, signature or result, and the developer
-    never receives this deployment's Firebase credential. A relay-only registration needs no
-    manifest and publishes no feed.</p>
-  </fieldset>
+    <div class="drawer-body">
+      {{with .Problem}}<div class="flash problem" role="alert"><span aria-hidden="true">!</span><p>{{.}}</p></div>{{end}}
 
-  <fieldset class="capabilities">
-    <legend>Who may read its feed</legend>
-    <label class="check">
-      <input type="radio" name="access" value="public" {{if not .Form.Restricted}}checked{{end}}>
-      Public — anyone holding the feed reference
-    </label>
-    <label class="check">
-      <input type="radio" name="access" value="restricted" {{if .Form.Restricted}}checked{{end}}>
-      Restricted — only devices the publisher approved
-    </label>
-    <p class="hint">A restricted feed is enforced here, on every read, page, stream ticket and push
-    target: a phone proves its wallet to the publisher, the publisher approves the device, and this
-    gateway admits only the devices it was granted. The policy is this registration's — a link or a
-    manifest cannot open a feed registered restricted.</p>
-    <label for="auth-origin">Authentication origin <span class="sub">(restricted only)</span></label>
-    <input id="auth-origin" name="auth_origin" value="{{.Form.AuthOrigin}}" spellcheck="false"
-           autocomplete="off" placeholder="https://signals.example.com">
-    <p class="hint">Where a phone proves which wallet it holds: the publisher's
-    <code>PUBLISHER_AUTH_ORIGIN</code>, character for character. HTTPS, no path. It is the one
-    address a phone will send a wallet proof to.</p>
-  </fieldset>
+      <fieldset class="form-section">
+        <legend>What this server may do</legend>
+        <label class="switch-row">
+          <span><strong>Publish a public feed</strong><small>Its manifest and its proposals are
+          served to whoever may read it — anyone who adds it, or only approved devices, as chosen
+          below.</small></span>
+          <input type="checkbox" name="publishing" value="on" {{if .Form.Publishing}}checked{{end}}>
+          <span class="switch-control" aria-hidden="true"></span>
+        </label>
+        <label class="switch-row">
+          <span><strong>Relay push to phones paired with it</strong><small>For an independently
+          hosted direct MCP server. It lets that server wake a phone that has explicitly authorized
+          it, with a fixed “there is something to read” message and nothing else. The gateway
+          relays no request, approval, signature or result, and the developer never receives this
+          deployment's Firebase credential. A relay-only registration needs no manifest and
+          publishes no feed.</small></span>
+          <input type="checkbox" name="relaying" value="on" {{if .Form.Relaying}}checked{{end}}>
+          <span class="switch-control" aria-hidden="true"></span>
+        </label>
+      </fieldset>
 
-  <label for="server">Server ID</label>
-  <input id="server" name="server" value="{{.Form.ServerID}}" spellcheck="false"
-         autocomplete="off" placeholder="the UUID this publisher already uses">
-  <p class="hint">The server's existing UUID. It is the identity its manifest and every
-  publication of its own must name, and the identity a phone names when it authorizes the relay.</p>
+      <fieldset class="form-section">
+        <legend>Who may read its feed</legend>
+        <label class="radio-row">
+          <input type="radio" name="access" value="public" {{if not .Form.Restricted}}checked{{end}}>
+          <span><strong>Public — anyone holding the feed reference</strong></span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="access" value="restricted" {{if .Form.Restricted}}checked{{end}}>
+          <span><strong>Restricted — only devices the publisher approved</strong></span>
+        </label>
+        <p class="hint">A restricted feed is enforced here, on every read, page, stream ticket and
+        push target: a phone proves its wallet to the publisher, the publisher approves the device,
+        and this gateway admits only the devices it was granted. The policy is this registration's
+        — a link or a manifest cannot open a feed registered restricted.</p>
+        <label for="auth-origin">Authentication origin <span class="sub">(restricted only)</span></label>
+        <input id="auth-origin" name="auth_origin" value="{{.Form.AuthOrigin}}" spellcheck="false"
+               autocomplete="off" placeholder="https://signals.example.com">
+        <p class="hint">Where a phone proves which wallet it holds: the publisher's
+        <code>PUBLISHER_AUTH_ORIGIN</code>, character for character. HTTPS, no path. It is the one
+        address a phone will send a wallet proof to.</p>
+      </fieldset>
 
-  <label class="check">
-    <input type="checkbox" name="generate" value="on" {{if .Form.Generate}}checked{{end}}>
-    This publisher has no server ID yet — generate one
-  </label>
-  <p class="hint">A generated ID is shown once on the next page. The server must then use
-  <em>exactly</em> that ID in its own configuration and manifest; the gateway cannot change it
-  for them.</p>
+      <div class="form-section fields">
+        <div class="field" data-generated-field>
+          <label for="server">Server ID</label>
+          <input id="server" name="server" value="{{.Form.ServerID}}" spellcheck="false"
+                 autocomplete="off" placeholder="the UUID this publisher already uses"
+                 {{if .Form.Generate}}disabled{{end}}>
+          <p class="hint">The server's existing UUID. It is the identity its manifest and every
+          publication of its own must name, and the identity a phone names when it authorizes the relay.</p>
+        </div>
 
-  <label for="label">Label</label>
-  <input id="label" name="label" value="{{.Form.Label}}" maxlength="64" required
-         placeholder="what you call this server">
-  <p class="hint">Your own note. It is never served to a phone or to the server.</p>
+        <label class="check-row">
+          <input type="checkbox" name="generate" value="on" {{if .Form.Generate}}checked{{end}}>
+          <span><strong>This publisher has no server ID yet — generate one</strong><small>A generated
+          ID is shown once on the next page. The server must then use <em>exactly</em> that ID in its
+          own configuration and manifest; the gateway cannot change it for them.</small></span>
+        </label>
 
-  <label for="host">Host / base URL <span class="sub">(optional)</span></label>
-  <input id="host" name="host" value="{{.Form.Host}}" spellcheck="false" autocomplete="off"
-         placeholder="https://example.com">
-  <p class="hint">Descriptive metadata only: which developer this registration belongs to. The
-  gateway never fetches it, no phone contacts it, and knowing a host grants no access — the
-  credential does that.</p>
+        <div class="field">
+          <label for="label">Label</label>
+          <input id="label" name="label" value="{{.Form.Label}}" maxlength="64" required
+                 placeholder="what you call this server">
+          <p class="hint">Your own note. It is never served to a phone or to the server.</p>
+        </div>
 
-  <button type="submit">Add server</button>
-</form>
+        <div class="field">
+          <label for="host">Host / base URL <span class="sub">(optional)</span></label>
+          <input id="host" name="host" value="{{.Form.Host}}" spellcheck="false" autocomplete="off"
+                 placeholder="https://example.com">
+          <p class="hint">Descriptive metadata only: which developer this registration belongs to.
+          The gateway never fetches it, no phone contacts it, and knowing a host grants no access —
+          the credential does that.</p>
+        </div>
+      </div>
+    </div>
+
+    <footer class="drawer-actions">
+      <button type="submit" class="button primary">Add server</button>
+      <a class="button secondary" href="#" data-close-drawer>Cancel</a>
+    </footer>
+  </form>
+</section>
 {{template "foot" .}}
