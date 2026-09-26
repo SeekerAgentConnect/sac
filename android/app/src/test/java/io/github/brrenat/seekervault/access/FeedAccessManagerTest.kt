@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.access
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.access.storage.FeedAccessStore.State
 import io.github.brrenat.seekervault.connections.Connection
@@ -27,9 +28,8 @@ import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import okio.ByteString.Companion.toByteString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -78,7 +78,9 @@ class FeedAccessManagerTest {
     private var clock = Instant.parse("2026-09-26T12:00:00Z")
 
     /** What the wallet will answer, so a test can decline or answer with the wrong bytes. */
-    private var walletAnswer: suspend (ByteArray) -> SignResult = { built -> signed(walletKey, built) }
+    private var walletAnswer: suspend (ByteArray) -> SignResult = { built ->
+        signed(walletKey, built)
+    }
 
     private val signings = mutableListOf<ByteArray>()
     private val connected = mutableListOf<String>()
@@ -175,7 +177,7 @@ class FeedAccessManagerTest {
 
         // The publisher still says approved; the gateway does not. The gateway is the authority.
         manager.denied(CHANNEL, FeedSessions.Denial.Revoked)
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(State.Revoked, manager.states.value[CONNECTION]?.state)
         assertNull(manager.sessionFor(CHANNEL))
@@ -193,7 +195,7 @@ class FeedAccessManagerTest {
         connect(manager)
 
         manager.denied(CHANNEL, FeedSessions.Denial.Expired)
-        advanceUntilIdle()
+        runCurrent()
 
         // Expiry is not a decision about this device, so the state says so and the publisher may
         // renew it. Revocation is the one that is final.
@@ -346,7 +348,7 @@ class FeedAccessManagerTest {
         pushed.clear()
 
         manager.onRegistered("a-firebase-target")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(listOf(Triple(CHANNEL, SESSION, "a-firebase-target")), pushed)
     }
@@ -357,7 +359,7 @@ class FeedAccessManagerTest {
         manager.requestAccess(CONNECTION)
 
         manager.onRegistered("a-firebase-target")
-        advanceUntilIdle()
+        runCurrent()
 
         // A pending device has no grant to route a hint under, and a restricted feed has no public
         // topic to fall back on. Silence is the correct amount of delivery.
@@ -486,9 +488,9 @@ class FeedAccessManagerTest {
 
     private fun signed(pair: KeyPair, message: ByteArray): SignResult.Signed =
         SignResult.Signed(
-            message = message.toByteString(),
+            message = ByteString.copyFrom(message),
             address = encodeBase58(publicKeyBytes(pair)),
-            signature = sign(pair, message).toByteString(),
+            signature = ByteString.copyFrom(sign(pair, message)),
         )
 
     private fun sign(pair: KeyPair, message: ByteArray): ByteArray =
