@@ -65,7 +65,7 @@ services:
     registry_credentials: EV[1:+b3wgFKOQcIPJ+Pjl7asQw8bWuBpw5EL:qOwr0iZDhd+JxbB2pft0yOl5JyeKKY8VZw+ovScFD4xfz/8zjVkqjfgZQsbbnkmL2h5DtFbw5UBrqNU=]
     registry_type: DOCKER_HUB
     repository: seeker-agent-connect
-    tag: copytrading-0.1.6
+    tag: copytrading-0.1.7
   instance_count: 1
   instance_size_slug: apps-s-1vcpu-0.5gb
   name: copytrading
@@ -103,7 +103,7 @@ services:
     registry_credentials: EV[1:+b3wgFKOQcIPJ+Pjl7asQw8bWuBpw5EL:qOwr0iZDhd+JxbB2pft0yOl5JyeKKY8VZw+ovScFD4xfz/8zjVkqjfgZQsbbnkmL2h5DtFbw5UBrqNU=]
     registry_type: DOCKER_HUB
     repository: seeker-agent-connect
-    tag: copytrading-0.1.6
+    tag: copytrading-0.1.7
   instance_count: 1
   instance_size_slug: apps-s-1vcpu-0.5gb
   name: copytrading-admin
