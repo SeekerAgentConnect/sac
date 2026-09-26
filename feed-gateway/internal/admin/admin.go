@@ -186,7 +186,8 @@ func headers(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		head := writer.Header()
 		head.Set("Content-Security-Policy",
-			"default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; "+
+			"default-src 'none'; style-src 'self'; script-src 'self'; font-src 'self'; "+
+				"img-src 'self' data:; "+
 				"form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		head.Set("Referrer-Policy", "no-referrer")
 		head.Set("X-Content-Type-Options", "nosniff")
@@ -771,12 +772,17 @@ func (s *Server) reveal(writer http.ResponseWriter, request *http.Request, at *v
 }
 
 func (s *Server) showReveal(writer http.ResponseWriter, request *http.Request, at *visit) {
+	common, err := s.commonWithServerCount(request.Context(), at)
+	if err != nil {
+		s.failed(writer, "list publishers", err)
+		return
+	}
 	shown := s.sessions.take(at.token)
 	if shown == nil {
 		http.Redirect(writer, request, s.options.Path+"/", http.StatusSeeOther)
 		return
 	}
-	shown.Common = s.common(at)
+	shown.Common = common
 	s.pages.render(writer, http.StatusOK, "reveal", shown)
 }
 

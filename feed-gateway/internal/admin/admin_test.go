@@ -722,7 +722,221 @@ func TestTheListDescribesOnlyWhatIsDurablyKnown(t *testing.T) {
 	}
 }
 
+func TestAuthenticatedPagesCarryTheCurrentServerCount(t *testing.T) {
+	one := newFixture(t, openLimiter{})
+	registerDirectly(t, one.documents, publisher, "first")
+	registerDirectly(t, one.documents, other, "second")
+	one.logIn()
+
+	for _, path := range []string{at + "/", at + "/servers/" + publisher} {
+		page := one.get(path)
+		body := read(t, page)
+		_ = page.Body.Close()
+		if !strings.Contains(body, `<span class="count">2</span>`) {
+			t.Fatalf("%s does not carry the two registered servers", path)
+		}
+	}
+
+	response := one.post(at+"/servers/"+publisher+"/rotate", url.Values{
+		"csrf":       {one.token(at + "/servers/" + publisher)},
+		"capability": {"publish"},
+	})
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("rotating answered %s", response.Status)
+	}
+	reveal := one.get(at + "/reveal")
+	body := read(t, reveal)
+	_ = reveal.Body.Close()
+	if !strings.Contains(body, `<span class="count">2</span>`) {
+		t.Fatal("the one-time credential page does not carry the two registered servers")
+	}
+	if strings.Contains(body, `<a class="nav-item active" href="/admin/">`) {
+		t.Fatal("the one-time credential page incorrectly marks Servers as active")
+	}
+}
+
 // --- the surface itself ----------------------------------------------------------
+
+func TestLoginCarriesTheRedesignedPresentation(t *testing.T) {
+	one := newFixture(t, openLimiter{})
+	response := one.get(at + "/login")
+	body := read(t, response)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("the login answered %s", response.Status)
+	}
+
+	for _, expected := range []string{
+		`<link rel="stylesheet" href="/admin/assets/admin.css">`,
+		`<body class="login-page">`,
+		`<main class="login-main">`,
+		`<div class="login-card">`,
+		`<h1 id="login-title">Log in</h1>`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("the login does not carry presentation hook %q", expected)
+		}
+	}
+	compact := strings.Join(strings.Fields(body), " ")
+	explanation := `This password is configured in the gateway's own deployment secrets (` +
+		`<code>BROADCAST_ADMIN_PASSWORD_HASH</code>), not in its database — so it still works ` +
+		`after the demo's storage has been replaced, and a publisher's credential is never accepted here.`
+	if !strings.Contains(compact, explanation) {
+		t.Fatal("the login does not retain the deployment-secret explanation")
+	}
+}
+
+func TestTheServerListCarriesTheRedesignedShellAndRegistrationDrawer(t *testing.T) {
+	one := newFixture(t, openLimiter{})
+	registerDirectly(t, one.documents, publisher, "signals")
+	one.logIn()
+
+	response := one.get(at + "/")
+	body := read(t, response)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("the server list answered %s", response.Status)
+	}
+	for _, expected := range []string{
+		`<aside class="sidebar" aria-label="Gateway administration">`,
+		`<a class="nav-item active" href="/admin/">`,
+		`<span>Servers</span>`,
+		`<span>Add server</span>`,
+		`https://feeds.example.com`,
+		`<span class="count">1</span>`,
+		`id="add-server" class="drawer-shell" role="dialog"`,
+		`aria-modal="true" aria-labelledby="add-server-title"`,
+		`<form method="post" action="/admin/servers" class="drawer-panel">`,
+		`name="publishing" value="on"`,
+		`name="server"`,
+		`name="label"`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("the authenticated list does not carry %q", expected)
+		}
+	}
+}
+
+func TestARejectedRegistrationKeepsTheDrawerAndEnteredValues(t *testing.T) {
+	one := newFixture(t, openLimiter{})
+	one.logIn()
+
+	response := one.post(at+"/servers", url.Values{
+		"csrf":       {one.token(at + "/")},
+		"server":     {"not-a-uuid"},
+		"label":      {"entered label"},
+		"host":       {"https://entered.example.com"},
+		"publishing": {"on"},
+		"relaying":   {"on"},
+	})
+	body := read(t, response)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("the invalid registration answered %s", response.Status)
+	}
+	for _, expected := range []string{
+		`id="add-server" class="drawer-shell is-open" role="dialog"`,
+		`aria-hidden="false" data-drawer`,
+		`name="server" value="not-a-uuid"`,
+		`name="label" value="entered label"`,
+		`name="host" value="https://entered.example.com"`,
+		`name="publishing" value="on" checked`,
+		`name="relaying" value="on" checked`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("the rejected registration does not retain %q", expected)
+		}
+	}
+}
+
+func TestServerDetailCarriesInPageDestructiveConfirmations(t *testing.T) {
+	one := newFixture(t, openLimiter{})
+	registerDirectly(t, one.documents, publisher, "signals")
+	one.logIn()
+
+	response := one.get(at + "/servers/" + publisher)
+	body := read(t, response)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("the server detail answered %s", response.Status)
+	}
+	for _, expected := range []string{
+		`data-confirm="Revoke credential `,
+		`? Publishing with it is refused from the next request."`,
+		`data-confirm-label="Revoke"`,
+		`data-confirm="Revoke every credential of ` + publisher +
+			`? It will not be able to publish again until a new one is issued."`,
+		`data-confirm-label="Revoke all"`,
+		`<input id="confirm" name="confirm" spellcheck="false" autocomplete="off" required>`,
+		`data-match-input="confirm" data-match-value="` + publisher + `"`,
+		`data-confirm="Forget ` + publisher +
+			` and delete everything it published and every push authorization for it?"`,
+		`data-confirm-label="Forget this server"`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("the server detail does not carry confirmation contract %q", expected)
+		}
+	}
+}
+
+func TestTheAdminScriptUsesInPageDrawersAndDialogs(t *testing.T) {
+	one := newFixture(t, openLimiter{})
+	response := one.get(at + "/assets/admin.js")
+	body := read(t, response)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("admin.js answered %s", response.Status)
+	}
+	if strings.Contains(body, "window.confirm") {
+		t.Fatal("admin.js uses the browser confirmation prompt")
+	}
+	for _, expected := range []string{
+		`document.querySelector("[data-drawer]")`,
+		`event.target.closest("[data-open-drawer]")`,
+		`event.key !== "Tab"`,
+		`serverID.disabled = generate.checked`,
+		`document.querySelectorAll("[data-match-input]")`,
+		`document.getElementById("confirmation-dialog")`,
+		`dialog.showModal()`,
+		`dialog.classList.add("is-fallback")`,
+		`form.requestSubmit(submitter)`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("admin.js does not carry enhancement hook %q", expected)
+		}
+	}
+}
+
+func TestTheAdminStylesCarryThePrototypeTokensAndBreakpoints(t *testing.T) {
+	one := newFixture(t, openLimiter{})
+	response := one.get(at + "/assets/admin.css")
+	body := read(t, response)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("admin.css answered %s", response.Status)
+	}
+	for _, expected := range []string{
+		`font-family: "Roboto";`,
+		`url("./roboto-variable.ttf") format("truetype")`,
+		`font-family: "Roboto Mono";`,
+		`url("./roboto-mono-variable.ttf") format("truetype")`,
+		`--page: #121212;`,
+		`--sidebar: #181818;`,
+		`--card: #1b1b1b;`,
+		`--lime: #e7fc6e;`,
+		`--danger: #ff8a80;`,
+		`flex: 0 0 280px;`,
+		`width: min(100%, 560px);`,
+		`max-width: 460px;`,
+		`@media (max-width: 879px)`,
+		`@media (max-width: 639px)`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("admin.css does not carry prototype contract %q", expected)
+		}
+	}
+}
 
 func TestEveryAnswerCarriesItsSecurityHeaders(t *testing.T) {
 	one := newFixture(t, openLimiter{})
@@ -740,7 +954,8 @@ func TestEveryAnswerCarriesItsSecurityHeaders(t *testing.T) {
 	}
 	policy := response.Header.Get("Content-Security-Policy")
 	for _, expected := range []string{
-		"default-src 'none'", "script-src 'self'", "style-src 'self'", "frame-ancestors 'none'",
+		"default-src 'none'", "script-src 'self'", "style-src 'self'", "font-src 'self'",
+		"frame-ancestors 'none'",
 	} {
 		if !strings.Contains(policy, expected) {
 			t.Fatalf("the content policy is %q", policy)
@@ -748,15 +963,26 @@ func TestEveryAnswerCarriesItsSecurityHeaders(t *testing.T) {
 	}
 }
 
-// The stylesheet and the script come out of the image, and nothing else does.
+// The stylesheet, script and fonts come out of the image, and nothing else does.
 func TestOnlyTheGatewaysOwnAssetsAreServed(t *testing.T) {
 	one := newFixture(t, openLimiter{})
-	for _, name := range []string{"admin.css", "admin.js"} {
-		response := one.get(at + "/assets/" + name)
+	for _, asset := range []struct {
+		name        string
+		contentType string
+	}{
+		{"admin.css", "text/css; charset=utf-8"},
+		{"admin.js", "text/javascript; charset=utf-8"},
+		{"roboto-variable.ttf", "font/ttf"},
+		{"roboto-mono-variable.ttf", "font/ttf"},
+	} {
+		response := one.get(at + "/assets/" + asset.name)
 		body := read(t, response)
 		_ = response.Body.Close()
 		if response.StatusCode != http.StatusOK || body == "" {
-			t.Fatalf("%s answered %s", name, response.Status)
+			t.Fatalf("%s answered %s", asset.name, response.Status)
+		}
+		if got := response.Header.Get("Content-Type"); got != asset.contentType {
+			t.Fatalf("%s has content type %q", asset.name, got)
 		}
 	}
 	for _, name := range []string{"../admin.go", "admin.html", "..%2Fadmin.go"} {

@@ -593,7 +593,23 @@ SEE-141 added a second surface for the paragraph above, because "the operator ru
 host that holds the database" stops being reasonable the moment the host is a container on somebody
 else's platform. It is deliberately the smallest thing that removes that requirement, and it is
 [`internal/admin`](../../feed-gateway/internal/admin): server-rendered HTML, one stylesheet and one
-script out of the image, no framework, no CDN, and no browser-side secret of any kind.
+script plus two font files out of the image, no framework, no CDN, and no browser-side secret of any
+kind.
+
+**SEE-164 gives that surface one deliberate operator workflow.** It is a dark, responsive shell with
+a lime accent and bundled Roboto fonts: the sidebar keeps **Servers**, **Add server**, this gateway’s
+address and **Log out** together; the main area holds the login, registered-server table, server
+detail and one-time credential page. **Add server** is a drawer rather than another destination, and
+the list, drawer, detail and credential page retain the explanatory words that say what the gateway
+can actually prove and what each operation changes. Narrow screens stack the shell while wide tables
+scroll instead of discarding columns.
+
+The interaction design does not weaken the operations underneath it. Capability controls are still
+switches over the same stored registration, rotation is still additive, and revocation still takes
+effect from the next call. Revoking one or every credential and forgetting a server pause in an
+in-page confirmation dialog rather than a browser pop-up; forgetting still requires the server ID to
+be typed exactly and checked by the server. The raw credential is still a separate one-time page,
+not drawer state a browser can recover later.
 
 **It exists only when it is configured.** `BROADCAST_ADMIN_PASSWORD_HASH` is the switch. Without it
 the handler is never built, the listener is never opened, and there is no route anywhere in the

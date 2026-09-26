@@ -1,13 +1,22 @@
 {{template "head" .}}
-<h1>Log in</h1>
-{{template "flash" .}}
-<form method="post" action="{{at "/login"}}" class="card narrow">
-  <label for="password">Operator password</label>
-  <input id="password" name="password" type="password" autocomplete="current-password"
-         autofocus required>
-  <button type="submit">Log in</button>
-</form>
-<p class="aside">This password is configured in the gateway's own deployment secrets
-(<code>BROADCAST_ADMIN_PASSWORD_HASH</code>), not in its database — so it still works after the
-demo's storage has been replaced, and a publisher's credential is never accepted here.</p>
+<section class="login-wrap" aria-labelledby="login-title">
+  <div class="login-brand">
+    {{template "mark"}}
+    <div><strong>Feed gateway</strong><code>{{.GatewayURL}}</code></div>
+  </div>
+  <div class="login-card">
+    <h1 id="login-title">Log in</h1>
+    {{template "flash" .}}
+    <form method="post" action="{{at "/login"}}">
+      <label for="password">Operator password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password"
+             autofocus required>
+      <button type="submit" class="button primary terminal">Log in</button>
+    </form>
+  </div>
+  <p class="login-explanation">This password is configured in the gateway's own deployment
+  secrets (<code>BROADCAST_ADMIN_PASSWORD_HASH</code>), not in its database — so it still works
+  after the demo's storage has been replaced, and a publisher's credential is never accepted
+  here.</p>
+</section>
 {{template "foot" .}}
