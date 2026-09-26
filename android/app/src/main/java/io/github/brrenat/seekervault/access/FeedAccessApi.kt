@@ -236,7 +236,10 @@ class OkHttpFeedAccessApi(httpClient: OkHttpClient) : FeedAccessApi {
             }
         if (answer.code !in 200..299) {
             if (answer.code in 500..599 || answer.code == 429) {
-                throw FeedAccessException(FeedAccessException.Kind.Unreachable, json.optString("error"))
+                throw FeedAccessException(
+                    FeedAccessException.Kind.Unreachable,
+                    json.optString("error"),
+                )
             }
             throw FeedAccessException(FeedAccessException.Kind.Refused, json.optString("error"))
         }
