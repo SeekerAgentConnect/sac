@@ -44,6 +44,26 @@ func TestOperatorsLogInAndSeeTheFeedReference(t *testing.T) {
 	}
 }
 
+func TestTheHomeReferenceIsAlsoShownAsAScannableQRCode(t *testing.T) {
+	ui, _ := startUI(t, nil)
+	logged := login(t, ui, "judge1", "secret")
+	home := get(t, ui, logged, "/trader")
+	for _, expected := range []string{
+		`aria-label="QR code of the feed reference"`,
+		`<path fill="#000" d="`,
+		"Or scan it with SAC — Add connection → Scan QR code.",
+	} {
+		if !strings.Contains(home.body, expected) {
+			t.Fatalf("the reference is not drawn as a scannable code beside its text:\n%s", home.body)
+		}
+	}
+	// The drawing is the encoder's own matrix of exactly the reference the input shows.
+	if !matchesTheEncoder(t, qrSVG(t, home.body),
+		"seekervault://feed?v=1&gateway=https%3A%2F%2Ffeeds.example.com&server=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d") {
+		t.Fatal("the drawn QR is not the feed reference")
+	}
+}
+
 func TestTheSessionCookieIsHttpOnlySecureStrictAndPathScoped(t *testing.T) {
 	ui, _ := startUI(t, nil)
 	answered := post(t, ui, "", "/trader/login", url.Values{

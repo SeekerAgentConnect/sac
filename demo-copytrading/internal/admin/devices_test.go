@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -270,6 +271,31 @@ func TestAnUnconfirmedRevocationIsShownAsPendingUntilTheGatewayConfirms(t *testi
 	}
 	if body := bench.page(t); !strings.Contains(body, "Revoked — the gateway confirmed") {
 		t.Fatalf("a confirmed revocation is shown as:\n%s", body)
+	}
+}
+
+func TestAnApprovedDeviceInvitationIsShownAsAScannableQRCodeToo(t *testing.T) {
+	bench := newAccessBench(t)
+	_, wallet, _ := ed25519.GenerateKey(rand.Reader)
+	id := bench.ask(t, wallet)
+	if body := bench.page(t); strings.Contains(body, "aria-label=\"QR code of the device invitation\"") {
+		t.Fatalf("a pending request already shows an invitation QR:\n%s", body)
+	}
+	bench.click(t, "/trader/devices/"+id+"/approve")
+	body := bench.page(t)
+	if !strings.Contains(body, "seekervault://feed?") || !strings.Contains(body, "invitation=") {
+		t.Fatal("the approved device's invitation is not shown as a link")
+	}
+	if strings.Count(body, "aria-label=\"QR code of the device invitation\"") != 1 {
+		t.Fatalf("a page with one invited device does not draw exactly one invitation QR:\n%s", body)
+	}
+	// The drawing is the encoder's own matrix of exactly the invitation link the input shows.
+	svg := regexp.MustCompile(`<svg[^>]*aria-label="QR code of the device invitation".*?</svg>`).FindString(body)
+	devices, _ := bench.service.Devices(context.Background())
+	for _, device := range devices {
+		if device.ID == id && !matchesTheEncoder(t, svg, bench.service.Link(device.Invitation.Token)) {
+			t.Fatalf("the drawn QR is not the invitation link:\n%s", svg)
+		}
 	}
 }
 

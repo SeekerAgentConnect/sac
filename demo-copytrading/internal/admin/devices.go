@@ -272,7 +272,7 @@ const devicesHTML = `
         <td>{{.Label}}<div class="muted">label (user-supplied)</div><div class="muted">installation {{.Installation}}</div></td>
         <td>{{.RequestedAt}}{{if .DecidedAt}}<div class="muted">decided {{.DecidedAt}}{{if .DecidedBy}} by {{.DecidedBy}}{{end}}</div>{{end}}{{if .RevokedAt}}<div class="muted">revoked {{.RevokedAt}}</div>{{end}}</td>
         <td><span class="{{if .Bad}}warn{{end}}">{{.Sentence}}</span>
-          {{if .Link}}<div class="muted">Invitation (single use, for this device only, until {{.Invitation.ExpiresAt}}):</div><input class="ref" readonly value="{{.Link}}" aria-label="Invitation link">{{end}}
+          {{if .Link}}<div class="muted">Invitation (single use, for this device only, until {{.Invitation.ExpiresAt}}):</div><input class="ref" readonly value="{{.Link}}" aria-label="Invitation link"><div class="qr-box">{{.InvitationQR}}</div>{{end}}
         </td>
         <td>
           <div class="actions">
