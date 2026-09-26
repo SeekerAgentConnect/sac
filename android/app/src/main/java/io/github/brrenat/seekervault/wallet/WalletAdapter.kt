@@ -18,8 +18,17 @@ sealed interface WalletResult {
      * The owner picked an account. [authToken] is the wallet's authorization for this app; it's a
      * secret, it never leaves the phone, and it never reaches a sidecar or a log.
      */
-    data class Connected(val account: WalletAccount, val authToken: String) : WalletResult {
-        override fun toString() = "Connected(account=$account, authToken=<redacted>)"
+    data class Connected(
+        val account: WalletAccount,
+        val authToken: String,
+        /**
+         * How to reach this wallet app again (SEE-159): what the owner aimed the connection at,
+         * with the association URI the wallet reported folded in. It is stored beside the account,
+         * and every later signing is routed by it.
+         */
+        val route: WalletRouting = WalletRouting.Untargeted,
+    ) : WalletResult {
+        override fun toString() = "Connected(account=$account, authToken=<redacted>, route=$route)"
     }
 
     /** No wallet app is installed that speaks Mobile Wallet Adapter. */
@@ -138,9 +147,19 @@ sealed interface SendResult {
  * the wallet then did with the message: it is null when the wallet reported none, and it is a
  * secret like any other, so it never leaves the phone.
  */
-data class SigningAnswer(val result: SignResult, val authToken: String? = null) {
+data class SigningAnswer(
+    val result: SignResult,
+    val authToken: String? = null,
+    /**
+     * The association URI the wallet reported while it reauthorized, or null when it reported none
+     * (SEE-159). Like [authToken] it is worth keeping whatever the wallet then did with the
+     * message: a wallet that moved its endpoint has said so, and the next signing has to go there.
+     */
+    val uriBase: String? = null,
+) {
     override fun toString() =
-        "SigningAnswer(result=$result, authToken=${if (authToken == null) "none" else "<redacted>"})"
+        "SigningAnswer(result=$result, " +
+            "authToken=${if (authToken == null) "none" else "<redacted>"}, uriBase=$uriBase)"
 }
 
 /**
@@ -153,9 +172,15 @@ data class SigningAnswer(val result: SignResult, val authToken: String? = null) 
  * nobody here knows, both carry a perfectly good authorization (SEE-84). It is null when the wallet
  * reported none, and it is a secret like any other, so it never leaves the phone.
  */
-data class SendingAnswer(val result: SendResult, val authToken: String? = null) {
+data class SendingAnswer(
+    val result: SendResult,
+    val authToken: String? = null,
+    /** The same as [SigningAnswer.uriBase], reported while the wallet reauthorized to send. */
+    val uriBase: String? = null,
+) {
     override fun toString() =
-        "SendingAnswer(result=$result, authToken=${if (authToken == null) "none" else "<redacted>"})"
+        "SendingAnswer(result=$result, " +
+            "authToken=${if (authToken == null) "none" else "<redacted>"}, uriBase=$uriBase)"
 }
 
 /**
@@ -168,27 +193,48 @@ data class SendingAnswer(val result: SendResult, val authToken: String? = null) 
  */
 interface WalletAdapter {
     /**
-     * Asks the wallet for the account to use on [network]. [authToken] is the authorization from an
-     * earlier connection, which lets the wallet skip asking again; pass null to start afresh.
+     * The wallet apps installed on this phone, as `PackageManager` reports them, in its order
+     * (SEE-159). It is how the owner is offered a wallet to connect without Android's chooser, and
+     * it is the only source of a wallet's package name: nothing here is guessed or hard-coded.
      */
-    suspend fun connect(network: WalletNetwork, authToken: String?): WalletResult
+    suspend fun installed(): List<InstalledWallet>
 
     /**
-     * Tells the wallet this app no longer needs [authToken], which was [wallet]'s. Failures are not
-     * reported: the phone forgets the authorization either way.
+     * Asks the wallet for the account to use on [network]. [authToken] is the authorization from an
+     * earlier connection, which lets the wallet skip asking again; pass null to start afresh.
+     * [route] aims the association at one wallet app, and null leaves the choice to Android.
+     *
+     * Connecting is the owner's own choice of wallet, so a [route] whose app is no longer installed
+     * does not fail here the way a signing does: it falls back to asking Android, which is what
+     * changing the wallet means.
      */
-    suspend fun disconnect(wallet: SelectedWallet, authToken: String)
+    suspend fun connect(
+        network: WalletNetwork,
+        authToken: String?,
+        route: WalletRouting? = null,
+    ): WalletResult
+
+    /**
+     * Tells the wallet this app no longer needs [authToken], which was [wallet]'s, over [route].
+     * Failures are not reported: the phone forgets the authorization either way.
+     */
+    suspend fun disconnect(wallet: SelectedWallet, authToken: String, route: WalletRouting? = null)
 
     /**
      * Asks the wallet to sign exactly [message] with [wallet]'s account, using the authorization
      * [authToken] from the owner's earlier connection. It is called only after the owner has
      * approved the request on this phone, and it opens the wallet once: the answer carries both
      * what the wallet did and the authorization it reported, so nothing has to ask again.
+     *
+     * [route] is the wallet app the owner connected, and the association goes to it and to no other
+     * (SEE-159). A route whose app has gone answers [SignResult.NoWallet] without opening anything:
+     * another wallet must never inherit an approval the owner gave for this one.
      */
     suspend fun signMessage(
         message: ByteString,
         wallet: SelectedWallet,
         authToken: String,
+        route: WalletRouting? = null,
     ): SigningAnswer
 
     /**
@@ -197,11 +243,13 @@ interface WalletAdapter {
      * this app reaches no network of its own, and builds nothing. It is called only after the owner
      * has approved this exact transaction on this phone, and the sidecar has accepted the approval.
      * Like [signMessage] it opens the wallet once, and the answer carries both what the wallet did
-     * and the authorization it reported, so nothing has to ask again.
+     * and the authorization it reported, so nothing has to ask again — and like it, [route] aims the
+     * association at the wallet app the owner connected and nowhere else.
      */
     suspend fun signAndSendTransaction(
         transaction: ByteString,
         wallet: SelectedWallet,
         authToken: String,
+        route: WalletRouting? = null,
     ): SendingAnswer
 }

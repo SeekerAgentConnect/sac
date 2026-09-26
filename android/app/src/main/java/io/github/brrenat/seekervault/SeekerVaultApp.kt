@@ -269,6 +269,7 @@ fun SeekerVaultApp(
                     connectionsState = if (sheets.isEmpty()) state else state.copy(message = null),
                     inboxSummary = InboxSummary(commonPending.size, toSend),
                     wallet = walletState.wallet,
+                    walletApp = walletState.walletApp,
                     requestAssessments = inboxState.assessments,
                     signalAssessments = signalAssessments,
                     pendingItems = commonPending,

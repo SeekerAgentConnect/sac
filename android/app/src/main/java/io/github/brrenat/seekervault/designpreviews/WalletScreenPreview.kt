@@ -49,6 +49,7 @@ private fun WalletScreenPreview() {
                 ),
             callbacks =
                 WalletScreenCallbacks(
+                    onChooseWalletApp = {},
                     onChooseNetwork = {},
                     onConnect = {},
                     onDisconnect = {},

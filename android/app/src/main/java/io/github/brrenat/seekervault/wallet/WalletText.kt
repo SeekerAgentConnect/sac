@@ -17,6 +17,9 @@ object WalletTags {
 
     fun network(network: WalletNetwork) = "walletNetwork:${network.name}"
 
+    /** One installed wallet app the owner can pick (SEE-159). */
+    fun app(packageName: String) = "walletApp:$packageName"
+
     fun field(name: String) = "walletField:$name"
 }
 

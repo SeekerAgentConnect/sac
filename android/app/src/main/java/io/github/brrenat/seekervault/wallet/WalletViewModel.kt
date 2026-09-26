@@ -28,6 +28,20 @@ enum class WalletProblem {
 /** Everything the Wallet screen shows. */
 data class WalletUiState(
     val wallet: SelectedWallet? = null,
+    /**
+     * The name of the wallet *app* the selection belongs to, as the system gives it, or null when
+     * this phone was never told which app answered (SEE-159). It is what the screen calls the
+     * wallet, so an account's own label can't be read as the app that holds it.
+     */
+    val walletApp: String? = null,
+    /**
+     * The wallet apps installed on this phone, or null until they have been asked for. With more
+     * than one the owner picks which to connect, here, instead of Android asking them at every
+     * approval afterwards (SEE-159).
+     */
+    val apps: List<InstalledWallet>? = null,
+    /** The app the owner picked to connect. Only ever needed when several are installed. */
+    val chosen: InstalledWallet? = null,
     /** False until the stored wallet has been read. */
     val loaded: Boolean = false,
     /** The network the owner is about to connect on; the connected wallet's, once there is one. */
@@ -44,6 +58,14 @@ data class WalletUiState(
 ) {
     val busy: Boolean
         get() = connecting || disconnecting
+
+    /**
+     * Whether connecting would reach one wallet app. The owner has to pick when this phone has
+     * several, because connecting without one is what leaves Android asking them every time; with
+     * one installed, or none this phone could list, there is nothing for them to decide.
+     */
+    val canConnect: Boolean
+        get() = apps != null && (apps.size <= 1 || chosen != null)
 }
 
 /**
@@ -73,6 +95,10 @@ class WalletViewModel(
             }
         }
         viewModelScope.launch {
+            repository.walletApp.collect { app -> _state.update { it.copy(walletApp = app) } }
+        }
+        viewModelScope.launch { readInstalled() }
+        viewModelScope.launch {
             connections.connections.collect { list ->
                 _state.update { it.copy(connections = list) }
                 // The owner pairs a sidecar without leaving the app, so waiting for the next
@@ -101,7 +127,28 @@ class WalletViewModel(
     fun onAppVisible() {
         if (!hidden) return
         hidden = false
-        viewModelScope.launch { publish() }
+        viewModelScope.launch {
+            // A wallet app may have been installed or removed while the app was away, and what the
+            // owner can be offered is only ever what the system says is there now.
+            readInstalled()
+            publish()
+        }
+    }
+
+    /** The wallet app the owner will connect. Picking one clears any earlier complaint. */
+    fun chooseWalletApp(packageName: String) {
+        val state = _state.value
+        if (state.wallet != null || state.busy) return
+        val app = state.apps?.firstOrNull { it.packageName == packageName } ?: return
+        _state.update { it.copy(chosen = app, problem = null, detail = null) }
+    }
+
+    private suspend fun readInstalled() {
+        val apps = repository.installedWallets()
+        _state.update { state ->
+            // A pick the system no longer lists is no pick at all.
+            state.copy(apps = apps, chosen = state.chosen?.takeIf { it in apps })
+        }
     }
 
     /** The network the owner will connect on. It can't change while a wallet is connected. */
@@ -110,15 +157,15 @@ class WalletViewModel(
         _state.update { it.copy(network = network, problem = null, detail = null) }
     }
 
-    /** Asks the wallet for an account on the chosen network. */
+    /** Asks the wallet the owner picked for an account on the chosen network. */
     fun connect() {
         val state = _state.value
-        if (state.busy) return
+        if (state.busy || !state.canConnect) return
         _state.update { it.copy(connecting = true, problem = null, detail = null) }
         viewModelScope.launch {
             val problem =
                 try {
-                    problemOf(repository.connect(state.network))
+                    problemOf(repository.connect(state.network, state.chosen))
                 } catch (e: WalletStorageException) {
                     WalletProblem.Storage to null
                 }

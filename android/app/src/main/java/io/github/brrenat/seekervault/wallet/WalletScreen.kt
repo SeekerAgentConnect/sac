@@ -53,10 +53,19 @@ data class WalletScreenWallet(val name: String, val address: String, val statusT
 data class WalletDisconnectedState(
     val title: String,
     val body: String,
+    /** The wallet apps to pick from, and the header over them. Empty when there is no choice. */
+    val appTitle: String,
+    val appExplanation: String,
+    val apps: List<WalletAppOption> = emptyList(),
     val networkTitle: String,
     val networks: List<WalletNetworkOption>,
     val connectLabel: String,
+    /** False while the owner still has a wallet app to pick, so nothing opens Android's chooser. */
+    val canConnect: Boolean = true,
 )
+
+/** One installed wallet app the owner can connect (SEE-159). */
+data class WalletAppOption(val packageName: String, val label: String, val selected: Boolean)
 
 data class WalletNetworkOption(
     val network: WalletNetwork,
@@ -72,6 +81,7 @@ data class WalletPublishWarningState(
 
 /** Every interaction emitted by the stateless [WalletScreen]. */
 data class WalletScreenCallbacks(
+    val onChooseWalletApp: (String) -> Unit,
     val onChooseNetwork: (WalletNetwork) -> Unit,
     val onConnect: () -> Unit,
     val onDisconnect: () -> Unit,
@@ -93,6 +103,7 @@ fun WalletRoute(
         state = walletScreenState(state),
         callbacks =
             WalletScreenCallbacks(
+                onChooseWalletApp = viewModel::chooseWalletApp,
                 onChooseNetwork = viewModel::chooseNetwork,
                 onConnect = viewModel::connect,
                 onDisconnect = viewModel::disconnect,
@@ -139,6 +150,26 @@ fun WalletScreen(
                     modifier =
                         Modifier.testTag(WalletTags.STATUS).semantics(mergeDescendants = true) {},
                 )
+                if (disconnected.apps.isNotEmpty()) {
+                    SectionHeader(
+                        title = disconnected.appTitle,
+                        trailing = SectionHeaderTrailing.None,
+                    )
+                    ScreenCaption(text = disconnected.appExplanation)
+                    disconnected.apps.forEach { app ->
+                        RadioRow(
+                            label = app.label,
+                            state = if (app.selected) RadioRowState.On else RadioRowState.Off,
+                            onClick = {
+                                if (!state.busy) callbacks.onChooseWalletApp(app.packageName)
+                            },
+                            modifier =
+                                Modifier.testTag(WalletTags.app(app.packageName)).let {
+                                    if (state.busy) it.semantics { disabled() } else it
+                                },
+                        )
+                    }
+                }
                 SectionHeader(
                     title = disconnected.networkTitle,
                     trailing = SectionHeaderTrailing.None,
@@ -161,7 +192,7 @@ fun WalletScreen(
                     onClick = callbacks.onConnect,
                     variant = SeekerButtonVariant.Filled,
                     size = SeekerButtonSize.Md,
-                    enabled = !state.busy,
+                    enabled = !state.busy && disconnected.canConnect,
                     modifier = Modifier.fillMaxWidth().testTag(WalletTags.CONNECT),
                 )
             }
@@ -218,17 +249,29 @@ internal fun walletScreenState(state: WalletUiState): WalletScreenState {
         title = stringResource(R.string.wallet_title),
         wallet =
             wallet?.let {
+                val account = it.label?.takeIf(String::isNotBlank)
+                val app = state.walletApp?.takeIf(String::isNotBlank)
                 WalletScreenWallet(
-                    name =
-                        it.label?.takeIf(String::isNotBlank)
-                            ?: stringResource(R.string.wallet_title),
+                    // The wallet is the app the session belongs to, and the account's own label is
+                    // the account's (SEE-159). Naming the card after the account is how a label
+                    // like "phantom" came to read as the wallet that would be opened.
+                    name = app ?: account ?: stringResource(R.string.wallet_title),
                     address = it.address,
                     statusText =
-                        stringResource(
-                            R.string.wallet_connected_summary,
-                            walletTimeFormatter.format(it.selectedAt),
-                            networkText(it.network),
-                        ),
+                        if (app != null && account != null) {
+                            stringResource(
+                                R.string.wallet_connected_summary_account,
+                                walletTimeFormatter.format(it.selectedAt),
+                                networkText(it.network),
+                                account,
+                            )
+                        } else {
+                            stringResource(
+                                R.string.wallet_connected_summary,
+                                walletTimeFormatter.format(it.selectedAt),
+                                networkText(it.network),
+                            )
+                        },
                 )
             },
         disconnected =
@@ -241,6 +284,22 @@ internal fun walletScreenState(state: WalletUiState): WalletScreenState {
                             stringResource(R.string.wallet_none_title)
                         },
                     body = stringResource(R.string.wallet_none_text),
+                    appTitle = stringResource(R.string.wallet_app_label),
+                    appExplanation = stringResource(R.string.wallet_app_explanation),
+                    // Nothing to choose when this phone has one wallet app, or couldn't list any:
+                    // a single answer needs no question, and a list of none asks nothing.
+                    apps =
+                        state.apps
+                            .orEmpty()
+                            .takeIf { it.size > 1 }
+                            .orEmpty()
+                            .map { app ->
+                                WalletAppOption(
+                                    packageName = app.packageName,
+                                    label = app.label,
+                                    selected = app == state.chosen,
+                                )
+                            },
                     networkTitle = stringResource(R.string.wallet_network_label),
                     networks =
                         WalletNetwork.entries.map {
@@ -251,6 +310,7 @@ internal fun walletScreenState(state: WalletUiState): WalletScreenState {
                             )
                         },
                     connectLabel = stringResource(R.string.wallet_connect),
+                    canConnect = state.canConnect,
                 )
             } else {
                 null
