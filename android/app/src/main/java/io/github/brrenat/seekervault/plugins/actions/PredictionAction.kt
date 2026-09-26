@@ -58,6 +58,28 @@ data class PredictionPayload(
     val leastDeposit: ULong = 0UL,
     /** The most, or null when the publisher set no ceiling. */
     val mostDeposit: ULong? = null,
+    /**
+     * Where the provider's own app keeps this market, when the publisher names it; empty otherwise
+     * (SEE-157).
+     *
+     * It is the *native* destination — the address the provider's installed app answers for, by
+     * whatever means that provider publishes: an App Link to its own site, or a scheme of its own.
+     * It is carried, never loaded: this app opens no connection to it and reads nothing from it.
+     *
+     * A publisher writing this is not believed about it. Core checks only that it is a URI anything
+     * may be handed ([isProviderLink]); whether it is the provider's own property is the provider's
+     * own question, asked in its adapter, and a link that is not is ignored in favour of one the
+     * adapter builds itself (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
+     */
+    val providerDeepLink: String = "",
+    /**
+     * The same destination on the web, for when no app answers the deep link; empty when the
+     * publisher names none.
+     *
+     * Held to the same rule and treated with the same suspicion. It is the fallback rather than the
+     * first choice: a provider with an app installed opens in the app (SEE-157).
+     */
+    val providerWebUrl: String = "",
 )
 
 /**
@@ -79,6 +101,11 @@ object PredictionTermNames {
     const val DEPOSIT_SYMBOL = "deposit_symbol"
     const val LEAST_DEPOSIT = "least_deposit"
     const val MOST_DEPOSIT = "most_deposit"
+
+    /** Where the provider's own app keeps this market, and the same page on the web (SEE-157). */
+    const val PROVIDER_DEEP_LINK = "provider_deep_link"
+
+    const val PROVIDER_WEB_URL = "provider_web_url"
 }
 
 /** A market or event identifier: a bounded token, and never a URL or anything loadable. */
@@ -102,6 +129,8 @@ enum class PredictionPayloadProblem(val code: String) {
     ImpossibleAmounts("impossible_amounts"),
     /** A label too long to show. */
     BadSymbol("bad_symbol"),
+    /** A destination that is not somewhere this app would hand to another app (SEE-157). */
+    NotALink("not_a_link"),
 }
 
 /** The owner-facing words for each rule. They stay in resources, not in code. */
@@ -116,6 +145,7 @@ val PredictionPayloadProblem.message: Int
             PredictionPayloadProblem.BadAmount -> R.string.action_terms_bad_amount
             PredictionPayloadProblem.ImpossibleAmounts -> R.string.action_terms_impossible_amounts
             PredictionPayloadProblem.BadSymbol -> R.string.action_terms_bad_symbol
+            PredictionPayloadProblem.NotALink -> R.string.action_terms_not_a_link
         }
 
 sealed interface PredictionPayloadResult {
@@ -188,6 +218,18 @@ fun predictionPayloadFrom(terms: Map<String, String>): PredictionPayloadResult {
     if (most != null && (most == 0UL || most < least)) {
         return invalid(PredictionPayloadProblem.ImpossibleAmounts, PredictionTermNames.MOST_DEPOSIT)
     }
+    // Where the owner may carry on, when the publisher says (SEE-157). A term that is present and
+    // unusable stops the read rather than being dropped quietly: a publisher that meant to send
+    // somebody somewhere and wrote something else should be told, and an owner should not be shown
+    // a signal that half-named a destination.
+    val deepLink = terms[PredictionTermNames.PROVIDER_DEEP_LINK].orEmpty()
+    if (deepLink.isNotEmpty() && !isProviderLink(deepLink)) {
+        return invalid(PredictionPayloadProblem.NotALink, PredictionTermNames.PROVIDER_DEEP_LINK)
+    }
+    val webUrl = terms[PredictionTermNames.PROVIDER_WEB_URL].orEmpty()
+    if (webUrl.isNotEmpty() && !isProviderLink(webUrl)) {
+        return invalid(PredictionPayloadProblem.NotALink, PredictionTermNames.PROVIDER_WEB_URL)
+    }
     return PredictionPayloadResult.Valid(
         PredictionPayload(
             marketId = marketId,
@@ -201,6 +243,8 @@ fun predictionPayloadFrom(terms: Map<String, String>): PredictionPayloadResult {
             // ([io.github.brrenat.seekervault.plugins.ActionCapability.leastDeposit]).
             leastDeposit = least,
             mostDeposit = most,
+            providerDeepLink = deepLink,
+            providerWebUrl = webUrl,
         )
     )
 }

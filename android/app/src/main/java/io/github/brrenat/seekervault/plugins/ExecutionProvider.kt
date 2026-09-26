@@ -122,11 +122,21 @@ interface ExecutionProvider {
      * to know more.
      *
      * Two rules. A destination is built from something this provider validated, never from a
-     * publisher's prose. And a destination that does not exist is not invented: a provider with no
-     * address for a position gets no position link, and the owner is sent to the market instead
-     * (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
+     * publisher's prose — a publisher may *name* one (SEE-157), and it counts for nothing until
+     * this provider recognizes it as its own. And a destination that does not exist is not
+     * invented: a provider with no address for a thing gets no link to it, and says so by
+     * returning none (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
+     *
+     * [references] are the identifiers this provider itself named for an operation that was already
+     * submitted ([ActionInspection.references], kept in the owner's record). They are how a
+     * destination can be about *this order* rather than about the market it was placed on, and they
+     * are empty before anything has been prepared — so a provider that needs one returns nothing
+     * until it has one, which is what "do not offer an action there is no destination for" means.
      */
-    fun destinations(operation: ActionOperation): List<PluginDestination> = emptyList()
+    fun destinations(
+        operation: ActionOperation,
+        references: List<PluginReference> = emptyList(),
+    ): List<PluginDestination> = emptyList()
 
     /**
      * What the provider says has become of an operation this phone already submitted, when the
@@ -181,12 +191,22 @@ sealed interface ActionStatus {
 /**
  * Somewhere the owner may continue, outside this app (SEE-94).
  *
- * [label] is the provider's own string resource, so the words stay in resources, and [url] is built
- * at the moment it is shown rather than stored: a link read back off disk is a link something else
- * could have written, and this app hands nothing to a browser that it did not just construct itself
- * (`activity/Explorer.kt` does the same with the one address it knows).
+ * [label] is the provider's own string resource, so the words stay in resources, and both addresses
+ * are built at the moment they are shown rather than stored: a link read back off disk is a link
+ * something else could have written, and this app hands nothing to another app that it did not just
+ * construct itself (`activity/Explorer.kt` does the same with the one address it knows).
+ *
+ * [deepLink] is where the provider's own app answers, when the provider has one and this build
+ * knows the address; [url] is the same place on the web. Opening a destination tries the app first
+ * and the web only if no app took it, so an owner with the provider installed lands in it rather
+ * than in a browser (SEE-157, `activity/Explorer.kt`). A provider with only a web address leaves
+ * [deepLink] null, which is the ordinary case and not a lesser one.
  */
-data class PluginDestination(@StringRes val label: Int, val url: String)
+data class PluginDestination(
+    @StringRes val label: Int,
+    val url: String,
+    val deepLink: String? = null,
+)
 
 /**
  * What a provider is, as a stable identity a server manifest can name (SEE-88) and a build can

@@ -54,13 +54,36 @@ fun explorerUrl(signature: String, network: Network?): String? =
  * Opens [url] with whatever app handles links, and returns false when nothing does. A phone with no
  * browser is unusual and not an error: the record is on screen either way, and the owner can copy
  * the signature.
+ *
+ * With [appOnly], a browser is not an answer: the launch succeeds only if some app other than a
+ * browser claims the address, and fails as if nothing had handled it at all. That is what makes a
+ * provider's own app the first choice rather than whatever happens to be registered — an `https`
+ * address a provider's app has verified opens *in that app*, and the same address falls through to
+ * the browser on a phone that does not have it (SEE-157).
  */
-fun openLink(context: Context, url: String): Boolean =
+fun openLink(context: Context, url: String, appOnly: Boolean = false): Boolean =
     try {
-        context.startActivity(
+        val intent =
             Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
+        if (appOnly) intent.addFlags(Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER)
+        context.startActivity(intent)
         true
     } catch (e: ActivityNotFoundException) {
         false
     }
+
+/**
+ * Opens [deepLink] in the provider's own app if it is installed, and [url] in a browser if it is
+ * not (SEE-157).
+ *
+ * The order is the whole of it. A deep link is tried first and only as an app: an owner who has the
+ * provider installed is carried into it, on the page the destination names, rather than into a
+ * browser that then has to hand them back. When no app takes it — the provider is not installed,
+ * the phone never verified the link, the address is one no app claims — nothing has happened yet,
+ * and the web address is opened instead.
+ *
+ * Returns false when neither opened, which is the same non-error [openLink] reports: the screen
+ * still says everything it said, and nothing about the operation depended on the link.
+ */
+fun openDestination(context: Context, deepLink: String?, url: String): Boolean =
+    (deepLink != null && openLink(context, deepLink, appOnly = true)) || openLink(context, url)

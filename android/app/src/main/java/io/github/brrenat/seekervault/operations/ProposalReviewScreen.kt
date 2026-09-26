@@ -77,8 +77,11 @@ fun ProposalReviewScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onRules: (() -> Unit)? = null,
-    /** Hands a link to whatever app opens them. The app fetches nothing from any of them. */
-    onOpenLink: (String) -> Unit = {},
+    /**
+     * Hands a destination — a web address, and the provider's own app link when there is one — to
+     * whatever opens it. The app fetches nothing from any of them.
+     */
+    onOpenLink: (String, String?) -> Unit = { _, _ -> },
 ) {
     val proposal = review.record.proposal
     val executed = review.record.execution
@@ -145,10 +148,17 @@ fun ProposalReviewScreen(
                                 )
                             }
                             link?.let {
-                                Link(stringResource(R.string.operation_explorer), it, onOpenLink)
+                                // The explorer is the web and nothing else: no app claims it here,
+                                // and none is pretended.
+                                Link(
+                                    stringResource(R.string.operation_explorer),
+                                    it,
+                                    deepLink = null,
+                                    onOpenLink = onOpenLink,
+                                )
                             }
                             review.destinations.forEach {
-                                Link(stringResource(it.label), it.url, onOpenLink)
+                                Link(stringResource(it.label), it.url, it.deepLink, onOpenLink)
                             }
                             // Every one of these is a place to look, and none of them is this app
                             // claiming to know what happened.
@@ -538,12 +548,24 @@ private fun Banner(text: String, tag: String) {
     }
 }
 
-/** One place to look, outside this app. Tapping hands it to whatever opens links. */
+/**
+ * One place to look, outside this app.
+ *
+ * Tapping hands it to whoever opens it, which is the provider's own app when [deepLink] names one
+ * and it is installed, and a browser otherwise (SEE-157). The screen learns nothing about which
+ * happened, and there is nothing here about any particular provider: it carries two addresses a
+ * provider gave it and knows what neither of them is.
+ */
 @Composable
-private fun Link(name: String, url: String, onOpenLink: (String) -> Unit) {
+private fun Link(
+    name: String,
+    url: String,
+    deepLink: String?,
+    onOpenLink: (String, String?) -> Unit,
+) {
     SeekerButton(
         text = name,
-        onClick = { onOpenLink(url) },
+        onClick = { onOpenLink(url, deepLink) },
         role = SeekerButtonRole.Neutral,
         modifier = Modifier.fillMaxWidth().testTag(OperationTags.link(name)),
     )
