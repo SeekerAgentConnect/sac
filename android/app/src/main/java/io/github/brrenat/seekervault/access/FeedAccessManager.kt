@@ -411,11 +411,10 @@ class FeedAccessManager(
         session: String,
         target: String,
     ): Boolean {
-        val landed =
-            runCatching {
-                    pushTarget(connection.serverUrl, channelFor(connection.serverId), session, target)
-                }
-                .isSuccess
+        val landed = runCatching {
+            pushTarget(connection.serverUrl, channelFor(connection.serverId), session, target)
+        }
+            .isSuccess
         if (landed) pendingPush.remove(connection.id) else pendingPush.add(connection.id)
         return landed
     }
@@ -431,7 +430,8 @@ class FeedAccessManager(
                 if (connectionId !in pendingPush) return@launch
                 val record = _records.value[connectionId] ?: return@launch
                 if (record.state != State.Connected || !isActive(record)) return@launch
-                val connection = connections().firstOrNull { it.id == connectionId } ?: return@launch
+                val connection =
+                    connections().firstOrNull { it.id == connectionId } ?: return@launch
                 val session = byChannel[channelFor(record.serverId)] ?: return@launch
                 val current = target ?: return@launch
                 if (registerPush(connection, session, current)) return@launch
@@ -475,7 +475,9 @@ class FeedAccessManager(
         /** A challenge that claims to last longer than this is not one this phone signs. */
         val MOST_CHALLENGE_LIFETIME: Duration = Duration.ofMinutes(30)
 
-        /** The publisher retries its grant with a backoff that reaches a minute; this outlasts it. */
+        /**
+         * The publisher retries its grant with a backoff that reaches a minute; this outlasts it.
+         */
         val PUSH_RETRIES: List<Duration> =
             listOf(5L, 15L, 30L, 60L, 120L, 300L, 600L, 1800L).map(Duration::ofSeconds)
 

@@ -109,7 +109,9 @@ class WalletRepository(
         lock.withLock {
             val stored = withContext(io) { store.session() }
             val authToken =
-                stored?.authToken?.takeIf { app == null || app.packageName == stored.route.packageName }
+                stored?.authToken?.takeIf {
+                    app == null || app.packageName == stored.route.packageName
+                }
             val result = adapter.connect(network, authToken, aim(app, stored?.route))
             connected(network, result)
         }
