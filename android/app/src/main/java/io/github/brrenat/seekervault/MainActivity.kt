@@ -67,6 +67,9 @@ class MainActivity : ComponentActivity() {
                     // The one registry for the process, so a server's requirements are matched
                     // against the same plugins here as when a request is reviewed (SEE-88).
                     plugins = app.providerRegistry,
+                    // Restricted-feed access (SEE-156): the state of each request, and the one
+                    // action on these screens that opens the wallet.
+                    feedAccess = app.feedAccessManager,
                 )
             }
         }

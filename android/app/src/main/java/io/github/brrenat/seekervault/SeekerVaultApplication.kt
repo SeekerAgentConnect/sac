@@ -6,7 +6,15 @@ import android.security.NetworkSecurityPolicy
 import androidx.activity.ComponentActivity
 import androidx.core.net.toUri
 import com.connectrpc.okhttp.ConnectOkHttpClient
+import com.google.protobuf.ByteString
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
+import io.github.brrenat.seekervault.access.DeviceKeys
+import io.github.brrenat.seekervault.access.FeedAccessApi
+import io.github.brrenat.seekervault.access.FeedAccessManager
+import io.github.brrenat.seekervault.access.FeedSessions
+import io.github.brrenat.seekervault.access.KeystoreDeviceKeys
+import io.github.brrenat.seekervault.access.OkHttpFeedAccessApi
+import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.ConnectConnectionGateway
@@ -52,6 +60,7 @@ import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.sync.BackgroundSyncScheduler
 import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
 import io.github.brrenat.seekervault.sync.FeedSyncRunner
+import io.github.brrenat.seekervault.sync.FeedSyncScheduler
 import io.github.brrenat.seekervault.sync.ForegroundUpdateManager
 import io.github.brrenat.seekervault.sync.UpdateTransport
 import io.github.brrenat.seekervault.sync.storage.SyncStore
@@ -72,6 +81,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 
@@ -118,6 +128,18 @@ class SeekerVaultApplication : Application() {
      * replaces it with an ordinary fake and nothing here needs a project.
      */
     var relayClient: () -> RelayClient = { HttpRelayClient(httpClient) }
+
+    /**
+     * A restricted feed's authentication endpoint (SEE-156). The one publisher-operated address
+     * this app ever posts to, and only the one the gateway stamped on that feed's manifest.
+     */
+    var feedAccessApi: () -> FeedAccessApi = { OkHttpFeedAccessApi(httpClient) }
+
+    /**
+     * The per-feed device keys a restricted feed's approval is bound to. Tests replace them, since
+     * Robolectric has no Keystore — the same reason [credentialKey] is replaceable.
+     */
+    var deviceKeys: () -> DeviceKeys = { KeystoreDeviceKeys() }
 
     /**
      * The relay this build was configured to trust, or "" for a build with none. It is read here
@@ -251,6 +273,9 @@ class SeekerVaultApplication : Application() {
                     requestNotifications.cancelConnection(id)
                     proposalNotifications.cancelConnection(id)
                 },
+                // A restricted feed the owner removed takes its access with it: the record, the
+                // session and the device key the publisher's approval was bound to (SEE-156).
+                onConnectionRemoved = { id -> feedAccessManager?.forget(id) },
             )
         backgroundSync =
             BackgroundSyncScheduler.create(
@@ -298,6 +323,36 @@ class SeekerVaultApplication : Application() {
                     dispatcher = connectionIo,
                 )
                 .also(RelayRegistrationManager::start)
+        feedAccess =
+            FeedAccessManager(
+                connections = { repository.connections.value },
+                // What this phone asked for and where it stands. No secret is in it: the device
+                // key is in the Keystore and the session is sealed beside a phone credential,
+                // and both are out of backups because a restored backup is another device.
+                store = FeedAccessStore(File(noBackupFilesDir, "feed-access")),
+                sessions =
+                    CredentialVault(File(noBackupFilesDir, "feed-sessions")) { credentialKey() },
+                keys = deviceKeys(),
+                api = feedAccessApi(),
+                wallet = { walletRepository.wallet.value },
+                // The one wallet signature in the whole flow, over text that says in its own
+                // words that it is not a transaction (FeedAccessProof).
+                sign = { message, reviewed ->
+                    walletRepository.sign(ByteString.copyFrom(message.toByteArray()), reviewed)
+                },
+                // The owner's own phone, as a label for the admin's list. It is a claim and
+                // shown as one: what proves the device is the key, not this.
+                label = { Build.MODEL },
+                pushTarget = { gatewayUrl, channel, session, target ->
+                    feedGateway().setPushTarget(gatewayUrl, channel, session, target)
+                },
+                // Newly readable: read it now rather than at the next foreground pass.
+                onConnected = { FeedSyncScheduler.enqueue(this@SeekerVaultApplication) },
+                io = connectionIo,
+            )
+        CoroutineScope(SupervisorJob() + connectionIo).launch {
+            checkNotNull(feedAccess).load()
+        }
         repository
     }
 
@@ -346,6 +401,16 @@ class SeekerVaultApplication : Application() {
         }
 
     /**
+     * Restricted-feed access (SEE-156). A registration callback reaches it too, to tell every
+     * connected restricted feed where this device's hints now go.
+     */
+    val feedAccessManager: FeedAccessManager
+        get() {
+            connectionRepository
+            return checkNotNull(feedAccess)
+        }
+
+    /**
      * The authoritative read a feed hint asks for (SEE-92), assembled here because this is where
      * everything it needs already lives: the connections, the cursors, the repositories' own apply
      * path, and what the owner is currently shown.
@@ -359,6 +424,10 @@ class SeekerVaultApplication : Application() {
             load = {
                 connectionRepository.load()
                 proposalRepository.load()
+                // Before any read: a restricted feed read without its session is refused, and a
+                // background pass that raced the load would record a denial the gateway never
+                // meant (SEE-156).
+                feedAccessManager.load()
             },
             connections = { connectionRepository.connections.value },
             foreground = { foregroundFeeds.state.value },
@@ -406,7 +475,12 @@ class SeekerVaultApplication : Application() {
      * The feed gateway a feed is read from, and the stream it is listened to on (SEE-91). Both are
      * replaced in tests, which is why they are factories rather than singletons.
      */
-    var feeds: () -> ConnectFeedGateway = { ConnectFeedGateway(httpClient) }
+    var feeds: () -> ConnectFeedGateway = {
+        // The supplier is deliberate: the access manager registers this device's push target
+        // through this same client, so neither can be constructed before the other (SEE-156).
+        // Until the manager exists, no channel has a session, which is what a public feed is.
+        ConnectFeedGateway(httpClient) { feedAccess ?: FeedSessions.None }
+    }
 
     var feedStream: () -> FeedStream = { CentrifugoFeedStream(httpClient) }
 
@@ -471,6 +545,12 @@ class SeekerVaultApplication : Application() {
 
     /** The gateway relay's lifecycle (SEE-144), built beside the other two and for one reason. */
     private var relayRegistration: RelayRegistrationManager? = null
+
+    /**
+     * Restricted-feed access (SEE-156). Read directly rather than through [feedAccessManager] by
+     * the gateway client's session supplier, because that runs while this block is still building.
+     */
+    private var feedAccess: FeedAccessManager? = null
 
     /**
      * Where storage and network calls run — the connections' and the policy editor's alike. Tests

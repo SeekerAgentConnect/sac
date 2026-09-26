@@ -2,17 +2,23 @@ package io.github.brrenat.seekervault.connections
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.brrenat.seekervault.access.AccessResult
+import io.github.brrenat.seekervault.access.FeedAccessManager
+import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.feeds.FeedStatusState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.FeedAccess
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.FeedReferenceProblem
 import io.github.brrenat.seekervault.servers.FeedReferenceResult
 import io.github.brrenat.seekervault.servers.FeedReferences
 import io.github.brrenat.seekervault.servers.ManifestProblem
 import io.github.brrenat.seekervault.servers.ServerSupport
+import io.github.brrenat.seekervault.servers.feedAccess
+import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.servers.serverSupport
 import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
 import kotlinx.coroutines.Job
@@ -63,6 +69,13 @@ data class ConnectionsUiState(
      * and never stored: a verdict on disk would outlive the build that reached it.
      */
     val support: Map<String, ServerSupport> = emptyMap(),
+    /**
+     * Where this phone's access to each restricted feed stands, by connection ID (SEE-156). A
+     * public feed is absent from it, and so is a restricted one nothing has been asked of yet.
+     */
+    val access: Map<String, FeedAccessStore.Record> = emptyMap(),
+    /** Connections with an access request, check or redemption in flight. */
+    val accessWorking: Set<String> = emptySet(),
 )
 
 /** A valid code, with what the phone already knows about its server. */
@@ -161,6 +174,28 @@ sealed interface ConnectionMessage {
     data class Removed(override val label: String) : ConnectionMessage
 
     data class Renamed(override val label: String) : ConnectionMessage
+
+    /**
+     * Asking a restricted feed's publisher for access did not get as far as a decision (SEE-156).
+     * Each of these is something the owner can act on, and none of them changed anything: the
+     * wallet was not opened, or it was and nothing was sent.
+     */
+    data class AccessNotAsked(override val label: String, val reason: AccessProblem) :
+        ConnectionMessage
+}
+
+/** Why asking for access stopped before the publisher had anything to decide (SEE-156). */
+enum class AccessProblem {
+    /** No wallet is connected on this phone, and access belongs to a wallet. */
+    NoWallet,
+    /** The owner declined in the wallet, or it could not sign. Nothing was sent. */
+    NotSigned,
+    /** The publisher's challenge was not the text this phone would sign. Nothing was signed. */
+    BadChallenge,
+    /** The publisher could not be reached. Nothing changed, and it can be tried again. */
+    Unreachable,
+    /** The publisher answered no. */
+    Refused,
 }
 
 /**
@@ -185,6 +220,11 @@ class ConnectionsViewModel(
     private val plugins: ProviderRegistry = ProviderRegistry.of(),
     /** A seam for the add flow's state tests; production always uses the repository method. */
     private val addFeed: suspend (FeedReference) -> FeedOutcome = repository::addFeed,
+    /**
+     * Restricted-feed access (SEE-156), or null in a build or a test that has none. It is the one
+     * thing on these screens that opens the wallet, and it does so once per feed.
+     */
+    private val feedAccess: FeedAccessManager? = null,
     private val cleartextPermitted: (host: String) -> Boolean,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConnectionsUiState())
@@ -221,6 +261,11 @@ class ConnectionsViewModel(
                 availability.collect { current -> _state.update { it.copy(feedStatus = current) } }
             }
         }
+        feedAccess?.let { access ->
+            viewModelScope.launch {
+                access.states.collect { current -> _state.update { it.copy(access = current) } }
+            }
+        }
         viewModelScope.launch {
             repository.load()
             _state.update { it.copy(loaded = true) }
@@ -229,6 +274,61 @@ class ConnectionsViewModel(
             // wait for it is part of opening.
             refreshAll().joinAll()
             _state.update { it.copy(fetched = true) }
+        }
+    }
+
+    /**
+     * Asks the publisher of a restricted feed for access, with the wallet selected on this phone
+     * (SEE-156). It opens the wallet once, to sign text that says it is not a transaction.
+     *
+     * Asking again for a feed that already has a live request is a check rather than a second
+     * request: the publisher would answer the first one anyway, and the owner should not be sent to
+     * the wallet for nothing.
+     */
+    fun requestAccess(id: String) = working(id) { checkNotNull(feedAccess).requestAccess(id) }
+
+    /**
+     * Asks where this phone's request stands, and redeems an invitation if one is waiting. Signed
+     * with the device key; the wallet is not opened again.
+     */
+    fun checkAccess(id: String) = working(id) { checkNotNull(feedAccess).check(id) }
+
+    /** Redeems an invitation that arrived as a link or a code rather than through a check. */
+    fun redeemAccess(id: String, invitation: String) =
+        working(id) { checkNotNull(feedAccess).redeem(id, invitation) }
+
+    /** What to tell the owner about an access attempt, or null when the state says it already. */
+    private fun accessMessage(result: AccessResult, label: String): ConnectionMessage? {
+        val reason =
+            when (result) {
+                is AccessResult.Done,
+                AccessResult.NotRestricted,
+                AccessResult.NotRequested -> return null
+                AccessResult.NoWallet -> AccessProblem.NoWallet
+                is AccessResult.WalletDidNotSign -> AccessProblem.NotSigned
+                AccessResult.BadChallenge -> AccessProblem.BadChallenge
+                AccessResult.Unreachable -> AccessProblem.Unreachable
+                is AccessResult.Refused -> AccessProblem.Refused
+            }
+        return ConnectionMessage.AccessNotAsked(label, reason)
+    }
+
+    private fun working(id: String, block: suspend () -> AccessResult): Job? {
+        if (feedAccess == null) return null
+        if (id in _state.value.accessWorking) return null
+        _state.update { it.copy(accessWorking = it.accessWorking + id) }
+        return viewModelScope.launch {
+            val result = block()
+            _state.update {
+                it.copy(
+                    accessWorking = it.accessWorking - id,
+                    message =
+                        accessMessage(
+                            result,
+                            it.connections.firstOrNull { one -> one.id == id }?.label.orEmpty(),
+                        ) ?: it.message,
+                )
+            }
         }
     }
 
@@ -333,6 +433,19 @@ class ConnectionsViewModel(
                                 it.copy(
                                     message = ConnectionMessage.FeedAdded(outcome.connection.label)
                                 )
+                            }
+                            // A restricted feed is added and then asked for (SEE-156): the feed
+                            // itself is stored either way, and what the wallet signs is the
+                            // request to read it. An invitation the reference carried is redeemed
+                            // straight after the request it belongs to.
+                            if (
+                                outcome.connection.server.manifest?.feedAccess
+                                    is FeedAccess.Restricted
+                            ) {
+                                requestAccess(outcome.connection.id)?.join()
+                                reference.invitation?.let {
+                                    redeemAccess(outcome.connection.id, it)?.join()
+                                }
                             }
                             AddConnectionState.FeedAdded(outcome.connection)
                         }
@@ -528,6 +641,11 @@ class ConnectionsViewModel(
                 // Neither can come of pairing, which has no request and nothing prepared.
                 GatewayException.Kind.InvalidState,
                 GatewayException.Kind.StalePreparation,
+                // Nor can a feed's access refusals: pairing is a direct server's, and a feed is
+                // never paired with (SEE-156).
+                GatewayException.Kind.AccessRequired,
+                GatewayException.Kind.AccessRevoked,
+                GatewayException.Kind.AccessExpired,
                 GatewayException.Kind.Other -> PairingFailure.Other
             }
     }

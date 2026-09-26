@@ -187,6 +187,16 @@ class GatewayException(
         Unimplemented,
         /** The sidecar answered with something the app can't use. */
         BadResponse,
+        /**
+         * `permission_denied` with ACCESS_REQUIRED: a restricted feed read without a session the
+         * gateway holds a live grant for (SEE-156). The phone asks the publisher where its request
+         * stands rather than treating the feed as broken.
+         */
+        AccessRequired,
+        /** ACCESS_REVOKED: the publisher revoked this device. Final until it asks again. */
+        AccessRevoked,
+        /** ACCESS_EXPIRED: the grant ran out, and the publisher may renew it. */
+        AccessExpired,
         Other,
     }
 }

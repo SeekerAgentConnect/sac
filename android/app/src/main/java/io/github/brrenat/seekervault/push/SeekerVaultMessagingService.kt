@@ -45,6 +45,10 @@ class SeekerVaultMessagingService : FirebaseMessagingService() {
         // Firebase credential of their own (SEE-144). It is told the same target the paired
         // sidecars are told, and only ever the relay this app was built to trust.
         application.relayRegistrations.onRegistered(token)
+        // A restricted feed has no public topic to join, so each approved device names its own
+        // target under the session its grant was issued with (SEE-156). A registration is the
+        // moment to say it again, for every feed this phone is currently connected to.
+        application.feedAccessManager.onRegistered(token)
     }
 
     override fun onUnregistered(token: String) {
