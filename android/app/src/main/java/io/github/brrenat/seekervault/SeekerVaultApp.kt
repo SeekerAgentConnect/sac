@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,8 +54,10 @@ import io.github.brrenat.seekervault.inbox.key
 import io.github.brrenat.seekervault.inbox.pendingItems
 import io.github.brrenat.seekervault.live.LiveCommandRoute
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
+import io.github.brrenat.seekervault.notifications.InAppNotices
 import io.github.brrenat.seekervault.notifications.InAppNotificationTarget
 import io.github.brrenat.seekervault.notifications.InAppNotifications
+import io.github.brrenat.seekervault.notifications.LocalInAppNotices
 import io.github.brrenat.seekervault.notifications.RequestNotificationPermission
 import io.github.brrenat.seekervault.operations.OperationViewModel
 import io.github.brrenat.seekervault.operations.OperationsUiState
@@ -264,350 +267,368 @@ fun SeekerVaultApp(
     LaunchedEffect(pendingKeys, policyState.stored, globalPolicyState.stored) {
         pendingKeys.forEach(inbox::review)
     }
-    Box(Modifier.fillMaxSize()) {
-        when (navigation.screen) {
-            AppScreen.Home -> {
-                val (_, toSend) = inboxCounts(inboxState)
-                HomeRoute(
-                    connectionsState = if (sheets.isEmpty()) state else state.copy(message = null),
-                    inboxSummary = InboxSummary(commonPending.size, toSend),
-                    wallet = walletState.wallet,
-                    walletApp = walletState.walletApp,
-                    requestAssessments = inboxState.assessments,
-                    signalAssessments = signalAssessments,
-                    pendingItems = commonPending,
-                    callbacks =
-                        HomeRouteCallbacks(
-                            onOpenConnection = navigator::openConnectionDetail,
-                            onRetryConnection = connections::refresh,
-                            onAddConnection = navigator::openAddConnection,
-                            onMessageShown = connections::messageShown,
-                            onInbox = screenNavigationCallbacks.onInbox,
-                            onWallet = screenNavigationCallbacks.onWallet,
-                            onGlobalRules = navigator::openGlobalRules,
-                            onActivity = screenNavigationCallbacks.onActivity,
-                            onOpenPending = { item ->
-                                navigator.openReview(
-                                    when (item) {
-                                        is PendingItem.Private ->
-                                            ReviewIdentity.Private(
-                                                item.request.key.connectionId,
-                                                item.request.key.requestId,
-                                            )
-                                        is PendingItem.Signal ->
-                                            ReviewIdentity.Signal(item.connectionId, item.requestId)
-                                    }
-                                )
-                            },
-                        ),
-                    modifier = rootModifier,
-                )
-            }
-            AppScreen.Wallet ->
-                WalletRoute(
-                    viewModel = wallet,
-                    onBack = { selectTabAfterSheets(AppScreen.Home) },
-                    navigationCallbacks = screenNavigationCallbacks,
-                    modifier = rootModifier,
-                )
-            AppScreen.Activity ->
-                ActivityRoute(
-                    viewModel = history,
-                    onBack = { selectTabAfterSheets(AppScreen.Home) },
-                    navigationCallbacks = screenNavigationCallbacks,
-                    modifier = rootModifier,
-                )
-            AppScreen.Inbox ->
-                InboxRoute(
-                    state = inboxState,
-                    feedRecords = operationsState.records,
-                    feedStanding = { record ->
-                        operations?.standing(record)
-                            ?: io.github.brrenat.seekervault.proposals.ProposalStanding.Expired
-                    },
-                    now = Instant.now(),
-                    callbacks =
-                        InboxRouteCallbacks(
-                            onRefresh = {
-                                inbox.refresh(null)
-                                operationsState.feeds.forEach { operations?.refresh(it.id) }
-                            },
-                            onOpenRequest = {
-                                navigator.openReview(
-                                    ReviewIdentity.Private(it.connectionId, it.requestId)
-                                )
-                            },
-                            onOpenSignal = {
-                                navigator.openReview(
-                                    ReviewIdentity.Signal(it.connectionId, it.key.proposalId)
-                                )
-                            },
-                            navigation = screenNavigationCallbacks,
-                        ),
-                    modifier = rootModifier,
-                )
-            AppScreen.AddConnection ->
-                AddConnectionRoute(
-                    viewModel = connections,
-                    onBack = navigator::back,
-                    onAdded = { navigator.selectTab(AppScreen.Home) },
-                    modifier = rootModifier,
-                    navigationCallbacks = screenNavigationCallbacks,
-                )
-            AppScreen.LiveTest -> LiveTestRoute(live)
-        }
-
-        if (sheets.isNotEmpty()) SheetInputBarrier(Modifier.zIndex(5f))
-        val visibleCount = closingTo ?: sheets.size
-        sheets.forEachIndexed { index, sheetRoute ->
-            key(sheetRoute) {
-                val active = index == sheets.lastIndex && index < visibleCount
-                val back =
-                    if (index >= visibleCount) sheets.lastIndex - index
-                    else (visibleCount - 1 - index).coerceAtLeast(0)
-                SeekerSheet(
-                    index = index,
-                    back = back,
-                    motionKey = sheetRoute,
-                    visible = index < visibleCount,
-                    onDismiss = pop,
-                    onPeekClick = { requestPopTo(index + 1) },
-                    chrome =
-                        (sheetRoute is AppSheet.RequestReview &&
-                            !predictionSheet(sheetRoute.identity, operationsState.records)) ||
-                            (sheetRoute is AppSheet.ConnectionRules &&
-                                !policyState.readyForLibrarySheet(sheetRoute.connectionId)) ||
-                            (sheetRoute is AppSheet.GlobalRules &&
-                                !globalPolicyState.readyForLibrarySheet()),
-                    aboveKeyboard = sheetRoute is AppSheet.OwnerInput,
-                ) {
-                    when (val activeRoute = sheetRoute) {
-                        is AppSheet.ConnectionDetail -> {
-                            ConnectionDetailsRoute(
-                                viewModel = connections,
-                                state = state,
-                                id = activeRoute.connectionId,
-                                onBack = pop,
-                                onRules = {
-                                    navigator.openConnectionRules(activeRoute.connectionId)
-                                },
-                                onInbox = { selectTabAfterSheets(AppScreen.Inbox) },
-                                onPairDirect = {
-                                    dismissSheetsThen(0) {
-                                        navigator.selectTab(AppScreen.Home)
-                                        navigator.openAddConnection()
-                                    }
-                                },
-                                overrideCount = policyState.overrideCount(activeRoute.connectionId),
-                                operationRefreshing =
-                                    activeRoute.connectionId in operationsState.refreshing,
-                                onOperationRefresh = {
-                                    operations?.refresh(activeRoute.connectionId)
-                                },
-                            )
-                            if (active) {
-                                LaunchedEffect(activeRoute.connectionId) {
-                                    policy.open(activeRoute.connectionId)
-                                }
-                            }
-                        }
-                        is AppSheet.ConnectionRules -> {
-                            val id = activeRoute.connectionId
-                            val close = {
-                                val target =
-                                    backplateTargetSize ?: (navigator.state.sheets.size - 1)
-                                requestedPolicyClose = null
-                                backplateTargetSize = null
-                                policy.close()
-                                popTo(target)
-                            }
-                            PolicyLibrarySheetScreen(
-                                label =
-                                    state.connections.firstOrNull { it.id == id }?.label.orEmpty(),
-                                state = policyState,
-                                onEdit = policy::edit,
-                                onStartOver = policy::startOver,
-                                onResetConnection = policy::resetConnectionOverrides,
-                                onOpenGlobal = navigator::openGlobalRules,
-                                onSave = policy::save,
-                                onMessageShown = policy::messageShown,
-                                onClose = close,
-                                closeRequest =
-                                    if (requestedPolicyClose == activeRoute) policyCloseRequest
-                                    else 0,
-                                onCloseRequestCancelled = {
-                                    if (requestedPolicyClose == activeRoute) {
-                                        requestedPolicyClose = null
-                                        backplateTargetSize = null
-                                    }
-                                },
-                                onOpenAsset = { asset, kind ->
-                                    navigator.openAssetEditor(
-                                        id,
-                                        kind.toRouteKind(),
-                                        asset?.routeId(),
+    // Service messages from any screen go to the top banner, not to a snackbar at the bottom.
+    val notices = remember { InAppNotices() }
+    CompositionLocalProvider(LocalInAppNotices provides notices) {
+        Box(Modifier.fillMaxSize()) {
+            when (navigation.screen) {
+                AppScreen.Home -> {
+                    val (_, toSend) = inboxCounts(inboxState)
+                    HomeRoute(
+                        connectionsState =
+                            if (sheets.isEmpty()) state else state.copy(message = null),
+                        inboxSummary = InboxSummary(commonPending.size, toSend),
+                        wallet = walletState.wallet,
+                        walletApp = walletState.walletApp,
+                        requestAssessments = inboxState.assessments,
+                        signalAssessments = signalAssessments,
+                        pendingItems = commonPending,
+                        callbacks =
+                            HomeRouteCallbacks(
+                                onOpenConnection = navigator::openConnectionDetail,
+                                onRetryConnection = connections::refresh,
+                                onAddConnection = navigator::openAddConnection,
+                                onMessageShown = connections::messageShown,
+                                onInbox = screenNavigationCallbacks.onInbox,
+                                onWallet = screenNavigationCallbacks.onWallet,
+                                onGlobalRules = navigator::openGlobalRules,
+                                onActivity = screenNavigationCallbacks.onActivity,
+                                onOpenPending = { item ->
+                                    navigator.openReview(
+                                        when (item) {
+                                            is PendingItem.Private ->
+                                                ReviewIdentity.Private(
+                                                    item.request.key.connectionId,
+                                                    item.request.key.requestId,
+                                                )
+                                            is PendingItem.Signal ->
+                                                ReviewIdentity.Signal(
+                                                    item.connectionId,
+                                                    item.requestId,
+                                                )
+                                        }
                                     )
                                 },
-                                onOpenAddress = { kind ->
-                                    navigator.openAddressEditor(id, kind.toRouteKind())
+                            ),
+                        modifier = rootModifier,
+                    )
+                }
+                AppScreen.Wallet ->
+                    WalletRoute(
+                        viewModel = wallet,
+                        onBack = { selectTabAfterSheets(AppScreen.Home) },
+                        navigationCallbacks = screenNavigationCallbacks,
+                        modifier = rootModifier,
+                    )
+                AppScreen.Activity ->
+                    ActivityRoute(
+                        viewModel = history,
+                        onBack = { selectTabAfterSheets(AppScreen.Home) },
+                        navigationCallbacks = screenNavigationCallbacks,
+                        modifier = rootModifier,
+                    )
+                AppScreen.Inbox ->
+                    InboxRoute(
+                        state = inboxState,
+                        feedRecords = operationsState.records,
+                        feedStanding = { record ->
+                            operations?.standing(record)
+                                ?: io.github.brrenat.seekervault.proposals.ProposalStanding.Expired
+                        },
+                        now = Instant.now(),
+                        callbacks =
+                            InboxRouteCallbacks(
+                                onRefresh = {
+                                    inbox.refresh(null)
+                                    operationsState.feeds.forEach { operations?.refresh(it.id) }
                                 },
-                            )
-                            if (active) {
-                                LaunchedEffect(id) { policy.open(id) }
-                            }
-                        }
-                        AppSheet.GlobalRules -> {
-                            val close = {
-                                val target =
-                                    backplateTargetSize ?: (navigator.state.sheets.size - 1)
-                                requestedPolicyClose = null
-                                backplateTargetSize = null
-                                globalPolicy.close()
-                                popTo(target)
-                                policy.refreshGlobal()
-                            }
-                            PolicyLibrarySheetScreen(
-                                label = "",
-                                state = globalPolicyState,
-                                onEdit = globalPolicy::edit,
-                                onStartOver = globalPolicy::startOver,
-                                onResetConnection = {},
-                                onOpenGlobal = {},
-                                onSave = globalPolicy::save,
-                                onMessageShown = globalPolicy::messageShown,
-                                onClose = close,
-                                closeRequest =
-                                    if (requestedPolicyClose == activeRoute) policyCloseRequest
-                                    else 0,
-                                onCloseRequestCancelled = {
-                                    if (requestedPolicyClose == activeRoute) {
-                                        requestedPolicyClose = null
-                                        backplateTargetSize = null
-                                    }
+                                onOpenRequest = {
+                                    navigator.openReview(
+                                        ReviewIdentity.Private(it.connectionId, it.requestId)
+                                    )
                                 },
-                            )
-                            if (active) {
-                                LaunchedEffect(Unit) { globalPolicy.openGlobal() }
-                            }
-                        }
-                        is AppSheet.AssetEditor -> {
-                            PolicyAssetLibraryScreen(
-                                state = policyState,
-                                asset =
-                                    policyState.connectionAssets().firstOrNull {
-                                        it.routeId() == activeRoute.assetId
+                                onOpenSignal = {
+                                    navigator.openReview(
+                                        ReviewIdentity.Signal(it.connectionId, it.key.proposalId)
+                                    )
+                                },
+                                navigation = screenNavigationCallbacks,
+                            ),
+                        modifier = rootModifier,
+                    )
+                AppScreen.AddConnection ->
+                    AddConnectionRoute(
+                        viewModel = connections,
+                        onBack = navigator::back,
+                        onAdded = { navigator.selectTab(AppScreen.Home) },
+                        modifier = rootModifier,
+                        navigationCallbacks = screenNavigationCallbacks,
+                    )
+                AppScreen.LiveTest -> LiveTestRoute(live)
+            }
+
+            if (sheets.isNotEmpty()) SheetInputBarrier(Modifier.zIndex(5f))
+            val visibleCount = closingTo ?: sheets.size
+            sheets.forEachIndexed { index, sheetRoute ->
+                key(sheetRoute) {
+                    val active = index == sheets.lastIndex && index < visibleCount
+                    val back =
+                        if (index >= visibleCount) sheets.lastIndex - index
+                        else (visibleCount - 1 - index).coerceAtLeast(0)
+                    SeekerSheet(
+                        index = index,
+                        back = back,
+                        motionKey = sheetRoute,
+                        visible = index < visibleCount,
+                        onDismiss = pop,
+                        onPeekClick = { requestPopTo(index + 1) },
+                        chrome =
+                            (sheetRoute is AppSheet.RequestReview &&
+                                !predictionSheet(sheetRoute.identity, operationsState.records)) ||
+                                (sheetRoute is AppSheet.ConnectionRules &&
+                                    !policyState.readyForLibrarySheet(sheetRoute.connectionId)) ||
+                                (sheetRoute is AppSheet.GlobalRules &&
+                                    !globalPolicyState.readyForLibrarySheet()),
+                        aboveKeyboard = sheetRoute is AppSheet.OwnerInput,
+                    ) {
+                        when (val activeRoute = sheetRoute) {
+                            is AppSheet.ConnectionDetail -> {
+                                ConnectionDetailsRoute(
+                                    viewModel = connections,
+                                    state = state,
+                                    id = activeRoute.connectionId,
+                                    onBack = pop,
+                                    onRules = {
+                                        navigator.openConnectionRules(activeRoute.connectionId)
                                     },
-                                kind = activeRoute.kind.toPolicyKind(),
-                                onEdit = policy::edit,
-                                onBack = pop,
-                                onEditGlobal = navigator::openGlobalRules,
-                            )
-                            if (active) {
-                                LaunchedEffect(activeRoute.connectionId) {
-                                    policy.open(activeRoute.connectionId)
-                                }
-                            }
-                        }
-                        is AppSheet.AddressEditor -> {
-                            PolicyAddressLibraryScreen(
-                                state = policyState,
-                                kind = activeRoute.kind.toPolicyKind(),
-                                onEdit = policy::edit,
-                                onBack = pop,
-                            )
-                            if (active) {
-                                LaunchedEffect(activeRoute.connectionId) {
-                                    policy.open(activeRoute.connectionId)
-                                }
-                            }
-                        }
-                        is AppSheet.OwnerInput -> {
-                            val open = openOperation?.takeIf {
-                                it.connectionId == activeRoute.identity.connectionId &&
-                                    it.proposalId == activeRoute.identity.requestId
-                            }
-                            if (operations == null || open == null) {
-                                RequestGoneScreen(onBack = pop)
-                            } else {
-                                PredictionParametersSheet(
-                                    review = open,
-                                    onUse = { values ->
-                                        // What was chosen replaces the old choice, and the review
-                                        // quotes again from it at once: "Use these" is the
-                                        // re-quote (SEE-158).
-                                        values.forEach { (key, value) ->
-                                            operations.choose(key, value)
+                                    onInbox = { selectTabAfterSheets(AppScreen.Inbox) },
+                                    onPairDirect = {
+                                        dismissSheetsThen(0) {
+                                            navigator.selectTab(AppScreen.Home)
+                                            navigator.openAddConnection()
                                         }
-                                        operations.prepare()
-                                        pop()
                                     },
-                                    onClose = pop,
+                                    overrideCount =
+                                        policyState.overrideCount(activeRoute.connectionId),
+                                    operationRefreshing =
+                                        activeRoute.connectionId in operationsState.refreshing,
+                                    onOperationRefresh = {
+                                        operations?.refresh(activeRoute.connectionId)
+                                    },
                                 )
+                                if (active) {
+                                    LaunchedEffect(activeRoute.connectionId) {
+                                        policy.open(activeRoute.connectionId)
+                                    }
+                                }
                             }
+                            is AppSheet.ConnectionRules -> {
+                                val id = activeRoute.connectionId
+                                val close = {
+                                    val target =
+                                        backplateTargetSize ?: (navigator.state.sheets.size - 1)
+                                    requestedPolicyClose = null
+                                    backplateTargetSize = null
+                                    policy.close()
+                                    popTo(target)
+                                }
+                                PolicyLibrarySheetScreen(
+                                    label =
+                                        state.connections
+                                            .firstOrNull { it.id == id }
+                                            ?.label
+                                            .orEmpty(),
+                                    state = policyState,
+                                    onEdit = policy::edit,
+                                    onStartOver = policy::startOver,
+                                    onResetConnection = policy::resetConnectionOverrides,
+                                    onOpenGlobal = navigator::openGlobalRules,
+                                    onSave = policy::save,
+                                    onMessageShown = policy::messageShown,
+                                    onClose = close,
+                                    closeRequest =
+                                        if (requestedPolicyClose == activeRoute) policyCloseRequest
+                                        else 0,
+                                    onCloseRequestCancelled = {
+                                        if (requestedPolicyClose == activeRoute) {
+                                            requestedPolicyClose = null
+                                            backplateTargetSize = null
+                                        }
+                                    },
+                                    onOpenAsset = { asset, kind ->
+                                        navigator.openAssetEditor(
+                                            id,
+                                            kind.toRouteKind(),
+                                            asset?.routeId(),
+                                        )
+                                    },
+                                    onOpenAddress = { kind ->
+                                        navigator.openAddressEditor(id, kind.toRouteKind())
+                                    },
+                                )
+                                if (active) {
+                                    LaunchedEffect(id) { policy.open(id) }
+                                }
+                            }
+                            AppSheet.GlobalRules -> {
+                                val close = {
+                                    val target =
+                                        backplateTargetSize ?: (navigator.state.sheets.size - 1)
+                                    requestedPolicyClose = null
+                                    backplateTargetSize = null
+                                    globalPolicy.close()
+                                    popTo(target)
+                                    policy.refreshGlobal()
+                                }
+                                PolicyLibrarySheetScreen(
+                                    label = "",
+                                    state = globalPolicyState,
+                                    onEdit = globalPolicy::edit,
+                                    onStartOver = globalPolicy::startOver,
+                                    onResetConnection = {},
+                                    onOpenGlobal = {},
+                                    onSave = globalPolicy::save,
+                                    onMessageShown = globalPolicy::messageShown,
+                                    onClose = close,
+                                    closeRequest =
+                                        if (requestedPolicyClose == activeRoute) policyCloseRequest
+                                        else 0,
+                                    onCloseRequestCancelled = {
+                                        if (requestedPolicyClose == activeRoute) {
+                                            requestedPolicyClose = null
+                                            backplateTargetSize = null
+                                        }
+                                    },
+                                )
+                                if (active) {
+                                    LaunchedEffect(Unit) { globalPolicy.openGlobal() }
+                                }
+                            }
+                            is AppSheet.AssetEditor -> {
+                                PolicyAssetLibraryScreen(
+                                    state = policyState,
+                                    asset =
+                                        policyState.connectionAssets().firstOrNull {
+                                            it.routeId() == activeRoute.assetId
+                                        },
+                                    kind = activeRoute.kind.toPolicyKind(),
+                                    onEdit = policy::edit,
+                                    onBack = pop,
+                                    onEditGlobal = navigator::openGlobalRules,
+                                )
+                                if (active) {
+                                    LaunchedEffect(activeRoute.connectionId) {
+                                        policy.open(activeRoute.connectionId)
+                                    }
+                                }
+                            }
+                            is AppSheet.AddressEditor -> {
+                                PolicyAddressLibraryScreen(
+                                    state = policyState,
+                                    kind = activeRoute.kind.toPolicyKind(),
+                                    onEdit = policy::edit,
+                                    onBack = pop,
+                                )
+                                if (active) {
+                                    LaunchedEffect(activeRoute.connectionId) {
+                                        policy.open(activeRoute.connectionId)
+                                    }
+                                }
+                            }
+                            is AppSheet.OwnerInput -> {
+                                val open = openOperation?.takeIf {
+                                    it.connectionId == activeRoute.identity.connectionId &&
+                                        it.proposalId == activeRoute.identity.requestId
+                                }
+                                if (operations == null || open == null) {
+                                    RequestGoneScreen(onBack = pop)
+                                } else {
+                                    PredictionParametersSheet(
+                                        review = open,
+                                        onUse = { values ->
+                                            // What was chosen replaces the old choice, and the
+                                            // review
+                                            // quotes again from it at once: "Use these" is the
+                                            // re-quote (SEE-158).
+                                            values.forEach { (key, value) ->
+                                                operations.choose(key, value)
+                                            }
+                                            operations.prepare()
+                                            pop()
+                                        },
+                                        onClose = pop,
+                                    )
+                                }
+                            }
+                            is AppSheet.RequestReview ->
+                                RequestReviewRoute(
+                                    route = activeRoute,
+                                    state = state,
+                                    inbox = inbox,
+                                    inboxState = inboxState,
+                                    walletState = walletState,
+                                    operations = operations,
+                                    operationsState = operationsState,
+                                    openOperation = openOperation,
+                                    navigator = navigator,
+                                    onBack = pop,
+                                )
+                            is AppSheet.WalletHandoff ->
+                                WalletHandoffRoute(
+                                    route = activeRoute,
+                                    state = state,
+                                    inbox = inbox,
+                                    inboxState = inboxState,
+                                    walletState = walletState,
+                                    operations = operations,
+                                    operationsState = operationsState,
+                                    openOperation = openOperation,
+                                    onLeave = pop,
+                                    onCloseReview = { identity ->
+                                        dismissSheetsThen(0) { navigator.closeReview(identity) }
+                                    },
+                                )
                         }
-                        is AppSheet.RequestReview ->
-                            RequestReviewRoute(
-                                route = activeRoute,
-                                state = state,
-                                inbox = inbox,
-                                inboxState = inboxState,
-                                walletState = walletState,
-                                operations = operations,
-                                operationsState = operationsState,
-                                openOperation = openOperation,
-                                navigator = navigator,
-                                onBack = pop,
-                            )
-                        is AppSheet.WalletHandoff ->
-                            WalletHandoffRoute(
-                                route = activeRoute,
-                                state = state,
-                                inbox = inbox,
-                                inboxState = inboxState,
-                                walletState = walletState,
-                                operations = operations,
-                                operationsState = operationsState,
-                                openOperation = openOperation,
-                                onLeave = pop,
-                                onCloseReview = { identity ->
-                                    dismissSheetsThen(0) { navigator.closeReview(identity) }
-                                },
-                            )
                     }
                 }
             }
-        }
 
-        // Above the content and above every sheet, and the last child so nothing can draw over it.
-        // A touch on the banner is the banner's; a touch anywhere else is not intercepted at all.
-        InAppNotifications(
-            // Every list a banner reads, filled at least once, and not just the connections: the
-            // stored connections carry no pending requests and no proposals, so a baseline taken
-            // at `state.loaded` would be empty and the opening fetch and the stored proposals
-            // would arrive as banners for things the owner has had for days. A build without
-            // operations holds no proposals, so there is nothing there to wait for.
-            ready = state.fetched && (operations == null || operationsState.loaded),
-            connections = state.connections,
-            waiting = commonPending,
-            reviewOpen = { identity ->
-                // Read at the moment the banner would be raised, not at the last recomposition.
-                navigator.state.sheets.any { sheet ->
-                    (sheet as? AppSheet.RequestReview)?.identity == identity ||
-                        (sheet as? AppSheet.WalletHandoff)?.identity == identity
-                }
-            },
-            onOpen = { target ->
-                // The same approach as a system notification's tap: back to a base destination
-                // the graph allows the destination to be pushed from, then push it.
-                resetTransientSheetState()
-                navigator.selectTab(AppScreen.Home)
-                when (target) {
-                    is InAppNotificationTarget.Review -> navigator.openReview(target.identity)
-                    is InAppNotificationTarget.PairAgain -> navigator.openAddConnection()
-                }
-            },
-            modifier = Modifier.align(Alignment.TopCenter).zIndex(InAppNotificationZIndex),
-        )
+            // Above the content and above every sheet, and the last child so nothing can draw over
+            // it.
+            // A touch on the banner is the banner's; a touch anywhere else is not intercepted at
+            // all.
+            InAppNotifications(
+                // Every list a banner reads, filled at least once, and not just the connections:
+                // the
+                // stored connections carry no pending requests and no proposals, so a baseline
+                // taken
+                // at `state.loaded` would be empty and the opening fetch and the stored proposals
+                // would arrive as banners for things the owner has had for days. A build without
+                // operations holds no proposals, so there is nothing there to wait for.
+                ready = state.fetched && (operations == null || operationsState.loaded),
+                connections = state.connections,
+                waiting = commonPending,
+                reviewOpen = { identity ->
+                    // Read at the moment the banner would be raised, not at the last recomposition.
+                    navigator.state.sheets.any { sheet ->
+                        (sheet as? AppSheet.RequestReview)?.identity == identity ||
+                            (sheet as? AppSheet.WalletHandoff)?.identity == identity
+                    }
+                },
+                onOpen = { target ->
+                    // The same approach as a system notification's tap: back to a base destination
+                    // the graph allows the destination to be pushed from, then push it.
+                    resetTransientSheetState()
+                    navigator.selectTab(AppScreen.Home)
+                    when (target) {
+                        is InAppNotificationTarget.Review -> navigator.openReview(target.identity)
+                        is InAppNotificationTarget.PairAgain -> navigator.openAddConnection()
+                        InAppNotificationTarget.Dismiss -> Unit
+                    }
+                },
+                modifier = Modifier.align(Alignment.TopCenter).zIndex(InAppNotificationZIndex),
+            )
+        }
     }
 }
 
@@ -1000,6 +1021,7 @@ private fun ConnectionDetailsRoute(
         onInbox = onInbox,
         onPairDirect = onPairDirect,
         onColour = { viewModel.setColour(id, it) },
+        onRequestAccess = { viewModel.requestAccess(id) },
         overrideCount = overrideCount,
         live = state.updates.connections[id],
         support = state.support[id],

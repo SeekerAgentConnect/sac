@@ -11,7 +11,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -27,11 +26,15 @@ import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.feeds.FeedAvailability
 import io.github.brrenat.seekervault.feeds.FeedListenerState
+import io.github.brrenat.seekervault.notifications.LocalInAppNotices
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.FeedAccess
 import io.github.brrenat.seekervault.servers.FeedReferenceProblem
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.executable
+import io.github.brrenat.seekervault.servers.feedAccess
+import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import io.github.brrenat.seekervault.sync.UpdateAvailability
 import java.time.Instant
@@ -68,6 +71,8 @@ object ConnectionsTags {
     const val CONFIRM_SERVER = "confirmServer"
     const val CONFIRM_FEED = "confirmFeed"
     const val PAIR_DIRECT = "pairDirect"
+    /** Sends a restricted feed's access request, which opens the wallet once (SEE-156). */
+    const val REQUEST_ACCESS = "requestAccess"
     const val CONFIRM_NOTE = "confirmNote"
     const val PAIR = "pair"
     const val CANCEL_PAIRING = "cancelPairing"
@@ -172,6 +177,8 @@ fun statusText(
         support != null && !support.executable -> supportText(support)
         connection.mode == ConnectionMode.Direct && !connection.hasCredential ->
             stringResource(R.string.connection_status_credential_missing)
+        connection.accessNotRequested(access) ->
+            stringResource(R.string.connection_status_access_not_requested)
         access?.state == FeedAccessStore.State.Pending ->
             stringResource(R.string.connection_status_access_pending)
         access?.state == FeedAccessStore.State.Approved ->
@@ -220,6 +227,23 @@ fun statusText(
     }
 }
 
+/**
+ * A restricted feed this phone holds no access request for (SEE-156): the owner closed the wallet
+ * instead of signing, or the request never reached the publisher. The feed is stored, and nothing
+ * on it can be read, so it is not connected and it is not paired — it needs the request sent.
+ */
+fun Connection.accessNotRequested(access: FeedAccessStore.Record?): Boolean =
+    access == null && server.manifest?.feedAccess is FeedAccess.Restricted
+
+/**
+ * Whether sending an access request is the thing to do for this feed: none was sent, or the
+ * publisher rejected the last one (SEE-156). Either way a new request opens the wallet once.
+ */
+fun Connection.canRequestAccess(access: FeedAccessStore.Record?): Boolean =
+    accessNotRequested(access) ||
+        (access?.state == FeedAccessStore.State.Rejected &&
+            server.manifest?.feedAccess is FeedAccess.Restricted)
+
 /** Whether the connection needs the owner's attention. */
 fun hasProblem(
     connection: Connection,
@@ -242,6 +266,7 @@ fun hasProblem(
             access?.state == FeedAccessStore.State.Expired
     return connection.retirement != null ||
         accessDenied ||
+        connection.accessNotRequested(access) ||
         (connection.mode == ConnectionMode.Direct && !connection.usable) ||
         support?.executable == false ||
         // A publisher that has stopped is the owner's business even though nothing on this phone is
@@ -395,6 +420,12 @@ fun messageText(message: ConnectionMessage): String =
         is ConnectionMessage.Removed -> stringResource(R.string.message_removed, message.label)
         is ConnectionMessage.Renamed -> stringResource(R.string.message_renamed, message.label)
         is ConnectionMessage.AccessNotAsked -> accessProblemText(message.reason)
+        is ConnectionMessage.AccessApproved ->
+            stringResource(R.string.message_access_approved, message.label)
+        is ConnectionMessage.AccessRejected ->
+            stringResource(R.string.message_access_rejected, message.label)
+        is ConnectionMessage.AccessRevoked ->
+            stringResource(R.string.message_access_revoked, message.label)
     }
 
 /**
@@ -422,13 +453,14 @@ fun formatInstant(instant: Instant): String =
             .format(instant)
     }
 
-/** Shows [message] in a snackbar once, then reports it shown. */
+/** Shows [message] once as a service banner at the top of the app, then reports it shown. */
 @Composable
-fun MessageEffect(message: ConnectionMessage?, host: SnackbarHostState, onShown: () -> Unit) {
+fun MessageEffect(message: ConnectionMessage?, onShown: () -> Unit) {
     val text = message?.let { messageText(it) }
+    val notices = LocalInAppNotices.current
     LaunchedEffect(message) {
         if (text != null) {
-            host.showSnackbar(text)
+            notices.show(text)
             onShown()
         }
     }

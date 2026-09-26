@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,10 +38,10 @@ import io.github.brrenat.seekervault.designsystem.RulesSheetItem
 import io.github.brrenat.seekervault.designsystem.RulesSheetSection
 import io.github.brrenat.seekervault.designsystem.ScopeChipSource
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.notifications.LocalInAppNotices
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.ui.SeekerButton
 import io.github.brrenat.seekervault.ui.SeekerButtonRole
-import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
 import io.github.brrenat.seekervault.ui.SolidDialog
 import io.github.brrenat.seekervault.wallet.isSolanaAddress
 
@@ -93,11 +92,11 @@ fun PolicyLibrarySheetScreen(
         rememberSaveable(state.scope, state.connectionId) {
             mutableStateOf(false)
         }
-    val snackbar = remember { SnackbarHostState() }
+    val notices = LocalInAppNotices.current
     val message = state.message?.let { messageText(it, state.scope) }
     LaunchedEffect(state.message) {
         if (message != null) {
-            snackbar.showSnackbar(message)
+            notices.show(message)
             onMessageShown()
         }
     }
@@ -392,7 +391,6 @@ fun PolicyLibrarySheetScreen(
                 },
             )
         }
-        SeekerSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 }
 

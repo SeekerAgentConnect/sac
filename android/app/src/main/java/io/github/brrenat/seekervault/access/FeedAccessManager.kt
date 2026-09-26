@@ -124,9 +124,17 @@ class FeedAccessManager(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + io),
 ) : FeedSessions {
     private val lock = Mutex()
+
+    /** Every record this phone holds, whichever wallet it was proven with. */
+    private val _records = MutableStateFlow<Map<String, FeedAccessStore.Record>>(emptyMap())
+
     private val _states = MutableStateFlow<Map<String, FeedAccessStore.Record>>(emptyMap())
 
-    /** Every restricted feed's access, by connection ID. */
+    /**
+     * Every restricted feed's access for the wallet selected now, by connection ID. Access proven
+     * with another wallet is left out: it does not read the feed while that wallet is not the
+     * selected one, so to the screens it is a feed nothing has been asked of yet.
+     */
     val states: StateFlow<Map<String, FeedAccessStore.Record>> = _states.asStateFlow()
 
     /** Sessions by channel, so the gateway client can read one without a suspension. */
@@ -146,18 +154,37 @@ class FeedAccessManager(
                     }
                 }
             }
-            _states.value = records.associateBy { it.connectionId }
+            _records.value = records.associateBy { it.connectionId }
+            publish()
         }
     }
 
-    override fun sessionFor(channel: String): String? = byChannel[channel]
+    override fun sessionFor(channel: String): String? =
+        byChannel[channel]?.takeIf { recordFor(channel)?.let(::isActive) == true }
+
+    /**
+     * The selected wallet changed, or was loaded or disconnected: the feeds that wallet proved
+     * access to are the ones readable now, and only their sessions are presented.
+     */
+    fun onWalletChanged() = publish()
+
+    /** Whether [record] was proven with the wallet selected now. */
+    private fun isActive(record: FeedAccessStore.Record): Boolean =
+        record.wallet == wallet()?.address
+
+    private fun recordFor(channel: String): FeedAccessStore.Record? =
+        _records.value.values.firstOrNull { channelFor(it.serverId) == channel }
+
+    private fun publish() {
+        _states.value = _records.value.filterValues(::isActive)
+    }
 
     override fun denied(channel: String, denial: FeedSessions.Denial) {
         scope.launch {
             lock.withLock {
-                val record =
-                    _states.value.values.firstOrNull { channelFor(it.serverId) == channel }
-                        ?: return@withLock
+                // A refusal of a feed this phone did not present a session for, because the
+                // session belongs to another wallet, says nothing about that session.
+                val record = recordFor(channel)?.takeIf(::isActive) ?: return@withLock
                 when (denial) {
                     FeedSessions.Denial.Revoked -> {
                         // Final: the session is dropped, so nothing on this phone presents it
@@ -182,7 +209,7 @@ class FeedAccessManager(
     suspend fun requestAccess(connectionId: String): AccessResult {
         val (connection, origin) = restricted(connectionId) ?: return AccessResult.NotRestricted
         val selected = wallet() ?: return AccessResult.NoWallet
-        val held = lock.withLock { _states.value[connectionId] }
+        val held = lock.withLock { _records.value[connectionId] }
         if (
             held != null &&
                 held.wallet == selected.address &&
@@ -250,7 +277,7 @@ class FeedAccessManager(
                 )
             }
             if (stateOf(requested.state) == State.Approved) check(connectionId)
-            else AccessResult.Done(checkNotNull(_states.value[connectionId]))
+            else AccessResult.Done(checkNotNull(_records.value[connectionId]))
         }
     }
 
@@ -261,7 +288,7 @@ class FeedAccessManager(
     suspend fun check(connectionId: String): AccessResult {
         val (connection, origin) = restricted(connectionId) ?: return AccessResult.NotRestricted
         val record =
-            lock.withLock { _states.value[connectionId] } ?: return AccessResult.NotRequested
+            lock.withLock { _records.value[connectionId] } ?: return AccessResult.NotRequested
         val alias = DeviceKeys.aliasFor(connectionId)
         return guarded {
             val at = now().toEpochMilli()
@@ -297,7 +324,7 @@ class FeedAccessManager(
     suspend fun redeem(connectionId: String, invitation: String): AccessResult {
         val (connection, origin) = restricted(connectionId) ?: return AccessResult.NotRestricted
         val record =
-            lock.withLock { _states.value[connectionId] } ?: return AccessResult.NotRequested
+            lock.withLock { _records.value[connectionId] } ?: return AccessResult.NotRequested
         val alias = DeviceKeys.aliasFor(connectionId)
         val channel = channelFor(connection.serverId)
         return guarded {
@@ -326,20 +353,22 @@ class FeedAccessManager(
 
     /** A connection was removed: its record, session and device key go with it. */
     suspend fun forget(connectionId: String) = lock.withLock {
-        val record = _states.value[connectionId]
+        val record = _records.value[connectionId]
         record?.let { dropSession(it) }
         withContext(io) {
             store.delete(connectionId)
             runCatching { keys.delete(DeviceKeys.aliasFor(connectionId)) }
         }
-        _states.value = _states.value - connectionId
+        _records.value = _records.value - connectionId
+        publish()
     }
 
     /** A new push registration: every connected restricted feed is told where its hints go. */
     fun onRegistered(newTarget: String) {
         target = newTarget
         scope.launch {
-            for (record in _states.value.values.filter { it.state == State.Connected }) {
+            for (record in
+                _records.value.values.filter { it.state == State.Connected && isActive(it) }) {
                 val connection =
                     connections().firstOrNull { it.id == record.connectionId } ?: continue
                 val session = byChannel[channelFor(record.serverId)] ?: continue
@@ -363,7 +392,8 @@ class FeedAccessManager(
 
     private suspend fun save(record: FeedAccessStore.Record): FeedAccessStore.Record {
         withContext(io) { store.put(record) }
-        _states.value = _states.value + (record.connectionId to record)
+        _records.value = _records.value + (record.connectionId to record)
+        publish()
         return record
     }
 

@@ -26,7 +26,6 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -55,7 +54,6 @@ import io.github.brrenat.seekervault.ui.Identifier
 import io.github.brrenat.seekervault.ui.SeekerButton
 import io.github.brrenat.seekervault.ui.SeekerButtonRole
 import io.github.brrenat.seekervault.ui.SeekerCard
-import io.github.brrenat.seekervault.ui.SeekerSnackbarHost
 import io.github.brrenat.seekervault.ui.SolidDialog
 import io.github.brrenat.seekervault.ui.seekerTextFieldColors
 
@@ -101,8 +99,7 @@ fun ConnectionDetailsScreen(
     onEnvironment: ((PluginEnvironment) -> Unit)? = null,
 ) {
     val problem = hasProblem(connection, live, support, feed, availability)
-    val snackbar = remember { SnackbarHostState() }
-    MessageEffect(message, snackbar, onMessageShown)
+    MessageEffect(message, onMessageShown)
     var renaming by rememberSaveable { mutableStateOf(false) }
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.fillMaxSize()) {
@@ -389,7 +386,6 @@ fun ConnectionDetailsScreen(
                 }
             }
         }
-        SeekerSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
         if (renaming) {
             RenameDialog(
                 current = connection.label,
