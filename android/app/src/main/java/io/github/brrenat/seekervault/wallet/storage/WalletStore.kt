@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.wallet.storage
 import android.util.AtomicFile
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
+import io.github.brrenat.seekervault.wallet.WalletRouting
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -15,11 +16,17 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * The owner's wallet as this phone holds it: the selection they made and the authorization the
- * wallet issued for exactly that account, which belong together and are never read apart.
+ * The owner's wallet as this phone holds it: the selection they made, the authorization the wallet
+ * issued for exactly that account, and the way back to the wallet app that issued it. All three
+ * belong together and are never read apart — an account without the app that holds it is how an
+ * approval ends up in front of whichever wallet Android resolved (SEE-159).
  */
-data class StoredSession(val wallet: SelectedWallet, val authToken: String) {
-    override fun toString() = "StoredSession(wallet=$wallet, authToken=<redacted>)"
+data class StoredSession(
+    val wallet: SelectedWallet,
+    val authToken: String,
+    val route: WalletRouting = WalletRouting.Untargeted,
+) {
+    override fun toString() = "StoredSession(wallet=$wallet, authToken=<redacted>, route=$route)"
 }
 
 /**
@@ -28,11 +35,12 @@ data class StoredSession(val wallet: SelectedWallet, val authToken: String) {
  * with the wallet's authorization token for that account, encrypted with AES-256-GCM under the key
  * [key] returns, in [secretDir], which the app keeps in `noBackupFilesDir`.
  *
- * It is one record because the two halves are one fact (SEE-84). They used to be two files, each
- * written atomically on its own but not as a pair, so an interruption between them could leave this
- * phone holding a token that belonged to another account. A single sealed record can't: an
- * interrupted replacement leaves the record that was there, whole, and a half-written legacy pair
- * is refused rather than used.
+ * It is one record because its parts are one fact (SEE-84). The selection and the authorization used
+ * to be two files, each written atomically on its own but not as a pair, so an interruption between
+ * them could leave this phone holding a token that belonged to another account. A single sealed
+ * record can't: an interrupted replacement leaves the record that was there, whole, and a
+ * half-written legacy pair is refused rather than used. SEE-159 puts the route to the wallet app in
+ * the same record, for the same reason.
  *
  * There is never a seed phrase or a private key here: the wallet app owns those, and this app never
  * asks for them.
@@ -59,15 +67,19 @@ class WalletStore(
     fun authorization(): String? = session()?.authToken
 
     /**
-     * Stores the selection and its authorization as one record, so nothing can ever read one
-     * without the other. Anything the older format left behind goes with it.
+     * Stores the selection, its authorization and the route to the wallet app as one record, so
+     * nothing can ever read one without the others. Anything the older format left behind goes with
+     * it.
      */
-    fun put(wallet: SelectedWallet, authToken: String) {
-        write(secretDir, SESSION, seal(encode(wallet, authToken)))
+    fun put(wallet: SelectedWallet, authToken: String, route: WalletRouting = WalletRouting.Untargeted) {
+        write(secretDir, SESSION, seal(encode(wallet, authToken, route)))
         forgetLegacy()
     }
 
-    /** Forgets the wallet: the record, and anything the older format left behind. */
+    /**
+     * Forgets the wallet: the record — the selection, the authorization and the route to the wallet
+     * app alike — and anything the older format left behind.
+     */
     fun clear() {
         AtomicFile(File(secretDir, SESSION)).delete()
         forgetLegacy()
@@ -99,6 +111,8 @@ class WalletStore(
     private fun migrated(): StoredSession? {
         val wallet = legacySelection() ?: return null
         val authToken = legacyAuthorization() ?: return null
+        // Nothing in the older format ever knew which wallet app answered, so the migrated record
+        // has no route, and the next association learns one.
         val session = StoredSession(wallet, authToken)
         try {
             put(wallet, authToken)
@@ -191,14 +205,20 @@ class WalletStore(
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val TAG_BITS = 128
         const val VERSION: Byte = 1
-        /** The record's own format, which is 2 from SEE-84's single sealed session. */
-        const val FORMAT = 2
+        /**
+         * The record's own format: 2 was SEE-84's single sealed session, and 3 adds SEE-159's route
+         * to the wallet app. A 2 is still a whole session and is read as one, with no route; the
+         * next association resolves the way it used to and learns the route from the wallet's
+         * answer, so an upgrade keeps the owner's wallet rather than asking for it again.
+         */
+        const val FORMAT = 3
+        const val ROUTELESS_FORMAT = 2
         const val LEGACY_FORMAT = 1
         val SESSION_DATA = "seekervault/wallet-session/v2".toByteArray(Charsets.UTF_8)
         val LEGACY_AUTHORIZATION_DATA =
             "seekervault/wallet-authorization/v1".toByteArray(Charsets.UTF_8)
 
-        fun encode(wallet: SelectedWallet, authToken: String): String =
+        fun encode(wallet: SelectedWallet, authToken: String, route: WalletRouting): String =
             JSONObject()
                 .put("version", FORMAT)
                 .put("address", wallet.address)
@@ -207,14 +227,30 @@ class WalletStore(
                 .put("selectedAt", wallet.selectedAt.toString())
                 .put("networkConfirmed", wallet.networkConfirmed)
                 .put("authToken", authToken)
+                .putOpt("walletUriBase", route.uriBase)
+                .putOpt("walletPackage", route.packageName)
+                .putOpt("walletApp", route.appLabel)
                 .toString()
 
         fun decode(text: String): StoredSession? {
             val json = JSONObject(text)
-            if (json.getInt("version") != FORMAT) return null
+            val version = json.getInt("version")
+            if (version != FORMAT && version != ROUTELESS_FORMAT) return null
             val authToken = json.optString("authToken").takeIf { it.isNotEmpty() } ?: return null
-            return StoredSession(wallet(json), authToken)
+            return StoredSession(wallet(json), authToken, route(json))
         }
+
+        /**
+         * The route the record holds. A format-2 record holds none, and so does a format-3 one
+         * written before the wallet said anything about where it lives; either way the association
+         * resolves as it always did, and learns.
+         */
+        fun route(json: JSONObject): WalletRouting =
+            WalletRouting(
+                uriBase = json.optString("walletUriBase").takeIf { it.isNotEmpty() },
+                packageName = json.optString("walletPackage").takeIf { it.isNotEmpty() },
+                appLabel = json.optString("walletApp").takeIf { it.isNotEmpty() },
+            )
 
         fun decodeLegacy(text: String): SelectedWallet? {
             val json = JSONObject(text)

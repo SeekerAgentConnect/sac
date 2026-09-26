@@ -6,7 +6,6 @@ import android.security.NetworkSecurityPolicy
 import androidx.activity.ComponentActivity
 import androidx.core.net.toUri
 import com.connectrpc.okhttp.ConnectOkHttpClient
-import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
@@ -57,7 +56,9 @@ import io.github.brrenat.seekervault.sync.ForegroundUpdateManager
 import io.github.brrenat.seekervault.sync.UpdateTransport
 import io.github.brrenat.seekervault.sync.storage.SyncStore
 import io.github.brrenat.seekervault.wallet.MwaWalletAdapter
+import io.github.brrenat.seekervault.wallet.PackageWalletTargets
 import io.github.brrenat.seekervault.wallet.WalletAdapter
+import io.github.brrenat.seekervault.wallet.WalletIntentSender
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
@@ -487,10 +488,10 @@ class SeekerVaultApplication : Application() {
      * (SAW-017), and only the activity that registered a sender clears it, so a screen closing
      * behind a newer one can't take the newer one's sender away.
      */
-    private val senders = MutableStateFlow<Pair<ComponentActivity, ActivityResultSender>?>(null)
+    private val senders = MutableStateFlow<Pair<ComponentActivity, WalletIntentSender>?>(null)
 
     fun attachWalletActivity(activity: ComponentActivity) {
-        senders.value = activity to ActivityResultSender(activity)
+        senders.value = activity to WalletIntentSender(activity)
     }
 
     fun detachWalletActivity(activity: ComponentActivity) {
@@ -500,7 +501,7 @@ class SeekerVaultApplication : Application() {
     /**
      * The sender on screen, waiting up to [SENDER_WAIT] for one while a screen is being replaced.
      */
-    suspend fun walletSender(): ActivityResultSender? =
+    suspend fun walletSender(): WalletIntentSender? =
         withTimeoutOrNull(SENDER_WAIT.inWholeMilliseconds) {
             senders.filterNotNull().first().second
         }
@@ -514,6 +515,9 @@ class SeekerVaultApplication : Application() {
                 identityName = getString(R.string.app_name),
             ),
             sender = ::walletSender,
+            // The wallet apps this phone has, so a signing opens the one the owner connected
+            // instead of asking Android which of them to open (SEE-159).
+            targets = PackageWalletTargets(packageManager),
         )
     }
 

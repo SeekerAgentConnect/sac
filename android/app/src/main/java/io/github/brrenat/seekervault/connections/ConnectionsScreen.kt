@@ -220,6 +220,8 @@ fun HomeRoute(
     requestAssessments: Map<RequestKey, RequestAssessment>,
     callbacks: HomeRouteCallbacks,
     modifier: Modifier = Modifier,
+    /** What the system calls the wallet app the selection belongs to, when known (SEE-159). */
+    walletApp: String? = null,
     /** What the owner's rules make of each waiting signal, keyed by its feed and proposal. */
     signalAssessments: Map<RequestKey, RequestAssessment> = emptyMap(),
 ) {
@@ -236,6 +238,7 @@ fun HomeRoute(
                     connectionsState = connectionsState,
                     inboxSummary = inboxSummary,
                     wallet = wallet,
+                    walletApp = walletApp,
                     pendingItems = pendingItems,
                     requestAssessments = requestAssessments,
                     signalAssessments = signalAssessments,
@@ -335,6 +338,7 @@ fun homeScreenState(
     requestAssessments: Map<RequestKey, RequestAssessment>,
     formatTime: (Instant) -> String = ::homeShortTime,
     signalAssessments: Map<RequestKey, RequestAssessment> = emptyMap(),
+    walletApp: String? = null,
 ): HomeScreenState {
     val connections = connectionsState.connections.associateBy(Connection::id)
     val newestFirst =
@@ -347,7 +351,12 @@ fun homeScreenState(
     return HomeScreenState(
         wallet =
             HomeWalletState(
-                name = wallet?.label?.takeIf(String::isNotBlank) ?: HomeCopy.Wallet,
+                // The wallet app the session belongs to, not the account's own label inside it
+                // (SEE-159): a card named after the account read as if that were the wallet.
+                name =
+                    walletApp?.takeIf(String::isNotBlank)
+                        ?: wallet?.label?.takeIf(String::isNotBlank)
+                        ?: HomeCopy.Wallet,
                 address = wallet?.address ?: HomeCopy.NoWallet,
                 canCopy = wallet != null,
             ),
