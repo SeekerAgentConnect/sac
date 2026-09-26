@@ -301,8 +301,8 @@ class FeedAccessManager(
             when {
                 state == State.Approved && status.invitation != null ->
                     redeem(connectionId, status.invitation)
-                state == State.Approved && status.connected && sessions.contains(connectionId) ->
-                    lock.withLock {
+                state == State.Approved && status.connected && sessions.contains(connectionId) -> {
+                    val done = lock.withLock {
                         // Still approved and the publisher holds a live grant: the session stands.
                         // If the gateway refused it a moment ago, the grant was renewed since.
                         byChannel[channelFor(connection.serverId)] =
@@ -311,6 +311,10 @@ class FeedAccessManager(
                             save(record.copy(state = State.Connected, updatedAt = now()))
                         )
                     }
+                    // Readable again after a refusal: a stream ticketed meanwhile left it out.
+                    if (record.state != State.Connected) onConnected(connectionId)
+                    done
+                }
                 else ->
                     lock.withLock {
                         if (state == State.Rejected || state == State.Revoked) dropSession(record)

@@ -203,6 +203,24 @@ class FeedAccessManagerTest {
     }
 
     @Test
+    fun aRenewedGrantIsAnnouncedSoAnOpenStreamTakesTheFeedBack() = runTest {
+        val manager = manager()
+        connect(manager)
+        manager.denied(CHANNEL, FeedSessions.Denial.Expired)
+        runCurrent()
+        connected.clear()
+
+        manager.check(CONNECTION)
+
+        assertEquals(State.Connected, manager.states.value[CONNECTION]?.state)
+        // Readable again: a stream ticketed while it was refused left the channel out.
+        assertEquals(listOf(CONNECTION), connected)
+        // A check that finds it already connected changes nothing and announces nothing.
+        manager.check(CONNECTION)
+        assertEquals(listOf(CONNECTION), connected)
+    }
+
+    @Test
     fun aForgedChallengeIsNeverPutInFrontOfTheWallet() = runTest {
         val manager = manager()
         val forgeries =

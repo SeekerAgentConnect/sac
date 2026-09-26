@@ -437,8 +437,13 @@ class SeekerVaultApplication : Application() {
                 pushTarget = { gatewayUrl, channel, session, target ->
                     feedGateway().setPushTarget(gatewayUrl, channel, session, target)
                 },
-                // Newly readable: read it now rather than at the next foreground pass.
-                onConnected = { FeedSyncScheduler.enqueue(this@SeekerVaultApplication) },
+                // Newly readable: read it now rather than at the next foreground pass, and reopen
+                // an open stream, whose ticket was minted without this feed's session and so left
+                // the channel out.
+                onConnected = {
+                    FeedSyncScheduler.enqueue(this@SeekerVaultApplication)
+                    foregroundFeeds.restart()
+                },
                 io = connectionIo,
             )
         CoroutineScope(SupervisorJob() + connectionIo).launch {
