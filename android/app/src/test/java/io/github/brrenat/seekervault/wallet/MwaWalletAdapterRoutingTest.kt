@@ -16,8 +16,8 @@ import org.junit.runner.RunWith
 /**
  * Which wallet app the adapter opens (SEE-159). Every association carries the route stored with the
  * owner's account, so the wallet they connected is the one that opens — the first time, every time,
- * and after a restart. The wallet is a [FakeWalletClient], so what is exercised here is the aim, not
- * a handshake: what the adapter asks a session to be, and what it refuses to open at all.
+ * and after a restart. The wallet is a [FakeWalletClient], so what is exercised here is the aim,
+ * not a handshake: what the adapter asks a session to be, and what it refuses to open at all.
  */
 @RunWith(AndroidJUnit4::class)
 class MwaWalletAdapterRoutingTest {
@@ -69,7 +69,11 @@ class MwaWalletAdapterRoutingTest {
         // The app the owner picked, and the association URI the wallet itself reported, are what
         // the phone now holds: the next approval opens that app without asking anybody.
         assertEquals(
-            WalletRouting(uriBase = URI_BASE, packageName = seeker.packageName, appLabel = "Seeker"),
+            WalletRouting(
+                uriBase = URI_BASE,
+                packageName = seeker.packageName,
+                appLabel = "Seeker",
+            ),
             connected.route,
         )
     }

@@ -8,8 +8,8 @@ import org.junit.Test
 /**
  * Where an association is aimed, given what the owner connected and what this phone has installed
  * now (SEE-159). It is the whole of the decision, and it decides it without a wallet, a
- * `PackageManager` or an intent: the wallet's own association URI first, the app the owner connected
- * to narrow it, and — for an app that has gone — nothing at all.
+ * `PackageManager` or an intent: the wallet's own association URI first, the app the owner
+ * connected to narrow it, and — for an app that has gone — nothing at all.
  */
 class WalletRoutingTest {
     @Test

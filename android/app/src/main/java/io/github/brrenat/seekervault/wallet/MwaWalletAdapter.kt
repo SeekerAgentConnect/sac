@@ -31,9 +31,9 @@ import kotlinx.coroutines.withTimeout
 /**
  * [WalletAdapter] over Mobile Wallet Adapter. It associates with the wallet the owner already has,
  * such as Seed Vault Wallet on the Seeker, from the current activity: the session's [sender] gives
- * the [WalletIntentSender] that `MainActivity` registered, waiting for the next one while a rotation
- * replaces the screen (SAW-017). No separate activity and no foreground service is needed, and the
- * app never becomes a wallet itself.
+ * the [WalletIntentSender] that `MainActivity` registered, waiting for the next one while a
+ * rotation replaces the screen (SAW-017). No separate activity and no foreground service is needed,
+ * and the app never becomes a wallet itself.
  *
  * One wallet session is one [WalletSessionClient], kept across connecting, signing and sending
  * (SEE-84). The session is dropped when the owner disconnects, when the wallet refuses this phone's
@@ -42,21 +42,20 @@ import kotlinx.coroutines.withTimeout
  *
  * Every association is aimed at the wallet app the owner connected, from the route stored beside
  * their account (SEE-159). Before it, routing lived only inside Mobile Wallet Adapter's own client
- * object, which learns the wallet's endpoint while it authorizes and keeps it in a private field: so
- * the first association in any process — and so the first approval after every restart — went out
- * with no wallet named, and Android asked the owner which app to open. The route is read back from
- * storage instead, so the wallet the owner chose is the one that opens, the first time and every
- * time.
+ * object, which learns the wallet's endpoint while it authorizes and keeps it in a private field:
+ * so the first association in any process — and so the first approval after every restart — went
+ * out with no wallet named, and Android asked the owner which app to open. The route is read back
+ * from storage instead, so the wallet the owner chose is the one that opens, the first time and
+ * every time.
  */
 class MwaWalletAdapter(
     private val identity: ConnectionIdentity,
     private val sender: suspend () -> WalletIntentSender?,
     private val targets: WalletTargets,
     private val io: CoroutineDispatcher = Dispatchers.IO,
-    private val clients: (WalletNetwork, WalletTarget) -> WalletSessionClient =
-        { network, target ->
-            MwaSession(identity, sender, network, target, io)
-        },
+    private val clients: (WalletNetwork, WalletTarget) -> WalletSessionClient = { network, target ->
+        MwaSession(identity, sender, network, target, io)
+    },
 ) : WalletAdapter {
     /**
      * One wallet interaction at a time, and one session for it. [WalletRepository] serializes
@@ -65,7 +64,8 @@ class MwaWalletAdapter(
     private val lock = Mutex()
     private var open: WalletSessionClient? = null
 
-    override suspend fun installed(): List<InstalledWallet> = withContext(io) { targets.installed() }
+    override suspend fun installed(): List<InstalledWallet> =
+        withContext(io) { targets.installed() }
 
     override suspend fun connect(
         network: WalletNetwork,
@@ -185,17 +185,20 @@ class MwaWalletAdapter(
         SendingAnswer(result, reported?.token, reported?.uriBase)
     }
 
-    override suspend fun disconnect(wallet: SelectedWallet, authToken: String, route: WalletRouting?) =
-        lock.withLock {
-            // Whatever the wallet says, the phone forgets the authorization; there is nothing to
-            // undo. The session goes with it, so nothing is left targeting that wallet. A wallet
-            // app that is gone can't be told, and doesn't need to be.
-            val aim = aimedAt(route)
-            if (aim != WalletTarget.Missing) {
-                session(wallet.network, aim, authToken).close()
-            }
-            open = null
+    override suspend fun disconnect(
+        wallet: SelectedWallet,
+        authToken: String,
+        route: WalletRouting?,
+    ) = lock.withLock {
+        // Whatever the wallet says, the phone forgets the authorization; there is nothing to
+        // undo. The session goes with it, so nothing is left targeting that wallet. A wallet
+        // app that is gone can't be told, and doesn't need to be.
+        val aim = aimedAt(route)
+        if (aim != WalletTarget.Missing) {
+            session(wallet.network, aim, authToken).close()
         }
+        open = null
+    }
 
     /** Where an association for [route] goes, against the wallet apps this phone has now. */
     private suspend fun aimedAt(route: WalletRouting?): WalletTarget =
@@ -277,10 +280,12 @@ class MwaWalletAdapter(
                 when (used) {
                     is WalletTarget.App -> used.packageName
                     is WalletTarget.Endpoint -> used.packageName
-                    WalletTarget.Wide, WalletTarget.Missing -> null
+                    WalletTarget.Wide,
+                    WalletTarget.Missing -> null
                 }
             val base = asked ?: WalletRouting.Untargeted
-            return base.copy(packageName = app, appLabel = app?.let { base.appLabel })
+            return base
+                .copy(packageName = app, appLabel = app?.let { base.appLabel })
                 .withReported(authorization.uriBase)
         }
 
@@ -460,8 +465,8 @@ private fun WalletNetwork.blockchain(): Blockchain =
     }
 
 /**
- * The authorization as this app reads it. The label a wallet leaves blank is no label, the chains it
- * lists are taken exactly as they are — an empty list says nothing about any network — and its
+ * The authorization as this app reads it. The label a wallet leaves blank is no label, the chains
+ * it lists are taken exactly as they are — an empty list says nothing about any network — and its
  * association URI is kept only when Mobile Wallet Adapter would take it back as an association
  * prefix, which means an `https` one (SEE-159).
  */
@@ -532,9 +537,10 @@ private class MwaSession(
      * terms: the one failure it can prove happened before any wallet saw anything is an association
      * nothing on this phone would open.
      *
-     * An owner who comes back out of the wallet without deciding leaves the handshake with nobody to
-     * answer it, and [HANDSHAKE_TIMEOUT_MS] is what ends it — the same bound Mobile Wallet Adapter
-     * puts on it. They are told the wallet didn't answer, and the request is still theirs to review.
+     * An owner who comes back out of the wallet without deciding leaves the handshake with nobody
+     * to answer it, and [HANDSHAKE_TIMEOUT_MS] is what ends it — the same bound Mobile Wallet
+     * Adapter puts on it. They are told the wallet didn't answer, and the request is still theirs
+     * to review.
      */
     private suspend fun <T : Any> associate(
         work: suspend (AdapterOperations, SessionProperties) -> T?
@@ -547,13 +553,19 @@ private class MwaSession(
             try {
                 withTimeout(SEND_INTENT_TIMEOUT_MS) { screen.send(intent) }
             } catch (e: TimeoutCancellationException) {
-                return@coroutineScope WalletOutcome.Failed(MwaWalletAdapter.walletError(e), reported)
+                return@coroutineScope WalletOutcome.Failed(
+                    MwaWalletAdapter.walletError(e),
+                    reported,
+                )
             }
             withContext(io) {
                 try {
                     val client = scenario.start().get(HANDSHAKE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                     WalletOutcome.Answered(
-                        work(LocalAdapterOperations(io, client), scenario.session.sessionProperties),
+                        work(
+                            LocalAdapterOperations(io, client),
+                            scenario.session.sessionProperties,
+                        ),
                         reported,
                     )
                 } finally {
@@ -576,8 +588,7 @@ private class MwaSession(
      * dropped rather than thrown over, and the package still names the wallet.
      */
     private fun association(scenario: LocalAssociationScenario): Intent {
-        val endpoint =
-            (target as? WalletTarget.Endpoint)?.uriBase?.toUri()?.takeIf(::associable)
+        val endpoint = (target as? WalletTarget.Endpoint)?.uriBase?.toUri()?.takeIf(::associable)
         val intent =
             LocalAssociationIntentCreator.createAssociationIntent(
                 endpoint,
@@ -588,7 +599,8 @@ private class MwaSession(
             when (target) {
                 is WalletTarget.App -> target.packageName
                 is WalletTarget.Endpoint -> target.packageName
-                WalletTarget.Wide, WalletTarget.Missing -> null
+                WalletTarget.Wide,
+                WalletTarget.Missing -> null
             }
         return if (app == null) intent else intent.setPackage(app)
     }

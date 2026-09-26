@@ -55,12 +55,12 @@ class WalletIntentSender(private val activity: ComponentActivity) {
 /**
  * The wallet apps installed on this phone, read from `PackageManager` (SEE-159).
  *
- * The intent it asks about is Mobile Wallet Adapter's own local association: the scheme and the path
- * are the library's constants, not strings this app made up, and the answer is whatever the system
- * says handles them. The app therefore never holds a wallet's package name it wasn't told, and a
- * wallet that isn't installed can't be named at all. The library's manifest already declares the
- * matching `<queries>` entry, so this works under Android 11's package visibility without the app
- * asking for anything.
+ * The intent it asks about is Mobile Wallet Adapter's own local association: the scheme and the
+ * path are the library's constants, not strings this app made up, and the answer is whatever the
+ * system says handles them. The app therefore never holds a wallet's package name it wasn't told,
+ * and a wallet that isn't installed can't be named at all. The library's manifest already declares
+ * the matching `<queries>` entry, so this works under Android 11's package visibility without the
+ * app asking for anything.
  */
 class PackageWalletTargets(private val packages: PackageManager) : WalletTargets {
     override fun installed(): List<InstalledWallet> =
@@ -70,7 +70,8 @@ class PackageWalletTargets(private val packages: PackageManager) : WalletTargets
                 val activity = resolved.activityInfo ?: return@mapNotNull null
                 InstalledWallet(
                     packageName = activity.packageName,
-                    label = resolved.loadLabel(packages).toString().ifBlank { activity.packageName },
+                    label =
+                        resolved.loadLabel(packages).toString().ifBlank { activity.packageName },
                 )
             }
             // One wallet app can answer with several activities; it is still one wallet.
