@@ -41,7 +41,6 @@ import io.github.brrenat.seekervault.designsystem.InboxTab
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.SheetMotion
 import io.github.brrenat.seekervault.history.HistoryDetailRoute
-import io.github.brrenat.seekervault.history.choiceRows
 import io.github.brrenat.seekervault.inbox.InboxRoute
 import io.github.brrenat.seekervault.inbox.InboxRouteCallbacks
 import io.github.brrenat.seekervault.inbox.InboxViewModel
@@ -69,6 +68,7 @@ import io.github.brrenat.seekervault.operations.PredictionParametersSheet
 import io.github.brrenat.seekervault.operations.PredictionReviewScreen
 import io.github.brrenat.seekervault.operations.PredictionReviewSource
 import io.github.brrenat.seekervault.operations.ProposalReviewScreen
+import io.github.brrenat.seekervault.operations.choiceRows
 import io.github.brrenat.seekervault.operations.requiresWalletHandoff
 import io.github.brrenat.seekervault.operations.reviewedAsPrediction
 import io.github.brrenat.seekervault.policy.PolicyAddressKind

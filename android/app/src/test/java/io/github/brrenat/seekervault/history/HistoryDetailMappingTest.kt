@@ -24,6 +24,7 @@ import io.github.brrenat.seekervault.designsystem.HistoryDetailRowLayout
 import io.github.brrenat.seekervault.designsystem.HistoryDetailStatus
 import io.github.brrenat.seekervault.designsystem.HistoryDetailTransactionStatus
 import io.github.brrenat.seekervault.designsystem.SourceColour
+import io.github.brrenat.seekervault.operations.choiceRows
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterField
 import io.github.brrenat.seekervault.plugins.ParameterForm

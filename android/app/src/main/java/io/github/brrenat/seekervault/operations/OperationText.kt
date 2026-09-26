@@ -2,10 +2,16 @@ package io.github.brrenat.seekervault.operations
 
 import androidx.annotation.StringRes
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.designsystem.HistoryDetailRow
+import io.github.brrenat.seekervault.plugins.ParameterChoice
+import io.github.brrenat.seekervault.plugins.ParameterForm
+import io.github.brrenat.seekervault.plugins.ParameterKind
+import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.UnsupportedReason
 import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
+import io.github.brrenat.seekervault.transactions.formatBaseUnits
 
 /**
  * The words the operation screens use (SEE-93).
@@ -126,3 +132,41 @@ fun bindingText(problem: BindingProblem): Int =
         BindingProblem.OtherNetwork -> R.string.operation_binding_other_network
         BindingProblem.OtherEnvironment -> R.string.operation_binding_other_environment
     }
+
+/**
+ * The owner's recorded choice, in the words of the provider's own compiled form: its labels, its
+ * options and its decimals. Nothing is fetched and nothing is re-quoted; a key the form doesn't
+ * name is shown by its key and its value as stored.
+ */
+fun choiceRows(
+    choice: ParameterChoice,
+    form: ParameterForm,
+    text: (Int) -> String,
+): List<HistoryDetailRow> =
+    choice.values.entries
+        .sortedBy { (key, _) ->
+            form.fields.indexOfFirst { it.key == key }.takeIf { it >= 0 } ?: Int.MAX_VALUE
+        }
+        .map { (key, value) ->
+            val field = form.fields.firstOrNull { it.key == key }
+            val kind = field?.kind
+            HistoryDetailRow(
+                label = field?.let { text(it.label) } ?: key.value,
+                value =
+                    when (value) {
+                        is ParameterValue.Amount ->
+                            if (kind is ParameterKind.Amount) {
+                                formatBaseUnits(value.baseUnits, kind.decimals) +
+                                    if (kind.mint == null) " SOL" else ""
+                            } else {
+                                value.baseUnits.toString()
+                            }
+                        is ParameterValue.Selected ->
+                            (kind as? ParameterKind.Choice)
+                                ?.options
+                                ?.firstOrNull { it.key == value.option }
+                                ?.let { text(it.label) } ?: value.option.value
+                        is ParameterValue.Count -> value.value.toString()
+                    },
+            )
+        }

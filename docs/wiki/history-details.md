@@ -116,7 +116,8 @@ the explorer. It doesn't claim a check that will never come.
 | `designsystem/…/HistoryDetailFixtures.kt`, `HistoryDetailPreviews.kt` | the ten variant screens and two full bodies, captured by Roborazzi |
 | `designsystem/…/HistoryRow.kt` | the optional kind icon, status icon and chevron |
 | `designsystem/…/ScreenScaffold.kt` | `DetailScreenScaffold`, and `ScreenScrollBody(state)` |
-| `app/…/history/HistoryDetailMapping.kt` | stored record → page model, `choiceRows` |
+| `app/…/history/HistoryDetailMapping.kt` | stored record → page model |
+| `app/…/operations/OperationText.kt` | `choiceRows`, kept behind the plugin boundary (`StageBoundaryTest`) |
 | `app/…/history/HistoryDetailRoute.kt` | state, polling, copy, explorer and Send again |
 | `app/…/inbox/InboxScreen.kt` | `InboxViewState`, the source filter, row icons |
 | `app/…/AppNavigation.kt` | `AppScreen.HistoryDetail`, `openHistoryDetail`, Back and saved state |

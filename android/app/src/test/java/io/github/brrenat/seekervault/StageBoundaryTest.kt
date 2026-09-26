@@ -794,6 +794,9 @@ class StageBoundaryTest {
                 "ConnectionDetailsScreen.kt",
                 "ConnectionRepository.kt",
                 "ConnectionText.kt",
+                // The History record says which promise an item was made under: the binding's,
+                // as the record kept it (SEE-161).
+                "HistoryDetailMapping.kt",
             ),
             promise,
         )
