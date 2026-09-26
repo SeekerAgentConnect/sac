@@ -39,7 +39,10 @@ import java.net.URISyntaxException
  * continue an order, and a publisher naming one is not offering navigation.
  */
 fun isProviderLink(value: String): Boolean {
-    if (value.isEmpty() || value.length > MOST_LINK_LENGTH) return false
+    // Bytes rather than characters, because bytes are what the protocol caps a value at and what
+    // the publisher side measures (`publisher-support/signals/links.go`): a link that is short in
+    // characters and long in bytes must be refused by both sides or by neither.
+    if (value.isEmpty() || value.toByteArray().size > MOST_LINK_LENGTH) return false
     // A space or a control character means the value was assembled rather than written, and a
     // reader that trims one is a reader two programs disagree about.
     if (value.any { it.isWhitespace() || it.isISOControl() }) return false
