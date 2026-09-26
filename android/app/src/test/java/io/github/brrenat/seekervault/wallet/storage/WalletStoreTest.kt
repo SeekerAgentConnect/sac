@@ -4,12 +4,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
+import io.github.brrenat.seekervault.wallet.WalletRouting
 import java.io.File
 import java.nio.ByteBuffer
 import java.security.GeneralSecurityException
 import java.time.Instant
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -111,6 +113,76 @@ class WalletStoreTest {
     }
 
     @Test
+    fun keepsTheRouteToTheWalletAppBesideTheAccount() {
+        // SEE-159: an account without the app that holds it is how an approval ends up in front of
+        // whichever wallet Android resolved. The two are one record, and a restart reads both.
+        val route =
+            WalletRouting(
+                uriBase = "https://wallet.example/ul",
+                packageName = "com.example.seekerwallet",
+                appLabel = "Seeker Wallet",
+            )
+
+        store.put(wallet, AUTHORIZATION, route)
+
+        assertEquals(StoredSession(wallet, AUTHORIZATION, route), store.session())
+        // Reading it again with a store made afresh is what opening the app after a restart does.
+        assertEquals(route, WalletStore(dir, secretDir) { key }.session()?.route)
+    }
+
+    @Test
+    fun sealsTheRouteWithTheRestOfTheRecord() {
+        store.put(
+            wallet,
+            AUTHORIZATION,
+            WalletRouting(uriBase = "https://wallet.example/ul", packageName = WALLET_APP),
+        )
+
+        val sealed = String(record.readBytes(), Charsets.ISO_8859_1)
+        assertFalse(sealed, WALLET_APP in sealed)
+    }
+
+    @Test
+    fun keepsARecordWithNoRouteAtAll() {
+        // Every account starts this way: the first association resolves as it always did, and what
+        // the wallet then reports about itself is what the route is made of.
+        store.put(wallet, AUTHORIZATION)
+
+        assertEquals(WalletRouting.Untargeted, store.session()?.route)
+    }
+
+    @Test
+    fun forgettingTheWalletTakesItsRouteWithIt() {
+        store.put(wallet, AUTHORIZATION, WalletRouting(packageName = WALLET_APP))
+        store.clear()
+
+        // Disconnecting leaves nothing aimed at that wallet app (SEE-159).
+        assertNull(store.session())
+        assertFalse(record.exists())
+    }
+
+    @Test
+    fun readsTheRecordAnEarlierBuildWroteWithoutARoute() {
+        // A phone upgrading from SEE-84's format keeps its wallet: the record is whole, it just
+        // never knew which app answered, and the next association finds out.
+        store.put(wallet, AUTHORIZATION, WalletRouting(packageName = WALLET_APP))
+        rewriteRecord {
+            it.remove("walletPackage")
+            it.put("version", 2)
+        }
+
+        assertEquals(StoredSession(wallet, AUTHORIZATION), store.session())
+    }
+
+    @Test
+    fun refusesARecordFromAFormatItDoesNotKnow() {
+        store.put(wallet, AUTHORIZATION)
+        rewriteRecord { it.put("version", 4) }
+
+        assertNull(store.session())
+    }
+
+    @Test
     fun readsWhatTheOlderBuildWroteAsTwoFilesAndStoresItAsOne() {
         writeLegacySelection(wallet)
         writeLegacyAuthorization(AUTHORIZATION)
@@ -165,6 +237,30 @@ class WalletStoreTest {
         assertEquals(StoredSession(wallet, AUTHORIZATION), store.session())
     }
 
+    /** Reseals the record with its JSON changed, as another build's would have been. */
+    private fun rewriteRecord(change: (JSONObject) -> JSONObject) {
+        val buffer = ByteBuffer.wrap(record.readBytes())
+        buffer.get()
+        val iv = ByteArray(buffer.get().toInt()).also { buffer.get(it) }
+        val sealed = ByteArray(buffer.remaining()).also { buffer.get(it) }
+        val opening = Cipher.getInstance("AES/GCM/NoPadding")
+        opening.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+        opening.updateAAD(SESSION_DATA)
+        val json = change(JSONObject(String(opening.doFinal(sealed), Charsets.UTF_8))).toString()
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        cipher.updateAAD(SESSION_DATA)
+        val resealed = cipher.doFinal(json.toByteArray(Charsets.UTF_8))
+        record.writeBytes(
+            ByteBuffer.allocate(2 + cipher.iv.size + resealed.size)
+                .put(1)
+                .put(cipher.iv.size.toByte())
+                .put(cipher.iv)
+                .put(resealed)
+                .array()
+        )
+    }
+
     /** The selection exactly as the build before SEE-84 wrote it. */
     private fun writeLegacySelection(wallet: SelectedWallet) {
         dir.mkdirs()
@@ -205,5 +301,7 @@ class WalletStoreTest {
         const val OTHER_WALLET = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
         const val AUTHORIZATION = "auth-token-from-the-wallet-0123456789"
         const val OTHER_AUTHORIZATION = "auth-token-from-the-wallet-9876543210"
+        const val WALLET_APP = "com.example.seekerwallet"
+        val SESSION_DATA = "seekervault/wallet-session/v2".toByteArray(Charsets.UTF_8)
     }
 }

@@ -595,7 +595,205 @@ class WalletRepositoryTest {
         )
     }
 
+    // SEE-159: the wallet app the owner connected, stored with their account, and reused by every
+    // signing — including the first one after the app was restarted.
+
+    @Test
+    fun storesTheWalletAppTheOwnerPickedAndTheUriTheWalletReported() = runBlocking {
+        pair()
+        adapter.installed = listOf(SEEKER, OTHER)
+        adapter.answerConnected(
+            WALLET,
+            authToken = SECRET,
+            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
+        )
+
+        repository.connect(WalletNetwork.Devnet, SEEKER)
+
+        // What the owner picked reached the wallet, and what came back is what is kept.
+        assertEquals(
+            WalletRouting(packageName = SEEKER.packageName, appLabel = SEEKER.label),
+            adapter.routes.single(),
+        )
+        assertEquals(
+            WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
+            store.session()?.route,
+        )
+        // The screen names the app, so an account's own label can't be read as the wallet.
+        assertEquals(SEEKER.label, repository.walletApp.value)
+    }
+
+    @Test
+    fun needsNobodyToPickWhenThisPhoneHasOneWalletApp() = runBlocking {
+        pair()
+        adapter.installed = listOf(SEEKER)
+        adapter.answerConnected(WALLET, authToken = SECRET)
+
+        repository.connect(WalletNetwork.Devnet)
+
+        // One installed wallet is one answer, and the system gave it: nothing asks the owner, and
+        // nothing asks Android either.
+        assertEquals(
+            WalletRouting(packageName = SEEKER.packageName, appLabel = SEEKER.label),
+            adapter.routes.single(),
+        )
+    }
+
+    @Test
+    fun opensTheSameWalletAppForEverySigningAndAfterARestart() = runBlocking {
+        pair()
+        adapter.installed = listOf(SEEKER, OTHER)
+        adapter.answerConnected(
+            WALLET,
+            authToken = SECRET,
+            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
+        )
+        repository.connect(WalletNetwork.Devnet, SEEKER)
+        val selected = checkNotNull(repository.wallet.value)
+        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        adapter.routes.clear()
+
+        repository.sign(ByteString.copyFromUtf8("one"), selected)
+        repository.sign(ByteString.copyFromUtf8("two"), selected)
+
+        val route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label)
+        assertEquals(listOf(route, route), adapter.routes)
+
+        // A restart is a repository made afresh over the same stored record. The route is read
+        // back, so the first approval after it opens the same wallet as the one before it.
+        val restarted = WalletRepository(store, adapter, connections, io = Dispatchers.Unconfined)
+        restarted.load()
+        adapter.routes.clear()
+        restarted.sign(ByteString.copyFromUtf8("three"), selected)
+
+        assertEquals(listOf(route), adapter.routes)
+        assertEquals(SEEKER.label, restarted.walletApp.value)
+    }
+
+    @Test
+    fun keepsTheAssociationUriTheWalletMovedTo() = runBlocking {
+        pair()
+        adapter.installed = listOf(SEEKER)
+        adapter.answerConnected(
+            WALLET,
+            authToken = SECRET,
+            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
+        )
+        repository.connect(WalletNetwork.Devnet, SEEKER)
+        val selected = checkNotNull(repository.wallet.value)
+        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        adapter.reportedUriBase = MOVED
+
+        repository.sign(ByteString.copyFromUtf8("one"), selected)
+
+        // A wallet reauthorizes before it signs and may say it now lives somewhere else. That is
+        // the one to use from now on, exactly as a replaced authorization is.
+        assertEquals(
+            WalletRouting(MOVED, SEEKER.packageName, SEEKER.label),
+            store.session()?.route,
+        )
+        // And the selection itself is untouched: the owner reviewed that account, on that network.
+        assertEquals(selected, store.selected())
+    }
+
+    @Test
+    fun keepsTheRouteWhenTheWalletSaysNothingAboutWhereItLives() = runBlocking {
+        pair()
+        adapter.installed = listOf(SEEKER)
+        val route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label)
+        adapter.answerConnected(WALLET, authToken = SECRET, route = route)
+        repository.connect(WalletNetwork.Devnet, SEEKER)
+        val selected = checkNotNull(repository.wallet.value)
+        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 4 }))
+        adapter.reportedUriBase = null
+
+        repository.signAndSend(ByteString.copyFromUtf8("tx"), selected)
+
+        assertEquals(route, store.session()?.route)
+    }
+
+    @Test
+    fun picksAWalletAppOverTheOneTheOwnerHadAndKeepsNothingOfTheOldOne() = runBlocking {
+        pair()
+        adapter.installed = listOf(SEEKER, OTHER)
+        adapter.answerConnected(
+            WALLET,
+            authToken = SECRET,
+            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
+        )
+        repository.connect(WalletNetwork.Devnet, SEEKER)
+        adapter.routes.clear()
+        adapter.answerConnected(
+            OTHER_WALLET,
+            authToken = REFRESHED,
+            route = WalletRouting(null, OTHER.packageName, OTHER.label),
+        )
+
+        repository.connect(WalletNetwork.Devnet, OTHER)
+
+        // Changing the wallet app carries nothing over from the one being left — least of all its
+        // association URI, which would send the next approval back to it.
+        assertEquals(
+            WalletRouting(packageName = OTHER.packageName, appLabel = OTHER.label),
+            adapter.routes.single(),
+        )
+        assertEquals(
+            WalletRouting(packageName = OTHER.packageName, appLabel = OTHER.label),
+            store.session()?.route,
+        )
+        assertEquals(OTHER.label, repository.walletApp.value)
+    }
+
+    @Test
+    fun disconnectingTakesTheRouteWithIt() = runBlocking {
+        pair()
+        adapter.installed = listOf(SEEKER, OTHER)
+        adapter.answerConnected(
+            WALLET,
+            authToken = SECRET,
+            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
+        )
+        repository.connect(WalletNetwork.Devnet, SEEKER)
+        adapter.routes.clear()
+
+        repository.disconnect()
+
+        // The wallet app was told over its own route, and nothing aimed at it is left behind.
+        assertEquals(
+            listOf<WalletRouting?>(WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label)),
+            adapter.routes,
+        )
+        assertNull(store.session())
+        assertNull(repository.walletApp.value)
+    }
+
+    @Test
+    fun forgetsTheRouteWithTheSessionWhenTheWalletRefusesTheAccount() = runBlocking {
+        pair()
+        adapter.installed = listOf(SEEKER)
+        adapter.answerConnected(
+            WALLET,
+            authToken = SECRET,
+            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
+        )
+        repository.connect(WalletNetwork.Devnet, SEEKER)
+        val selected = checkNotNull(repository.wallet.value)
+        // The wallet reauthorized an account the owner never reviewed (SEE-84). Nothing is signed,
+        // and nothing about that wallet — route included — is kept to sign with later.
+        adapter.answerSigning(SignResult.Changed)
+
+        assertEquals(SignResult.Changed, repository.sign(ByteString.copyFromUtf8("x"), selected))
+
+        assertNull(store.session())
+        assertNull(repository.wallet.value)
+        assertNull(repository.walletApp.value)
+    }
+
     private companion object {
+        val SEEKER = InstalledWallet("com.example.seekerwallet", "Seeker Wallet")
+        val OTHER = InstalledWallet("com.example.otherwallet", "Other Wallet")
+        const val URI_BASE = "https://wallet.example/ul"
+        const val MOVED = "https://wallet.example/ul/v2"
         const val URL = "http://127.0.0.1:8080"
         const val OTHER_URL = "http://127.0.0.1:8081"
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"

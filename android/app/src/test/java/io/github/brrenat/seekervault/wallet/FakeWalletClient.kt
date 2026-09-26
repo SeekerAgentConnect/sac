@@ -12,8 +12,10 @@ private class SessionBroke(val error: WalletError) : Exception(error.message)
  * It records every session it opened and every request it was really asked for, so a test can tell
  * a wallet that was never asked from one that was asked and didn't answer.
  */
-class FakeWalletClient(override val network: WalletNetwork = WalletNetwork.Devnet) :
-    WalletSessionClient {
+class FakeWalletClient(
+    override val network: WalletNetwork = WalletNetwork.Devnet,
+    override val target: WalletTarget = WalletTarget.Wide,
+) : WalletSessionClient {
     override var authorization: String? = null
 
     /** The authorization offered at the start of each session, in order. */
@@ -49,8 +51,14 @@ class FakeWalletClient(override val network: WalletNetwork = WalletNetwork.Devne
     var sends: List<ByteArray?> = emptyList()
 
     /** Answers with [token] and one account on this session's own chain. */
-    fun authorizes(address: String, token: String?, chains: List<String> = listOf(network.chain)) {
-        authorizes = WalletAuthorization(token, listOf(WalletAccount(address, null, chains)))
+    fun authorizes(
+        address: String,
+        token: String?,
+        chains: List<String> = listOf(network.chain),
+        uriBase: String? = null,
+    ) {
+        authorizes =
+            WalletAuthorization(token, listOf(WalletAccount(address, null, chains)), uriBase)
     }
 
     override suspend fun connect(): WalletOutcome<Unit> {
