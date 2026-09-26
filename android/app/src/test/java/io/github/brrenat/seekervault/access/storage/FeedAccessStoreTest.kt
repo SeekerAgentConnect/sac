@@ -22,8 +22,8 @@ import org.junit.runner.RunWith
  * what the decision was bound to; the device key stays in the Keystore and the session stays in the
  * vault, so a file read off this directory reads a feed for nobody. The rest is the ordinary
  * discipline the other stores keep: one document per connection, an identifier that is checked
- * before it is ever used as a filename, and a document from a version this build does not know
- * read as absent rather than guessed at.
+ * before it is ever used as a filename, and a document from a version this build does not know read
+ * as absent rather than guessed at.
  */
 @RunWith(AndroidJUnit4::class)
 class FeedAccessStoreTest {
@@ -85,7 +85,10 @@ class FeedAccessStoreTest {
     @Test
     fun keepsNoSecretOnDisk() {
         store.put(
-            pending.copy(state = State.Connected, grantUntil = Instant.ofEpochMilli(1_790_341_200_000))
+            pending.copy(
+                state = State.Connected,
+                grantUntil = Instant.ofEpochMilli(1_790_341_200_000),
+            )
         )
         val text = File(dir, "$CONNECTION_A.json").readText()
         // The three things that would actually read the feed. None of them is the store's to hold:

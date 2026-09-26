@@ -42,7 +42,10 @@ class FeedReferenceTest {
         // README. A token here would be a secret in a public string.
         val reference = FeedReference(GATEWAY, SERVER_B)
 
-        assertEquals("FeedReference(gatewayUrl=$GATEWAY, serverId=$SERVER_B)", reference.toString())
+        assertEquals(
+            "FeedReference(gatewayUrl=$GATEWAY, serverId=$SERVER_B, restricted=false, invitation=null)",
+            reference.toString(),
+        )
     }
 
     @Test

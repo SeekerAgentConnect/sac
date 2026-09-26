@@ -1443,6 +1443,12 @@ class StageBoundaryTest {
                 // authorized to wake it; what it never sends is a request, a decision, or
                 // anything a server told it.
                 "RelayClient.kt",
+                // A restricted feed's authentication endpoint (SEE-156). It reaches only the
+                // origin the gateway stamped on that feed's manifest from its operator's
+                // registration, never one a reference or a publisher supplies. What it sends is
+                // the wallet's one signature over text that says it is not a transaction, and
+                // after that only statements signed by this installation's device key.
+                "FeedAccessApi.kt",
             )
         val clients = sources.filter { http.containsMatchIn(it.readText()) }.map { it.name }.toSet()
         assertTrue(clients.all { it in allowed })
