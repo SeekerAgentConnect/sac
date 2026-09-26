@@ -15,17 +15,17 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 )
 
-// The pages and the two files they load, compiled into the binary.
+// The pages and the files they load, compiled into the binary.
 //
 // Everything this surface serves ships inside the gateway's own image: one stylesheet, one script,
-// no font service, no CDN and no analytics. That is what lets the content policy be
-// `default-src 'none'`, and it is why an air-gapped deployment's admin page looks the same as a
-// public one's.
+// the two fonts it uses, no font service, no CDN and no analytics. That is what lets the content
+// policy be `default-src 'none'`, and it is why an air-gapped deployment's admin page looks the
+// same as a public one's.
 //
 //go:embed templates/*.html
 var templateFiles embed.FS
 
-//go:embed assets/admin.css assets/admin.js
+//go:embed assets/admin.css assets/admin.js assets/roboto-variable.ttf assets/roboto-mono-variable.ttf
 var assetFiles embed.FS
 
 type asset struct {
@@ -34,8 +34,10 @@ type asset struct {
 }
 
 var servedAssets = map[string]string{
-	"admin.css": "text/css; charset=utf-8",
-	"admin.js":  "text/javascript; charset=utf-8",
+	"admin.css":                "text/css; charset=utf-8",
+	"admin.js":                 "text/javascript; charset=utf-8",
+	"roboto-variable.ttf":      "font/ttf",
+	"roboto-mono-variable.ttf": "font/ttf",
 }
 
 func assetFor(name string) (asset, bool) {
@@ -77,11 +79,15 @@ func (p *pages) render(writer http.ResponseWriter, status int, name string, data
 // Common is what every page has: where it is served, the token its forms carry, and one line about
 // what just happened.
 type Common struct {
-	Path     string
-	CSRF     string
-	Notice   string
-	Problem  string
-	LoggedIn bool
+	Path        string
+	CSRF        string
+	Notice      string
+	Problem     string
+	LoggedIn    bool
+	ServerCount int
+	// ServersActive highlights the list navigation on the list and detail pages. The one-time
+	// credential page deliberately has no active section, matching the prototype's terminal state.
+	ServersActive bool
 	// GatewayURL is this gateway's canonical public origin, shown so an operator can see at a
 	// glance which deployment they are administering.
 	GatewayURL string
@@ -96,6 +102,20 @@ func (s *Server) common(at *visit) Common {
 	common.CSRF = at.session.csrf
 	common.Notice, at.session.notice = at.session.notice, ""
 	return common
+}
+
+// commonWithServerCount is the frame for an authenticated page that includes the current number of
+// registered servers in its navigation. It is a store read rather than session state, so a CLI
+// registration or another browser tab is reflected on the next page without any second source of
+// truth.
+func (s *Server) commonWithServerCount(ctx context.Context, at *visit) (Common, error) {
+	common := s.common(at)
+	publishers, err := s.options.Store.Publishers(ctx)
+	if err != nil {
+		return common, err
+	}
+	common.ServerCount = len(publishers)
+	return common, nil
 }
 
 // MessageView is a page that says one thing: a refusal, a 404, or a failure whose reason is in the
@@ -479,11 +499,19 @@ type ServerView struct {
 }
 
 func (s *Server) serversView(ctx context.Context, at *visit) (ServersView, error) {
-	view := ServersView{Common: s.common(at)}
+	view := ServersView{
+		Common: s.common(at),
+		Form: RegistrationForm{
+			Publishing: true,
+			Access:     string(storage.PublicAccess),
+		},
+	}
+	view.ServersActive = true
 	publishers, err := s.options.Store.Publishers(ctx)
 	if err != nil {
 		return view, err
 	}
+	view.ServerCount = len(publishers)
 	for _, publisher := range publishers {
 		row, err := s.row(ctx, publisher)
 		if err != nil {
@@ -495,7 +523,12 @@ func (s *Server) serversView(ctx context.Context, at *visit) (ServersView, error
 }
 
 func (s *Server) serverView(ctx context.Context, at *visit, serverID string) (ServerView, error) {
-	view := ServerView{Common: s.common(at)}
+	common, err := s.commonWithServerCount(ctx, at)
+	common.ServersActive = true
+	view := ServerView{Common: common}
+	if err != nil {
+		return view, err
+	}
 	if !rules.IsID(serverID) {
 		return view, storage.ErrNoPublisher
 	}

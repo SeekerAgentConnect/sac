@@ -249,10 +249,17 @@ whether a manifest and feed items have arrived — and offers:
 | **Add server** | Registers a publisher and issues its first credential in one transaction, or registers nothing. Takes the publisher's existing server UUID, or generates one the publisher must then use exactly. Shows the raw credential once, with the server ID, public gateway origin, publisher API URL and channel beside it |
 | **Add credential** | The same additive rotation as `rotate`: the existing credential keeps working until it is revoked, so the publisher switches without downtime |
 | **Revoke** | Ends one credential, or all of a publisher's. Enforced from the next publication. The manifest and feed items it already published stay on the feed |
-| **Forget publisher** | The destructive one, behind typing the publisher's own server ID back. Removes the registration, its credentials, its manifest and every feed item this gateway holds. Phones that already read them keep their own copies |
+| **Forget server** | The destructive one, behind typing the publisher's own server ID back. Removes the registration, its credentials, its manifest and every feed item this gateway holds. Phones that already read them keep their own copies |
 
 None of that restarts the gateway or changes its environment. A publisher registered in the browser
 can publish on its next request.
+
+The responsive dark shell keeps **Servers**, **Add server**, the gateway address and **Log out** in
+one sidebar. Adding a server opens a drawer; its credential is issued onto a separate page that can
+be read once. Server detail is where capabilities are switched, credentials are added or revoked,
+and a registration is forgotten. Revoke and forget confirmations are in-page dialogs rather than
+browser pop-ups, and forgetting still stays disabled until the exact server ID is typed. The bundled
+Roboto and Roboto Mono fonts, stylesheet and script all come from this binary; the page loads no CDN.
 
 The page never claims a publisher is "connected" or "online", and counts no subscribers. A publisher
 calls an HTTP API when it has something to say and holds no connection in between, and no row in
@@ -263,7 +270,7 @@ compared in constant time; server-side sessions in an `HttpOnly`, `SameSite=Stri
 the admin path, with an absolute lifetime and a logout that actually revokes; a per-session CSRF
 token on every mutation plus the browser's own `Sec-Fetch-Site`; login rate limiting under the same
 trusted-proxy policy as read limiting; and `Content-Security-Policy: default-src 'none'` with the
-stylesheet and script served from the image. A publishing credential is never an administrator
+stylesheet, script and fonts served from the image. A publishing credential is never an administrator
 credential, and an administrator session is never a publishing credential.
 
 **What it does not survive.** Sessions live in the process, so a restart ends every one of them —
