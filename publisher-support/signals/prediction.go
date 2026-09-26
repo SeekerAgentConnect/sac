@@ -10,8 +10,8 @@ import (
 // by the bundled `jupiter.prediction` plugin (SEE-94).
 //
 // The terms are the contract in docs/protocol.md#a-prediction-markets-terms-see-94, and the rules
-// are `jupiter/PredictionTerms.kt`'s, on this side. What is striking about them is how little a
-// publisher gets to say:
+// are `plugins/actions/PredictionAction.kt`'s, on this side. What is striking about them is how
+// little a publisher gets to say:
 //
 //   - **A publisher names a market.** Whether it is open, what the two sides cost, what the rules
 //     are and when it settles all come from the provider's own API at the moment the owner looks.

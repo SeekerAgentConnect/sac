@@ -137,7 +137,8 @@ func TestThePredictionRulesAreThePhonesOwn(t *testing.T) {
 	floor := regexp.MustCompile(`const val LEAST_ORDER_DEPOSIT: ULong = ([0-9_]+)UL`).
 		FindStringSubmatch(source)
 	if floor == nil {
-		t.Fatalf("LEAST_ORDER_DEPOSIT is no longer declared in %s", strings.Join(phonePredictionTerms, ", "))
+		t.Fatalf("LEAST_ORDER_DEPOSIT is no longer declared in %s",
+			strings.Join(phonePredictionTerms, ", "))
 	}
 	theirs, err := strconv.ParseUint(strings.ReplaceAll(floor[1], "_", ""), 10, 64)
 	if err != nil {

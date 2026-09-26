@@ -8,8 +8,9 @@ import (
 const usdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 // Every way a swap's terms can be wrong, with the code the caller is told. The list is the contract
-// in docs/protocol.md#a-swap-signals-terms-see-93, and the rules are jupiter/SwapTerms.kt's: a
-// template must not publish a document the phone would then refuse.
+// in docs/protocol.md#a-swap-signals-terms-see-93, and the rules are
+// plugins/actions/SwapAction.kt's: a template must not publish a document the phone would then
+// refuse.
 func TestEveryWayASwapsTermsCanBeWrong(t *testing.T) {
 	for _, one := range []struct {
 		name  string
