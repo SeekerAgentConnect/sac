@@ -97,11 +97,27 @@ That last one deserves a note. The venue **co-signs**: an order arrives with two
 
 The app submits and stops. There is no fill monitoring, no positions screen, no settlement, no payout claim and no profit or loss anywhere in it — all of that is explicitly out of scope, and none of it is implied by anything on screen.
 
-What is offered instead, once an order has been submitted: the transaction on the block explorer, built from the signature the wallet returned, and **the market on Jupiter** — `https://jup.ag/prediction/<marketId>`, for a market identifier that came from the provider's own API.
+What is offered instead: the transaction on the block explorer, built from the signature the wallet returned, **the market on Jupiter**, and — once an order has actually been placed — **the order**.
 
-There is deliberately **no position link**. The platform has no per-position address: `https://jup.ag/prediction/<marketId>` is a real route and echoes the market ID into its page, but the site answers `200` even for a market that does not exist, so a specific page cannot be verified by HTTP. Inventing a position URL would be the one dishonest thing on offer here, so it is not invented — which is what the ticket asks for.
+### In the app, not in a browser (SEE-157)
 
-**No URL is stored.** The record keeps the order account, the position account and the market identifier; every link is built at the moment it is shown, from compiled code. A link read back off disk is a link something else could have written.
+Each of those is opened by asking for an *app* first and falling back to the web only when no app takes it (`activity/Explorer.kt`). The mechanism is `FLAG_ACTIVITY_REQUIRE_NON_BROWSER`: the launch succeeds only if something other than a browser claims the address, and throws as if nothing had handled it at all otherwise — at which point the web address is opened instead.
+
+**Jupiter's deep link is a `jup.ag` address, and that is not a compromise.** [`https://jup.ag/.well-known/assetlinks.json`](https://jup.ag/.well-known/assetlinks.json) delegates `handle_all_urls` to `ag.jup.jupiter.android`, so a `jup.ag` address *is* the Jupiter app's own, verified by Android rather than asserted here. Jupiter publishes no private scheme, and none is invented: a `jupiter://` in this repository would be a URL nobody serves, dressed as nativeness. The boundary carries a deep link and a web address separately anyway, because the next venue's may genuinely differ.
+
+### Where the market's address comes from
+
+`https://jup.ag/prediction/<marketId>` is the address this adapter composes, and it is a guess: the real page is addressed by the **event's slug**, which is in the listing the publisher template reads and in nothing the phone can ask for. The site answers `200` for anything, so the guess cannot even be caught by fetching it.
+
+So since SEE-157 the publisher may name the page — `provider_deep_link` and `provider_web_url` — and this adapter uses it **only when it is Jupiter's own**: `https`, on `jup.ag` or a subdomain of it, matched on the host and never on the end of the string. Anything else is ignored and the composed address stands. That is the whole of the trust boundary: a publisher can make the link land on the market instead of near it, and cannot make it land anywhere but Jupiter.
+
+### The order, and why it is the portfolio
+
+There is still **no per-order page**. Jupiter has none, so an address with an order account in it would be a page nobody serves. What exists is the owner's prediction portfolio — `https://jup.ag/prediction/portfolio` — which is where a placed order actually is, and that is what **Open order** opens.
+
+It appears only when the record holds an order account, which means only after an order was really submitted. A destination there is nothing behind is not shown, for a prediction and for any other action: the boundary's answer to "where may the owner continue" is a list, and an empty list is a valid answer that removes the button.
+
+**No URL is stored**, exactly as before. The record keeps the order account, the position account and the market identifier; every link is built at the moment it is shown, from compiled code, out of those identifiers and the publisher's terms as they are read afresh. A link read back off disk is a link something else could have written.
 
 ## Language
 
@@ -121,7 +137,9 @@ There is deliberately **no position link**. The platform has no per-position add
 | --- | --- |
 | [`plugins/actions/PredictionAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionAction.kt) | The action's payload and every rule a publisher's terms are held to — provider-neutral, read by core |
 | [`plugins/actions/PredictionInputs.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionInputs.kt) | The side and the stake, with the publisher's bounds and the venue's floor folded together |
-| [`jupiter/JupiterPredictionAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterPredictionAction.kt) | Jupiter's half: `resolve`, the ordered checks in `prepare`, the chain read, the inspection, and the market link |
+| [`jupiter/JupiterPredictionAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterPredictionAction.kt) | Jupiter's half: `resolve`, the ordered checks in `prepare`, the chain read, the inspection, and the market and order destinations |
+| [`plugins/actions/ProviderLink.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/ProviderLink.kt) | The one rule for an address this app may hand to another app, and the host check an adapter makes about its own property (SEE-157) |
+| [`activity/Explorer.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/activity/Explorer.kt) | `openDestination`: the provider's app first, the web only if no app took it |
 | [`jupiter/JupiterExecutionProvider.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt) | The provider itself, and `PREDICTION_BUY_CAPABILITY`: schema 1, mainnet, its two stake mints, its five-dollar floor |
 | [`jupiter/JupiterPrediction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterPrediction.kt), [`jupiter/PredictionInstructions.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/PredictionInstructions.kt), [`jupiter/PredictionInspection.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/PredictionInspection.kt) | The market read and the order, the instruction's Borsh layout, and `inspectPrediction` |
 

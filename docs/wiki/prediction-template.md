@@ -69,7 +69,7 @@ orders, positions, history and profiles are not in this module at all.
 ## What a signal says
 
 The terms are `jupiter.prediction`'s, in
-[`PredictionTerms.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/PredictionTerms.kt)
+[`PredictionAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/PredictionAction.kt)
 and [`prediction.go`](../../publisher-support/signals/prediction.go), and the contract is in
 [protocol.md](../protocol.md#a-prediction-markets-terms-see-94):
 
@@ -83,6 +83,20 @@ and [`prediction.go`](../../publisher-support/signals/prediction.go), and the co
 | `deposit_symbol` | a label the phone shows beside the mint, never instead of it |
 | `least_deposit` | never below the provider's own five-dollar minimum, whatever an operator set |
 | `most_deposit` | the publisher's ceiling, or absent for none |
+| `provider_deep_link`, `provider_web_url` | the market's own page on the provider, from the event's slug (SEE-157) |
+
+**The page is the one thing this template knows and a phone cannot ask for.** The listing gives an
+event a `metadata.slug`, and the market's real address is built from it; a phone left to itself
+composes one out of the market identifier and lands near the market rather than on it. Both terms
+carry the same address, because `jup.ag` delegates its addresses to Jupiter's own Android app — so
+that address *is* the deep link, and the phone opening it app-first lands in Jupiter when Jupiter is
+installed. The terms stay separate because the next venue's may not be the same string.
+
+It is still the phone's provider that decides whether to use it: the adapter accepts an address only
+on its own property and otherwise ignores it
+([`jupiter-prediction.md`](jupiter-prediction.md#where-the-market-s-address-comes-from)). A
+deployment pointed at a different provider publishes whatever that provider's listing gives, and the
+phone's adapter for *that* provider is what judges it.
 
 **There is no side, and no field that could carry an opinion.** A term this kind does not know is
 refused rather than carried, so `side`, `is_yes`, `confidence` and `recommendation` cannot be
