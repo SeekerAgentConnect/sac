@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -119,6 +120,12 @@ class FeedAccessManager(
         },
     /** A feed just became readable: read it now rather than waiting for the next pass. */
     private val onConnected: (connectionId: String) -> Unit = {},
+    /**
+     * How long to wait before each further attempt at a push registration the gateway refused — a
+     * redemption answered before the publisher installed the grant at the gateway is refused until
+     * it does.
+     */
+    private val pushRetries: List<Duration> = PUSH_RETRIES,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + io),
@@ -141,6 +148,12 @@ class FeedAccessManager(
     private val byChannel = ConcurrentHashMap<String, String>()
 
     @Volatile private var target: String? = null
+
+    /**
+     * Connected feeds whose push registration did not land, by connection ID. They are registered
+     * again on a backoff, when a check finds the grant usable, and on the next registration.
+     */
+    private val pendingPush = ConcurrentHashMap.newKeySet<String>()
 
     /** Reads what is stored. */
     suspend fun load() = lock.withLock {
@@ -313,6 +326,12 @@ class FeedAccessManager(
                     }
                     // Readable again after a refusal: a stream ticketed meanwhile left it out.
                     if (record.state != State.Connected) onConnected(connectionId)
+                    // The grant is usable now, so a registration it refused earlier can land.
+                    val session = byChannel[channelFor(connection.serverId)]
+                    val current = target
+                    if (connectionId in pendingPush && session != null && current != null) {
+                        registerPush(connection, session, current)
+                    }
                     done
                 }
                 else ->
@@ -350,7 +369,12 @@ class FeedAccessManager(
                 )
             }
             onConnected(connectionId)
-            target?.let { registerPush(connection, answer.session, it) }
+            target?.let {
+                // A redemption the gateway has not synced yet (answer.synced == false) holds a
+                // session the gateway refuses until the publisher installs the grant, so the
+                // registration is retried until it lands rather than dropped.
+                if (!registerPush(connection, answer.session, it)) retryPush(connectionId)
+            }
             AccessResult.Done(saved)
         }
     }
@@ -381,9 +405,37 @@ class FeedAccessManager(
         }
     }
 
-    private suspend fun registerPush(connection: Connection, session: String, target: String) {
-        runCatching {
-            pushTarget(connection.serverUrl, channelFor(connection.serverId), session, target)
+    /** Registers [target] for [connection]'s feed, and answers whether the gateway took it. */
+    private suspend fun registerPush(
+        connection: Connection,
+        session: String,
+        target: String,
+    ): Boolean {
+        val landed =
+            runCatching {
+                    pushTarget(connection.serverUrl, channelFor(connection.serverId), session, target)
+                }
+                .isSuccess
+        if (landed) pendingPush.remove(connection.id) else pendingPush.add(connection.id)
+        return landed
+    }
+
+    /**
+     * Registers [connectionId]'s feed again on [pushRetries], until it lands, the feed stops being
+     * connected with the selected wallet, or another path (a check, a new registration) landed it.
+     */
+    private fun retryPush(connectionId: String) {
+        scope.launch {
+            for (wait in pushRetries) {
+                delay(wait.toMillis())
+                if (connectionId !in pendingPush) return@launch
+                val record = _records.value[connectionId] ?: return@launch
+                if (record.state != State.Connected || !isActive(record)) return@launch
+                val connection = connections().firstOrNull { it.id == connectionId } ?: return@launch
+                val session = byChannel[channelFor(record.serverId)] ?: return@launch
+                val current = target ?: return@launch
+                if (registerPush(connection, session, current)) return@launch
+            }
         }
     }
 
@@ -402,6 +454,7 @@ class FeedAccessManager(
     }
 
     private suspend fun dropSession(record: FeedAccessStore.Record) {
+        pendingPush.remove(record.connectionId)
         byChannel.remove(channelFor(record.serverId))
         withContext(io) { sessions.delete(record.connectionId) }
     }
@@ -421,6 +474,10 @@ class FeedAccessManager(
     private companion object {
         /** A challenge that claims to last longer than this is not one this phone signs. */
         val MOST_CHALLENGE_LIFETIME: Duration = Duration.ofMinutes(30)
+
+        /** The publisher retries its grant with a backoff that reaches a minute; this outlasts it. */
+        val PUSH_RETRIES: List<Duration> =
+            listOf(5L, 15L, 30L, 60L, 120L, 300L, 600L, 1800L).map(Duration::ofSeconds)
 
         fun stateOf(state: String): State =
             when (state) {

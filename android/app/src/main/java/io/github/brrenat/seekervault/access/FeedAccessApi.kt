@@ -14,6 +14,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okhttp3.ResponseBody
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -216,40 +217,41 @@ class OkHttpFeedAccessApi(httpClient: OkHttpClient) : FeedAccessApi {
                 .url(origin.trimEnd('/') + path)
                 .post(body.toString().toRequestBody(JSON))
                 .build()
-        val response =
+        val answer =
             try {
                 client.newCall(request).await()
             } catch (e: IOException) {
+                // Including a body that broke off after its headers: nothing usable arrived.
                 throw FeedAccessException(FeedAccessException.Kind.Unreachable, message = e.message)
             }
-        response.use {
-            val text = it.body?.string().orEmpty()
-            if (text.length > MOST_ANSWER_CHARS) {
+        if (answer.text == null) throw FeedAccessException(FeedAccessException.Kind.BadResponse)
+        val json =
+            try {
+                JSONObject(answer.text)
+            } catch (e: JSONException) {
+                if (answer.code in 500..599 || answer.code == 429) {
+                    throw FeedAccessException(FeedAccessException.Kind.Unreachable)
+                }
                 throw FeedAccessException(FeedAccessException.Kind.BadResponse)
             }
-            val json =
-                try {
-                    JSONObject(text)
-                } catch (e: JSONException) {
-                    if (it.code in 500..599 || it.code == 429) {
-                        throw FeedAccessException(FeedAccessException.Kind.Unreachable)
-                    }
-                    throw FeedAccessException(FeedAccessException.Kind.BadResponse)
-                }
-            if (!it.isSuccessful) {
-                if (it.code in 500..599 || it.code == 429) {
-                    throw FeedAccessException(
-                        FeedAccessException.Kind.Unreachable,
-                        json.optString("error"),
-                    )
-                }
-                throw FeedAccessException(FeedAccessException.Kind.Refused, json.optString("error"))
+        if (answer.code !in 200..299) {
+            if (answer.code in 500..599 || answer.code == 429) {
+                throw FeedAccessException(FeedAccessException.Kind.Unreachable, json.optString("error"))
             }
-            return json
+            throw FeedAccessException(FeedAccessException.Kind.Refused, json.optString("error"))
         }
+        return json
     }
 
-    private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
+    /** A response read to its end: its status, and its body, or null when it was too long. */
+    private class Answer(val code: Int, val text: String?)
+
+    /**
+     * Runs the call and reads the whole response on OkHttp's thread. OkHttp answers as soon as the
+     * headers arrive, so reading the body after resuming would do the socket reads on whichever
+     * thread the caller is on — the main thread, for a screen's button.
+     */
+    private suspend fun Call.await(): Answer = suspendCancellableCoroutine { continuation ->
         continuation.invokeOnCancellation { cancel() }
         enqueue(
             object : Callback {
@@ -258,15 +260,29 @@ class OkHttpFeedAccessApi(httpClient: OkHttpClient) : FeedAccessApi {
                 }
 
                 override fun onResponse(call: Call, response: Response) {
-                    continuation.resume(response)
+                    val answer =
+                        try {
+                            response.use { Answer(it.code, it.body?.let(::bounded)) }
+                        } catch (e: IOException) {
+                            continuation.resumeWithException(e)
+                            return
+                        }
+                    continuation.resume(answer)
                 }
             }
         )
     }
 
+    /** The body as text, or null when it is longer than any answer this endpoint gives. */
+    private fun bounded(body: ResponseBody): String? {
+        val source = body.source()
+        if (source.request(MOST_ANSWER_BYTES + 1)) return null
+        return source.buffer.readUtf8()
+    }
+
     private companion object {
         val JSON = "application/json".toMediaType()
-        const val MOST_ANSWER_CHARS = 64 * 1024
+        const val MOST_ANSWER_BYTES = 64L * 1024
 
         fun encode(bytes: ByteArray): String =
             Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
