@@ -26,7 +26,7 @@ class FeedHintContractTest {
             }
         )
 
-    private val relay = File(repoRoot, "feed-gateway/internal/relay/relay.go").readText()
+    private val relay = File(repoRoot, "services/gateway/internal/relay/relay.go").readText()
 
     @Test
     fun thePhoneAndTheRelayAgreeOnWhatAHintIs() {

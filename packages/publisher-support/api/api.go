@@ -2,10 +2,10 @@
 // it what to publish (SEE-95, docs/integrations/signal-api.md).
 //
 // It is plain JSON over HTTP on purpose. The document this template publishes is protobuf through
-// Connect (publisher-support/publish), because that is the contract the phone reads; what a strategy engine
+// Connect (packages/publisher-support/publish), because that is the contract the phone reads; what a strategy engine
 // sends *here* is this template's own affair, and something that can be written with `curl` in a
 // line is something a trading system in any language can call without generating anything. The CLI
-// in demo-copytrading/cmd/publishctl is a client of this API and nothing more, which is how the API stays the one
+// in examples/demo-signals/cmd/publishctl is a client of this API and nothing more, which is how the API stays the one
 // path in: one place validates, mints an identity, settles a revision and publishes.
 //
 // # What it will not take
@@ -14,7 +14,7 @@
 // decision or an execution result, and the decoder refuses a field the contract does not have
 // rather than dropping it — so a caller that believes this template keeps execution records is
 // told that it does not, instead of being answered 200 and quietly ignored. It is the same strict
-// decoding the gateway uses for the same reason (feed-gateway/internal/gateway/codec.go), and
+// decoding the gateway uses for the same reason (services/gateway/internal/gateway/codec.go), and
 // `boundary_test.go` tries all five words.
 //
 // # Authorization
@@ -31,7 +31,7 @@
 // (SEE-95). The Prediction template's are written by its own discovery, so those three answer 403
 // and say why, and two endpoints are added that show what discovery is doing: a template whose
 // proposals have two authors would be a template where a cycle silently undoes what somebody
-// posted (SEE-96, demo-prediction/internal/discovery).
+// posted (SEE-96, examples/demo-prediction/internal/discovery).
 package api
 
 import (
@@ -91,7 +91,7 @@ type Markets interface {
 // Filters answers a described map rather than a filter type on purpose. What a publisher looks for
 // is its own demo's affair — a provider, its buckets, its named filters — and this frame is shared
 // by demos that have no provider at all, so it renders what the demo says it is looking for
-// without knowing what any of it means (demo-prediction/internal/discovery).
+// without knowing what any of it means (examples/demo-prediction/internal/discovery).
 type Cycles interface {
 	Filters() map[string]any
 	Pass(ctx context.Context) (markets.Cycle, error)

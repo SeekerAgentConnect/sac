@@ -18,7 +18,7 @@ import {
 } from "@seeker-vault/server-sdk/protocol";
 import { create } from "@bufbuild/protobuf";
 import { TRANSFER_TOOL } from "../requests/mcp-tools.ts";
-import { encodeBase58 } from "../../../server-sdk/src/requests/action.ts";
+import { encodeBase58 } from "../../../../packages/server-sdk/src/requests/action.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
 import {
   FakeChain,
@@ -35,7 +35,7 @@ import {
   type TestPhone,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { testWallet } from "../../../server-sdk/src/testing/wallet.ts";
+import { testWallet } from "../../../../packages/server-sdk/src/testing/wallet.ts";
 
 const MCP_TOKEN = "m".repeat(64);
 const PHONE_TOKEN = "p".repeat(64);

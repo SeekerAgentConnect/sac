@@ -17,7 +17,7 @@ class NetworkSecurityPolicyTest {
             checkNotNull(System.getProperty("seekervault.repoRoot")) {
                 "run this test through Gradle"
             },
-            "android/app/src",
+            "apps/android/app/src",
         )
 
     @Test

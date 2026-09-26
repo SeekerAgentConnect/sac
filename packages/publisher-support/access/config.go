@@ -7,7 +7,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/config"
 )
 
-// Config is a restricted feed's deployment settings, read beside publisher-support/config's.
+// Config is a restricted feed's deployment settings, read beside packages/publisher-support/config's.
 type Config struct {
 	// AuthOrigin is PUBLISHER_AUTH_ORIGIN: the public origin phones reach this publisher's
 	// authentication endpoint at, exactly as the gateway's operator registered it.

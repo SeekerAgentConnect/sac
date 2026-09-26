@@ -4,8 +4,8 @@ The source library the two public-feed demos share (SEE-134), and nothing else.
 
 **It is not a service.** There is no command in it, no `main` package, no Dockerfile, no compose
 file, no listener and no deployment. It is built only as part of a module that depends on it, and
-the two that do are [`demo-copytrading/`](../demo-copytrading) and
-[`demo-prediction/`](../demo-prediction).
+the two that do are [`examples/demo-signals/`](../../examples/demo-signals) and
+[`examples/demo-prediction/`](../../examples/demo-prediction).
 
 **It is not a published client product either.** There is no `feed-publisher-client` package here
 and none is planned. [`gateway/`](gateway) is an ordinary authenticated HTTP/Connect call to the
@@ -66,7 +66,7 @@ provider and imports no reconciler.
 ## Working on it
 
 ```sh
-cd publisher-support
+cd packages/publisher-support
 gofmt -l . && go vet ./... && go test ./...
 ```
 
@@ -82,11 +82,11 @@ pnpm check:demos      # the library and both demos, each on its own
 The generated code is regenerated, never edited:
 
 ```sh
-pnpm generate         # buf.gen.publisher-support.yaml writes publisher-support/gen
+pnpm generate         # buf.gen.publisher-support.yaml writes packages/publisher-support/gen
 pnpm check:generated  # and this fails if the committed output has drifted
 ```
 
 Developer internals and the verification commands are
-[`docs/development/demos.md`](../docs/development/demos.md). The deployment guides belong to the
-demos: [`demo-copytrading/README.md`](../demo-copytrading/README.md) and
-[`demo-prediction/README.md`](../demo-prediction/README.md).
+[`docs/development/demos.md`](../../docs/development/demos.md). The deployment guides belong to the
+demos: [`examples/demo-signals/README.md`](../../examples/demo-signals/README.md) and
+[`examples/demo-prediction/README.md`](../../examples/demo-prediction/README.md).

@@ -229,7 +229,7 @@ account in your own wallet**, so that whatever moves stays yours.
 | Testnet | The same faucet, rate-limited harder. Also worth nothing. |
 | Mainnet | There is no faucet. You fund it yourself, and everything below spends real money. |
 
-Nothing in this repository ever asks for an airdrop: `mcp-server/src/stage-boundary.test.ts` fails if
+Nothing in this repository ever asks for an airdrop: `servers/mcp-server/src/stage-boundary.test.ts` fails if
 `requestAirdrop` appears in any shipped source. The faucet is yours to use, from your own terminal.
 
 You need more than the amount you are sending: the network fee comes out of the same account, and a
@@ -312,7 +312,7 @@ So a mainnet check is never a default and never something a script decided for y
 - **You choose it, deliberately.** `.env.example` ships `SOLANA_RPC_URL=` empty, so a fresh clone
   prepares no transaction at all. No `package.json` script and no CI job sets it, and the only check
   in this repository that touches a real network reads devnet, needs no funds, and runs only with
-  `SEEKER_VAULT_NETWORK_CHECKS=1`. `mcp-server/src/stage-boundary.test.ts` fails if any of that stops
+  `SEEKER_VAULT_NETWORK_CHECKS=1`. `servers/mcp-server/src/stage-boundary.test.ts` fails if any of that stops
   being true.
 - **Use an amount you would not mind losing entirely.** 100000 lamports — 0.0001 SOL — is enough to
   prove the path. The network fee is usually about 5000 lamports on top.

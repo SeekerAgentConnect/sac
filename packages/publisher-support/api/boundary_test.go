@@ -19,7 +19,7 @@ import (
 //
 // These are the rules about the shared library. Each demo states the rules about itself over its
 // own module, because each is built, imaged and deployed on its own
-// (demo-copytrading/internal/boundary, demo-prediction/internal/boundary).
+// (examples/demo-signals/internal/boundary, examples/demo-prediction/internal/boundary).
 
 // root is this module, from this package.
 const root = ".."
@@ -38,7 +38,7 @@ func shipped(t *testing.T) map[string]string {
 			return nil
 		case strings.HasSuffix(path, "_test.go"):
 			return nil
-		// Generated from proto/ and never edited by hand; what is in it is settled by
+		// Generated from packages/protocol/proto/ and never edited by hand; what is in it is settled by
 		// buf.gen.publisher-support.yaml, which the next test is about.
 		case strings.Contains(path, filepath.FromSlash("/gen/")):
 			return nil
@@ -154,7 +154,7 @@ func TestATemplateDeliversNothingItself(t *testing.T) {
 //
 // A provider's own host is the other kind of address, and it is not here: it belongs to the one
 // demo written against that provider, which states that rule over its own module
-// (demo-prediction/internal/boundary).
+// (examples/demo-prediction/internal/boundary).
 func TestNoServiceAddressIsCompiledIn(t *testing.T) {
 	pattern := regexp.MustCompile(`https?://[^\s"'` + "`" + `]+`)
 	for path, source := range shipped(t) {

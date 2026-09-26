@@ -30,7 +30,7 @@ because they have the same words in their titles.
 
 ## The interface
 
-[`plugins/ExecutionProvider.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/ExecutionProvider.kt).
+[`plugins/ExecutionProvider.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/ExecutionProvider.kt).
 
 | | What it does |
 | --- | --- |
@@ -56,7 +56,7 @@ fetched.
 
 A publisher's terms used to be handed to a plugin as a bag of strings for it to parse. They are now
 read **once, by core**, against the action's own schema, before any provider is consulted
-([`plugins/actions/`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions)).
+([`plugins/actions/`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions)).
 
 That is not tidiness. A publisher is a stranger, every provider of an action has to refuse the same
 malformed document in the same way, and two providers parsing the same terms their own way is two
@@ -134,7 +134,7 @@ app updated between the review and the wallet does not sign for a venue it no lo
 
 Every document, manifest and stored row written before SEE-145 says the old thing, and all of them
 keep working — through **one explicit table** and nothing else
-([`plugins/Compatibility.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/Compatibility.kt)).
+([`plugins/Compatibility.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/Compatibility.kt)).
 
 `jupiter.swap` is **looked up, never parsed**. It is not read as "the provider `jupiter` doing the
 action `swap`", because a name that happens to contain a dot is not a structure; it means what
@@ -263,12 +263,12 @@ there is no flag to get wrong and nothing to strip.
 
 ## Where the rules for this live
 
-- [`plugins/ExecutionProvider.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/ExecutionProvider.kt) — the interface and what is handed over
-- [`plugins/ProviderRegistry.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/ProviderRegistry.kt) — resolution and its reasons
-- [`plugins/Compatibility.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/Compatibility.kt) — the legacy table
-- [`plugins/actions/`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions) — the action payloads and the owner's inputs
-- [`jupiter/JupiterExecutionProvider.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt) — the first bundled adapter
-- [`proposals/ProposalBinding.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/proposals/ProposalBinding.kt) — what a review is bound to
+- [`plugins/ExecutionProvider.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/ExecutionProvider.kt) — the interface and what is handed over
+- [`plugins/ProviderRegistry.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/ProviderRegistry.kt) — resolution and its reasons
+- [`plugins/Compatibility.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/Compatibility.kt) — the legacy table
+- [`plugins/actions/`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions) — the action payloads and the owner's inputs
+- [`jupiter/JupiterExecutionProvider.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt) — the first bundled adapter
+- [`proposals/ProposalBinding.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/proposals/ProposalBinding.kt) — what a review is bound to
 - [client-plugins.md](client-plugins.md), [jupiter-swap.md](jupiter-swap.md),
   [jupiter-prediction.md](jupiter-prediction.md), [environments.md](environments.md),
   [common-requests.md](common-requests.md), [../integrations/jupiter.md](../integrations/jupiter.md)

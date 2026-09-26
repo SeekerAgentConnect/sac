@@ -14,9 +14,9 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
-const REPOSITORY_ROOT = resolve(PACKAGE_ROOT, "..");
+const REPOSITORY_ROOT = resolve(PACKAGE_ROOT, "..", "..");
 const DIST = join(PACKAGE_ROOT, "dist");
-const SDK_DIST = join(REPOSITORY_ROOT, "server-sdk", "dist");
+const SDK_DIST = join(REPOSITORY_ROOT, "packages", "server-sdk", "dist");
 const VENDORED_SDK = join(DIST, "vendor", "server-sdk");
 const STAGED = join(PACKAGE_ROOT, "package");
 const PAGE_DIST = join(DIST, "pairing", "page");

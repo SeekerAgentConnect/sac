@@ -3,10 +3,10 @@ import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
+import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
-import { parsePairingUri } from "../../../server-sdk/src/pairing/uri.ts";
+import { PairingStore } from "../../../../packages/server-sdk/src/storage/pairing-store.ts";
+import { parsePairingUri } from "../../../../packages/server-sdk/src/pairing/uri.ts";
 
 const CLI = fileURLToPath(new URL("../cli.ts", import.meta.url));
 const MCP_TOKEN = "m".repeat(64);

@@ -89,17 +89,17 @@ If a step fails, look it up in [`troubleshooting.md`](troubleshooting.md).
 9. **Build the app** from the terminal:
 
    ```bash
-   (cd android && ./gradlew :app:assembleDebug)
+   (cd apps/android && ./gradlew :app:assembleDebug)
    ```
 
-   The first build downloads Gradle, the Temurin 21 JDK, and the Android libraries, so it takes several minutes. Later builds take seconds. The result is the debug APK, `android/app/build/outputs/apk/debug/app-debug.apk` (about 37 MB).
+   The first build downloads Gradle, the Temurin 21 JDK, and the Android libraries, so it takes several minutes. Later builds take seconds. The result is the debug APK, `apps/android/app/build/outputs/apk/debug/app-debug.apk` (about 37 MB).
 
    Optionally, run the full checks too: `pnpm check` and `pnpm check:android`.
 
 10. **Or open the project in Android Studio.** Choose **Open**, select the `android` folder inside the repository (not the repository root), and trust the project. Studio then syncs the project with Gradle. Wait until the sync finishes and the `app` run configuration appears in the toolbar.
     - Studio and the terminal use the same Gradle wrapper, the same Temurin 21, and the same caches, so you can switch between them freely.
     - If Studio offers to upgrade the Android Gradle Plugin or Gradle, decline. The versions are pinned.
-    - Studio writes the SDK path to `android/local.properties`. Git ignores that file.
+    - Studio writes the SDK path to `apps/android/local.properties`. Git ignores that file.
 
 ## Part 3: Prepare the Seeker (once)
 
@@ -122,10 +122,10 @@ If a step fails, look it up in [`troubleshooting.md`](troubleshooting.md).
 16. **Install the APK** from the terminal:
 
     ```bash
-    adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+    adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
     ```
 
-    adb prints `Performing Streamed Install`, then `Success`. The `-r` flag replaces an installed copy. `(cd android && ./gradlew :app:installDebug)` builds and installs in one step.
+    adb prints `Performing Streamed Install`, then `Success`. The `-r` flag replaces an installed copy. `(cd apps/android && ./gradlew :app:installDebug)` builds and installs in one step.
 
     **Or from Android Studio:** choose the Seeker in the device menu on the toolbar and click **Run ▶**. Studio builds, installs, and launches the app.
 
@@ -251,7 +251,7 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolch
 | Check | Result |
 | --- | --- |
 | Part 2: `nvm install`, `corepack enable pnpm`, `pnpm install --frozen-lockfile` | PASS: Node.js v24.21.0, pnpm 12.3.4 |
-| Part 2: `./gradlew :app:assembleDebug` | PASS: `android/app/build/outputs/apk/debug/app-debug.apk`, 37,402,109 bytes. `aapt2` shows the package `io.github.brrenat.seekervault`, the launchable activity `MainActivity`, and target SDK 37. |
+| Part 2: `./gradlew :app:assembleDebug` | PASS: `apps/android/app/build/outputs/apk/debug/app-debug.apk`, 37,402,109 bytes. `aapt2` shows the package `io.github.brrenat.seekervault`, the launchable activity `MainActivity`, and target SDK 37. |
 | Part 5: `.env` from the example, `pnpm dev:mcp-server`, `/healthz` | PASS: both placeholders replaced; the outputs are shown above |
 | Part 6 with no phone connected | PASS: OFFLINE, exit code 4 |
 | Part 6 with the sidecar's Connect test client standing in for the phone | PASS: exit code 0. The printed ID matched the command the client received and the sidecar's log. This covers the Mac side only and is not a device pass. |
@@ -261,7 +261,7 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`toolch
 | The app after a failed first connection | PASS in JVM tests. A closed port maps to Unreachable, and the screen names the URL and the `adb reverse` command. |
 | Repository checks with this change | PASS: `pnpm check`, `pnpm check:android` (42/42 unit tests, lint with no issues, debug APK), `pnpm check:generated`, `pnpm build` |
 | Parts 3 to 6 on the Seeker: Developer options, USB debugging, authorization, `adb install`, launch, logcat, `adb reverse`, Connect, and OK | PASS, reported by the owner on 2026-09-11, on their Seeker (Android 16, API 36). Not run during the scripted walkthrough, when no Seeker was attached. |
-| Android Studio: open `android/`, sync, and Run | NOT RUN: Android Studio isn't installed on the verification Mac |
+| Android Studio: open `apps/android/`, sync, and Run | NOT RUN: Android Studio isn't installed on the verification Mac |
 | Step 29, after reconnecting USB | NOT RUN. No Seeker was attached during the walkthrough, and the owner's run didn't record this step. |
 | A JDK older than 17 | NOT RUN: no such JDK on the verification Mac |
 

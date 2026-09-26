@@ -14,7 +14,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 )
 
-// Publisher is the write API: PublisherService (proto/seekervault/gateway/v1/publish.proto).
+// Publisher is the write API: PublisherService (packages/protocol/proto/seekervault/gateway/v1/publish.proto).
 //
 // Every method reads the caller's server from the credential and the document's claim separately,
 // and refuses them when they disagree. That is the one rule the whole service rests on: a

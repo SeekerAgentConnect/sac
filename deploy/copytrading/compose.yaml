@@ -4,7 +4,7 @@ services:
   copytrading:
     build:
       context: ../..
-      dockerfile: demo-copytrading/Dockerfile
+      dockerfile: examples/demo-signals/Dockerfile
     image: ${COPYTRADING_IMAGE:-seeker-publisher/copytrading:local}
     restart: unless-stopped
     environment:
@@ -39,7 +39,7 @@ services:
     profiles: [operator]
     build:
       context: ../..
-      dockerfile: demo-copytrading/Dockerfile
+      dockerfile: examples/demo-signals/Dockerfile
     image: ${COPYTRADING_IMAGE:-seeker-publisher/copytrading:local}
     entrypoint: ["/publishctl"]
     environment:
@@ -54,7 +54,7 @@ services:
     profiles: [admin]
     build:
       context: ../..
-      dockerfile: demo-copytrading/Dockerfile
+      dockerfile: examples/demo-signals/Dockerfile
     image: ${COPYTRADING_IMAGE:-seeker-publisher/copytrading:local}
     entrypoint: ["/copytrading-admin"]
     restart: unless-stopped
@@ -82,7 +82,7 @@ services:
     profiles: [operator]
     build:
       context: ../..
-      dockerfile: demo-copytrading/Dockerfile
+      dockerfile: examples/demo-signals/Dockerfile
     image: ${COPYTRADING_IMAGE:-seeker-publisher/copytrading:local}
     entrypoint: ["/copytrading-admin"]
     cap_drop: [ALL]

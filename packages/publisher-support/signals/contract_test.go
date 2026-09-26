@@ -19,7 +19,7 @@ import (
 // phone refuses, and the first sign of either would be a signal that nobody can see.
 //
 // It skips when the file is not there, which is what a copied-out template looks like.
-const gatewayRules = "../../feed-gateway/internal/rules/rules.go"
+const gatewayRules = "../../../services/gateway/internal/rules/rules.go"
 
 func TestTheBoundsAreTheGatewaysOwn(t *testing.T) {
 	source, err := os.ReadFile(gatewayRules)
@@ -96,7 +96,7 @@ func TestTheChannelIsTheGatewaysOwn(t *testing.T) {
 // term names and what a publisher may write — belongs to the action, in `plugins/actions/`, and
 // what the venue will actually accept — which mints, what its smallest order is — belongs to
 // whoever executes it, in `jupiter/`. This side has to agree with both, so both are read.
-const phoneSource = "../../android/app/src/main/java/io/github/brrenat/seekervault/"
+const phoneSource = "../../../apps/android/app/src/main/java/io/github/brrenat/seekervault/"
 
 var phoneSwapTerms = []string{
 	phoneSource + "plugins/actions/SwapAction.kt",

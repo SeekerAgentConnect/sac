@@ -156,7 +156,7 @@ still true:
 
 - **Firebase isn't configured in this debug build** (`Default FirebaseApp failed to initialize`),
   so there is no background push, no notification channel, and no `POST_NOTIFICATIONS` prompt.
-  Adding `android/app/google-services.json` (`docs/guides/firebase.md`) is the whole fix on the
+  Adding `apps/android/app/google-services.json` (`docs/guides/firebase.md`) is the whole fix on the
   phone side; the gateway and seeker-mcp already hold their sending credentials.
 - **The deployed servers are behind the repository.** The gateway (`gateway-0.1.7`) answers 404
   to `POST /seekervault.gateway.v1.FeedService/GetFeedStatus`, and the staking server

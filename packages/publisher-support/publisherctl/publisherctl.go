@@ -30,7 +30,7 @@
 // in one demo, because both demos answer the same API and neither may import the other: two copies
 // of this would be two subtly different clients of one contract. It ships no command of its own —
 // this library is not deployable, and a demo's own module is what builds and images the tool
-// (publisher-support/go.mod).
+// (packages/publisher-support/go.mod).
 package publisherctl
 
 import (
@@ -184,7 +184,7 @@ func Run(arguments []string, out, messages io.Writer) error {
 	case "discovery":
 		// Only a template that discovers its own signals has this; the other answers 404 with
 		// `no_such_route`, which is the honest answer to asking a CopyTrading publisher what it is
-		// looking for (publisher-support/api).
+		// looking for (packages/publisher-support/api).
 		return client.call(http.MethodGet, "/v1/discovery", "", nil)
 
 	case "poll":

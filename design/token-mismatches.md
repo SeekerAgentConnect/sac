@@ -1,6 +1,6 @@
 # Design token cross-check
 
-Compared [`tokens.json`](./tokens.json) with the existing Kotlin theme in `android/designsystem/src/main/java/io/github/brrenat/seekervault/designsystem/theme/` (`Color.kt`, `Dimensions.kt`, `Shape.kt`, `Type.kt`, and `Theme.kt`). SEE-111 changes no Kotlin.
+Compared [`tokens.json`](./tokens.json) with the existing Kotlin theme in `apps/android/designsystem/src/main/java/io/github/brrenat/seekervault/designsystem/theme/` (`Color.kt`, `Dimensions.kt`, `Shape.kt`, `Type.kt`, and `Theme.kt`). SEE-111 changes no Kotlin.
 
 ## Result
 

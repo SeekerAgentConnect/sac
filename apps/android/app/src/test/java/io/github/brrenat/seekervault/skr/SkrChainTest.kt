@@ -142,7 +142,7 @@ class SkrChainTest {
                 }
             )
         val sources =
-            File(repoRoot, "android/app/src/main/java/io/github/brrenat/seekervault/skr")
+            File(repoRoot, "apps/android/app/src/main/java/io/github/brrenat/seekervault/skr")
                 .walk()
                 .filter { it.extension == "kt" }
                 .toList()

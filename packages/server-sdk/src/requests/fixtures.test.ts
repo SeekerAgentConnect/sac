@@ -40,7 +40,7 @@ import { checkRef } from "./identity.ts";
 // tests (RequestProtocolFixturesTest) check the same .binpb files, so all three implementations
 // agree.
 const FIXTURES = new URL(
-  "../../../proto/fixtures/seekervault/request/v1/",
+  "../../../protocol/proto/fixtures/seekervault/request/v1/",
   import.meta.url,
 );
 

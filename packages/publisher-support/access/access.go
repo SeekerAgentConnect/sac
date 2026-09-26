@@ -4,7 +4,7 @@
 // becomes.
 //
 // It is shared library code for any publisher built on publisher-support. The demo that ships it is
-// demo-copytrading, which runs restricted; demo-prediction stays public and never constructs a
+// demo-signals (CopyTrading), which runs restricted; demo-prediction stays public and never constructs a
 // [Service]. The decision itself is pluggable: [ManualApproval] leaves every request for an
 // operator, and a publisher with its own rule — a subscription, a feature entitlement — implements
 // [Eligibility] instead.

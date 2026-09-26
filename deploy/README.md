@@ -127,7 +127,7 @@ docker compose --env-file deploy/mcp/.env \
 docker inspect --format '{{json .State.Health}}' seeker-agent-connect-mcp-mcp-server-1
 docker compose --env-file deploy/mcp/.env \
   -f deploy/mcp/compose.yaml -f deploy/mcp/compose.tls.yaml exec mcp-server \
-  node mcp-server/dist/healthcheck.js
+  node servers/mcp-server/dist/healthcheck.js
 curl --http2 -sS -o /dev/null -w '%{http_code}\n' https://direct.example.com:8443/healthz
 ```
 
@@ -144,7 +144,7 @@ It must print `2`. Pair the phone from the same container and add the resulting 
 ```sh
 docker compose --env-file deploy/mcp/.env \
   -f deploy/mcp/compose.yaml -f deploy/mcp/compose.tls.yaml exec mcp-server \
-  node mcp-server/dist/cli.js pair
+  node servers/mcp-server/dist/cli.js pair
 ```
 
 The phone should show the connection as Live. That is the deployed bidirectional UpdateService
@@ -349,9 +349,9 @@ docker compose --env-file deploy/prediction/.env \
 ```
 
 Provider, Firebase, OAuth, and alternate Redis configuration are optional boundaries, not clean-host
-prerequisites. See the [prediction guide](../demo-prediction/README.md),
+prerequisites. See the [prediction guide](../examples/demo-prediction/README.md),
 [Firebase guide](../docs/guides/firebase.md), [OAuth guide](../docs/integrations/claude.md), and
-[feed gateway guide](../feed-gateway/README.md) when enabling them.
+[feed gateway guide](../services/gateway/README.md) when enabling them.
 
 ## 6. Restart and recovery acceptance
 
@@ -439,7 +439,7 @@ with `docker compose down` leaves its explicitly named volume intact.
 
 - `address already in use`: compare the port table with `docker compose config`; direct is 8443
   and feed read is 8090 in the combined layout.
-- unhealthy MCP container: run `node mcp-server/dist/healthcheck.js` inside it. Check the public
+- unhealthy MCP container: run `node servers/mcp-server/dist/healthcheck.js` inside it. Check the public
   hostname, certificate chain, mounted key, and optional health CA path.
 - MCP works but the phone never becomes Live: confirm native TLS negotiated h2 and that no HTTP/1
   proxy terminates the direct origin.
@@ -465,4 +465,4 @@ kept in [`docs/testing/see-137.md`](../docs/testing/see-137.md); unavailable liv
 - `doctl apps update 326326e6-43c2-4aa1-893c-a3607b77e6ef --spec deploy/prediction-demo.yaml`
 - `doctl apps update a7aba189-c59f-4e0b-a0b0-0ccd8442036b --spec deploy/signals-demo.yam`
 - `doctl apps update accce337-aab1-42ed-9768-3fc6c1ddc412 --spec deploy/seeker-gateway.yaml`
-- `android/gradlew -p android :app:assembleDebug -Pseekervault.relayUrl=https://seeker-gateway-sg8g3.ondigitalocean.app`
+- `apps/android/gradlew -p apps/android :app:assembleDebug -Pseekervault.relayUrl=https://seeker-gateway-sg8g3.ondigitalocean.app`

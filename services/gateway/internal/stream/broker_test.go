@@ -2,7 +2,7 @@
 // sends (SEE-91).
 //
 // stream_test.go pins the request against a fake. This drives the pinned Centrifugo release, with
-// **the configuration this repository ships** (feed-gateway/centrifugo.yaml), so what is proven is the
+// **the configuration this repository ships** (services/gateway/centrifugo.yaml), so what is proven is the
 // pair rather than either side's opinion: the API path, the key header, the base64 payload field,
 // the channel name the namespace accepts, and the idempotency key a retry must reuse.
 //
@@ -11,7 +11,7 @@
 //	SEEKERVAULT_CENTRIFUGO=/path/to/centrifugo go test ./internal/stream/ -run Broker -v
 //
 // The phone's own integration test starts two nodes and real Redis and drives the transport with
-// the real client (android/.../feeds/CentrifugoStreamIntegrationTest.kt). This one needs neither:
+// the real client (apps/android/.../feeds/CentrifugoStreamIntegrationTest.kt). This one needs neither:
 // what it asks is whether a publication is accepted, which one node and no Redis can answer.
 package stream
 

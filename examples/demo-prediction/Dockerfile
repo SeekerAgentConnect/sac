@@ -1,22 +1,22 @@
 # The Prediction demo's image, and only this demo's. Build from the repository
 # root:
-#   docker build -f demo-prediction/Dockerfile -t demo-prediction:local .
+#   docker build -f examples/demo-prediction/Dockerfile -t demo-prediction:local .
 #
 # The context is the repository root for one documented reason: this module's
-# go.mod replaces the shared source library with ../publisher-support, so the
+# go.mod replaces the shared source library with ../../packages/publisher-support, so the
 # build needs that directory as well as this one. It needs nothing else — and
-# demo-copytrading/ is never copied in, so no swap-writing API, no CopyTrading
+# examples/demo-signals/ is never copied in, so no swap-writing API, no CopyTrading
 # trader UI and no CopyTrading binary exists anywhere in this image (SEE-134).
 #
-# This is none of the other images. `feed-gateway/` is the shared service this
-# publishes to (SEE-90); `mcp-server/` is one owner's own direct server
+# This is none of the other images. `services/gateway/` is the shared service this
+# publishes to (SEE-90); `servers/mcp-server/` is one owner's own direct server
 # (SEE-132). This one discovers Jupiter Prediction markets and publishes those
 # (SEE-96, docs/wiki/prediction-template.md).
 #
 # Three binaries. `/prediction` is the entrypoint; `/publishctl` is the operator's
 # client of its API; `/prediction-admin` is the password-gated HTML UI (SEE-138).
 
-# Pinned to the version demo-prediction/go.mod requires, so a build from a clean
+# Pinned to the version examples/demo-prediction/go.mod requires, so a build from a clean
 # checkout uses the toolchain the tests were run with
 # (docs/development/toolchain.md).
 ARG GO_VERSION=1.27.1
@@ -27,17 +27,17 @@ ARG GO_VERSION=1.27.1
 # The compiler runs on the building machine's own platform and cross-compiles
 # for the target: CGO is off, so GOOS/GOARCH is all it takes, and `docker buildx
 # build --platform linux/amd64` from an Apple silicon Mac needs no emulation (as
-# in mcp-server/Dockerfile).
+# in servers/mcp-server/Dockerfile).
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS build
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src
-COPY publisher-support/go.mod publisher-support/go.sum ./publisher-support/
-COPY demo-prediction/go.mod demo-prediction/go.sum ./demo-prediction/
-WORKDIR /src/demo-prediction
+COPY packages/publisher-support/go.mod packages/publisher-support/go.sum ./packages/publisher-support/
+COPY examples/demo-prediction/go.mod examples/demo-prediction/go.sum ./examples/demo-prediction/
+WORKDIR /src/examples/demo-prediction
 RUN go mod download
-COPY publisher-support/ /src/publisher-support/
-COPY demo-prediction/ /src/demo-prediction/
+COPY packages/publisher-support/ /src/packages/publisher-support/
+COPY examples/demo-prediction/ /src/examples/demo-prediction/
 # CGO off, so the SQLite driver's pure-Go implementation is what gets compiled and
 # the binary needs no libc at run time. -trimpath keeps the build machine's paths
 # out of it.

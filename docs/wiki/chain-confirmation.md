@@ -1,7 +1,7 @@
 # Following sent transactions to the chain, on the phone (SEE-165)
 
 Before SEE-165 the phone stopped at "Sent to the network". A direct server could settle a transfer
-from the chain (SAW-022, `server-sdk/src/requests/confirmation.ts`), but only while that server was
+from the chain (SAW-022, `packages/server-sdk/src/requests/confirmation.ts`), but only while that server was
 reachable and asked; a feed operation — a swap, a prediction order — had nobody to ask at all.
 
 Now the phone follows every transaction its own wallet sent, from the phone, with nothing but a
@@ -106,7 +106,7 @@ What is stored about an endpoint is its **host** only; a configured URL can carr
 The phone's own, from the build, never a server's or a publisher's:
 
 ```
-android/gradlew -p android :app:assembleDebug \
+apps/android/gradlew -p apps/android :app:assembleDebug \
   -Pseekervault.solanaRpc.mainnet=https://… \
   -Pseekervault.solanaRpc.devnet=https://… \
   -Pseekervault.solanaRpc.testnet=https://…

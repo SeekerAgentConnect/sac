@@ -27,9 +27,9 @@ class RelayContractTest {
             }
         )
 
-    private val direct = File(repoRoot, "feed-gateway/internal/relay/direct.go").readText()
-    private val sidecar = File(repoRoot, "server-sdk/src/push/invalidation.ts").readText()
-    private val contract = File(repoRoot, "feed-gateway/internal/pushrelay/wire.go").readText()
+    private val direct = File(repoRoot, "services/gateway/internal/relay/direct.go").readText()
+    private val sidecar = File(repoRoot, "packages/server-sdk/src/push/invalidation.ts").readText()
+    private val contract = File(repoRoot, "services/gateway/internal/pushrelay/wire.go").readText()
 
     @Test
     fun theGatewayRelaysExactlyTheInvalidationTheSidecarSends() {

@@ -38,14 +38,14 @@ import (
 // what this service is.
 
 // repo is the repository root, from the package directory the test runs in.
-const repo = "../../.."
+const repo = "../../../.."
 
-// shipped lists the Go files the gateway is built from: everything under feed-gateway/ except the
+// shipped lists the Go files the gateway is built from: everything under services/gateway/ except the
 // tests and the generated code.
 func shipped(t *testing.T) map[string]string {
 	t.Helper()
 	sources := map[string]string{}
-	root := filepath.Join(repo, "feed-gateway")
+	root := filepath.Join(repo, "services", "gateway")
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		switch {
 		case err != nil:
@@ -412,7 +412,7 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 		},
 		"problem.proto": {"problem", "field", "held_revision"},
 	} {
-		source, err := os.ReadFile(filepath.Join(repo, "proto", "seekervault", "gateway", "v1", file))
+		source, err := os.ReadFile(filepath.Join(repo, "packages", "protocol", "proto", "seekervault", "gateway", "v1", file))
 		if err != nil {
 			t.Fatal(err)
 		}

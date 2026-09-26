@@ -20,7 +20,7 @@ class FeedBoundaryTest {
             }
         )
 
-    private val main = File(repoRoot, "android/app/src/main")
+    private val main = File(repoRoot, "apps/android/app/src/main")
 
     private val sources =
         File(main, "java")
@@ -70,14 +70,14 @@ class FeedBoundaryTest {
      * An upgrade that moved one of these would be a wire break, and a silent one: protobuf would
      * hand the adapter a default value rather than an error, so a listener would quietly stop
      * recovering or stop noticing a disconnect. This is what makes an upgrade of
-     * `third_party/centrifugo` say something (see its README).
+     * `packages/protocol/third_party/centrifugo` say something (see its README).
      */
     @Test
     fun theVendoredSchemaStillNumbersTheFieldsTheAdapterReads() {
         val schema =
             File(
                     repoRoot,
-                    "third_party/centrifugo/centrifugal/centrifugo/unistream/unistream.proto",
+                    "packages/protocol/third_party/centrifugo/centrifugal/centrifugo/unistream/unistream.proto",
                 )
                 .readText()
         // Per message, because these names repeat across them: three messages have an `epoch` and
@@ -134,10 +134,11 @@ class FeedBoundaryTest {
         pinned("Unsubscribe", "code" to 2, "reason" to 3)
         pinned("Disconnect", "code" to 1, "reason" to 2)
         // And the schema is still the release that was vendored, digest and all: `pnpm generate`
-        // refuses to run otherwise (third_party/centrifugo/README.md).
+        // refuses to run otherwise (packages/protocol/third_party/centrifugo/README.md).
         assertTrue(
             "SHA256SUMS names the schema",
-            "unistream.proto" in File(repoRoot, "third_party/centrifugo/SHA256SUMS").readText(),
+            "unistream.proto" in
+                File(repoRoot, "packages/protocol/third_party/centrifugo/SHA256SUMS").readText(),
         )
     }
 }

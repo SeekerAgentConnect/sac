@@ -4,14 +4,14 @@ clean: true
 # contracts are deliberately absent from this npm artifact.
 plugins:
   - local: protoc-gen-es
-    out: server-sdk/src/gen
+    out: packages/server-sdk/src/gen
     opt:
       - target=js+dts
       - import_extension=js
 inputs:
-  - directory: proto
+  - directory: packages/protocol/proto
     paths:
-      - proto/seekervault/live/v1
-      - proto/seekervault/request/v1
-      - proto/seekervault/server/v1
-      - proto/seekervault/update/v1
+      - packages/protocol/proto/seekervault/live/v1
+      - packages/protocol/proto/seekervault/request/v1
+      - packages/protocol/proto/seekervault/server/v1
+      - packages/protocol/proto/seekervault/update/v1

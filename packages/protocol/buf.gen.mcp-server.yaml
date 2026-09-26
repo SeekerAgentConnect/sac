@@ -4,11 +4,11 @@ clean: true
 # relocate feed packaging. It owns no direct generated binding after SEE-131.
 plugins:
   - local: protoc-gen-es
-    out: mcp-server/src/gen
+    out: servers/mcp-server/src/gen
     opt:
       - target=js+dts
       - import_extension=js
 inputs:
-  - directory: proto
+  - directory: packages/protocol/proto
     paths:
-      - proto/seekervault/proposal/v1
+      - packages/protocol/proto/seekervault/proposal/v1

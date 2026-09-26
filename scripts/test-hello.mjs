@@ -17,7 +17,7 @@ import { parseArgs } from "node:util";
 import {
   freePort,
   startSidecarProcess,
-} from "../mcp-server/src/testing/process.ts";
+} from "../servers/mcp-server/src/testing/process.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const TEXT = "Hello Seeker — device check 👋";
@@ -33,7 +33,11 @@ function simulated() {
   );
   const run = spawnSync(
     process.execPath,
-    ["--test", "--test-reporter=spec", "test-agent/src/stage1.acceptance.ts"],
+    [
+      "--test",
+      "--test-reporter=spec",
+      "tools/test-agent/src/stage1.acceptance.ts",
+    ],
     { cwd: ROOT, stdio: "inherit" },
   );
   return run.status ?? 1;
@@ -126,10 +130,10 @@ async function device() {
     const argument = (name, value) =>
       `-Pandroid.testInstrumentationRunnerArguments.${name}=${value}`;
     gradle = spawn(
-      join(ROOT, "android", "gradlew"),
+      join(ROOT, "apps", "android", "gradlew"),
       [
         "-p",
-        join(ROOT, "android"),
+        join(ROOT, "apps", "android"),
         ":app:connectedDebugAndroidTest",
         argument("serverUrl", `http://127.0.0.1:${port}`),
         argument("phoneToken", phoneToken),
@@ -158,7 +162,7 @@ async function device() {
 
     const agent = await run(
       process.execPath,
-      [join(ROOT, "test-agent", "src", "main.ts"), "hello", TEXT],
+      [join(ROOT, "tools", "test-agent", "src", "main.ts"), "hello", TEXT],
       {
         cwd: ROOT,
         env: {

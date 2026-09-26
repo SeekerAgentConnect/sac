@@ -1,5 +1,5 @@
 {
-  "_comment": "SEE-156: the restricted-feed wallet challenge, pinned on both sides (publisher-support/access/proof_test.go, android .../access/AccessProofTest.kt). The wallet key is Ed25519 from the seed 0x01..0x20; its signature is over message exactly.",
+  "_comment": "SEE-156: the restricted-feed wallet challenge, pinned on both sides (packages/publisher-support/access/proof_test.go, android .../access/AccessProofTest.kt). The wallet key is Ed25519 from the seed 0x01..0x20; its signature is over message exactly.",
   "attempt": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "auth_origin": "https://auth.copytrading.example.com",
   "channel": "server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",

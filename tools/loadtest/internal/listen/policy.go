@@ -7,7 +7,7 @@ import (
 
 // The decisions a listener makes, ported from the phone's own (SEE-99).
 //
-// `android/.../feeds/FeedRecovery.kt` is the original, and this is deliberately a translation of it
+// `apps/android/.../feeds/FeedRecovery.kt` is the original, and this is deliberately a translation of it
 // rather than a second opinion: the same disconnect-code ranges, the same order of tests for
 // whether continuity was proven, and the same backoff. A harness with a reconnect policy of its own
 // would measure a client nobody ships — its recovery numbers would be about the harness, and its

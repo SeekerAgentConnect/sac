@@ -14,7 +14,7 @@ result round trip. Use the checks below as the follow-up on a host with OpenClaw
 ## Start the server first
 
 Choose the source, standalone Docker, or exact npm-tarball route in
-[`mcp-server/README.md`](../../mcp-server/README.md). Keep the process running and confirm:
+[`servers/mcp-server/README.md`](../../servers/mcp-server/README.md). Keep the process running and confirm:
 
 ```sh
 curl --fail http://127.0.0.1:8080/healthz

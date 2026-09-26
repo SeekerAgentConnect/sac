@@ -59,10 +59,10 @@ procedure, and restore/rollback constraints are maintained only in
 
 ## Application references
 
-- Direct application settings and source/npm starts: [`mcp-server/README.md`](../../mcp-server/README.md)
+- Direct application settings and source/npm starts: [`servers/mcp-server/README.md`](../../servers/mcp-server/README.md)
 - Hermes: [`docs/integrations/hermes.md`](../integrations/hermes.md)
 - OpenClaw: [`docs/integrations/openclaw.md`](../integrations/openclaw.md)
-- Feed operation and publisher registration: [`feed-gateway/README.md`](../../feed-gateway/README.md)
+- Feed operation and publisher registration: [`services/gateway/README.md`](../../services/gateway/README.md)
 - Feed publisher development: [`docs/guides/server-development.md`](server-development.md)
 - Optional Firebase: [`docs/guides/firebase.md`](firebase.md)
 - General troubleshooting: [`docs/guides/troubleshooting.md`](troubleshooting.md)

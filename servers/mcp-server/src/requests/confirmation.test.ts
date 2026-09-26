@@ -33,8 +33,8 @@ import {
   type TestPhone,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { testWallet } from "../../../server-sdk/src/testing/wallet.ts";
-import { encodeBase58 } from "../../../server-sdk/src/requests/action.ts";
+import { testWallet } from "../../../../packages/server-sdk/src/testing/wallet.ts";
+import { encodeBase58 } from "../../../../packages/server-sdk/src/requests/action.ts";
 import {
   GET_REQUEST_TOOL,
   TRANSFER_TOOL,

@@ -3,14 +3,14 @@
  *
  * The transport the gateway fans out through is Centrifugo v6 with Redis as its engine
  * (`docs/wiki/feed-gateway.md#the-transport-and-what-it-cannot-do`), and the shipped
- * `feed-gateway/centrifugo.yaml` is the configuration this starts it with — unchanged, because a run
+ * `services/gateway/centrifugo.yaml` is the configuration this starts it with — unchanged, because a run
  * against a configuration nobody deploys proves nothing about the one they do. Only the engine is
  * overridden, to memory: Redis is what makes two nodes one broker, and one node accepting a
  * publication is what this leg is about. Two nodes, a shared history and a failover are
  * `feeds/CentrifugoStreamIntegrationTest` on the phone's side, and SEE-99's at size.
  *
  * It is opt-in on purpose. The binary is 65 MB, is verified against the release checksums by hand
- * (`third_party/centrifugo/SHA256SUMS`), and is not vendored; a run without it says the stream leg
+ * (`packages/protocol/third_party/centrifugo/SHA256SUMS`), and is not vendored; a run without it says the stream leg
  * did not run rather than quietly passing. That is the same arrangement the Go tests use, and the
  * same variable: `SEEKERVAULT_CENTRIFUGO`.
  */
@@ -24,7 +24,7 @@ export const BROKER_API_KEY = "integration-api-key";
 export const BROKER_TOKEN_KEY = "integration-token-key";
 
 const CONFIG = fileURLToPath(
-  new URL("../../../feed-gateway/centrifugo.yaml", import.meta.url),
+  new URL("../../../../services/gateway/centrifugo.yaml", import.meta.url),
 );
 
 export interface Broker {

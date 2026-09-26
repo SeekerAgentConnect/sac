@@ -23,7 +23,7 @@ them as `screens/home.png`, `screens/requests.png`, `screens/wallet.png`, `scree
 
 ```sh
 pnpm run check:android
-cd android && ./gradlew designCompare
+cd apps/android && ./gradlew designCompare
 ```
 
 `designCompare` pairs both design-system component captures and app screen captures with the local

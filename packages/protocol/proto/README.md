@@ -1,6 +1,6 @@
 # proto
 
-The Protobuf contract between the sidecar and the Android app. It's the single source of truth for both, and a Buf module declared in the root `buf.yaml`.
+The Protobuf contract between the servers, the gateway and the Android app. It's the single source of truth for all of them, and a Buf module declared in [`packages/protocol/buf.yaml`](../buf.yaml). The generation templates beside it (`packages/protocol/buf.gen*.yaml`) each write into the component that owns the output; see [`docs/development/monorepo-layout.md`](../../../docs/development/monorepo-layout.md#the-protocol-and-its-generated-code).
 
 | Path | Contents |
 | --- | --- |
@@ -11,4 +11,4 @@ The Protobuf contract between the sidecar and the Android app. It's the single s
 
 After editing a `.proto` file or a fixture, run `pnpm generate` and commit the output. `pnpm check` runs `buf format` and `buf lint`, and `pnpm check:generated` fails if the committed output is stale.
 
-The flow, rules, and errors are in [`docs/protocol.md`](../docs/protocol.md), and the generator versions in [`docs/development/toolchain.md`](../docs/development/toolchain.md).
+The flow, rules, and errors are in [`docs/protocol.md`](../../../docs/protocol.md), and the generator versions in [`docs/development/toolchain.md`](../../../docs/development/toolchain.md).

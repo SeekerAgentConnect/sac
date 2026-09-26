@@ -21,8 +21,8 @@ import {
   requestClient,
 } from "../testing/clients.ts";
 import { temporaryDatabasePath } from "../testing/process.ts";
-import { PairingStore } from "../../../server-sdk/src/storage/pairing-store.ts";
-import { openDatabase } from "../../../server-sdk/src/storage/database.ts";
+import { PairingStore } from "../../../../packages/server-sdk/src/storage/pairing-store.ts";
+import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";
 import { CREATE_PAIRING_LINK_TOOL } from "./mcp-tool.ts";
 
 const MCP_TOKEN = "m".repeat(64);

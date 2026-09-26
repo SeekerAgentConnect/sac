@@ -8,7 +8,7 @@ It is written against the boundary [SEE-86](client-plugins.md) landed and takes 
 
 ## What a signal has to say
 
-A proposal carries at most 32 named terms and core interprets none of them ([shared proposals](shared-proposals.md)). These are the ones the `swap` payload reads, in [`plugins/actions/SwapAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/SwapAction.kt):
+A proposal carries at most 32 named terms and core interprets none of them ([shared proposals](shared-proposals.md)). These are the ones the `swap` payload reads, in [`plugins/actions/SwapAction.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/SwapAction.kt):
 
 | Term | Meaning | Rule |
 | --- | --- | --- |
@@ -28,7 +28,7 @@ A proposal carries at most 32 named terms and core interprets none of them ([sha
 
 ## What is the owner's
 
-The amount, and the slippage they will tolerate within the publisher's ceiling ([`plugins/actions/SwapInputs.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/SwapInputs.kt)). Both are collected in base units and whole basis points, because that is what the transaction carries and what a rule is written in. The amount is never suggested — how much of their own money to spend is the one thing the app has no opinion about — and the slippage starts at half a percent, or at the publisher's ceiling when that is tighter.
+The amount, and the slippage they will tolerate within the publisher's ceiling ([`plugins/actions/SwapInputs.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/SwapInputs.kt)). Both are collected in base units and whole basis points, because that is what the transaction carries and what a rule is written in. The amount is never suggested — how much of their own money to spend is the one thing the app has no opinion about — and the slippage starts at half a percent, or at the publisher's ceiling when that is tighter.
 
 Two sets of bounds are folded together before the owner sees a field: the publisher's, and the ones the provider serving the action declares. Jupiter sets neither a floor nor a ceiling for a swap — the owner's wallet is the real ceiling — so for this action the publisher's bounds are the ones that bind. Both are enforced again when the choice is read back, on the owner's own side of the boundary, so nothing is prepared for a number outside either.
 
@@ -106,15 +106,15 @@ Changing any parameter throws away what was prepared for the old one, because by
 
 | File | What is in it |
 | --- | --- |
-| [`plugins/actions/SwapAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/SwapAction.kt) | The action's payload and every rule a publisher's terms are held to — provider-neutral, read by core |
-| [`plugins/actions/SwapInputs.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/SwapInputs.kt) | The half that is the owner's: the amount and the slippage, and both sets of bounds folded together |
-| [`jupiter/JupiterSwapAction.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterSwapAction.kt) | Jupiter's half: the quote, the build, the inspection, and the offer it holds against the bytes it prepared |
-| [`jupiter/JupiterExecutionProvider.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt) | The provider itself, and `SWAP_CAPABILITY`: schema 1, mainnet, no floor or ceiling of Jupiter's own |
-| [`jupiter/JupiterProvider.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterProvider.kt), [`jupiter/SwapInstructions.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/SwapInstructions.kt), [`jupiter/SwapInspection.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/jupiter/SwapInspection.kt) | The two API calls, the instruction readers, and `inspectSwap` |
+| [`plugins/actions/SwapAction.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/SwapAction.kt) | The action's payload and every rule a publisher's terms are held to — provider-neutral, read by core |
+| [`plugins/actions/SwapInputs.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/SwapInputs.kt) | The half that is the owner's: the amount and the slippage, and both sets of bounds folded together |
+| [`jupiter/JupiterSwapAction.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterSwapAction.kt) | Jupiter's half: the quote, the build, the inspection, and the offer it holds against the bytes it prepared |
+| [`jupiter/JupiterExecutionProvider.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt) | The provider itself, and `SWAP_CAPABILITY`: schema 1, mainnet, no floor or ceiling of Jupiter's own |
+| [`jupiter/JupiterProvider.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterProvider.kt), [`jupiter/SwapInstructions.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/SwapInstructions.kt), [`jupiter/SwapInspection.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/SwapInspection.kt) | The two API calls, the instruction readers, and `inspectSwap` |
 
 ## Where the rules for this live
 
-- The boundary and what a provider may not reach: [`client-plugins.md`](client-plugins.md), enforced by [`StageBoundaryTest`](../../android/app/src/test/java/io/github/brrenat/seekervault/StageBoundaryTest.kt). The extension contract in full: [`execution-providers.md`](execution-providers.md).
+- The boundary and what a provider may not reach: [`client-plugins.md`](client-plugins.md), enforced by [`StageBoundaryTest`](../../apps/android/app/src/test/java/io/github/brrenat/seekervault/StageBoundaryTest.kt). The extension contract in full: [`execution-providers.md`](execution-providers.md).
 - The API, its endpoints, its limits and its failures: [`integrations/jupiter.md`](../integrations/jupiter.md).
 - What is bound before a wallet opens: [`shared-proposals.md`](shared-proposals.md#what-a-signature-is-bound-to).
 - Why validation is judged before a rule, and never softened by one: [`security.md`](../security.md#verification-versus-advisory-rules).

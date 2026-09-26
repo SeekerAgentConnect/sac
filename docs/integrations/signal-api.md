@@ -10,7 +10,7 @@ Connect ([`docs/protocol.md`](../protocol.md)). What you send here is deliberate
 template supplies its registered capability, feed audience, Signal presentation and local-input
 declarations.
 
-The tool in [`demo-copytrading/cmd/publishctl`](../../demo-copytrading/cmd/publishctl) is a client
+The tool in [`examples/demo-signals/cmd/publishctl`](../../examples/demo-signals/cmd/publishctl) is a client
 of exactly these endpoints and has no privileged path of its own, so anything it does, your program
 can do.
 
@@ -120,7 +120,7 @@ whoever wrote the signal.
 
 The reason the two agree that closely is that the frame is one piece of source: the authorization,
 the routing, the strict decoding and the shape of every refusal are
-[`publisher-support/api`](../../publisher-support/api), written once and read by both. Everything
+[`packages/publisher-support/api`](../../packages/publisher-support/api), written once and read by both. Everything
 around it is each demo's own, and since SEE-134 that includes the Go module and the image: its own
 listener, its own `PUBLISHER_API_TOKEN`, its own database, its own server ID and credential, and its
 own declaration of who writes its signals. They are two publishers that answer alike, not two doors
@@ -149,7 +149,7 @@ curl -sS https://signals.example.com/v1/requests \
   }'
 ```
 
-The Go client in `demo-copytrading/sdk` calls that same endpoint:
+The Go client in `examples/demo-signals/sdk` calls that same endpoint:
 
 ```go
 client, _ := sdk.New(sdk.Options{URL: apiURL, Token: token})

@@ -16,7 +16,7 @@ import (
 
 // These tests drive the API from outside, through the shared harness, because that harness is also
 // what the Prediction demo's own tests use: one driver, one fake gateway, one opinion of what the
-// real one does (publisher-support/publishertest).
+// real one does (packages/publisher-support/publishertest).
 
 type (
 	fakeGateway = publishertest.FakeGateway

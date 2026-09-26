@@ -3,11 +3,11 @@
  * Direct Server SDK stores durable requests (SAW-010): only storage packages import the file
  * system or SQLite, and only the SDK storage package runs durable SQL. SEE-137 gives the MCP
  * process one separate SQLite ownership transaction. SAW-019 lets the host read a chain, and only
- * from mcp-server/src/solana/, to build a
+ * from servers/mcp-server/src/solana/, to build a
  * transfer the owner reviews; it still sends nothing. SAW-048 authorizes an HTTP/2 listener and
  * UpdateService only in server.ts and the SDK's updates package, while durable cursors and
  * snapshots still go through the SDK's storage package. SAW-054 allows Firebase Admin only in
- * mcp-server/src/push/, SAW-055 stores one connection-owned target through the SDK's storage package,
+ * servers/mcp-server/src/push/, SAW-055 stores one connection-owned target through the SDK's storage package,
  * and SAW-056 sends only an audited content-free
  * invalidation after a durable commit. SAW-059 closes that optional push scope without giving the
  * sender a request body, credential, policy, transaction authority, or wallet operation. SEE-87
@@ -21,9 +21,9 @@ import { join, relative } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const ROOT = fileURLToPath(new URL("../../", import.meta.url));
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SRC = fileURLToPath(new URL("./", import.meta.url));
-const SDK_SRC = join(ROOT, "server-sdk/src");
+const SDK_SRC = join(ROOT, "packages/server-sdk/src");
 const STORAGE_IMPORT = /from "(node:)?(fs|fs\/promises|sqlite)"/;
 
 /** The sidecar's shipped sources: no tests, test helpers, or generated code. */
@@ -124,12 +124,12 @@ describe("stage boundary", () => {
     const outside = sources.filter((file) => {
       const path = relative(ROOT, file);
       return (
-        !path.startsWith("mcp-server/src/storage/") &&
-        !path.startsWith("server-sdk/src/storage/") &&
+        !path.startsWith("servers/mcp-server/src/storage/") &&
+        !path.startsWith("packages/server-sdk/src/storage/") &&
         // The /pair page's own bytes, and the path to the host's QR library beside them (SEE-149).
         // Neither file opens SQLite, and neither reads anything a request names.
-        path !== "server-sdk/src/pairing/link.ts" &&
-        path !== "mcp-server/src/pairing/landing-page.ts" &&
+        path !== "packages/server-sdk/src/pairing/link.ts" &&
+        path !== "servers/mcp-server/src/pairing/landing-page.ts" &&
         STORAGE_IMPORT.test(readFileSync(file, "utf8"))
       );
     });
@@ -153,7 +153,7 @@ describe("stage boundary", () => {
     const outside = [...shippedSources(), ...sdkSources()].filter((file) => {
       const path = relative(ROOT, file);
       return (
-        !path.startsWith("server-sdk/src/storage/") &&
+        !path.startsWith("packages/server-sdk/src/storage/") &&
         file !== ownership &&
         sql.test(readFileSync(file, "utf8"))
       );
@@ -450,18 +450,23 @@ describe("spending nothing by default", () => {
     return CLUSTER.test(text);
   }
 
-  /** Every package.json in the workspace: the root's and each directory's under it. */
+  /**
+   * Every package.json in the workspace: the root's and each directory's up to two levels under
+   * it, which covers the component groups (apps/, packages/, servers/, tools/, …) and their members.
+   */
   function manifests(): { path: string; json: Record<string, unknown> }[] {
-    const directories = [
-      ROOT,
-      ...readdirSync(ROOT, { withFileTypes: true })
+    const below = (parent: string) =>
+      readdirSync(parent, { withFileTypes: true })
         .filter(
           (entry) =>
             entry.isDirectory() &&
             !entry.name.startsWith(".") &&
             entry.name !== "node_modules",
         )
-        .map((entry) => join(ROOT, entry.name)),
+        .map((entry) => join(parent, entry.name));
+    const directories = [
+      ROOT,
+      ...below(ROOT).flatMap((directory) => [directory, ...below(directory)]),
     ];
     return directories
       .map((directory) => join(directory, "package.json"))
@@ -531,7 +536,7 @@ describe("spending nothing by default", () => {
     // It reads devnet's genesis hash and stops at a refusal, so it needs no funds; the gate is
     // what keeps it out of `pnpm test:transfer`, `pnpm check`, and CI.
     const acceptance = readFileSync(
-      join(ROOT, "test-agent/src/stage4.acceptance.ts"),
+      join(ROOT, "tools/test-agent/src/stage4.acceptance.ts"),
       "utf8",
     );
     const gate = acceptance.indexOf(

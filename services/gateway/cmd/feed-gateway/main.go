@@ -6,7 +6,7 @@
 //
 // It is not the `gateway/` directory's Caddy. That one is the reverse proxy in front of one
 // owner's private sidecar (SAW-035); this is a service of its own, run by whoever hosts the
-// public feed, with its own compose stack in feed-gateway/.
+// public feed, with its own compose stack in services/gateway/.
 //
 // Since SEE-144 it also relays private push for independently hosted direct MCP servers. That is
 // a wake-up and nothing else: a phone pairs with, streams from, synchronizes with and submits its

@@ -1,6 +1,6 @@
 # The MCP adapter, and what it is not (SEE-87)
 
-The Node application now packaged in `mcp-server/` used to *be* its MCP endpoint: `MCP_TOKEN` was required to start, `/mcp` was always mounted, and the agent tools reached the request store, the transaction preparer and the confirmation tracker directly. SEE-87 makes MCP one **optional adapter** over a core that stands without it.
+The Node application now packaged in `servers/mcp-server/` used to *be* its MCP endpoint: `MCP_TOKEN` was required to start, `/mcp` was always mounted, and the agent tools reached the request store, the transaction preparer and the confirmation tracker directly. SEE-87 makes MCP one **optional adapter** over a core that stands without it.
 
 Nothing about the existing private agent workflow changed. A deployment that has never heard of `MCP_ENABLED` serves exactly what it served before, with the same tool names, the same contracts, the same errors, and the same result delivery.
 
@@ -8,7 +8,7 @@ Nothing about the existing private agent workflow changed. A deployment that has
 
 Stage 7.1 introduces Go components that publish shared proposals. They are not MCP servers, and they are not this sidecar.
 
-| | **Node private-server adapter** (`mcp-server/`) | **Go broadcast publisher templates** (SEE-95, SEE-96) |
+| | **Node private-server adapter** (`servers/mcp-server/`) | **Go broadcast publisher templates** (SEE-95, SEE-96) |
 | --- | --- | --- |
 | What it is | The owner's own server, for their own agents | A developer's server, publishing to an audience |
 | Who it talks to | One paired phone, over an authenticated credential | The shared gateway (SEE-90, SEE-91), once per proposal |
@@ -32,7 +32,7 @@ flowchart TB
         Tools["requests/mcp-tools.ts<br>vault_* tools"]
     end
     Boundary["@seeker-vault/server-sdk<br>AgentRequests"]
-    subgraph core["server-sdk/ — reusable core"]
+    subgraph core["packages/server-sdk/ — reusable core"]
         Store["storage/request-store.ts<br>identity, idempotency, lifecycle"]
         Phone["phone-api.ts, requests/phone-service.ts<br>pairing/, updates/, push/"]
         Chain["provider interfaces<br>preparation and confirmation"]
@@ -55,7 +55,7 @@ What it deliberately does **not** do:
   engine; the adapter receives only the public facade, with no raw connection, credential or cache.
 - **It is not a way in.** Exposing a new adapter means writing one, compiling it in, and giving it its own authentication. Nothing here loads code or accepts an adapter at runtime.
 
-`mcp-server/src/stage-boundary.test.ts` and `mcp-server/src/sdk-boundary.test.ts` hold this: adapter files
+`servers/mcp-server/src/stage-boundary.test.ts` and `servers/mcp-server/src/sdk-boundary.test.ts` hold this: adapter files
 may not name `RequestStore`, `TransactionPreparer` or `ConfirmationTracker`; production host files
 may import only `@seeker-vault/server-sdk` or its documented `./protocol` export; nothing but
 `server.ts` may compose the endpoint; and no second store/lifecycle implementation exists there.

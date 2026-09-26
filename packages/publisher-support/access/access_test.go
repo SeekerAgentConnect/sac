@@ -272,7 +272,7 @@ func problemCode(t *testing.T, err error) string {
 // The challenge text is built from fields, and the phone builds the same bytes from the same fields
 // (fixtures/restricted-feeds/challenge.json). A wallet signature over the fixture verifies here.
 func TestTheChallengeIsTheSharedFixtureByteForByte(t *testing.T) {
-	raw, err := os.ReadFile("../../fixtures/restricted-feeds/challenge.json")
+	raw, err := os.ReadFile("../../../fixtures/restricted-feeds/challenge.json")
 	if err != nil {
 		t.Fatal(err)
 	}

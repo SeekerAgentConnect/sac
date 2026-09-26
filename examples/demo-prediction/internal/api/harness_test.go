@@ -15,7 +15,7 @@ import (
 
 // This demo's API is the shared frame composed with this demo's discovery, so it is tested the way
 // it is deployed: the real reconciler, the real store, the real drainer and the shared harness
-// (publisher-support/publishertest).
+// (packages/publisher-support/publishertest).
 
 type (
 	fakeGateway = publishertest.FakeGateway

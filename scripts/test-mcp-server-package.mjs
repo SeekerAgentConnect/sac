@@ -21,15 +21,15 @@ import { basename, join, resolve, sep } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { parsePairingUri } from "../server-sdk/src/index.ts";
+import { parsePairingUri } from "../packages/server-sdk/src/index.ts";
 import {
   connectAgent as connectTestAgent,
   pairingClient,
   requestClient,
-} from "../mcp-server/src/testing/clients.ts";
+} from "../servers/mcp-server/src/testing/clients.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const SOURCE_PACKAGE = join(ROOT, "mcp-server", "package");
+const SOURCE_PACKAGE = join(ROOT, "servers", "mcp-server", "package");
 const scratch = mkdtempSync(join(tmpdir(), "seeker-mcp-package-"));
 const artifacts = join(scratch, "artifacts");
 const localPrefix = join(scratch, "local-install");

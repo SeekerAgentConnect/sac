@@ -21,7 +21,7 @@ const (
 	MostPerPage     = 200
 )
 
-// Feed is the read-only client API: FeedService (proto/seekervault/gateway/v1/feed.proto).
+// Feed is the read-only client API: FeedService (packages/protocol/proto/seekervault/gateway/v1/feed.proto).
 //
 // Everything it serves is a document a publisher published, and every answer is derived from the
 // store at the moment it is read. It keeps no per-caller state of any kind — no session, no

@@ -2,7 +2,7 @@
 //
 //   pnpm check:loadtest
 //
-// It is separate from `pnpm check` for the reason `pnpm check:feed-gateway` is: it needs a toolchain
+// It is separate from `pnpm check` for the reason `pnpm check:gateway` is: it needs a toolchain
 // the Node checks do not. What it does **not** need is a broker, a gateway or Redis — the tests
 // here are the harness's own (its quantiles, its ported client policy, its profiles, its
 // boundaries), and the ones that drive real processes skip with a reason when the binaries are not
@@ -10,9 +10,9 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const directory = fileURLToPath(new URL("../loadtest", import.meta.url));
+const directory = fileURLToPath(new URL("../tools/loadtest", import.meta.url));
 
-// The version loadtest/go.mod requires, and the one docs/development/toolchain.md records as
+// The version tools/loadtest/go.mod requires, and the one docs/development/toolchain.md records as
 // tested. A newer Go builds it too; this is the message for a machine that has none.
 const version = "1.27.1";
 
@@ -38,8 +38,8 @@ if (unformatted !== "") {
   console.error(
     [
       "These files are not formatted:",
-      ...unformatted.split("\n").map((file) => `  loadtest/${file}`),
-      "Run `gofmt -w .` in loadtest/.",
+      ...unformatted.split("\n").map((file) => `  tools/loadtest/${file}`),
+      "Run `gofmt -w .` in tools/loadtest/.",
     ].join("\n"),
   );
   process.exit(1);

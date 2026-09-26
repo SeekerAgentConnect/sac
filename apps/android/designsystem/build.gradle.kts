@@ -77,7 +77,7 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
-    val designTokens = rootProject.layout.projectDirectory.file("../design/tokens.json")
+    val designTokens = rootProject.layout.projectDirectory.file("../../design/tokens.json")
     systemProperty("seekervault.designTokens", designTokens.asFile.absolutePath)
     inputs
         .file(designTokens)

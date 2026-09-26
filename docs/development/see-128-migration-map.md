@@ -468,7 +468,7 @@ Writable npm/source state now defaults to
 configurable. Existing source data and Docker `/data/sidecar.db` remain byte-compatible and are
 migrated only while all formats are offline. A process lock refuses simultaneous application
 owners while leaving the pairing operator command usable. Backup/upgrade/rollback mappings and
-the complete evidence matrix are in [`mcp-server/README.md`](../../mcp-server/README.md) and
+the complete evidence matrix are in [`mcp-server/README.md`](../../servers/mcp-server/README.md) and
 [`docs/testing/see-132.md`](../testing/see-132.md).
 
 ### SEE-133 implementation record

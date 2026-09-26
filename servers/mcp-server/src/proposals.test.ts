@@ -29,7 +29,7 @@ import {
 } from "./gen/seekervault/proposal/v1/proposal_pb.js";
 
 const FIXTURES = new URL(
-  "../../proto/fixtures/seekervault/proposal/v1/Proposal/",
+  "../../../packages/protocol/proto/fixtures/seekervault/proposal/v1/Proposal/",
   import.meta.url,
 );
 

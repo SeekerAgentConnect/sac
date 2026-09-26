@@ -4,7 +4,7 @@ A standalone MCP server that lets an agent ask its owner to stake, unstake, canc
 withdraw SKR, and reaches them through the review and wallet path Seeker Agent Connect already has.
 
 It is a **second, independent direct server**. It shares no database, no token and no listener with
-the general MCP server in `mcp-server/`, it connects to the phone as its own connection, and the two
+the general MCP server in `servers/mcp-server/`, it connects to the phone as its own connection, and the two
 can run side by side on one host because every configuration name it reads is its own.
 
 It never signs and never sends. It builds unsigned transactions from fresh chain state; the phone
@@ -46,7 +46,7 @@ From source, in a checkout:
 
 ```bash
 pnpm install
-cp skr-staking-server/.env.example .env      # then fill in the two required values
+cp servers/mcp-skr-staking/.env.example .env      # then fill in the two required values
 pnpm --filter @seeker-vault/skr-staking-server run dev
 ```
 
@@ -80,7 +80,7 @@ damaged rather than silently pairing something else.
 **From a shell on the host.**
 
 ```bash
-node --env-file-if-exists=.env skr-staking-server/src/cli.ts pair
+node --env-file-if-exists=.env servers/mcp-skr-staking/src/cli.ts pair
 ```
 
 That prints the same code three ways: a QR image, the `seekervault://pair` URI, and the HTTPS

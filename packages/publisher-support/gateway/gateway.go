@@ -326,7 +326,7 @@ func statusOf(status gatewayv1.PublishStatus) Status {
 // classify turns a failed publication into a [Refusal]: the gateway's own problem code where there
 // is one, and whether the identical document could ever be accepted.
 //
-// The grouping is the gateway's own (feed-gateway/internal/gateway/errors.go), read from the other
+// The grouping is the gateway's own (services/gateway/internal/gateway/errors.go), read from the other
 // side:
 //
 //   - **unavailable, aborted, internal, unknown, deadline** — the gateway, a proxy or the network,
@@ -379,7 +379,7 @@ func problemOf(err *connect.Error) string {
 }
 
 // Backoff is the delay before a publication is tried again: doubling from a second to a minute,
-// which is the gateway's own fan-out backoff (feed-gateway/internal/dispatch.Backoff).
+// which is the gateway's own fan-out backoff (services/gateway/internal/dispatch.Backoff).
 //
 // It is capped rather than unbounded because the thing being waited for is a service coming back,
 // and a minute is short enough that a signal published during an outage is broadcast promptly

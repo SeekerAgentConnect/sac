@@ -90,7 +90,7 @@ type Signal struct {
 // the document: no subscriber ever sees any of this.
 type Publication struct {
 	// The revision the gateway has confirmed it holds. Below the signal's own revision means there
-	// is something to publish, which is the whole of the outbox (publisher-support/store).
+	// is something to publish, which is the whole of the outbox (packages/publisher-support/store).
 	ConfirmedRevision uint64
 	// How many times publishing it has failed so far, and when the next attempt is due.
 	Attempts int
@@ -146,7 +146,7 @@ type Requirement struct {
 	MostContract uint32
 }
 
-// Kind is one thing a template publishes. A template registers exactly one: `demo-copytrading/cmd/copytrading`
+// Kind is one thing a template publishes. A template registers exactly one: `examples/demo-signals/cmd/copytrading`
 // registers [Swap], and the API, the store and the CLI know nothing else about what is being
 // proposed.
 type Kind interface {
@@ -405,7 +405,7 @@ func lower(value, fallback string) string {
 // in whitespace, key order or how a number was spelled are the same request — which is what a
 // retrying client actually sends — while a call that asks for different terms under the same key is
 // a conflict. The reconciler uses it too, for the same reason: it re-derives a market's statement
-// every cycle, and the key it would use is the same key (demo-prediction/internal/discovery).
+// every cycle, and the key it would use is the same key (examples/demo-prediction/internal/discovery).
 //
 // A non-empty title is part of identity for new statements. An empty title is omitted entirely so
 // a retry of a pre-title create still matches the digest that was stored (expiry and note, then
