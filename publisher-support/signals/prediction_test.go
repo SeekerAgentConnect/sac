@@ -33,7 +33,8 @@ func notPredicting(name string) map[string]string {
 
 // Every way a market's terms can be wrong, with the code the caller is told. The list is the
 // contract in docs/protocol.md#a-prediction-markets-terms-see-94, and the rules are
-// jupiter/PredictionTerms.kt's: a template must not publish a document the phone would refuse.
+// plugins/actions/PredictionAction.kt's: a template must not publish a document the phone would
+// refuse.
 func TestEveryWayAMarketsTermsCanBeWrong(t *testing.T) {
 	for _, one := range []struct {
 		name  string
