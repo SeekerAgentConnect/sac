@@ -170,11 +170,22 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 			t.Fatalf("the document a phone reads has a %q field:\n%s", absent, first)
 		}
 	}
-	for _, absent := range []string{"jup.ag", "http://", "https://"} {
-		if strings.Contains(first, absent) {
-			t.Fatalf("the document a phone reads carries %q, which no publisher may put on a "+
-				"phone's screen:\n%s", absent, first)
+	// Since SEE-157 the document does carry two addresses, and only those two: where the
+	// provider's own app and site keep this market. Anything else that looked like a link would
+	// be a publisher putting one on a phone's screen, which is still refused — so the two are
+	// counted rather than searched past.
+	page := `"https://jup.ag/prediction/fed-decision-in-october"`
+	for _, expected := range []string{
+		`"` + signals.ProviderDeepLink + `":` + page,
+		`"` + signals.ProviderWebURL + `":` + page,
+	} {
+		if !strings.Contains(first, expected) {
+			t.Fatalf("the document a phone reads does not carry %q:\n%s", expected, first)
 		}
+	}
+	if strings.Count(first, "http") != 2 || strings.Count(first, "jup.ag") != 2 {
+		t.Fatalf("the document a phone reads carries an address that is not the market's own "+
+			"page, which no publisher may put on a phone's screen:\n%s", first)
 	}
 
 	// The same document again, which is what a cycle that finds the same market sends.

@@ -292,6 +292,13 @@ func TestARealListingBecomesProposals(t *testing.T) {
 		t.Fatalf("terms %v", signal.Terms)
 	case signal.Terms[signals.LeastDeposit] != "5000000":
 		t.Fatalf("the provider's own floor is not in the terms: %v", signal.Terms)
+	// Where the owner carries on, which only this side knows: the page is addressed by the
+	// event's slug, and a phone left to compose one out of the market identifier lands near the
+	// market rather than on it (SEE-157).
+	case signal.Terms[signals.ProviderDeepLink] != first.Market.SourceURL:
+		t.Fatalf("the provider's own app link is not in the terms: %v", signal.Terms)
+	case signal.Terms[signals.ProviderWebURL] != first.Market.SourceURL:
+		t.Fatalf("the provider's own page is not in the terms: %v", signal.Terms)
 	}
 	// Nothing about a side, a stake or anybody: the terms are the market and the token, and that
 	// is the whole of what a prediction signal says.
