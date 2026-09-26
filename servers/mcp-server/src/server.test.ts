@@ -8,8 +8,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { Message } from "firebase-admin/messaging";
 
-import { AcknowledgementResult } from "@seeker-vault/server-sdk/protocol";
-import { Network } from "@seeker-vault/server-sdk/protocol";
+import { AcknowledgementResult } from "@seeker_agent_connect/server-sdk/protocol";
+import { Network } from "@seeker_agent_connect/server-sdk/protocol";
 import { DISPLAY_COMMAND_TOOL } from "./mcp-endpoint.ts";
 import { REQUEST_ACK_TOOL } from "./requests/mcp-tools.ts";
 import { FcmSender } from "./push/fcm.ts";

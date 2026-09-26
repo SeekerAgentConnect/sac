@@ -19,6 +19,12 @@ ARG GO_VERSION=1.27.1
 # for the target: CGO is off, so GOOS/GOARCH is all it takes, and `docker buildx
 # build --platform linux/amd64` from an Apple silicon Mac needs no emulation (as
 # in servers/mcp-server/Dockerfile).
+# Release identity (SEE-168). The defaults make a local `docker build` produce an image that is
+# honestly labelled as one, and .github/workflows/release.yml passes the released version and the
+# exact commit it was built from, so an image digest can always be traced back to a revision.
+ARG VERSION=0.0.0-dev
+ARG REVISION=unknown
+
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS build
 ARG TARGETOS
 ARG TARGETARCH
@@ -56,6 +62,17 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/feed-gateway ./cmd/feed-gateway 
 # everything else. A deployment that relays nothing still carries it: an image is
 # not conditional, and one bundle is a smaller thing to explain than two images.
 FROM scratch AS runtime
+ARG VERSION
+ARG REVISION
+LABEL org.opencontainers.image.title="Seeker Agent Connect feed gateway" \
+      org.opencontainers.image.description="The shared public feed gateway: publishers submit documents, subscribed phones read them." \
+      org.opencontainers.image.source="https://github.com/BrRenat/SeekerAgentConnect" \
+      org.opencontainers.image.url="https://github.com/BrRenat/SeekerAgentConnect" \
+      org.opencontainers.image.documentation="https://github.com/BrRenat/SeekerAgentConnect/blob/master/services/gateway/README.md" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="Seeker Agent Connect" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 # Where the state goes is the deployment's to say, and the image deliberately does not guess
 # (SEE-145). There are two answers now — BROADCAST_DATABASE_PATH for a file under /data, and

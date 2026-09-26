@@ -20,7 +20,7 @@ import {
   ConnectionMode,
   ServerEnvironment,
   ServerManifestSchema,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 import {
   manifestFingerprint,
   publishManifest,

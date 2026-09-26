@@ -21,8 +21,8 @@ describe("MCP host to Direct Server SDK boundary", () => {
       )) {
         const specifier = match[1] ?? "";
         if (
-          specifier !== "@seeker-vault/server-sdk" &&
-          specifier !== "@seeker-vault/server-sdk/protocol"
+          specifier !== "@seeker_agent_connect/server-sdk" &&
+          specifier !== "@seeker_agent_connect/server-sdk/protocol"
         ) {
           violations.push(
             `${relative(SOURCE, file)} imports unsupported SDK entry ${specifier}`,

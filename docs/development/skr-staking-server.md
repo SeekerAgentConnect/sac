@@ -53,7 +53,7 @@ stops being a different one (8090 against 8080).
 ```bash
 pnpm install
 cp servers/mcp-skr-staking/.env.example .env
-pnpm --filter @seeker-vault/skr-staking-server run dev
+pnpm --filter @seeker_agent_connect/mcp-skr-staking run dev
 ```
 
 Two values have no default: `SKR_STAKING_MCP_TOKEN` (`openssl rand -hex 32`) and
@@ -64,8 +64,8 @@ echoed, because an endpoint URL can carry an API key.
 ## Checks
 
 ```bash
-pnpm --filter @seeker-vault/skr-staking-server run typecheck
-pnpm --filter @seeker-vault/skr-staking-server run test
+pnpm --filter @seeker_agent_connect/mcp-skr-staking run typecheck
+pnpm --filter @seeker_agent_connect/mcp-skr-staking run test
 ```
 
 Both run in `pnpm check` with the rest of the workspace. The tests are offline: the account decoders

@@ -47,7 +47,7 @@ From source, in a checkout:
 ```bash
 pnpm install
 cp servers/mcp-skr-staking/.env.example .env      # then fill in the two required values
-pnpm --filter @seeker-vault/skr-staking-server run dev
+pnpm --filter @seeker_agent_connect/mcp-skr-staking run dev
 ```
 
 The two values with no default are `SKR_STAKING_MCP_TOKEN` (generate one with `openssl rand -hex 32`)

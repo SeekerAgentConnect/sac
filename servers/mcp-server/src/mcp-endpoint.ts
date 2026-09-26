@@ -26,9 +26,10 @@ import {
   type AgentRequests,
   type IssuedPairing,
   type LiveCommandBridge,
-} from "@seeker-vault/server-sdk";
+} from "@seeker_agent_connect/server-sdk";
 
 import { bearerToken, bearerTokenMatches } from "./auth.ts";
+import { VERSION } from "./version.ts";
 import {
   challenge,
   createAccessTokenVerifier,
@@ -117,7 +118,7 @@ export function createMcpEndpoint(
 
   function createServer(): McpServer {
     const server = new McpServer(
-      { name: "seeker-vault", version: "0.1.0" },
+      { name: "seeker-vault", version: VERSION },
       {
         instructions: instructionsFor(demoTools, core.transfers !== undefined),
       },

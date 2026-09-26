@@ -31,6 +31,12 @@ ARG GO_VERSION=1.27.1
 # for the target: CGO is off, so GOOS/GOARCH is all it takes, and `docker buildx
 # build --platform linux/amd64` from an Apple silicon Mac needs no emulation (as
 # in servers/mcp-server/Dockerfile).
+# Release identity (SEE-168). The defaults make a local `docker build` produce an image that is
+# honestly labelled as one, and .github/workflows/release.yml passes the released version and the
+# exact commit it was built from, so an image digest can always be traced back to a revision.
+ARG VERSION=0.0.0-dev
+ARG REVISION=unknown
+
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS build
 ARG TARGETOS
 ARG TARGETARCH
@@ -62,6 +68,17 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/copytrading ./cmd/copytrading \
 # roots the toolchain was built against and it is pinned by GO_VERSION with
 # everything else.
 FROM scratch AS runtime
+ARG VERSION
+ARG REVISION
+LABEL org.opencontainers.image.title="Seeker Agent Connect CopyTrading demo" \
+      org.opencontainers.image.description="A demonstration publisher: a trader's own signals, submitted to the shared feed gateway." \
+      org.opencontainers.image.source="https://github.com/BrRenat/SeekerAgentConnect" \
+      org.opencontainers.image.url="https://github.com/BrRenat/SeekerAgentConnect" \
+      org.opencontainers.image.documentation="https://github.com/BrRenat/SeekerAgentConnect/blob/master/examples/demo-signals/README.md" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="Seeker Agent Connect" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 # The signals this demo holds and what the gateway has confirmed about each. It
 # is the only writable path, and it is this demo's alone: the Prediction demo has

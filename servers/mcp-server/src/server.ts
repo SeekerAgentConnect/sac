@@ -40,8 +40,8 @@ import {
   type IssuedPairing,
   type LiveCommandBridge,
   type TransferProvider,
-} from "@seeker-vault/server-sdk";
-import { LiveCommandService } from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk";
+import { LiveCommandService } from "@seeker_agent_connect/server-sdk/protocol";
 
 import { DEFAULT_SOLANA_RPC_TIMEOUT_MS, type SidecarConfig } from "./config.ts";
 import { createMcpEndpoint, type McpEndpoint } from "./mcp-endpoint.ts";

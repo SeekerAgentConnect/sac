@@ -16,7 +16,7 @@ import { PublicKey } from "@solana/web3.js";
 import {
   invalidRelayReason,
   type RelayConfiguration,
-} from "@seeker-vault/server-sdk";
+} from "@seeker_agent_connect/server-sdk";
 
 /** The live diagnostic this server does not serve. The SDK wants a timeout; nothing uses it. */
 export const UNUSED_LIVE_COMMAND_TIMEOUT_SECONDS = 60;

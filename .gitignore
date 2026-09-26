@@ -3,6 +3,7 @@ node_modules/
 dist/
 build/
 servers/mcp-server/package/
+servers/mcp-skr-staking/package/
 *.tgz
 .gradle/
 .kotlin/

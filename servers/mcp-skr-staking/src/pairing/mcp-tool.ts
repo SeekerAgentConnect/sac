@@ -19,7 +19,7 @@ import {
   pairingLinkToolDescription,
   pairingLinkView,
   type IssuedPairing,
-} from "@seeker-vault/server-sdk";
+} from "@seeker_agent_connect/server-sdk";
 import { z } from "zod";
 
 export const CREATE_PAIRING_LINK_TOOL = "skr_create_pairing_link";

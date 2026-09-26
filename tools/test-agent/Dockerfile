@@ -28,7 +28,7 @@ WORKDIR /app
 COPY tools/test-agent/ tools/test-agent/
 # tsconfig.build.json excludes the tests and the stage acceptance suites, so the
 # image cannot run a scenario that creates requests.
-RUN pnpm --filter @seeker-vault/test-agent run build
+RUN pnpm --filter @seeker_agent_connect/test-agent run build
 
 # --- production dependencies ------------------------------------------------
 FROM deps AS prod-deps

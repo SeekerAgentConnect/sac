@@ -10,7 +10,8 @@ const SOURCE = join(ROOT, "src");
 interface PackageManifest {
   readonly exports: Record<string, unknown>;
   readonly files: string[];
-  readonly private: boolean;
+  readonly private?: boolean;
+  readonly publishConfig: { readonly access: string };
   readonly dependencies: Record<string, string>;
 }
 
@@ -21,7 +22,11 @@ describe("Direct Server SDK package boundary", () => {
     ) as unknown as PackageManifest;
     assert.deepEqual(Object.keys(manifest.exports).sort(), [".", "./protocol"]);
     assert.deepEqual(manifest.files, ["dist", "README.md", "LICENSE"]);
-    assert.equal(manifest.private, true);
+    // The package is published (SEE-168). The boundary it has to hold is the opposite of the one
+    // it used to: `private` must be gone, and a scoped package npm would otherwise publish
+    // privately must say it is public.
+    assert.equal(manifest.private, undefined);
+    assert.equal(manifest.publishConfig.access, "public");
     assert.deepEqual(Object.keys(manifest.dependencies).sort(), [
       "@bufbuild/protobuf",
       "@connectrpc/connect",

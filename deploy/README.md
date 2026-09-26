@@ -4,8 +4,16 @@ This is the canonical clean-host deployment guide for the repository. It covers 
 shapes: the direct MCP server only, public feeds only, or all four independently managed
 applications on one host. There is no all-in-one Compose project and no Tailscale dependency.
 
-The repository builds local images. It does not publish npm packages or container images, so keep
-this checkout on the deployment host or replace the local image names with artifacts you operate.
+The presets in this directory build local images from this checkout. Since SEE-168 the same
+services are also published to `ghcr.io/seekeragentconnect`, and every preset takes its image as a
+variable, so a deployment host needs no checkout at all:
+
+    MCP_SERVER_IMAGE=ghcr.io/seekeragentconnect/mcp-server:0.2.0 \
+      docker compose -f deploy/mcp/compose.yaml up -d
+
+[docs/guides/installation.md](../docs/guides/installation.md) has the published images, the
+variable for each one, a checkout-free Compose file and the migration table from the previous
+Docker Hub names.
 
 ## 1. Choose a deployment
 

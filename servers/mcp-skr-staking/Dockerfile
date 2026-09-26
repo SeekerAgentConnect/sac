@@ -6,6 +6,12 @@
 ARG NODE_VERSION=24.21.0
 ARG PNPM_VERSION=12.3.4
 
+# Release identity (SEE-168). The defaults make a local `docker build` produce an image that is
+# honestly labelled as one, and .github/workflows/release.yml passes the released version and the
+# exact commit it was built from, so an image digest can always be traced back to a revision.
+ARG VERSION=0.0.0-dev
+ARG REVISION=unknown
+
 FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS deps
 ARG PNPM_VERSION
 ENV CI=true
@@ -22,13 +28,24 @@ FROM deps AS build
 WORKDIR /app
 COPY packages/server-sdk/ packages/server-sdk/
 COPY servers/mcp-skr-staking/ servers/mcp-skr-staking/
-RUN pnpm --filter @seeker-vault/skr-staking-server run build
+RUN pnpm --filter @seeker_agent_connect/mcp-skr-staking run build
 
 FROM deps AS prod-deps
 WORKDIR /app
 RUN pnpm install --frozen-lockfile --prod
 
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
+ARG VERSION
+ARG REVISION
+LABEL org.opencontainers.image.title="Seeker Agent Connect SKR staking MCP server" \
+      org.opencontainers.image.description="A standalone MCP server for staking the owner's own SKR. It holds no key and signs nothing." \
+      org.opencontainers.image.source="https://github.com/BrRenat/SeekerAgentConnect" \
+      org.opencontainers.image.url="https://github.com/BrRenat/SeekerAgentConnect" \
+      org.opencontainers.image.documentation="https://github.com/BrRenat/SeekerAgentConnect/blob/master/servers/mcp-skr-staking/README.md" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="Seeker Agent Connect" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
 ENV NODE_ENV=production \
     SKR_STAKING_DATA_DIR=/data \
     SKR_STAKING_DATABASE_PATH=/data/skr-staking-server.db \

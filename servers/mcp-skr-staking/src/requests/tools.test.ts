@@ -10,11 +10,11 @@ import { describe, it } from "node:test";
 import { create } from "@bufbuild/protobuf";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { AgentRequests } from "@seeker-vault/server-sdk";
+import type { AgentRequests } from "@seeker_agent_connect/server-sdk";
 import {
   Network,
   WalletBindingSchema,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 import { ChainUnavailable, MAINNET_GENESIS_HASH } from "../skr/chain.ts";
 import type {
   ChainAccount,
