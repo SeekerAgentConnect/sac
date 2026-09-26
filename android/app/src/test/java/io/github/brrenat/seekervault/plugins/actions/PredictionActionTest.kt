@@ -128,6 +128,54 @@ class PredictionActionTest {
     }
 
     @Test
+    fun carriesWhereTheProviderKeepsTheMarketWithoutBelievingWhoseItIs() {
+        // A publisher may name where its provider keeps this market, because it read the venue's
+        // listing and the phone did not (SEE-157). Core checks the shape and carries it; whose
+        // address it is belongs to the provider's own adapter, and is not asked here.
+        val read =
+            valid(
+                PredictionTermNames.PROVIDER_DEEP_LINK to
+                    "https://jup.ag/prediction/fed-decision-in-october",
+                PredictionTermNames.PROVIDER_WEB_URL to
+                    "https://jup.ag/prediction/fed-decision-in-october",
+            )
+
+        assertEquals("https://jup.ag/prediction/fed-decision-in-october", read.providerDeepLink)
+        assertEquals("https://jup.ag/prediction/fed-decision-in-october", read.providerWebUrl)
+        // Neither is required, and a signal that names none is the ordinary signal: every
+        // prediction before SEE-157 was one, and none of them regressed.
+        assertEquals("", valid().providerDeepLink)
+        assertEquals("", valid().providerWebUrl)
+    }
+
+    @Test
+    fun refusesADestinationThatIsNotOneRatherThanCarryingIt() {
+        // A term that is present and unusable stops the read: a publisher that meant to send
+        // somebody somewhere and wrote something else should be told, and an owner should not be
+        // shown a signal that half-named a destination.
+        for (name in
+            listOf(
+                PredictionTermNames.PROVIDER_DEEP_LINK,
+                PredictionTermNames.PROVIDER_WEB_URL,
+            )) {
+            for (named in
+                listOf(
+                    "javascript:alert(1)",
+                    "file:///data/data/x",
+                    "intent://scan/#Intent;scheme=zxing;end",
+                    "http://jup.ag/prediction/x",
+                    "jup.ag/prediction/x",
+                )) {
+                assertEquals(
+                    "$name = $named",
+                    PredictionPayloadProblem.NotALink to name,
+                    problem(*sound, name to named),
+                )
+            }
+        }
+    }
+
+    @Test
     fun eachWayASignalCanBeUnreadableIsSaidWithTheTermItIsAbout() {
         assertEquals(
             PredictionPayloadProblem.Missing to PredictionTermNames.MARKET_ID,

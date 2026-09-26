@@ -20,6 +20,7 @@ import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.actions.PredictionOutcomes
 import io.github.brrenat.seekervault.plugins.actions.PredictionParameterNames
+import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.solana.SolanaProblem
@@ -210,6 +211,93 @@ class PredictionOperationTest {
         assertEquals(
             listOf(ORDER_PUBKEY, POSITION_PUBKEY, MARKET_ID),
             phone.history.records.value.single().operation?.references?.map { it.text },
+        )
+    }
+
+    @Test
+    fun whereToOpenTheOrderAppearsOnlyAfterOneIsPlacedAndOutlivesTheApp() = runBlocking {
+        val phone = phone()
+        val model = opened(phone)
+
+        // Before anything is ordered there is one place to go: the market. An "Open order" with
+        // nothing behind it is exactly what the ticket says not to show (SEE-157).
+        assertEquals(
+            listOf("https://jup.ag/prediction/$MARKET_ID"),
+            checkNotNull(model.review.value).destinations.map { it.url },
+        )
+
+        phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 5 }))
+        choose(model, yes = true, stake = 5_000_000UL)
+        model.prepare()
+        model.approve(phone.wallet.wallet.value)
+
+        // The order was placed, so now there is somewhere to open it, beside the market.
+        assertEquals(
+            listOf("https://jup.ag/prediction/$MARKET_ID", "https://jup.ag/prediction/portfolio"),
+            checkNotNull(model.review.value).destinations.map { it.url },
+        )
+
+        // And it survives the app: the record kept *which* order — a public account, never a URL —
+        // so a History entry read weeks later still builds the same destination from compiled
+        // code. This is the History half of the ticket, and it is why no link is stored.
+        val restarted = phone.viewModel()
+        phone.history.load()
+        restarted.refresh(CONNECTION)
+        restarted.open(CONNECTION, PREDICTION_PROPOSAL)
+
+        val reopened = checkNotNull(restarted.review.value)
+        assertEquals(
+            listOf("https://jup.ag/prediction/$MARKET_ID", "https://jup.ag/prediction/portfolio"),
+            reopened.destinations.map { it.url },
+        )
+        // Both are the provider's own app first, because `jup.ag` is Jupiter's app's own address.
+        assertEquals(
+            reopened.destinations.map { it.url },
+            reopened.destinations.map { it.deepLink },
+        )
+    }
+
+    @Test
+    fun aPublishersOwnPageIsUsedWhenItIsTheProvidersAndIgnoredWhenItIsNot() {
+        val page = "https://jup.ag/prediction/fed-decision-in-october"
+        val named =
+            opened(
+                phone(),
+                proposal =
+                    predictionProposal(
+                        extra =
+                            mapOf(
+                                PredictionTermNames.PROVIDER_DEEP_LINK to page,
+                                PredictionTermNames.PROVIDER_WEB_URL to page,
+                            )
+                    ),
+            )
+
+        assertEquals(
+            listOf(page),
+            checkNotNull(named.review.value).destinations.map { it.url },
+        )
+
+        // Somewhere that is not the provider's is not where the owner is sent. The adapter's own
+        // address stands instead, so there is still somewhere real to go.
+        val elsewhere =
+            opened(
+                phone("other"),
+                proposal =
+                    predictionProposal(
+                        extra =
+                            mapOf(
+                                PredictionTermNames.PROVIDER_DEEP_LINK to
+                                    "https://jup.ag.example.com/prediction/x",
+                                PredictionTermNames.PROVIDER_WEB_URL to
+                                    "https://notjup.ag/prediction/x",
+                            )
+                    ),
+            )
+
+        assertEquals(
+            listOf("https://jup.ag/prediction/$MARKET_ID"),
+            checkNotNull(elsewhere.review.value).destinations.map { it.url },
         )
     }
 

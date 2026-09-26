@@ -20,9 +20,10 @@ import java.net.URISyntaxException
  *
  * **Whose link it is belongs to the provider**, which is the half that matters and the half core
  * cannot do: a link that passes this rule and points somewhere other than the provider's own
- * property is a publisher sending the owner wherever it likes, and it is the adapter that knows
- * what "its own" means (`JupiterPredictionAction.destinations`). Core reads the field; the provider
- * decides whether it is real (docs/wiki/jupiter-prediction.md#where-the-owner-continues).
+ * property is a publisher sending the owner wherever it likes, and only the adapter knows what "its
+ * own" means. Core reads the field; the provider decides whether it is real
+ * ([io.github.brrenat.seekervault.plugins.ExecutionProvider.destinations],
+ * docs/wiki/jupiter-prediction.md#where-the-owner-continues).
  *
  * ## Why these schemes
  *
@@ -68,8 +69,9 @@ fun isProviderLink(value: String): Boolean {
  * Whether [value] is an `https` address whose host is [host] or a subdomain of it.
  *
  * The check an adapter makes about its own property, written here because it is the same check for
- * every one of them and because getting it wrong — matching the end of the string, say, and so
- * accepting `notjup.ag` — is the whole of the attack.
+ * every one of them and because getting it wrong is the whole of the attack: a host that merely
+ * *ends* with the provider's name belongs to whoever registered it, and a provider's name appearing
+ * anywhere else in an address belongs to nobody at all.
  */
 fun isSecureLinkTo(value: String, host: String): Boolean {
     if (!isProviderLink(value)) return false
