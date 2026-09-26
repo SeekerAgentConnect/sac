@@ -13,7 +13,10 @@ import { after, before, beforeEach, describe, it } from "node:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { PublicKey } from "@solana/web3.js";
 
-import { Network, RequestState } from "@seeker-vault/server-sdk/protocol";
+import {
+  Network,
+  RequestState,
+} from "@seeker_agent_connect/server-sdk/protocol";
 import { GENESIS_HASHES } from "../solana/network.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
 import {

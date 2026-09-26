@@ -1,17 +1,29 @@
 {
-  "name": "@seeker-vault/server-sdk",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@seeker_agent_connect/server-sdk",
+  "version": "0.2.0-rc.1",
   "description": "Embeddable TypeScript SDK for Seeker Agent Connect direct servers",
-  "type": "module",
-  "license": "MIT",
+  "keywords": [
+    "seeker",
+    "solana",
+    "mobile-wallet-adapter",
+    "sdk",
+    "connectrpc",
+    "agent"
+  ],
+  "homepage": "https://github.com/BrRenat/SeekerAgentConnect/tree/master/packages/server-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/BrRenat/SeekerAgentConnect/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BrRenat/SeekerAgentWallet.git",
+    "url": "git+https://github.com/BrRenat/SeekerAgentConnect.git",
     "directory": "packages/server-sdk"
   },
+  "license": "MIT",
+  "author": "Renat Berezovsky",
+  "type": "module",
   "engines": {
-    "node": ">=24.21.0 <25"
+    "node": ">=24.21.0"
   },
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -31,6 +43,9 @@
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "pnpm run clean && tsc -p tsconfig.build.json && node scripts/copy-generated.mjs",

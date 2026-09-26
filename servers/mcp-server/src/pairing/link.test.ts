@@ -9,7 +9,7 @@ import {
   landingUrlHasCredential,
   parsePairingUri,
   REPLACEMENT_WARNING,
-} from "@seeker-vault/server-sdk";
+} from "@seeker_agent_connect/server-sdk";
 import { renderSVG } from "uqr";
 
 import { startSidecar, type Sidecar } from "../server.ts";

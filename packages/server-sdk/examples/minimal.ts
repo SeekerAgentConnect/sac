@@ -3,11 +3,11 @@ import {
   openDirectServer,
   privateRequest,
   startPhoneApi,
-} from "@seeker-vault/server-sdk";
+} from "@seeker_agent_connect/server-sdk";
 import {
   AckActionSchema,
   ActionSchema,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 
 const direct = openDirectServer({
   databasePath: process.env.DIRECT_DATABASE_PATH ?? "/var/lib/direct/server.db",

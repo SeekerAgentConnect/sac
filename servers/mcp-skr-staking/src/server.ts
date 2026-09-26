@@ -41,8 +41,8 @@ import {
   type ConfirmationProvider,
   type DirectServer,
   type StakingProvider,
-} from "@seeker-vault/server-sdk";
-import { Network } from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk";
+import { Network } from "@seeker_agent_connect/server-sdk/protocol";
 import type { Config } from "./config.ts";
 import { UNUSED_LIVE_COMMAND_TIMEOUT_SECONDS } from "./config.ts";
 import { ChainUnavailable, SolanaRpc } from "./skr/chain.ts";
@@ -51,7 +51,7 @@ import { SkrStakingProvider, UnsupportedStaking } from "./skr/provider.ts";
 import { mcpEndpoint, type McpEndpoint } from "./mcp-endpoint.ts";
 import { PAIRING_PAGE, qrModulePath } from "./pairing/landing-page.ts";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0-rc.1";
 
 // How long close() lets in-flight responses finish before it ends the sessions still open.
 const CLOSE_GRACE_MS = 1000;

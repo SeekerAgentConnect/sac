@@ -20,7 +20,10 @@ import { after, describe, it } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { Network, RequestState } from "@seeker-vault/server-sdk/protocol";
+import {
+  Network,
+  RequestState,
+} from "@seeker_agent_connect/server-sdk/protocol";
 
 import { CANCEL_UNSTAKE_TOOL } from "./requests/tools.ts";
 import { startStakingServer } from "./server.ts";

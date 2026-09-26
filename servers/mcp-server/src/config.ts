@@ -16,7 +16,7 @@ import {
   invalidServerUrlReason,
   normalizeServerUrl,
   type RelayConfiguration,
-} from "@seeker-vault/server-sdk";
+} from "@seeker_agent_connect/server-sdk";
 
 import { isSecureEndpoint, type OAuthConfig } from "./oauth.ts";
 import { CHAIN_BUDGET_MS } from "./solana/rpc.ts";

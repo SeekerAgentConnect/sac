@@ -12,7 +12,7 @@ import {
   RequestError,
   RequestErrorDetailSchema,
   RequestState,
-} from "@seeker-vault/server-sdk/protocol";
+} from "@seeker_agent_connect/server-sdk/protocol";
 import { PairingStore } from "../../../../packages/server-sdk/src/storage/pairing-store.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
 import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";
