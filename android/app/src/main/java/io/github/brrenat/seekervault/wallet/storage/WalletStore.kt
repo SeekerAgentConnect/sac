@@ -35,10 +35,10 @@ data class StoredSession(
  * with the wallet's authorization token for that account, encrypted with AES-256-GCM under the key
  * [key] returns, in [secretDir], which the app keeps in `noBackupFilesDir`.
  *
- * It is one record because its parts are one fact (SEE-84). The selection and the authorization used
- * to be two files, each written atomically on its own but not as a pair, so an interruption between
- * them could leave this phone holding a token that belonged to another account. A single sealed
- * record can't: an interrupted replacement leaves the record that was there, whole, and a
+ * It is one record because its parts are one fact (SEE-84). The selection and the authorization
+ * used to be two files, each written atomically on its own but not as a pair, so an interruption
+ * between them could leave this phone holding a token that belonged to another account. A single
+ * sealed record can't: an interrupted replacement leaves the record that was there, whole, and a
  * half-written legacy pair is refused rather than used. SEE-159 puts the route to the wallet app in
  * the same record, for the same reason.
  *
@@ -71,7 +71,11 @@ class WalletStore(
      * nothing can ever read one without the others. Anything the older format left behind goes with
      * it.
      */
-    fun put(wallet: SelectedWallet, authToken: String, route: WalletRouting = WalletRouting.Untargeted) {
+    fun put(
+        wallet: SelectedWallet,
+        authToken: String,
+        route: WalletRouting = WalletRouting.Untargeted,
+    ) {
         write(secretDir, SESSION, seal(encode(wallet, authToken, route)))
         forgetLegacy()
     }

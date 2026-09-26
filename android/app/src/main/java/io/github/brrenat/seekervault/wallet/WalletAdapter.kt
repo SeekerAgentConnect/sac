@@ -243,8 +243,8 @@ interface WalletAdapter {
      * this app reaches no network of its own, and builds nothing. It is called only after the owner
      * has approved this exact transaction on this phone, and the sidecar has accepted the approval.
      * Like [signMessage] it opens the wallet once, and the answer carries both what the wallet did
-     * and the authorization it reported, so nothing has to ask again — and like it, [route] aims the
-     * association at the wallet app the owner connected and nowhere else.
+     * and the authorization it reported, so nothing has to ask again — and like it, [route] aims
+     * the association at the wallet app the owner connected and nowhere else.
      */
     suspend fun signAndSendTransaction(
         transaction: ByteString,

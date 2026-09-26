@@ -87,8 +87,8 @@ class WalletRepository(
 
     /**
      * The wallet apps installed on this phone, so the owner can be offered one without Android's
-     * chooser (SEE-159). It opens nothing and takes no wallet lock: it is a question for the system,
-     * not for a wallet.
+     * chooser (SEE-159). It opens nothing and takes no wallet lock: it is a question for the
+     * system, not for a wallet.
      */
     suspend fun installedWallets(): List<InstalledWallet> = adapter.installed()
 
@@ -214,10 +214,10 @@ class WalletRepository(
      * the wallet said where it now lives, as one record with the selection they belong to. A wallet
      * that reported neither has said nothing, and nothing is written.
      *
-     * If this phone can't store it, the wallet's answer still stands: nothing is asked of the wallet
-     * again, the outcome that was reported is reported, and the next operation is refused with the
-     * old authorization, after which the owner connects the wallet again — which is what an expired
-     * one does anyway.
+     * If this phone can't store it, the wallet's answer still stands: nothing is asked of the
+     * wallet again, the outcome that was reported is reported, and the next operation is refused
+     * with the old authorization, after which the owner connects the wallet again — which is what
+     * an expired one does anyway.
      */
     private suspend fun keepRefreshed(
         selected: SelectedWallet,
