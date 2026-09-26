@@ -250,6 +250,11 @@ two phones is the owner's device run
 
 `cmd/copytrading-admin` is a **client** of this API, not a second write path. It serves a
 password-gated HTML page for hackathon judges: create, list, cancel and retry sandbox swap signals.
-The publisher token never enters the browser. `deploy/copytrading` makes the page an opt-in
+The publisher token never enters the browser. Beside the feed reference the page also draws it as a
+QR code (SEE-163), so a phone pairs by pointing SAC's camera at the screen instead of typing, and
+the Devices page draws each live invitation the same way — single use and bound to that one device,
+so showing it to a camera gives nobody else anything. The codes are inline SVG that carry exactly
+what the inputs beside them carry, and the page still loads no images and no scripts.
+`deploy/copytrading` makes the page an opt-in
 host-loopback profile; neither it nor `/v1` is placed on the public feed ingress. See
 [`deploy/README.md`](../../deploy/README.md).

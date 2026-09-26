@@ -50,6 +50,9 @@ button.secondary { background: #222; }
 code { word-break: break-all; }
 .ref { font-family: ui-monospace, monospace; font-size: 0.85rem; word-break: break-all;
   width: 100%; }
+.qr-box { background: #fff; border-radius: 8px; padding: 12px; width: fit-content;
+  margin: 12px 0 0; }
+.qr-box svg { display: block; }
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
 th, td { text-align: left; vertical-align: top; padding: 8px 6px; border-top: 1px solid #333; }
 th { color: #bbb; font-weight: 500; }
@@ -103,6 +106,8 @@ const homeHTML = `
 <div class="card">
   <p>Feed reference — add this in SAC. It carries no secret and grants nothing: this feed is restricted, so each device is verified and then waits for your approval on the Devices page.</p>
   <input class="ref" readonly value="{{.Reference}}" aria-label="Feed reference">
+  <div class="qr-box">{{.ReferenceQR}}</div>
+  <p class="muted">Or scan it with SAC — Add connection → Scan QR code.</p>
 </div>
 <div class="card">
   <form method="post" action="{{.Path}}/create">
