@@ -55,8 +55,7 @@ alias preserves the older generated-spec name without duplicating implementation
 ## Visual verification
 
 All 43 variants present in the target design directories have exact-copy dark `@Preview` and
-`@DesignRef` coverage at 3×. The committed [visual review](../reviews/see-119/README.md) includes
-every reference/actual pair and the final difference audit.
+`@DesignRef` coverage at 3×.
 
 The carousel is the one intentional ticket-over-reference rendering: the old generated specimen is
 422px wide and leaves both tiles in the rail state, while SEE-119 requires a 358dp content viewport

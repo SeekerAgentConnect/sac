@@ -1,319 +1,284 @@
-# Seeker Agent Connect
+<div align="center">
+  <img width="128" src="docs/assets/readme/logo.png" alt="Seeker Agent Connect" />
+  <h1>Seeker Agent Connect</h1>
+  <p><strong>A mobile inbox for your agents, services, and communities.</strong></p>
+  <p>
+    An open-source Android app for your Solana Seeker: receive requests and signals, review each one,
+    and decide what happens.
+    When an action needs a signature, Seed Vault Wallet signs it. SAC never holds your wallet's keys.
+  </p>
+</div>
 
-Seeker Agent Connect is an Android app for the Solana Seeker that acts as a control center for private requests and public feed signals. The repository also contains the independently runnable direct MCP server, reusable Direct Server SDK, shared public-feed gateway, and two optional feed demos. There are exactly two connection modes: private direct connections and public feeds through the gateway. The owner reviews each request on the phone and approves it through the wallet. The full plan is in [`RFC.md`](RFC.md).
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/SeekerAgentConnect/sac?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/SeekerAgentConnect/sac/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/SeekerAgentConnect/sac/ci.yml?style=flat-square&label=CI" alt="CI" /></a>
+  <a href="https://www.npmjs.com/package/@seeker_agent_connect/mcp-server"><img src="https://img.shields.io/npm/v/@seeker_agent_connect/mcp-server?style=flat-square&label=mcp-server" alt="npm mcp-server" /></a>
+  <a href="https://www.npmjs.com/package/@seeker_agent_connect/server-sdk"><img src="https://img.shields.io/npm/v/@seeker_agent_connect/server-sdk?style=flat-square&label=server-sdk" alt="npm server-sdk" /></a>
+  <a href="https://hub.docker.com/r/brenat/seeker-agent-connect"><img src="https://img.shields.io/docker/pulls/brenat/seeker-agent-connect?style=flat-square&logo=docker&logoColor=white" alt="Docker pulls" /></a>
+  <a href="https://github.com/SeekerAgentConnect/sac/stargazers"><img src="https://img.shields.io/github/stars/SeekerAgentConnect/sac?style=flat-square" alt="GitHub stars" /></a>
+</p>
 
-Deploy direct MCP, public feeds, or all four services from a clean host with the canonical numbered
-[deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy`.
+<p align="center">
+  <img src="https://img.shields.io/badge/Android-Kotlin%20%2F%20Compose-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android" />
+  <img src="https://img.shields.io/badge/Solana-Seeker-9945FF?style=flat-square&logo=solana&logoColor=white" alt="Solana Seeker" />
+  <img src="https://img.shields.io/badge/MCP-server-000000?style=flat-square" alt="MCP" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Go-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go" />
+</p>
 
-The checked-in [approved SEE-64 v4 design](docs/design/README.md), including the [dark/light interactive reference](docs/design/Seeker%20Agent%20Connect%20v4%20%28offline%29.html) and [screen flow](docs/design/Seeker%20Agent%20Connect%20v4%20-%20Flow%20Map%20%28offline%29.html), governs Android presentation.
+<p align="center">
+  <img src="docs/assets/readme/hero.png" alt="Seeker Agent Connect: an agent request reviewed and approved on the Seeker" />
+</p>
 
-## Current milestone
+<p align="center">
+  <a href="https://seekeragentconnect.github.io/landing/">Website</a> ·
+  <a href="https://seekeragentconnect.github.io/docs/getting-started">Documentation</a> ·
+  <a href="https://github.com/SeekerAgentConnect/sac/releases">Get the app</a>
+</p>
 
-**SEE-128 two-mode architecture.** SEE-130 removed gateway-private routing; SEE-131 through SEE-135
-then packaged the Direct Server SDK and MCP application, isolated the feed gateway and demos, and
-established independent deployment boundaries. SEE-136 reconciled the operator docs and joined
-verification; SEE-137 hardens crash-safe ownership, TLS-aware health, generic native HTTP/2
-deployment, and the end-to-end operator runbook. Docker-backed, live broker/Redis/TLS, current Hermes/OpenClaw, live Firebase, and
-physical-device checks unavailable on the final verification host are recorded **NOT RUN**, never
-as passes. Because required live acceptance remains unevidenced, parent SEE-128 remains In Progress.
-See [`docs/architecture.md`](docs/architecture.md) and the
-[`SEE-137 verification record`](docs/testing/see-137.md).
+## Table of contents
 
-**Stage 5.3: Optional FCM wake-up and request notifications.** SAW-054 opened the optional Firebase deployment boundary, SAW-055 gave each paired connection one authenticated rotating Firebase Installation ID, SAW-056 sends content-free invalidation hints after durable request changes, SAW-057 hands them to bounded authoritative Sync without competing with healthy foreground streams, SAW-058 presents only newly synchronized pending requests through a private Android channel and read-only tap route, and SAW-059 closes automated acceptance plus the physical Seeker runbook. SEE-105 gives both request and feed alerts a recognizable SAC icon and native type/source/summary hierarchy derived from the authoritative local cache. A ping itself still carries no request identity or content and authorizes nothing.
+- [⚡️ Highlights](#️-highlights)
+- [✨ Features](#-features)
+  - [📥 Unified inbox](#-unified-inbox)
+  - [🔗 Connections and pairing](#-connections-and-pairing)
+  - [📈 Feeds, swaps and predictions](#-feeds-swaps-and-predictions)
+  - [🤖 Agents and SKR staking](#-agents-and-skr-staking)
+  - [🔔 Live updates and notifications](#-live-updates-and-notifications)
+- [🧩 How it works](#-how-it-works)
+- [🚀 Getting started](#-getting-started)
+- [📦 Components](#-components)
+- [🛠️ Development](#️-development)
+- [🔐 Security](#-security)
+- [📚 Documentation](#-documentation)
+- [🙌 Contributing](#-contributing)
+- [📄 License](#-license)
 
-**Status:** Stage 5.3 is complete in code and automated verification. `pnpm test:push` joins authenticated target ownership/rotation/revocation, exact post-commit invalidations, real two-sidecar MCP requests, production Android HTTP/2 Sync, delayed/dropped/duplicate hints, process-reloaded recovery, permission denial, notification identity, and tap-without-wallet coverage. Firebase-off `pnpm test:updates` remains unchanged and authoritative. No physical Seeker or real Firebase deployment was available on 2026-09-14, so active/background/process-absent delivery, screen-off/Doze timing, real token refresh, channel presentation, reboot, and Force-stop checks are **NOT RUN**, not inferred from JVM tests or APK builds. Setup and behavior are in the [optional Firebase guide](docs/guides/firebase.md); the revision-tagged runbook and evidence are in [Stage 5.3 testing](docs/testing/stage-5-3.md#saw-059--joined-acceptance-and-physical-seeker-runbook).
+## ⚡️ Highlights
 
-Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosses the real MCP request path, Node sidecar, production UpdateService, Android cache, foreground lifecycle, and headless unary recovery. Foreground streams, manual Refresh, and the unique periodic WorkManager job continue to work with Firebase off. WorkManager is eventual, Android may defer it, and reopening after Force stop is required. Stage 5.2 physical-device checks remain **NOT RUN** because no Seeker was attached; see the [verification and device checklist](docs/testing/stage-5-2.md#saw-053--cross-component-acceptance-and-seeker-runbook).
+- 🙋 **You stay in control.** Every request or signal waits for your decision on the phone.
+  Actions that need a signature also require wallet confirmation. Nothing is signed automatically.
+- 🔍 **The phone checks the transaction.** SAC decodes and checks supported transactions on-device
+  before opening the wallet; server descriptions do not replace those checks.
+- 🤖 **Bring your agents and services.** Connect an MCP client such as Hermes, OpenClaw or Claude,
+  or build a direct server with the shared protocol and TypeScript Server SDK.
+- 📡 **Direct requests, Public and Restricted feeds.** Pair a server for private requests and
+  results, or follow signals from a publisher. Restricted feeds admit only approved subscribers.
+- 🧱 **Build on an existing mobile app.** Developers provide the service; SAC provides the inbox,
+  review, notifications and wallet interaction. The SAC team operates the feed gateway and push relay.
+- 📏 **Rules you set.** Global and per-connection rules flag requests outside your preferences.
+  They never approve or sign for you.
 
-| Task | Status |
+## ✨ Features
+
+### 📥 Unified inbox
+
+Everything your agents and feeds ask for lands in one queue. Open a request to see what it does,
+who sent it and whether it matches your rules.
+
+<p align="center">
+  <img src="docs/assets/readme/inbox.png" width="30%" alt="Requests inbox" />
+  <img src="docs/assets/readme/review-transfer.png" width="30%" alt="Transfer review" />
+  <img src="docs/assets/readme/review-swap.png" width="30%" alt="Swap review" />
+</p>
+
+### 🔗 Connections and pairing
+
+Pair a direct server using its one-use link or QR code, or add a feed link from its publisher.
+Feeds can be **Public** or **Restricted**. For a Restricted feed, prove wallet ownership by signing
+an access message and wait for the publisher to approve your device. Each connection has its own
+status, history and rules.
+
+<p align="center">
+  <img src="docs/assets/readme/pairing.png" width="30%" alt="Pairing with a QR code" />
+  <img src="docs/assets/readme/connection.png" width="30%" alt="Connection details" />
+  <img src="docs/assets/readme/rules.png" width="30%" alt="Connection rules" />
+</p>
+
+### 📈 Feeds, swaps and predictions
+
+Built-in Jupiter plugins turn a feed signal into a swap or a prediction-market order with your own
+amount and side. The app reads the route and the transaction before handing it to the wallet.
+
+Feeds may offer **Sandbox** or **Production** environments. Sandbox lets you review and simulate
+without signing or sending; it is not a Solana test network. Production opens the wallet after
+approval. Publishers can use Restricted feeds for paid or private communities; billing and
+membership decisions stay in their own systems.
+
+<p align="center">
+  <img src="docs/assets/readme/feed-signal.png" width="30%" alt="Feed signal" />
+  <img src="docs/assets/readme/review-prediction.png" width="30%" alt="Prediction review" />
+  <img src="docs/assets/readme/activity.png" width="30%" alt="Activity history" />
+</p>
+
+### 🤖 Agents and SKR staking
+
+The general MCP server supports acknowledgements, message signing and SOL/SPL-token transfers.
+Your agent creates a request with tools such as `vault_transfer` or `vault_sign_message`, then
+reads its outcome with `vault_get_request`. Read-only tools such as `vault_get_address` do not
+create approval requests.
+
+The separate **SKR Staking MCP server** reads staking positions and prepares stake, unstake,
+cancel-unstake and withdrawal requests on mainnet. You review each operation in SAC and confirm
+it in the wallet. Swaps and prediction orders are provided through feeds.
+
+<p align="center">
+  <img src="docs/assets/readme/agent-terminal.png" width="80%" alt="An agent sending a request over MCP" />
+</p>
+
+### 🔔 Live updates and notifications
+
+While SAC is open, supported direct servers and the gateway stream new requests, signals and
+status changes into the app. In-app banners take you to the relevant item. When SAC is in the
+background, configured push delivery sends a wake-up so the app can fetch current state.
+Opening a notification never approves anything.
+
+See [Notifications and live updates](https://seekeragentconnect.github.io/docs/notifications)
+for requirements and fallback behavior.
+
+## 🧩 How it works
+
+<p align="center">
+  <img src="docs/assets/readme/architecture.png" width="90%" alt="Architecture: agent → MCP server → phone → wallet; publishers → feed gateway → phones" />
+</p>
+
+There are two connection modes:
+
+| Mode | Path | Results |
+| --- | --- | --- |
+| **Direct** | Agent or service → your direct server ↔ SAC | Requests and results travel directly between the server and its paired phone |
+| **Feed** | Publisher → SAC gateway → subscribers | Each subscriber's choices, amounts and results stay on their phone |
+
+**Public** and **Restricted** are feed access policies, not additional connection modes. A
+Restricted publisher decides who may read; the gateway enforces access for approved devices.
+Both policies use the same publication and delivery path.
+
+A direct server needs no gateway to pair or serve requests. It can optionally use the SAC push
+relay for content-free wake-ups; private request content and results still travel directly.
+When a reviewed action needs a signature, SAC opens Seed Vault Wallet through Mobile Wallet
+Adapter. Acknowledgements and Sandbox simulations finish without signing.
+
+Read [How it works](https://seekeragentconnect.github.io/docs/how-it-works) for the architecture
+and data boundaries, or [Build your own server](https://seekeragentconnect.github.io/docs/direct-or-feed)
+to choose an integration path.
+
+## 🚀 Getting started
+
+| I want to… | Start here |
 | --- | --- |
-| SEE-147: in-app notification banners | A new request, a new signal, and a paired server that ends the pairing are announced inside the app while it is open, above the content and the whole sheet stack, in the Home wallet banner's shape. One banner at a time with the rest FIFO behind it; a request or signal is armed for its six seconds on reaching the front, a disconnection has no timer and holds the queue, and a request whose review is already open shows nothing. The words come from the same copy functions the system notification is built from, and background delivery is unchanged. Nineteen new tests cover the queue and its timers, arrival detection, the swipe thresholds, the navigation targets, TalkBack, and the foreground/background boundary. Light-theme appearance and the gestures by hand are **NOT RUN** — the capture contract is dark-only and no device or emulator was available; physical Seeker checks are **NOT RUN** by ticket constraint. See [`docs/wiki/in-app-notifications.md`](docs/wiki/in-app-notifications.md) and [`docs/testing/see-147.md`](docs/testing/see-147.md). |
-| SEE-143: PR #41 review findings | Feed Home/details ignore direct-transport Revoked for GatewayFeed; publisher idempotency still replays pre-title digests; prediction titles distinguish markets of one event. First-card carousel prepends keep the visible card. Evidence: [`docs/testing/see-143.md`](docs/testing/see-143.md). Device checks **NOT RUN**. |
-| SEE-139: feed status, pending counts, and stable prediction carousel | Feed rows now follow gateway listener state without treating their intentional lack of a credential as disconnection, show the current open-signal count as `N pending`, and expose the same live state in details without the old prominent shared-feed notice. Prediction cards use the provider's question and venue name. Keyed carousel insertions preserve the visible card and show an accurate left-side new-item indicator until those cards are viewed. Automated evidence is in [`docs/testing/see-139.md`](docs/testing/see-139.md); physical-device checks are **NOT RUN** by ticket constraint. |
-| SEE-137: deployment regression fixes and end-to-end setup | Crash-safe SQLite/VFS ownership no longer depends on PIDs, container health follows HTTP or native TLS with normal verification, the generic native-TLS overlay preserves HTTP/2 UpdateService, and one clean-host guide covers direct-only, feeds-only, and collision-free combined deployment. Available local checks are recorded in [`docs/testing/see-137.md`](docs/testing/see-137.md); Docker/live-client/device checks remain **NOT RUN** where the environment blocker is explicit, so SEE-128 remains In Progress. |
-| SEE-136: final two-mode documentation and verification | Active docs now describe only Direct and Public feed modes and the final SDK/MCP/gateway/demo boundaries. Isolated exact-tarball tests and native cross-component, restart, outbox, notification, upgrade, and path-boundary checks pass. Unavailable Docker-daemon, live broker/Redis/TLS, Hermes/OpenClaw, Firebase, and physical-device checks are **NOT RUN**; therefore SEE-128 remains In Progress. See [`docs/testing/see-136.md`](docs/testing/see-136.md). |
-| SEE-131 through SEE-134: package and isolate runtime components | The Direct Server SDK and executable MCP artifacts pack and install outside the workspace without publishing; the public gateway is its own module; `publisher-support` is non-deployable; and CopyTrading and Prediction are independently buildable/runnable demos. See [`docs/testing/see-131.md`](docs/testing/see-131.md), [`docs/testing/see-132.md`](docs/testing/see-132.md), [`docs/testing/see-133.md`](docs/testing/see-133.md), and [`docs/testing/see-134.md`](docs/testing/see-134.md). |
-| SEE-135: portable deployment boundaries | Done in canonical composition, operator guidance, and daemon-free verification. `deploy/feed`, `deploy/mcp`, `deploy/copytrading`, and `deploy/prediction` are independent projects; optional ingress and Tailscale/Funnel examples have separate lifecycles and no service-namespace or host networking. SQLite volume/file identities and old lineages are explicit, while Centrifugo Redis is relocatable by URL/auth/TLS configuration. Docker runtime and physical-device checks are **NOT RUN** on this host; see [`deploy/README.md`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) and [`docs/testing/see-135.md`](docs/testing/see-135.md). |
-| SEE-130: retire gateway-private routing | Done in code and automated verification. Direct pairing/results and public feed publication/subscription remain the only active paths. Invitation/device/private publisher RPCs, the third listener, SDK adapters/examples, generated bindings, proxy routes and Android network/UI branches are removed; identifiers are permanently reserved/deny-listed. Broadcast schema v3 transactionally drops private routing data while preserving public bytes and outbox state. Android rewrites old private records to an inert explanation, deletes credentials, settles unfinished delivery as undeliverable, and offers fresh direct pairing without conversion. Physical-device verification is **NOT RUN** by ticket constraint; see [`docs/testing/see-130.md`](docs/testing/see-130.md). |
-| SEE-122: library-composed sheets | Wallet hand-off, Connection detail, connection rules, Global rules, add/edit asset, and add address now use six stateless `:designsystem` compositions with thin app adapters preserving the existing behavior. Their six committed Roborazzi fixtures pair with design-flow references 7–12 with an empty difference list, including stacked blur and pinned sheet chrome. See [`docs/wiki/library-sheets.md`](docs/wiki/library-sheets.md) and the [visual review](docs/reviews/see-122/README.md). Physical Seeker verification remains **NOT RUN**. |
-| SEE-124: Stage 7.2 gallery and visual baseline | The debug APK now exposes all live design-system preview fixtures from an app-icon long-press, while release builds contain no gallery. The 128 design-system and 11 app-screen Roborazzi PNGs are committed, and `pnpm check:android` verifies them so rendering drift fails CI. The complete workflow and acceptance evidence are in [`design/README.md`](design/README.md) and [`docs/testing/stage-7-2.md`](docs/testing/stage-7-2.md). A physical Seeker was not attached, so that pass remains explicitly not accepted. |
-| SEE-116: design-guide agent and refresh workflow | The design guide now gives every UI task one read order and one Compose contract, including the scale/unit mapping, token rules, known Compose traps, and the Roborazzi + `designCompare` loop. [`design/UPDATING.md`](design/UPDATING.md) is the fixed nine-step design-only refresh path, and [`design/components/_template/spec.md`](design/components/_template/spec.md) defines the hand-written contract SEE-111 applies to each component. The `:designsystem` token contract deprecates the pass-through `dpN` block and checks its named scale against generated `tokens.json`. See [`design/README.md`](design/README.md) and [`docs/testing/see-116.md`](docs/testing/see-116.md). |
-| SEE-115: JVM Compose preview capture | Done in code and automated verification. Roborazzi and ComposablePreviewScanner render every `:designsystem` preview under Robolectric native graphics at the design guide's 3× scale, in dark `SeekerTheme`, with paths matching `design/components/<component>/<variant-slug>.png`. SEE-124 commits the approved outputs and makes `pnpm check:android` verify both modules in CI; `designCompare` writes labelled `reference \| actual` pairs and reports missing files without treating HTML pixels as a gate. Variable Roboto/Roboto Mono rendering and the requested Material icon set have dedicated probes. SEE-121 enabled the `:app` scanner for five full-screen references. See [`design/README.md`](design/README.md), [`docs/testing/see-115.md`](docs/testing/see-115.md), and [`docs/testing/stage-7-2.md`](docs/testing/stage-7-2.md). |
-| SEE-113: deterministic design-export capture | Done in code and automated verification. One offline Playwright command unpacks the three Claude Design exports and commits 176 component PNG/HTML pairs, rendered tokens, all 16 dark scene states, the unrolled request rail, five unrolled review sheets, a sorted inventory and a source/tool manifest. The capture pins Chromium through Playwright, injects the committed Roboto Mono WOFF2, uses the scale-3 density shared with Roborazzi, and byte-compares a temporary recapture with the repository while ignoring only `capturedAt`. It renders the design export only and contains no Android or Kotlin path. See [`docs/development/design-capture.md`](docs/development/design-capture.md) and [`docs/testing/see-113.md`](docs/testing/see-113.md). |
-| SEE-114: Android design-system theme module | Done in code and automated verification. `:designsystem` owns the extracted colour, type, radius and spacing tokens, bundled Roboto/Roboto Mono fonts, `SeekerTheme`, and the CompositionLocals Material 3 does not provide. `:app` depends on it while the module has no app-model, ViewModel, wallet, storage or network dependency. Material surface tint, tonal elevation, default ripple colour, default shapes and implicit compact-control sizing are neutralized. A Gradle guard rejects raw `Color(0x…)`, `.dp` and `.sp` production literals outside the theme package and runs in both `./gradlew check` and `pnpm check:android`. Physical-device visual comparison is **NOT RUN**; see [`docs/testing/see-114.md`](docs/testing/see-114.md). |
-| SEE-109: gateway pairing invitations through the Server SDK | Historical implementation, retired by SEE-130. Its test record remains in [`docs/testing/see-109.md`](docs/testing/see-109.md); [`docs/guides/gateway-onboarding.md`](docs/guides/gateway-onboarding.md) now explains migration to direct pairing. |
-| SEE-108: common requests, developer API and review flow | Done in code and automated verification. `seekervault.request.v2.Request` now carries identity/lifecycle, presentation, versioned action capability, owner-input declarations, audience and result handling for both private requests and feed signals. Publisher templates expose the documented `/v1/requests` API and `sdk.Client.CreateRequest`; gateway request RPCs are primary while proposal RPCs and `/v1/signals` remain migration adapters. Android normalizes both durable models into one Home carousel, Pending collection and review dispatcher; Signal is a small label plus the feed name, and a per-feed page is only a filter. Existing connections, gateway rows, proposal records and every device-local dismissal/review/execution/outcome migrate in place. Privacy, one-attempt, final-dismissal, sandbox and exact-binding invariants remain covered. Physical-device review is **NOT RUN**; see [`docs/testing/see-108.md`](docs/testing/see-108.md) and [`docs/wiki/common-requests.md`](docs/wiki/common-requests.md). |
-| SEE-107: in-app feed onboarding | Done in code and automated verification. **Add connection** now routes pairing codes and `seekervault://feed` references through exclusive parsers, shows a public-feed confirmation before writing anything, maps every reference and add outcome to owner-facing text, and opens a newly added feed with its name, environment and required plugins visible. The connection flow immediately starts the authoritative snapshot, foreground stream and optional topic subscription; no app restart is needed. There is still no feed intent filter or deep link. The connected physical Seeker could not run the deployed-demo checklist because the two exact feed references/server IDs and operator access were unavailable; every affected line is recorded **NOT RUN** with that blocker in [`docs/testing/see-107.md`](docs/testing/see-107.md). See [`docs/wiki/feed-onboarding.md`](docs/wiki/feed-onboarding.md). |
-| SEE-106: two-part single-server Stage 7.1 deployment | Historical deployment delivered and verified at the time; SEE-135 replaced its combined `deploy/server` entry point with the independent canonical projects under [`deploy/`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md). Its original evidence remains in [`docs/testing/see-106.md`](docs/testing/see-106.md). |
-| SEE-105: refined Android notification appearance | Done in code and automated verification. Both notification paths use a transparent monochrome SAC small icon, the existing lime app icon as native large art, light/dark approved accent resources, human request/operation titles, the owner's local source name, concise summaries, and native expanded text. FCM defaults point at the same icon and accent. Per-item identity, channel behavior, secret lock-screen visibility, immutable current-state routes, and content-free invalidations are unchanged. Physical Seeker light/dark, large-text, collapsed/expanded, two-source, background/process-death delivery, and screenshots are **NOT RUN** because no device or Firebase deployment was available. See [`docs/testing/see-105.md`](docs/testing/see-105.md). |
-| SEE-82: restore and protect the approved v4 theme | The regression from `d180549` is repaired without reverting its transport, synchronization, notification, or correctness fixes. The approved custom dark/light roles, typography, shapes, and semantic mappings are restored; focused tests reject parameterless Material defaults at the production entry point. The original design HTML and flow map now live under [`docs/design/`](docs/design/README.md), and repository guidance makes them authoritative. This repair does not change SEE-64's remaining physical-device or visual-acceptance status. See [`docs/testing/see-82.md`](docs/testing/see-82.md). |
-| SEE-65: Seeker Agent Connect name and lime app icon | Done in code and automated verification. Android's installed label, in-app title, pairing copy, agent-facing setup copy, and user documentation use **Seeker Agent Connect**. The supplied lime artwork is packaged as legacy launcher PNGs at all five densities and as an adaptive foreground over `#C2E60F`, including the monochrome layer; Android's system splash uses that application icon. The application ID, namespace, packages, pairing scheme, storage, and protocol identifiers remain unchanged for upgrade compatibility. The APK metadata and all required repository checks pass. Physical Seeker launcher/splash masking, in-place upgrade, and screenshots are **NOT RUN** because no device was attached. See [`docs/testing/see-65.md`](docs/testing/see-65.md). |
-| SAW-059: Stage 5.3 acceptance and Seeker runbook | Done in automated verification. `pnpm test:push` exercises real paired APIs and MCP requests through the configured sidecar boundary, audits the complete payload, then drives delayed, dropped, and duplicate hint timing through two real sidecars and Android's production Sync repository. It covers rotation, invalid-target cleanup, revocation, process-reloaded Stage 5.2 recovery, denied presentation, idempotent notification deltas, and tap-to-current-state with no automatic wallet call. The setup/troubleshooting runbook records every real Seeker/FCM scenario as **NOT RUN** because no device or deployment was available. See [`docs/testing/stage-5-3.md`](docs/testing/stage-5-3.md#saw-059--joined-acceptance-and-physical-seeker-runbook). |
-| SAW-058: notification channel, permission, and tap-to-open | Done in code and automated verification. A configured APK creates one high-importance request-review channel with secret lock-screen visibility and asks `POST_NOTIFICATIONS` once a usable connection exists. Permission denial suppresses presentation only. Push work derives new and departed pending keys after authoritative Sync, posts generic per-request alerts with distinct immutable explicit intents, and cancels stale alerts; removing or revoking a connection cancels all of its alerts without waiting for another push. A tap validates both opaque IDs, fetches the named paired connection, and withholds answer and wallet controls until that fetch succeeds; expired, canceled, answered-elsewhere, removed, revoked, and unreachable cases are stated without inventing an outcome. An answer already stored by this phone opens its existing record. Firebase-off builds never prompt or post, and every Stage 5.2 path remains intact. See [`docs/guides/firebase.md`](docs/guides/firebase.md#notifications-and-tap-to-open-saw-058) and [`docs/testing/stage-5-3.md`](docs/testing/stage-5-3.md#saw-058--notification-permission-and-tap-to-open). |
-| SAW-057: FCM service handoff, dedupe, and sync recovery | Done in code and automated verification. The messaging callback performs exact payload validation and a quick unique-work handoff; it never fetches a sidecar itself. Duplicate/collapsed hints retain one empty-input job. Push and periodic recovery select only usable connections that lack a healthy foreground stream, and their unary work converges through the existing per-connection coordinator, so overlap with streams, Refresh, or one another cannot apply duplicate/stale state. A dropped hint or Firebase-off build still recovers through Stage 5.2 foreground and periodic paths. No notification UI, permission, tap route, or wallet authority is added. See [`docs/guides/firebase.md`](docs/guides/firebase.md#service-handoff-and-sync-recovery-saw-057) and [`docs/testing/stage-5-3.md`](docs/testing/stage-5-3.md#saw-057--service-handoff-deduplication-and-sync-recovery). |
-| SAW-056: minimal FCM invalidation pings | Done in code and automated verification. Each committed durable request creation or state/outcome change emits a coalesced Firebase data message whose complete app-visible payload is `kind=request_invalidation` and `version=1`; it contains no identifier, credential, policy, request content, transaction authorization, approval, or signature. Only a new pending request uses high priority, while later changes use normal; both use a five-minute TTL and `seeker-vault-request-state-v1` collapse key. Android accepts only that exact map and enqueues a unique, network-constrained, empty-input WorkManager call to the existing bounded authenticated Sync repository. Invalid FIDs compare-clear safely and other send failures change no durable state. No notification UI, permission, channel, tap route, or wallet action is added. See [`docs/guides/firebase.md`](docs/guides/firebase.md#invalidation-delivery-saw-056) and [`docs/testing/stage-5-3.md`](docs/testing/stage-5-3.md#saw-056--minimal-invalidation-pings-and-authoritative-sync). |
-| SAW-055: connection-scoped FCM registration and rotation | Done in code and automated verification. `PairingService.SetFcmToken` accepts only the paired phone's credential for its own connection and atomically registers, rotates, or compare-clears one bounded opaque target. Android owns one serialized Firebase registration lifecycle across all usable connections, republishes refreshes to each sidecar independently, and gives only a failed sidecar three bounded exponential retries while storing no target locally. Revocation or replacement deletes the sidecar target in the same SQLite transaction. Targets and credentials never enter logs. Firebase-off builds and Stage 5.2 behavior remain intact; SAW-055 itself added no send or message handler. See [`docs/protocol.md`](docs/protocol.md#fcm-registration-saw-055), [`docs/guides/firebase.md`](docs/guides/firebase.md), and [`docs/testing/stage-5-3.md`](docs/testing/stage-5-3.md#saw-055--connection-scoped-registration-and-rotation). |
-| SAW-054: optional Firebase/FCM client and sidecar sender | Done. Firebase Messaging is pinned through the Android BoM, while the Google Services plugin is applied only for an operator-supplied ignored project file. The sidecar creates and owns one Firebase Admin sender only when `FCM_PROJECT_ID` is set; it uses Application Default Credentials and logs neither project nor credential data. This deployment-plumbing child deliberately added no phone registration, send call, app-defined messaging handler, runtime notification-permission request, notification, deep link, or push-triggered work. Firebase-off builds and all Stage 5.2 checks pass. See [`docs/guides/firebase.md`](docs/guides/firebase.md) and [`docs/testing/stage-5-3.md`](docs/testing/stage-5-3.md). |
-| SAW-053: cross-component acceptance and Seeker runbook | Done in code and automated verification. A dedicated suite drives real MCP requests into real sidecar processes and consumes the production bidirectional stream and unary Sync from the Android repositories over HTTP/2. It covers live arrival/cancellation/expiry, two-sidecar isolation, restart reconciliation, lifecycle cleanup, bounded reconnect backoff, queued-result retry, headless process recovery, persistent cache reload, full-duplex HTTP/2 interoperability, frozen pagination/fault recovery, and automatic read-only confirmation without **Check status**. The device checklist and setup/inspection runbook record all physical Seeker checks as NOT RUN because none was attached. Stage 5.2 still has no immediate background wake-up; SEE-73 owns FCM. See [`docs/testing/stage-5-2.md`](docs/testing/stage-5-2.md#saw-053--cross-component-acceptance-and-seeker-runbook) and [`docs/guides/live-background-updates.md`](docs/guides/live-background-updates.md). |
-| SAW-052: periodic WorkManager background synchronization | Done. The app keeps one unique WorkManager request while a usable connection exists, with a 15-minute minimum interval and initial delay, connected-network constraint, exponential transient retry, and `KEEP` semantics across app starts and foreground transitions. A headless `CoroutineWorker` reloads metadata and Keystore-encrypted credentials, then calls the same unary sync/reconciliation used by Refresh and foreground recovery. Runs cap concurrency at four servers and bound each server; authentication removes that connection while network unavailability retries. A worker skips when every usable connection already has a healthy foreground stream. It may reconcile known submitted transactions and retry only an existing recorded result; it cannot open a wallet, prepare, approve, sign, send, or replay. WorkManager is eventual: Doze and battery restrictions may delay a run, and Force stop requires reopening. No service, alarm, Firebase dependency, or push path was added. See [`docs/development/android.md`](docs/development/android.md#periodic-background-synchronization-saw-052) and [`docs/testing/stage-5-2.md`](docs/testing/stage-5-2.md#saw-052--periodic-workmanager-background-synchronization). |
-| SAW-051: foreground lifecycle, live streams, and reactive screens | Done. `SeekerVaultApplication` owns one cancellation-safe stream loop per usable connection while `MainActivity` is foreground; navigation and rotation do not duplicate it. Each return runs shared Sync before subscribe, replay/full-snapshot recovery stays behind the stream barrier, and events update Inbox, counts, request state, and Activity through the same persistent repository. EOF, network loss, and restart reconnect with capped jittered exponential backoff; authentication, protocol incompatibility, and revocation are distinct terminal states. Screens distinguish connecting, live, reconnecting, unreachable, revoked, unsupported, and intentional background from the separately shown last successful sync. Closing a stream has no wallet authority and does not disturb the existing approval/result lifecycle. No worker, FCM, or wallet automation is added. See [`docs/development/android.md`](docs/development/android.md#foreground-update-lifecycle-saw-051) and [`docs/testing/stage-5-2.md`](docs/testing/stage-5-2.md#saw-051--foreground-streams-and-reactive-screens). |
-| SAW-050: shared Android synchronization and persistent update state | Done. One application-scoped `SynchronizationRepository` serves manual Refresh and headless callers, coalesces overlapping work per connection while keeping servers independent, and atomically stores each connection's capability, cursor, request revisions/statuses, bounded removal markers, Activity rotation position, and last successful sync under `filesDir/sync/`. Complete pages replace pending state only after the final page; stale, duplicate, conflicting, regressing, incomplete, and late-generation data cannot overwrite newer state. Existing stored answers are retried through `ConnectionRepository`, and verified server confirmation advances an existing Activity record without creating an approval, signature, or spending record. Removal/revocation cancels in-flight work and deletes the cache. No lifecycle stream owner, worker schedule, FCM, preparation, wallet call, signing, or sending is added. See [`docs/development/android.md`](docs/development/android.md#shared-synchronization-and-cache-saw-050) and [`docs/testing/stage-5-2.md`](docs/testing/stage-5-2.md#saw-050--shared-android-synchronization-and-persistent-state). |
-| SAW-049: sidecar updates stream and unary sync | Done. The production sidecar serves authenticated `UpdateService` calls over a secure HTTP/2 listener that preserves its HTTP/1 health, MCP, pairing, and unary APIs, or over a separate loopback h2c development port. Every request mutation and revocation is revisioned in the same SQLite transaction, subscriptions replay a bounded durable log, and `Sync` pages a frozen disk-backed snapshot. Reconnect gaps and restarts require reconciliation; one stream generation owns a connection; revocation and shutdown close it. Sync checks at most four supplied submitted/unknown transfers through the existing byte-verifying confirmation path and fairly defers the rest. No phone cache/lifecycle, worker, push, wallet automation, or new chain action is included. See [`docs/development/mcp-server.md`](docs/development/mcp-server.md#production-update-listener) and [`docs/testing/stage-5-2.md`](docs/testing/stage-5-2.md#saw-049--production-sidecar-stream-and-sync). |
-| SAW-048: update protocol and bidirectional gRPC transport proof | Done. `UpdateService` defines one connection-scoped bidirectional `Subscribe` RPC and one unary `Sync` RPC, with revisions, restart-bound cursors, frozen pagination, snapshot/subscription ordering, bounded messages and heartbeat liveness, revocation, recovery, and read-only confirmation of known nonterminal Activity records. Pairing has additive capability discovery, so old phones remain compatible and new phones can distinguish an old sidecar from an unconfigured update endpoint. `GrpcBidiInteropTest` proves the pinned Connect Kotlin/OkHttp client and Connect Node adapter exchange interleaved messages over real loopback HTTP/2 while the client send side remains open, and proves cancellation reaches the server without reconnecting. The production-listener suite separately proves TLS/ALPN HTTP/2. No production listener, cache, lifecycle owner, worker, push transport, or wallet automation is added here. See [`docs/protocol.md`](docs/protocol.md#production-updates-saw-048) and [`docs/testing/stage-5-2.md`](docs/testing/stage-5-2.md). |
-| SEE-64 / SEE-74 / SEE-81: Seeker Agent Connect v4 Material 3 presentation | Done in code and automated verification. Home now has the v4 wallet banner, scroll-reactive app bar, edge-aware snapping request carousel, Global rules layer, and paired-server cards. The carousel aligns its first request to the left content edge, centres each interior active request, and aligns its last request to the right content edge. Home, Requests, Wallet, and Activity are persistent root destinations, while details form an opaque sheet stack. Transfer review separates approval, device verification, and Solana confirmation while keeping raw data under Technical details. The SEE-74 follow-up brings Global rules to the reference hierarchy, including its complete help card, provenance and status treatments, individual rule rows, empty and failed-save states, and filled/tonal actions. The exact approved dark/light tokens, typography, shapes, Material icons, and action hierarchy follow the checked-in design; every surface is solid with no alpha colour, scrim, elevation shadow, gradient, or blur. Request, transaction, policy, wallet, pairing, and storage behavior are unchanged. Physical Seeker and pixel-comparison checks remain **NOT RUN**. See [`docs/design/README.md`](docs/design/README.md), [`docs/development/android.md`](docs/development/android.md#material-3-v4-presentation-see-64), [`docs/testing/see-64.md`](docs/testing/see-64.md), and [`docs/testing/see-81.md`](docs/testing/see-81.md). |
-| SAW-043: global policy model, connection inheritance, and migration | Done. `GlobalPolicy` and explicit connection overrides keep inherit, no-check, populated-list, and empty-list states apart. Allowlist sections replace in full; per-request thresholds resolve independently per asset and network; global and connection daily thresholds remain separate so a local reset or override cannot suppress the global check. `PolicyStore` writes one atomic global document and one override document per configured connection, preserves missing versus unreadable states, and migrates Stage 5 version 1 files idempotently without inventing global rules or changing their effective values. See [`docs/policy.md`](docs/policy.md#effective-resolution) and [`docs/testing/stage-5-1.md`](docs/testing/stage-5-1.md). |
-| SAW-044: effective-rule evaluation and both daily scopes | Done. Every assessment now reads and resolves the global and connection documents, evaluates the effective rules against the facts parsed independently from the request, and retains source metadata. Global daily spending counts retained Activity across connections by wallet, network and asset; the connection daily check counts only the requesting connection, and both results remain visible and binding in the conjunction. Confirmed and unresolved amounts stay separate, signatures deduplicate across connections, unsigned request identities remain connection-qualified, an existing attempt is not projected twice, unreadable rules or history never pass as empty, and aggregate arithmetic cannot wrap. See [`docs/policy.md`](docs/policy.md#counters) and [`docs/testing/stage-5-1.md`](docs/testing/stage-5-1.md). |
-| SAW-045: global rules and connection override editors | Done in code. **Global rules** is a first-class row on the Connections dashboard. Each connection allowlist chooses **Use global** or **Override**, with explicit no-check and empty replacement kept distinct; per-request thresholds inherit or override per asset, while global daily thresholds are read-only context beside an additional connection threshold. The effective summary names each value's source. Resetting local settings returns to inheritance without changing global rules, a global save explains its reach, and a visit to Global rules refreshes inherited context without losing the unsaved local draft underneath. Both unreadable scopes retain deliberate recovery, and the Material 3 editor uses the approved v4 theme while keeping Save/Cancel, validation, rotation, in-flight-edit, large-text, and accessibility behavior. See [`docs/guides/policies.md`](docs/guides/policies.md) and [`docs/testing/stage-5-1.md`](docs/testing/stage-5-1.md). |
-| SAW-046: sourced request review and fresh approval | Done in code. Request review names Global, Connection override, and Not configured beside each effective check, and shows independent Global daily and Connection daily rows with confirmed, unresolved, and projected totals. Every review re-reads both rule documents and Activity from disk; consent binds to the effective rules, both daily results, and the exact preparation. A global edit, local reset, re-preparation, or affected Activity change refreshes the screen and stops a stale affirmative answer before the sidecar or wallet is asked. Activity keeps stable source/scope/status codes without copying rules or counter values, while old records remain readable. See [`docs/policy.md`](docs/policy.md#the-review) and [`docs/testing/stage-5-1.md`](docs/testing/stage-5-1.md). |
-| SAW-047: Stage 5.1 scenarios and owner walkthrough | Done in code and automated acceptance. `Stage51PolicyScenarioTest` takes sidecar-built transaction bytes through the phone's inspection, versioned global and connection files, Activity files, effective assessment, and the request-review controls. It covers mixed inherited and local sections, whole-list replacement and reset, new-connection inheritance, every two-scope daily boundary, retained records from removed connections, wallet/network separation, Stage 5 migration, restart, unreadable inputs, and stale review consent. The repository-required checks pass. Physical Seeker checks 79–100 are **NOT RUN**, and no network request or real transfer was made. See [`docs/testing/stage-5-1.md`](docs/testing/stage-5-1.md#saw-047--end-to-end-acceptance-and-owner-walkthrough). |
-| SAW-025: the policy model and evaluation semantics | Done. A policy is a per-connection document held only on the phone: allowlists of actions, assets (each on one network), recipients, and programs, plus per-operation and daily thresholds in the asset's own base units. An absent list is not an empty one — the first configures no check, the second allows nothing — and neither a missing policy nor an unreadable one is ever `ALLOWED`. Assessment is one conjunction of the configured checks, with a stable reason code for each failure and each thing the phone couldn't verify; checks nobody configured are reported as coverage gaps, apart from the verdict. There is no `BLOCKED` and no automatic approval, and input validation is judged before any policy and never softened by one. See [`docs/policy.md`](docs/policy.md). |
-| SAW-026: deterministic evaluation and daily counters | Done. A request is assessed against facts the phone established itself — the kind of action from the request, and the asset, amount, recipient and programs out of the transaction's own bytes — and never against anything an agent wrote. The same rules, facts and counters always reach the same verdict, and every reason names what was read. A transaction the phone couldn't account for whole is never `ALLOWED`, whatever matched. Daily totals come from the owner's own Activity records, counted per connection, wallet, asset and chain, over a local day, with what the chain confirmed kept apart from what the wallet was handed and never accounted for; a rejection is not a transfer, a failed transaction moved nothing, and a payment is counted once however many times it was prepared, re-sent or checked. Thresholds stay advisory, nothing is cached, and nothing here approves, blocks, or opens a wallet. See [`docs/policy.md`](docs/policy.md#counters). |
-| SAW-027: the policy editor | Done. A **Rules** screen under each connection, using Material 3 controls with the approved v4 theme: a switch per list, checkboxes for the kinds of action, an asset list with the per-request and per-day thresholds on the asset rows, address lists for recipients and programs, and Save and Cancel. Each switch says in words which of the three states it is in, because an absent list is not an empty one. SOL is typed in SOL; a token is typed in that mint's own base units, since the phone can't establish a mint's decimal count without a transaction that carries it and won't guess one — and every field shows the exact base-unit number it will store as it is typed. Amounts that aren't numbers, thresholds of zero, a daily below a per-request, and addresses that aren't base58 for 32 bytes are all refused in words under the field. Saving with nothing configured removes the connection's rules, a connection's rules go when the connection does, and rules this build can't read are never replaced by a blank form opening over them. See [`docs/guides/policies.md`](docs/guides/policies.md). |
-| SAW-028: policy results in request review | Done. The assessment is on Request details, under everything the phone established for itself: the verdict in words, every check with what it read and what became of it, the checks nothing covered, and the line that never changes — both verdicts still need the owner's hand on the wallet. An affirmative answer to a request it warns about takes a deliberate step: a box to tick beside a button that says **Approve despite warnings**. Rejecting never waits for anything, and a connection with no rules asks for no tick at all. What the owner ticks is the assessment, not the request: a new preparation or an edited rule clears it. The rules and the records are read again at the moment they answer, and an answer whose assessment changed under it stops rather than going ahead on what they read. Input validation still comes first and is never relabelled — no rule puts back an Approve button it took away. The assessment they read is kept with the record in **Activity**, as codes and never as rules, and none of it reaches the sidecar. See [`docs/security.md`](docs/security.md#verification-versus-advisory-rules). |
-| SAW-029: policy scenarios, and the limits written down | Done. Six scenarios run the whole path — bytes the sidecar really builds, inspected the way the review screen inspects them, against rules read off a real store on disk, with the day counted from the owner's own records — and each asserts the classification *and* the exact reason codes *and* the checks the assessment doesn't cover: a transfer inside every rule, one over the per-request threshold, today's total over the daily one, a recipient never written down, an instruction nobody read beside a transfer that matches, and an allowed program carrying an operation that isn't the transfer. Two of them are the pair that matters: a request the rules warn about is exactly as approvable as it was, and one that matches every rule the owner wrote has no Approve button at all. The agent's words are never an input — a note saying a tenth of what the instruction carries reaches the same decision, byte for byte, as the same transaction with no note. Every scenario is read again under a second connection and after a restart, a day's counter is a floor and never a ceiling, and no policy string calls a verdict safe, secure, automatic, blocked, or guaranteed. The owner's worked examples are in [`docs/guides/policies.md`](docs/guides/policies.md#worked-examples). Device checks 56–78 are **PASS**, all 23 on the owner's own Seeker. Review of the stage PR turned up three defects in code SAW-026 to SAW-028 had landed — a history nobody had read counting as a day with nothing spent, consent to a warning surviving a transaction prepared again, and edits typed while a save was in flight marked as saved — each fixed here with a test that fails without the fix. |
+| Use SAC on my phone | [Get the app](https://github.com/SeekerAgentConnect/sac/releases), then [connect a wallet](https://seekeragentconnect.github.io/docs/wallet-setup) |
+| Connect my AI agent | [General MCP server](https://seekeragentconnect.github.io/docs/mcp-quickstart) and [agent configuration](https://seekeragentconnect.github.io/docs/connect-your-agent) |
+| Manage SKR staking | [SKR Staking MCP server](https://seekeragentconnect.github.io/docs/skr-staking-server) |
+| Build my own direct server | [Direct Server SDK](https://seekeragentconnect.github.io/docs/server-sdk) |
+| Publish signals to an audience | [Publish your first feed](https://seekeragentconnect.github.io/docs/publish-your-first-feed) |
+| Restrict access to a feed | [Restricted feeds](https://seekeragentconnect.github.io/docs/restricted-feeds) and [subscriber access](https://seekeragentconnect.github.io/docs/manage-subscriber-access) |
 
-## Stage 4
+The MCP servers are standalone HTTP services available through npm, Docker or a source checkout.
+Follow the matching guide for configuration, credentials, pairing and a phone-reachable endpoint;
+running an MCP command alone is not a complete setup.
 
-**Stage 4: Transfers.** An agent can ask to send SOL or a classic SPL token; the sidecar builds a fresh unsigned transaction, the phone reads it itself, and the owner approves it by hand, at which point their own wallet signs and sends it. The sidecar then follows the signature to the chain and reports the transfer as confirmed or failed, checked against the exact bytes the owner approved. It holds no key and cannot broadcast, and the app builds nothing and reaches no chain.
+The **Direct Server SDK** implements direct connections. Feed publishers use the gateway's
+publisher API from any backend; the Go publisher library in this repository powers the examples.
 
-**Status:** accepted on **devnet**. Every task is done and every automated check passes, and on 2026-09-12 **Hermes asked for a transfer and the owner approved it on the physical Seeker**: one real SOL transfer through Seed Vault Wallet, approved by hand in the app and in the wallet, finalized on devnet in slot 497322461. The owner also ran the Stage 4 device checks 31 to 55. The record is in [`docs/testing/stage-4.md`](docs/testing/stage-4.md#verification-record-saw-024). **Nothing here has ever pointed at mainnet.**
+For feeds or optional direct-server push, follow
+[Connect to the SAC gateway](https://seekeragentconnect.github.io/docs/connect-to-gateway).
+The SAC team operates the gateway; integration does not require deploying or administering it.
 
-| Task | Status |
-| --- | --- |
-| SAW-019: transfer requests and fresh transaction preparation | Done. An agent asks with `vault_transfer`, in base units, and gets a stored `PENDING` request; nothing is built or sent then. When the phone asks, the sidecar reads the chain — the mint's decimals, both token accounts, a fresh blockhash — and builds one unsigned transaction as a new version, with its hash, its fee, and the rent for a token account it creates. Every preparation supersedes the last, so an old approval can't be reused. Token-2022 mints, NFTs, token accounts given as recipients, and an endpoint on the wrong network are refused by name. `SOLANA_RPC_URL` configures the endpoint; without one there is no transfer tool at all. See [`docs/guides/transfers.md`](docs/guides/transfers.md). |
-| SAW-020: inspecting transfer bytes on the phone | Done. Opening a transfer fetches a fresh transaction and the phone reads it itself: the amount, the recipient, the token, the signers, and what each instruction does, all out of the bytes the wallet would sign. It derives token accounts rather than looking them up, so nothing has to be fetched and no name can be faked; a token appears as its mint address and base units. A transaction that disagrees with the request, or that the app can't account for byte for byte, is refused and says why. The sidecar's fee estimate and the agent's note are shown apart from the facts, labelled as theirs. See [`docs/security.md`](docs/security.md#inspecting-a-transfer). |
-| SAW-021: approving a transfer through the wallet | Done. **Approve and send** is offered only for a transaction the phone read whole and found to match the request, and the approval binds to that preparation's version and content hash, to the wallet, and to the network. The sidecar accepts the approval before any wallet opens, and the wallet is then handed the exact bytes the owner reviewed, which it signs and sends. A stale preparation is refused and read again; an outcome this phone never learned is reported as UNKNOWN, never as a failure or a retry. See [`docs/architecture.md`](docs/architecture.md#approval-signing-and-results) and [`docs/guides/transfers.md`](docs/guides/transfers.md). |
-| SAW-022: on-chain confirmation and uncertain outcomes | Done. A sent transaction stops at SUBMITTED until the chain settles it: the sidecar reads the signature's status, fetches the transaction under it, and reports CONFIRMED or FAILED only when that transaction is byte for byte the one the owner approved. The agent's `vault_get_request`, the owner's **Check status**, and from SAW-049 a bounded production Sync are read triggers; the sidecar never free-runs a chain poll. A missing status, timeout, or expired window is never taken as proof of anything it isn't. Which endpoint's word a result rests on is recorded and disclosed, and no failure anywhere produces a replacement transaction. See [`docs/protocol.md`](docs/protocol.md#confirmation) and [`docs/guides/troubleshooting.md`](docs/guides/troubleshooting.md#sending-a-transfer). |
-| SAW-023: transfer tests and local activity history | Done. `pnpm test:transfer` drives the whole path end to end — SOL, an SPL token to someone with no token account, a chain failure, a rejection, the same result twice, a restart with a transaction in flight, and an endpoint that stops answering — with a fake Solana JSON-RPC endpoint as the chain, so **nothing spends anything**; one opt-in devnet case reads a real cluster and needs no funds. `pnpm agent transfer` now requires `--wallet` and `--network` and refuses an amount that isn't base units, and `pnpm agent status` reports an outcome with its own exit code. On the phone, **Activity** keeps the owner's record of every request they answered — who asked, the terms they reviewed, the network, the outcome, the signature, and an explorer link on the transfer's own cluster — and it outlives the answer the server was owed. A message signature is never shown as a payment. See [`docs/testing/stage-4.md`](docs/testing/stage-4.md) and [`docs/guides/transfers.md`](docs/guides/transfers.md#the-activity-record). |
-| SAW-024: documenting and validating a real-device transfer | Done, and **run on the device**. [`docs/guides/transfers.md`](docs/guides/transfers.md#your-first-transfer-step-by-step) is the owner's walkthrough: choose the network the wallet actually serves, check the sending and receiving addresses in three places, get test funds where they exist, ask for the transfer, review it, approve it, and match the signature against the transaction on an explorer. It also covers a stale preparation, too little SOL for the fee, the rent a new token account costs, a rejection in the wallet, and an outcome nobody knows. A mainnet check is the owner's own deliberate choice with a deliberately small amount, and a new boundary check proves no default spends: `.env.example` ships no endpoint, no script and no CI job supplies one, and the one check that reaches a real network reads devnet behind a variable. On 2026-09-12 the owner ran checks 41 to 55 in [`docs/testing/stage-4.md`](docs/testing/stage-4.md#the-real-wallet-transfer-saw-024) on the Seeker: **Seed Vault Wallet serves devnet**, one SOL transfer asked for **by Hermes** was finalized there, the agent's result names that transaction, and the rejection and stale-preparation walkthroughs sent nothing. Mainnet stays NOT RUN. |
+## 📦 Components
 
-## Stage 3
+| Component | Path | Description |
+| --- | --- | --- |
+| 📱 `android` | [`apps/android`](apps/android) | Kotlin/Compose app: connections, review and wallet flows, policies, history |
+| 🌐 `gateway` | [`services/gateway`](services/gateway) | SAC-operated feed delivery, Public/Restricted access enforcement and optional direct-server push relay |
+| 📜 `protocol` | [`packages/protocol`](packages/protocol) | Shared Protobuf/Buf contracts with generated Kotlin, TypeScript and Go bindings |
+| 🧰 `server-sdk` | [`packages/server-sdk`](packages/server-sdk) | TypeScript SDK for direct servers: pairing, durable requests, phone APIs |
+| 🧩 `publisher-support` | [`packages/publisher-support`](packages/publisher-support) | Go library for feed publication and Restricted subscriber access |
+| 🤖 `mcp-server` | [`servers/mcp-server`](servers/mcp-server) | Self-hosted MCP server that connects an agent to the phone |
+| 🥩 `mcp-skr-staking` | [`servers/mcp-skr-staking`](servers/mcp-skr-staking) | MCP server for SKR staking; builds unsigned transactions only |
+| 📊 `demo-signals` | [`examples/demo-signals`](examples/demo-signals) | Restricted feed example: copy-trading signals and subscriber access management |
+| 🔮 `demo-prediction` | [`examples/demo-prediction`](examples/demo-prediction) | Example feed: prediction markets |
+| 🧪 `test-agent` | [`tools/test-agent`](tools/test-agent) | Minimal MCP client for trying things without an LLM |
+| 🏋️ `loadtest` | [`tools/loadtest`](tools/loadtest) | Load, isolation and failover harness for the gateway |
 
-**Stage 3: The wallet.** The app connects the wallet the owner already has, through Mobile Wallet Adapter, publishes the address and network it selected to every paired sidecar, and has that wallet sign messages the owner reviewed and approved by hand. A signature moves no funds: nothing spends yet.
+## 🛠️ Development
 
-**Status:** accepted. Every Stage 3 task is written and every automated check passes, and on 2026-09-12 the owner's own Seeker connected Seed Vault Wallet, signed a message by hand, and drove the Hermes round trip. See [`docs/testing/stage-3.md`](docs/testing/stage-3.md#the-owners-checks-on-the-seeker) and [`docs/testing/wallet-lifecycle.md`](docs/testing/wallet-lifecycle.md#the-owners-checks-on-the-seeker).
-
-| Task | Status |
-| --- | --- |
-| SAW-018: the wallet setup guide and the Stage 3 device checks | Done in writing. [`docs/guides/wallet-setup.md`](docs/guides/wallet-setup.md) walks the whole round trip — open Seed Vault Wallet, connect, check the address and network, sign the example message, disconnect — and never asks for a seed phrase or a private key. [`docs/integrations/hermes.md`](docs/integrations/hermes.md#5-sign-a-message-with-your-wallet) gives Hermes the same trip, with the commands for creating a request, reading the result, and verifying the signature. New boundary tests confirm the stage needs no funds, swaps, agent keys, or biometrics of the app's own. The owner ran those device checks on 2026-09-12, the Hermes round trip and both rejection paths included, and reported them passed. |
-| SAW-017: the wallet lifecycle and reliable result delivery | Done. One trip to the wallet produces one reported outcome, whatever Android does in between: a rotation or a trip out of the app doesn't dismiss the request or ask the wallet twice, what the wallet did is stored on the phone before it's sent and sent again until the sidecar takes it, a retry never re-opens the wallet, a repeated result returns the same terminal request, and an answer this phone never received is reported as unresolved rather than as a success. See [`docs/testing/wallet-lifecycle.md`](docs/testing/wallet-lifecycle.md). |
-| SAW-016: manual message signing | Done. An agent asks with `vault_sign_message`; the owner sees the complete message on their phone, with every invisible character marked, together with the wallet that would sign it, and taps **Approve and sign**. Only then is the wallet opened. The sidecar verifies the signature against the request's wallet and its own copy of the message, and hands the agent the signature, the address, and the exact signed bytes. `vault_get_capabilities` says what a sidecar serves. A signature moves no funds. See [`docs/guides/message-signing.md`](docs/guides/message-signing.md). |
-| SAW-015: Mobile Wallet Adapter and the wallet binding | Done. The **Wallet** screen connects the installed wallet on the network the owner picks, shows the address it selected, and disconnects again. The app creates no wallet and holds no key: the wallet's authorization stays on the phone, encrypted and never backed up, and only the public address and network are published, to each paired sidecar. Agents read them with `vault_get_address`, or get `WALLET_NOT_CONNECTED`. Changing or disconnecting the wallet cancels the pending requests it no longer fits. See [`docs/guides/wallet-setup.md`](docs/guides/wallet-setup.md) and [`docs/testing/stage-3.md`](docs/testing/stage-3.md). |
-
-## Stage 2
-
-**Stage 2: Persistent requests and connections.** The sidecar stores agents' requests, which survive restarts, and the phone fetches them when the app opens. Several self-hosted servers can be connected. There's still no wallet: a queued acknowledgement tests the workflow.
-
-**Status:** accepted. Every Stage 2 task is done, the automated acceptance scenario passes from both sides — `pnpm test:queue` and the app's `Stage2AcceptanceTest` — and the owner ran the checks on the physical Seeker on 2026-09-12; see [`docs/testing/stage-2.md`](docs/testing/stage-2.md#acceptance-report-saw-014).
-
-| Task | Status |
-| --- | --- |
-| SAW-009: Durable request contract and lifecycle | Done. `seekervault.request.v1` defines the phone's `PairingService` and `RequestService`, the actions, the lifecycle and its transitions, idempotency, and the errors. [`docs/protocol.md`](docs/protocol.md#stage-2-durable-requests) specifies all of that plus the agent's MCP tools, and [`docs/architecture.md`](docs/architecture.md) shows how the parts fit together. The rules exist as tested pure code in `servers/mcp-server/src/requests/`, with fixtures checked in both runtimes. SAW-010 serves it. |
-| SAW-010: Persistent sidecar queue and async MCP lifecycle | Done. The MCP server stores requests in SQLite (`DATABASE_PATH`, default `~/.seeker-agent-connect/mcp-server/direct-server.db`), with migrations and durable commits, and creation and results are idempotent. Agents call `vault_request_ack`, `vault_get_request`, and `vault_cancel_request`, which answer at once. The phone's `RequestService` lists, reads, and answers requests. Requests survive restarts, and nothing runs on its own. See [`docs/development/mcp-server.md`](docs/development/mcp-server.md#storage-and-lifecycle). |
-| SAW-011: Secure pairing and separate access roles | Done. `pnpm pair` shows a one-use pairing code, as a QR code and as text, and the phone exchanges it for its own credential. Only that credential opens the phone's `RequestService`. The agent's MCP token opens `/mcp` only, and `PHONE_TOKEN` stays with the Stage 1 live-test screen. One phone is paired at a time, and `pnpm pair revoke` revokes it. A phone on another network reaches the loopback sidecar through a trusted TLS endpoint, such as Tailscale Serve. See [`docs/security.md`](docs/security.md). |
-| SAW-012: Android pairing and multiple connections | Done. The app opens on **Connections**. It pairs by scanning the `pnpm pair` QR code or by entering the code, and it shows the server for the owner to confirm first. Each sidecar's connection is kept apart, with its own name, address, and credential. The credential is encrypted under an Android Keystore key and never backed up. **Connection details** refreshes, renames, and disconnects, which revokes the connection on the sidecar. See [`docs/guides/pairing.md`](docs/guides/pairing.md). |
-| SAW-013: Pending inbox and queued acknowledgements | Done. The phone fetches pending requests when the app opens or comes back to the foreground, when a connection is opened, and on **Refresh**. There's no push or background service. **Pending requests** shows each request's source, action, age, and expiry, with empty, offline, and error states. **Request details** acknowledges or rejects a queued acknowledgement. The answer is stored before it's sent, and sent again after a failure until the sidecar confirms it. A reopened request shows its outcome. `pnpm agent ack`, `get`, and `cancel` drive the flow from the agent's side. See [`docs/guides/pending-requests.md`](docs/guides/pending-requests.md) and [`docs/testing/stage-2.md`](docs/testing/stage-2.md). |
-| SAW-014: Stage 2 validation | Done. `pnpm test:queue` runs the acceptance scenario with two sidecars from the agent's side, and `Stage2AcceptanceTest` runs it from the app's. It covers restarts of both, expiry, rejection, a revoked pairing, isolation between connections, and a live diagnostic that still stores nothing. CI runs both. `vault_request_ack` is now a demo tool, served only with `MCP_DEMO_TOOLS=true`. Hermes's example config allows the durable tools, and [`docs/integrations/hermes.md`](docs/integrations/hermes.md#4-queued-requests-create-now-read-the-result-later) creates a request and checks it later. The owner ran the checks on the physical Seeker on 2026-09-12 and reported them passed. |
-
-## Stage 1
-
-**Stage 1: Hello world (Hermes → Seeker → OK → Hermes).** A real agent sends display-only text over MCP, and the Seeker shows it while the app is open. The user taps OK, and the agent receives the acknowledgement. Stage 1 has no wallet, keys, queue, persistence, policies, QR pairing, OAuth, Docker, or background service.
-
-**Status:** Stage 1 is accepted. Every automated check passes, including the round trip on an emulator in CI. On 2026-09-11, the owner ran the real Hermes → Seeker → OK → Hermes round trip on the physical Seeker and reported it passed; see [`docs/testing/stage-1.md`](docs/testing/stage-1.md).
-
-| Task | Status |
-| --- | --- |
-| SAW-001: Repository, toolchains, basic CI | Done. The empty Android app and the sidecar skeleton build and pass the checks. |
-| SAW-002: Live-command protocol and generated clients | Done. `LiveCommandService`, generated TypeScript and Kotlin code, and cross-runtime fixtures; see [`docs/protocol.md`](docs/protocol.md). |
-| SAW-003: Live MCP command bridge | Done. `/mcp` with `vault_display_command`, the phone's Connect API, and `/healthz`; see [`docs/development/mcp-server.md`](docs/development/mcp-server.md). |
-| SAW-004: Android hello-world screen | Done. A stock Material 3 live-test screen: connect, the received text, and a one-tap OK, with lifecycle handling; see [`docs/development/android.md`](docs/development/android.md). The owner's check on the physical Seeker passed on 2026-09-11. |
-| SAW-005: MCP test client | Done. `pnpm agent hello "Hello Seeker"` calls the tool over MCP and prints the acknowledgement; see [`tools/test-agent/README.md`](tools/test-agent/README.md). The owner's check on the physical Seeker passed on 2026-09-11. |
-| SAW-006: MacBook → Seeker build and run guide | Done. A quickstart from a fresh MacBook to an acknowledged "Hello Seeker", and a troubleshooting page; see [`docs/guides/macbook-seeker-quickstart.md`](docs/guides/macbook-seeker-quickstart.md). The owner followed it on their Seeker on 2026-09-11. The Android Studio run isn't recorded. |
-| SAW-007: Real Hermes connection | Done. A Hermes `mcp_servers` entry to merge ([`examples/hermes.config.yaml`](examples/hermes.config.yaml)) and a guide for Hermes on the Mac or on a VPS through an SSH reverse tunnel; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md). Hermes's own MCP client passed against the sidecar. The owner's real Hermes session with the Seeker passed on 2026-09-11. |
-| SAW-008: Stage 1 acceptance gate | Done. `pnpm test:hello` runs the acceptance suite, and `pnpm test:hello --device` runs the round trip on a device or emulator. CI runs both, the device one on an emulator. Stage boundary guards run on every check. See [`docs/testing/stage-1.md`](docs/testing/stage-1.md). The owner's Hermes → Seeker → OK → Hermes round trip passed on 2026-09-11. `pnpm test:hello --device` hasn't run on the Seeker yet. |
-
-## Repository layout
-
-This is one product monorepo: the app, the protocol, the SDK, the servers and the demos change
-together in one pull request, and each component still installs, builds and ships on its own. A
-component's identifier is the same in its folder name, the root `pnpm` commands, its published
-artifact and its release tag. The old → new path mapping, component dependencies and the migration
-steps for deployments that used the old paths are in
-[`docs/development/monorepo-layout.md`](docs/development/monorepo-layout.md).
-
-Components are released independently and can be installed from a registry without this checkout:
-npm under `@seeker_agent_connect` and containers in the Docker Hub repository
-`docker.io/brenat/seeker-agent-connect`, one tag prefix per component (`gateway-0.2.0`,
-`mcp-0.2.0`). [`docs/guides/installation.md`](docs/guides/installation.md) has the install, `npx`,
-Docker and Compose examples and the tag table;
-[`docs/development/releases.md`](docs/development/releases.md) has the release process.
-
-| Component | Path | What it is | Build and check (from the root) |
-| --- | --- | --- | --- |
-| `android` | `apps/android/` | Kotlin/Compose Android project with `app` and `designsystem` modules: the two connection modes, review/wallet flows, reusable UI and previews; see [`docs/development/android.md`](docs/development/android.md) | `pnpm check:android`; `(cd apps/android && ./gradlew :app:assembleDebug)` |
-| `gateway` | `services/gateway/` | The shared feed gateway in Go: public feeds are published once and read by every subscriber through isolated read and publisher listeners; its admin UI, push relay and Centrifugo image live here too; see [`docs/wiki/feed-gateway.md`](docs/wiki/feed-gateway.md) and [`docs/development/feed-gateway.md`](docs/development/feed-gateway.md) | `pnpm check:gateway`; `docker build -f services/gateway/Dockerfile .` |
-| `protocol` | `packages/protocol/` | The one canonical protocol source: the Buf module in `proto/` with its cross-runtime fixtures in `proto/fixtures`, `buf.yaml`, every `buf.gen*.yaml` template (each names the component directory it writes), and the vendored Centrifugo schema in `third_party/`; see [`packages/protocol/proto/README.md`](packages/protocol/proto/README.md) and [`docs/protocol.md`](docs/protocol.md) | `pnpm generate`; `pnpm check:generated` |
-| `server-sdk` | `packages/server-sdk/` | Embeddable TypeScript Direct Server SDK: durable lifecycle, pairing, phone APIs, updates and public package exports; see [`packages/server-sdk/README.md`](packages/server-sdk/README.md) and [`docs/development/server-sdk.md`](docs/development/server-sdk.md) | `pnpm build:server-sdk`; `pnpm test:server-sdk-package` |
-| `publisher-support` | `packages/publisher-support/` | The Go source library the two public-feed demos share: the durable publication/outbox engine, the gateway HTTP/Connect client, the feed document rules and the business-API frame. It has no command, no image and no deployment of its own, and it is not a published feed-publisher client. See [`packages/publisher-support/README.md`](packages/publisher-support/README.md). | `pnpm check:publisher-support` |
-| `mcp-server` | `servers/mcp-server/` | Self-hosted TypeScript/Node MCP product: one source/npm/Docker CLI, `/mcp`, `/healthz`, direct phone APIs, provider adapters, stable external state and artifact verification, consuming only the public SDK API; see its [`README`](servers/mcp-server/README.md) and [`docs/development/mcp-server.md`](docs/development/mcp-server.md) | `pnpm dev:mcp-server`; `pnpm test:mcp-server-package`; `docker build -f servers/mcp-server/Dockerfile .` |
-| `mcp-skr-staking` | `servers/mcp-skr-staking/` | A second, independent direct server (SEE-146): a standalone MCP server for one owner's SKR staking position, with five tools, its own connection, its own `SKR_STAKING_*` configuration and its own deployment. It builds unsigned transactions and never signs or sends; see its [`README`](servers/mcp-skr-staking/README.md), [`docs/wiki/skr-staking.md`](docs/wiki/skr-staking.md) and [`docs/development/skr-staking-server.md`](docs/development/skr-staking-server.md) | `pnpm dev:mcp-skr-staking`; `pnpm test:skr-staking-package`; `docker build -f servers/mcp-skr-staking/Dockerfile .` |
-| `demo-signals` | `examples/demo-signals/` | The CopyTrading signals demo — an independent public-feed demo (SEE-95): its own module, image, database, and guide. The canonical portable preset is `compose/copytrading` in `do-deploy`; it starts no feed, MCP server, Prediction demo, or ingress. | `pnpm check:demo-signals`; `docker build -f examples/demo-signals/Dockerfile .` |
-| `demo-prediction` | `examples/demo-prediction/` | An independent public-feed demo (SEE-96): its own module, image, database, and guide. The canonical portable preset is `compose/prediction` in `do-deploy`; neither demo builds, starts, imports, or shares data with the other. | `pnpm check:demo-prediction`; `docker build -f examples/demo-prediction/Dockerfile .` |
-| `test-agent` | `tools/test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`tools/test-agent/README.md`](tools/test-agent/README.md). | `pnpm agent`; `pnpm test:hello`; `pnpm test:queue` |
-| `loadtest` | `tools/loadtest/` | The load, isolation and failover harness for the gateway, in a Go module of its own; see [`tools/loadtest/README.md`](tools/loadtest/README.md) and [`docs/development/load.md`](docs/development/load.md) | `pnpm check:loadtest`; `pnpm test:load` |
-
-Shared directories that are not components:
-
-| Path | Contents |
-| --- | --- |
-| `fixtures/` | Cross-runtime test data the app and the servers both read: transfer transactions, captured Jupiter answers and the restricted-feed challenge |
-| `scripts/` | Root commands: `generate.mjs` (`pnpm generate`, `pnpm check:generated`), the Go and deployment checks, the acceptance/integration/load runners, and the emulator helpers |
-| `examples/*.yaml` | Configuration to merge into other tools: `hermes.config.yaml`; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md) |
-| `design/` | The Android design guide, tokens and captured references; see [`design/README.md`](design/README.md) |
-| `docs/` | The architecture and the protocol, plus development docs, guides, testing notes, and the changelog |
-| `.github/workflows/ci.yml` | CI for pull requests and pushes |
-
-Inside the Android app:
-
-| Path | Contents |
-| --- | --- |
-| `apps/android/app/src/main/java/.../skr/` | The phone's own reading of the SKR staking program (SEE-146): its compiled-in program ID and mint, the PDAs it derives for itself, the account decoders, and `inspectStaking` — an independent reading of the prepared bytes rather than a check of the server's claims |
-| `apps/android/app/src/main/java/.../jupiter/` | The two bundled client plugins (Stage 7.1, SEE-93, SEE-94): `jupiter.swap` — a publisher's spot-swap signal, the owner's own amount, a route from the provider — and `jupiter.prediction` — a market a publisher pointed at, the owner's own side and stake, and a real order. Both read the bytes themselves before any wallet opens. See [`docs/wiki/jupiter-swap.md`](docs/wiki/jupiter-swap.md), [`docs/wiki/jupiter-prediction.md`](docs/wiki/jupiter-prediction.md) and [`docs/integrations/jupiter.md`](docs/integrations/jupiter.md) |
-| `apps/android/app/src/main/java/.../solana/` | The app's only chain endpoint (Stage 7.1, SEE-94): one read-only call, used to resolve the address lookup tables a prediction order's transaction names. Provider-neutral, the application's own endpoint, and empty by default. See [`docs/security.md`](docs/security.md#resolving-a-lookup-table) |
-
-## Quickstart
-
-To go from a fresh MacBook to "Hello Seeker" on the phone, follow [`docs/guides/macbook-seeker-quickstart.md`](docs/guides/macbook-seeker-quickstart.md). It assumes no Android experience. If a step fails, see [`docs/guides/troubleshooting.md`](docs/guides/troubleshooting.md).
-
-## Self-hosting
-
-For the only step-by-step container runbook, follow the [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in the
-separate `do-deploy` repository, whose Compose presets under `compose/` pull published images. It covers
-direct-only, feeds-only, and combined deployment, generic native HTTPS/HTTP/2, data identity,
-restart verification, backup, rollback, and troubleshooting. The shorter
-[`self-hosting` reference](docs/guides/self-hosting.md) collects boundaries and external needs.
-
-Every image builds from this checkout (deployment files are in [`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy)), and nothing in the path is ours. It does need things from other people — a domain and a certificate authority to go public, somebody's Solana RPC endpoint for transfers, an authorization server for a hosted client — and [What this needs from outside](docs/guides/self-hosting.md#what-this-needs-from-outside) is the full list. Connecting an agent is [Hermes](docs/integrations/hermes.md) by default, or [Claude over OAuth](docs/integrations/claude.md) as an option.
-
-## Installing from a registry
-
-Nothing here needs this checkout. `npm install @seeker_agent_connect/server-sdk` embeds the Direct
-Server SDK in your own Node application; `npx --package=@seeker_agent_connect/mcp-server --
-seeker-agent-connect-mcp` runs the MCP server; `docker.io/brenat/seeker-agent-connect:gateway-*` and the rest
-run the services. [`docs/guides/installation.md`](docs/guides/installation.md) has the full set,
-including a checkout-free Compose file, how to pin by digest, and the migration table from the
-previous Docker Hub names. [`docs/development/releases.md`](docs/development/releases.md) is how
-those artifacts are produced.
-
-## Building a server of your own
-
-To publish to the app from a server you run — a copy-trading feed, or a republished market listing — follow [`docs/guides/server-development.md`](docs/guides/server-development.md). For addressed requests, use the direct server's `seekervault://pair` link or QR; [`docs/guides/gateway-onboarding.md`](docs/guides/gateway-onboarding.md) explains migration from retired gateway invitations.
-
-You never receive a Firebase credential and never write Android code: [topic push](docs/guides/server-development.md#9-topic-push) is a side effect of publishing, and [a build that lacks the plugin your feed needs](docs/guides/server-development.md#10-a-build-that-does-not-have-your-plugin) reads the request and says which part is missing. The public-feed guide walked command by command, with what each one answered, is [`docs/testing/see-100.md`](docs/testing/see-100.md).
-
-## Prerequisites
-
-Tested on a MacBook with macOS 26.5.2 on Apple silicon. Exact versions and setup details are in [`docs/development/toolchain.md`](docs/development/toolchain.md).
-
-- **Node.js 24.21.0** (`.nvmrc`), for example through nvm. pnpm refuses to run on any other version.
-- **pnpm 9.7 or newer.** It switches to the pinned 12.3.4 from `package.json` automatically.
-- **Android SDK Platform 37.0 and Build-Tools 36.0.0**, from Android Studio Quail 4 or newer or from the command-line tools
-- **A JDK 17 or newer to launch Gradle.** Android Studio's bundled one works. Gradle downloads the pinned Temurin 21 for the build itself.
-
-## Bootstrap and build
+For Node development, use Node.js 24.21.0 (`.nvmrc`) and pnpm 12.3.4
+(`package.json`). Go components require the version in their `go.mod`; Android development uses
+SDK Platform 37, Build-Tools 36.0.0 and a Gradle daemon pinned to Temurin 21.
+See the [toolchain guide](docs/development/toolchain.md) for setup and exact pins.
 
 ```bash
-nvm install                      # Node.js from .nvmrc
-corepack enable pnpm             # or: npm install --global pnpm
+nvm install && corepack enable pnpm
 pnpm install --frozen-lockfile
-pnpm check                       # formatting, lint, type checks, tests
-pnpm check:android               # design-literal guard, Kotlin formatting/tests/lint, debug APKs
-pnpm check:gateway               # the feed gateway: gofmt, go vet, go test (needs Go)
-pnpm check:demos                 # the shared library and both demos, each on its own (needs Go)
-pnpm test:integration            # the Stage 7.1 cross-component run (needs Go)
-pnpm check:loadtest              # the load harness: gofmt, go vet, go test (needs Go)
-pnpm test:load                   # the load, isolation and failover run (needs Go and a broker)
-(cd apps/android && ./gradlew :app:assembleDebug)
+
+pnpm check              # formatting, lint, type checks, TypeScript tests
+pnpm check:android      # Kotlin formatting, unit tests, lint, debug APKs
+pnpm check:gateway      # feed gateway (Go)
+pnpm check:demos        # example feeds (Go)
+pnpm build              # SDK, MCP server and test agent
 ```
 
-The debug APK is written to `apps/android/app/build/outputs/apk/debug/app-debug.apk`. Android displays it as **Seeker Agent Connect**, with the supplied lime launcher icon. The application ID remains `io.github.brrenat.seekervault`, so installing this branding update upgrades the existing app and preserves its data. The automated evidence and physical-device status are in [`docs/testing/see-65.md`](docs/testing/see-65.md).
-
-## Commands
-
-| Command | What it does | Status |
-| --- | --- | --- |
-| `pnpm install --frozen-lockfile` | Installs exactly what the committed lockfile specifies | Works |
-| `pnpm check` | Runs Prettier, `buf format`, ESLint, `buf lint`, the SDK build, and every pnpm workspace's type checks and tests without changing files | Works |
-| `pnpm check:android` | Rejects raw production colour/dimension/type literals outside `:designsystem`, runs Spotless (ktfmt), Android unit tests and both modules' lint, and builds the debug APK and instrumentation test APK | Works |
-| `pnpm check:gateway` | Checks the feed gateway (SEE-90), `services/gateway`; `pnpm check:feed-gateway` is a migration alias: `gofmt`, `go vet`, and its Go tests. Needs Go; demo, integration, and load checks do too | Works |
-| `pnpm check:deployments` | Checks the repository side of deployment: Dockerfile health commands, package `.env.example` names and ports, and that the retired layout stays gone. The Compose presets are checked in `do-deploy` by `node scripts/check-compose.mjs` | Works |
-| `pnpm check:demos` | Checks the shared library and both public-feed demos (SEE-95, SEE-96, SEE-134): `gofmt`, `go vet`, and the Go tests, **one module at a time** — including the two that run the **real** gateway as a separate process, which it builds for you. `pnpm check:publisher-support`, `pnpm check:demo-signals` and `pnpm check:demo-prediction` run one of them (`check:copytrading` and `check:prediction` remain as aliases). The test that reads the live prediction provider is opt-in (`SEEKERVAULT_JUPITER=1`) and is not in it. Needs Go | Works |
-| `docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml up -d` (from a `do-deploy` checkout) | Starts the published feed gateway, Centrifugo, and Redis images on the portable reference topology | NOT RUN: Docker daemon socket permission denied |
-| `pnpm build` | Compiles the SDK, MCP server and test agent; the SDK runtime and declarations go to `packages/server-sdk/dist`, and the staged self-contained MCP package goes to `servers/mcp-server/package` | Works |
-| `pnpm test:server-sdk-package` | Runs real `npm pack --dry-run` and `npm pack`, audits the tarball, installs it outside the workspace, type-checks its public exports, verifies import has no side effects, and exercises pairing/lifecycle/restart/idempotency | Works; never publishes |
-| `pnpm test:mcp-server-package` | Builds the exact executable MCP tarball, audits its vendored SDK and dependencies, exercises local/global-style/transient installs, then drives health, pairing, MCP discovery, phone result, restart persistence, reinstall, and competing-store refusal outside the workspace | Works; never publishes |
-| `pnpm test:skr-staking-package` | Builds the exact SKR staking tarball, audits its published manifest and vendored SDK, installs it outside the workspace, and drives health, pairing, MCP discovery and a read-only `get_staking_status` round trip against a stub mainnet endpoint before a clean SIGTERM | Works; never publishes, reaches no cluster |
-| `docker compose --env-file compose/mcp/.env -f compose/mcp/compose.yaml up -d` (from a `do-deploy` checkout) | Starts only the published direct MCP server image on host loopback ([self-hosting](docs/guides/self-hosting.md)) | NOT RUN: Docker daemon socket permission denied |
-| `pnpm dev:mcp-server` | Starts the MCP server with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. `pnpm dev:sidecar` is a migration alias; `pnpm dev:mcp-skr-staking` starts the SKR staking server the same way. | Works |
-| `pnpm pair [status \| revoke]` | Shows a one-use pairing code for the phone, as a QR code and as text. `status` shows the paired phone, and `revoke` revokes it. See [`docs/development/mcp-server.md`](docs/development/mcp-server.md#pairing-a-phone), and for the app, [`docs/guides/pairing.md`](docs/guides/pairing.md). | Works |
-| `pnpm generate` | Regenerates the TypeScript and Kotlin protocol code and the binary fixtures from `packages/protocol/proto/`; needs network access | Works |
-| `pnpm check:generated` | Fails if the committed generated code or fixtures differ from a fresh generation; changes no files | Works |
-| `pnpm agent hello [text]` | Shows text on the phone through MCP and prints the acknowledgement. OFFLINE, BUSY, TIMEOUT, and connection errors each get their own exit code. | Works |
-| `pnpm agent ack <text>`, `get <id>`, `cancel <id>` | Queues an acknowledgement for the owner, reads a request back, or withdraws one, through the durable MCP tools. Each prints the request as JSON. See [`tools/test-agent/README.md`](tools/test-agent/README.md). | Works; needs a paired phone, and `ack` needs `MCP_DEMO_TOOLS=true` |
-| `pnpm agent address` | Prints the wallet the owner connected on their phone, and its network, through `vault_get_address`. See [`docs/guides/wallet-setup.md`](docs/guides/wallet-setup.md). | Works; exits 9 with `WALLET_NOT_CONNECTED` until the owner connects one |
-| `pnpm agent sign <text>` | Asks the owner's wallet to sign the text, through `vault_sign_message`. It prints the request as PENDING; the owner approves it on the phone, and `pnpm agent get <id>` reads the signature back and verifies it. See [`docs/guides/message-signing.md`](docs/guides/message-signing.md). | Works; needs a connected wallet |
-| `pnpm agent transfer <to> <amount> --wallet <address> --network <name>` | Asks the named owner wallet to send `<amount>` base units to `<to>`, through `vault_transfer`; `--mint <address>` sends a classic SPL token instead of SOL. It prints the request as PENDING, and builds, signs, and sends nothing. See [`docs/guides/transfers.md`](docs/guides/transfers.md). | Works; needs a connected wallet and `SOLANA_RPC_URL` |
-| `pnpm agent capabilities` | Prints what the sidecar serves, through `vault_get_capabilities`: manual approval, the operations it implements, and the limits. | Works |
-| `pnpm test:hello` | Runs the Stage 1 acceptance suite on a simulated device: the real CLI, the sidecar as a separate process, and a test client as the phone. With `--device`, it runs the round trip on the attached device or emulator instead: the app's UI test taps OK while the CLI sends over MCP. See [`docs/testing/stage-1.md`](docs/testing/stage-1.md). | Works; `--device` needs a device or an emulator |
-| `pnpm test:queue` | Runs the Stage 2 acceptance scenario: the real CLI, two sidecars as separate processes that restart, and a test client as the phone. See [`docs/testing/stage-2.md`](docs/testing/stage-2.md#the-acceptance-scenario-saw-014). | Works |
-| `pnpm test:updates` | Runs Stage 5.2's production TLS/h2 and loopback h2c sidecar tests, bidirectional interoperability proof, and cross-component Android sync/lifecycle acceptance. It is separate from the Stage 1 Live diagnostic. | Works |
-| `pnpm test:push` | Runs Stage 5.3's sidecar ownership/invalidation acceptance and Android two-sidecar recovery, registration, callback, notification, permission, tap, and boundary suites. It uses no real Firebase credential or delivery and does not replace the physical Seeker checklist. | Works |
-| `pnpm test:swap` | Runs Stage 7.1's Jupiter suites (SEE-93, SEE-94): the signal payload, the instruction readers against four real captured transactions, every tampering the review refuses, the plugin over a stood-in provider, the wire over a real HTTP endpoint, the whole path from a signal to a signature, the captured gateway and provider traffic, the two screens, the chain reader and every way a lookup table can be unusable, and the stage boundary. It spends nothing, signs nothing and places nothing; the live-provider tests skip unless asked for. See [`docs/wiki/jupiter-swap.md`](docs/wiki/jupiter-swap.md) and [`docs/wiki/jupiter-prediction.md`](docs/wiki/jupiter-prediction.md). | Works |
-| `pnpm test:integration` | Runs Stage 7.1's cross-component acceptance (SEE-98) in one command: it builds the gateway, both publisher templates and their two CLIs, then runs them against each other with two subscribers, the sidecar as its own process and a real MCP agent — mixed mode, manifests, the transport, two devices, the wallet's binding, the prediction path, the environments, and a privacy sweep of everything the run wrote. Then the direct-mode acceptance suites unchanged, and the phone's cross-component cases. Every leg is reported PASS, FAIL or NOT RUN. It needs Go, no network and no funds; the stream leg is opt-in on `SEEKERVAULT_CENTRIFUGO`. See [`docs/development/integration.md`](docs/development/integration.md) and [`docs/testing/see-98.md`](docs/testing/see-98.md). | Works |
-| `pnpm check:loadtest` | Checks the load harness (SEE-99): `gofmt`, `go vet`, and its Go tests — the quantile digest, the reconnect and continuity policy ported from the phone's own (with the Kotlin's own test cases), the profiles, the push stand-in's credential, and the harness's boundaries. Needs Go and nothing else | Works |
-| `pnpm test:load` | Runs SEE-99's load, isolation and failover measurement: the real gateway, the pinned broker, real Redis and synthetic publishers, with simulated phones on the transport the app listens on and a client that makes the app's own decisions. Fourteen scenarios — a hot channel, many publishers, two broker nodes, a node drained and a node killed, Redis stopped, the gateway restarted, slow consumers, a publisher over its rate, three ways into another's channel, every stream cut at once, four hundred phones behind one address, and a ramp toward ten thousand listeners — each PASS, FAIL or NOT RUN. It needs Go, no network and no funds; the broker and Redis are named with `SEEKERVAULT_CENTRIFUGO` and `SEEKERVAULT_REDIS`. See [`docs/development/load.md`](docs/development/load.md) and [`docs/testing/see-99.md`](docs/testing/see-99.md) | Works |
-| `pnpm format`, `pnpm format:android` | Apply Prettier and `buf format`, and ktfmt for Kotlin | Works |
-| `npm run design:capture` | Unpacks the three offline Claude Design exports in headless Chromium and regenerates the committed component, token and screen references. Pass `-- --only components\|screens\|tokens`, `-- --dsf <n>`, or `-- --check`; see the [capture guide](docs/development/design-capture.md). | Works |
-
-## Development configuration
+Run the general MCP server locally:
 
 ```bash
 cp .env.example .env
-openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
+# Generate two different tokens and set MCP_TOKEN and PHONE_TOKEN in .env.
+openssl rand -hex 32    # run once for each token
+pnpm build:server-sdk
+pnpm dev:mcp-server     # leave running: /mcp, the phone API and /healthz
 ```
 
-- `.env` is git-ignored.
-- Variables already set in the environment take precedence over `.env`.
-- The MCP server rejects placeholder or short tokens and identical MCP/phone tokens. Source/npm
-  binds accept loopback; a container wildcard is also accepted only with an explicit public URL.
-- Agents send `MCP_TOKEN`, and the Stage 1 live-test screen sends `PHONE_TOKEN`, each as `Authorization: Bearer <token>`; see [`docs/development/mcp-server.md`](docs/development/mcp-server.md). The durable workflow uses the credential that a phone gets by pairing (`pnpm pair`); see [`docs/security.md`](docs/security.md).
-- `SIDECAR_PUBLIC_URL` and `PAIRING_TOKEN_TTL_SECONDS` are optional. `SIDECAR_PUBLIC_URL` is the URL that pairing codes carry. It defaults to the loopback URL, for `adb reverse`. For a phone on another network, set it to a trusted HTTPS endpoint; see [transport security](docs/security.md#transport-security).
-- `MCP_DEMO_TOOLS=true`, which `.env.example` sets, serves the demo tool `vault_request_ack` for `pnpm agent ack` and Hermes. Leave it off outside development and demos.
-- `MCP_ALLOWED_HOSTS` is optional. It lets `/mcp` accept a VPN address, for Hermes on a VPS that reaches the Mac over a VPN; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md#over-a-vpn-you-already-use).
-- Durable requests are stored in `~/.seeker-agent-connect/mcp-server/direct-server.db` unless the stable `MCP_SERVER_DATA_DIR`/`DATABASE_PATH` settings say otherwise. `REQUEST_TTL_SECONDS` and `REQUEST_PENDING_LIMIT` are optional too; see [storage and lifecycle](docs/development/mcp-server.md#storage-and-lifecycle).
-- Firebase Cloud Messaging is optional. The normal checkout leaves `FCM_PROJECT_ID` empty and has
-  no Android `google-services.json`, so Stage 5.2 remains fully functional without Firebase. See
-  the [Firebase setup and deployment guide](docs/guides/firebase.md) before configuring either
-  side; never commit a service-account credential.
+In another terminal, after installing the app and making the server reachable from the phone:
 
-## CI
+```bash
+pnpm pair              # open or scan the one-use pairing link in SAC
+pnpm agent ack "Hi" --wait  # acknowledge on the phone; no wallet signature needed
+```
 
-`.github/workflows/ci.yml` runs on pull requests and on pushes to `master` and `develop`:
+For the complete device setup, including USB forwarding for local development, follow the
+[MacBook + Seeker quickstart](docs/guides/macbook-seeker-quickstart.md). A remote phone needs a
+reachable HTTPS endpoint; direct live updates require HTTP/2 end to end.
 
-- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check:deployments`, `pnpm check:release`, `pnpm check`, `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer`, all three exact package tests, `pnpm check:generated`, and `pnpm build`
-- **Gateway:** `pnpm check:gateway`, with the Go version read from `services/gateway/go.mod`
-- **Publisher support:** `pnpm check:publisher-support`, with the Go version read from `packages/publisher-support/go.mod`
-- **Signals demo (CopyTrading):** `pnpm check:demo-signals` and its own `docker build`, from `examples/demo-signals/go.mod`
-- **Prediction demo:** `pnpm check:demo-prediction` and its own `docker build`, from `examples/demo-prediction/go.mod`. Each demo has a job of its own, because "either demo builds without the other" is a claim and a job that builds exactly one of them is what tests it
-- **Android:** `pnpm check:android` on Temurin 21
-- **Emulator:** `pnpm test:hello --device` on an Android 16 (API 36) emulator. An emulator run never counts as the physical Seeker check.
+More commands (`pnpm generate`, `pnpm test:integration`, `pnpm test:load`, `pnpm agent …`) are in
+`package.json` and [`docs/development/`](docs/development).
 
-The workflow has read-only repository permissions, never commits, and cannot publish: it holds no
-registry credential, and `pnpm check:release` fails if a publish step ever appears in it.
+## 🔐 Security
 
-`.github/workflows/release.yml` is the one workflow that publishes, and only a `<component>-v<version>`
-tag or a deliberate dispatch starts it. See [`docs/development/releases.md`](docs/development/releases.md).
+- SAC and its servers never hold your wallet's private keys. Wallet signing follows your explicit
+  approval; connecting a source grants no spending authority.
+- Supported transactions are decoded and checked on the phone before the wallet opens. Rules
+  provide warnings, not automatic approval.
+- Direct servers store their own requests and returned results. Feed subscribers' decisions,
+  amounts and outcomes stay on their phones.
+- The gateway retains feed publications for delivery and catch-up, plus the access and push-routing
+  data needed for Restricted feeds and optional wake-ups. Restricted publishers verify wallet
+  ownership and manage eligibility; the gateway uses opaque access references.
+- Push carries a wake-up, not private request content or approval. It requires configuration and
+  Android notification permission.
 
-## License
+Read the full model in [`docs/security.md`](docs/security.md). Please report vulnerabilities
+privately through [GitHub security advisories](https://github.com/SeekerAgentConnect/sac/security/advisories/new)
+rather than public issues.
 
-See [`LICENSE`](LICENSE).
+## 📚 Documentation
+
+| | |
+| --- | --- |
+| 🌐 [Public documentation](https://seekeragentconnect.github.io/docs/getting-started) | App setup, MCP servers, direct integrations, Public/Restricted feeds and recipes |
+| 📖 [Repository guides](docs/guides) | Source-level setup, development and operational reference |
+| 🔌 [Integrations](docs/integrations) | Hermes, Claude, Jupiter and other external services |
+| 🧠 [Wiki](docs/wiki) | How each feature works |
+| 📡 [Protocol](docs/protocol.md) | The wire contract between servers and the app |
+| 🧑‍💻 [Development](docs/development) | Toolchain, testing, releases |
+| 📝 [Changelog](docs/changelog) | What changed, day by day |
+
+## 🙌 Contributing
+
+Issues and pull requests are welcome. Before opening a PR, run `pnpm check` and the checks for
+the components you changed (`pnpm check:android`, `pnpm check:gateway` or `pnpm check:demos`).
+The [CI workflow](.github/workflows/ci.yml) defines Node, Go, Android and emulator checks;
+it currently runs through manual dispatch.
+
+## 📄 License
+
+[MIT](LICENSE) © Renat Berezovsky

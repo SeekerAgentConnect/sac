@@ -36,8 +36,7 @@ the existing fresh-read and validation boundaries.
 The app preview scanner records six 390×844 dp dark fixtures as `screens/wallet-handoff.png`,
 `screens/connection.png`, `screens/rules-connection.png`, `screens/rules-global.png`,
 `screens/asset-edit.png`, and `screens/add-address.png`. `designCompare` pairs all six with the
-checked-in export references. The committed [SEE-122 visual review](../reviews/see-122/README.md)
-has an empty ticket-specific difference list.
+checked-in export references, with an empty ticket-specific difference list.
 
 Long rules content scrolls inside the body while its header remains pinned. The introductory rules
 card expands without clipping, and actions stay outside the scrolling body. Physical Seeker checks

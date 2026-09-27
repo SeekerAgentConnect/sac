@@ -36,8 +36,7 @@ touch areas where the layout needs them.
 ## Visual verification
 
 There is one dark `@Preview` and `@DesignRef` for each of the 53 implemented guide variants. The
-recorded Roborazzi output is compared at 3× with the corresponding HTML capture. The committed
-[visual review](../reviews/see-117/README.md) contains every labelled reference/actual pair.
+recorded Roborazzi output is compared at 3× with the corresponding HTML capture.
 
 Height, padding, radius, type weight, line height, and token-backed colour match for every pair
 except the tertiary button issue below. Hug-content widths differ by at most 3 image pixels

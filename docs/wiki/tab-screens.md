@@ -29,4 +29,4 @@ cd apps/android && ./gradlew designCompare
 `designCompare` pairs both design-system component captures and app screen captures with the local
 HTML export PNGs. Its report must pair all five `screens/*` paths with no missing screen reference
 or actual; the repository-wide inventory separately lists intentionally unpaired probes and token
-specimens. The committed SEE-121 comparisons are under `docs/reviews/see-121/`.
+specimens.
