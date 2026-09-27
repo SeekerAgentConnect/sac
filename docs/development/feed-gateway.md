@@ -99,7 +99,7 @@ The admin group is all-or-nothing like the stream and the relay: a setting with 
 it is a startup problem rather than a line that does nothing, with one exception — declaring
 `BROADCAST_ADMIN_PASSWORD_HASH` and leaving it **empty** keeps the whole group inert, which is what
 lets a deployment template write the group down where an operator can see it and turn it on with one
-secret (`deploy/feed/compose.yaml`, `deploy/seeker-gateway.yaml`).
+secret (`deploy/feed/compose.yaml`, `apps/seeker-gateway.yaml` in the `do-deploy` repository).
 
 **There is no publishing credential in the configuration.** A publisher's credential is created by
 `feed-gatewayctl` or by the admin page and kept as a SHA-256, so there is nothing in the environment,

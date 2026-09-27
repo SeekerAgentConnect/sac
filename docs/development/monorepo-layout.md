@@ -34,7 +34,7 @@ Directories that are not components keep their paths:
 
 | Path | What it is |
 | --- | --- |
-| `deploy/` | The Compose projects, ingress and operator examples, and the DigitalOcean App Platform specs. Project names, volume names and file paths are unchanged |
+| `deploy/` | The Compose projects, ingress and operator examples. Project names, volume names and file paths are unchanged. The DigitalOcean App Platform specs have since moved to the `do-deploy` repository |
 | `design/` | The Android design guide, tokens and captured references |
 | `docs/` | Documentation |
 | `fixtures/` | Test data shared by the app and the servers (transfer transactions, captured Jupiter answers, the restricted-feed challenge) |
@@ -236,9 +236,11 @@ The Go images (gateway, Centrifugo, both demos) contain only their binaries at `
 
 ### DigitalOcean App Platform
 
-The specs in `deploy/*.yaml` deploy prebuilt images by tag and name no source path, so the running
-apps are unaffected by this change. Build the next image with the new Dockerfile path (above), push
-it, and update the tag as `deploy/README.md` describes.
+The App Platform specs, now in the separate
+[`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy) repository, deploy prebuilt images by
+tag and name no source path, so the running apps are unaffected by this change. Build the next image
+with the new Dockerfile path (above), push it, and update the tag as that repository's README
+describes.
 
 ### Source-based installs
 

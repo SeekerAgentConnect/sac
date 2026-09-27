@@ -252,17 +252,9 @@ SQLite file, so the two see each other's work. A registration takes effect immed
 is not restarted and its environment does not change. A publishing credential is never accepted as
 the operator password, and no publisher or phone API can reach any of it.
 
-On the DigitalOcean App Platform app ([`deploy/seeker-gateway.yaml`](seeker-gateway.yaml)) the
-`gateway` service already declares `BROADCAST_ADMIN_ADDRESS=0.0.0.0:8092`, opens that internal
-port, and the `edge` Caddy already routes `/admin*` to it. `BROADCAST_ADMIN_PASSWORD_HASH` is
-declared **empty** there on purpose — no credential is committed — so turning the page on is one
-encrypted app-level secret and a redeploy.
-
-Ephemeral storage is not fixed by any of this, and on App Platform it is not fixed by the
-filesystem either — there is no disk to attach. What fixes it is keeping the state somewhere else:
-that app sets `BROADCAST_DATABASE_URL` to a managed Postgres and sets no `BROADCAST_DATABASE_PATH`
-at all, so a container replacement discards nothing (SEE-145). Registrations, credential hashes and
-relay bindings are all on the other side of that connection.
+The hosted DigitalOcean App Platform demo runs the same image without a disk: its gateway keeps
+its state in a managed Postgres through `BROADCAST_DATABASE_URL` (SEE-145), and its specs live in
+the separate [`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy) repository.
 
 A gateway that does keep a file is unaffected by any of this and stays the recommended shape for a
 self-hosted deployment: the Compose presets name the file and an explicit volume, and §4's backup
@@ -467,11 +459,15 @@ poll, SAC subscription, and the restart checks above. Automated and local eviden
 kept in [`docs/testing/see-137.md`](../docs/testing/see-137.md); unavailable live checks remain
 **NOT RUN** with their concrete blocker.
 
-## 9. Usefull commands
+## 9. Hosted DigitalOcean demo
 
-- `doctl apps update 28910149-9dfc-4683-87cf-e2223ec4c6af --spec deploy/seeker-skr-staking-mcp.yaml`
-- `doctl apps update 70848a26-9237-4e17-991d-845fb9f3665f --spec deploy/seeker-mcp.yaml`
-- `doctl apps update 326326e6-43c2-4aa1-893c-a3607b77e6ef --spec deploy/prediction-demo.yaml`
-- `doctl apps update a7aba189-c59f-4e0b-a0b0-0ccd8442036b --spec deploy/signals-demo.yam`
-- `doctl apps update accce337-aab1-42ed-9768-3fc6c1ddc412 --spec deploy/seeker-gateway.yaml`
-- `apps/android/gradlew -p apps/android :app:assembleDebug -Pseekervault.relayUrl=https://seeker-gateway-sg8g3.ondigitalocean.app`
+The DigitalOcean App Platform specs for the hosted demo, their app IDs and the `doctl` commands are
+in the separate [`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy) repository. It
+deploys only the published images and does not depend on this checkout.
+
+To build the Android app against the hosted gateway:
+
+```sh
+apps/android/gradlew -p apps/android :app:assembleDebug \
+  -Pseekervault.relayUrl=https://seeker-gateway-sg8g3.ondigitalocean.app
+```

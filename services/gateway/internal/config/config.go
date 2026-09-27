@@ -539,7 +539,7 @@ func Load(lookup Lookup) (*Config, []string) {
 		// Declaring the hash and leaving it empty is the deliberate exception, and it is what a
 		// deployment template does: the whole group is written down where an operator can see it,
 		// the surface stays off, and turning it on is one secret rather than a second edit
-		// somewhere else (deploy/feed/compose.yaml, deploy/seeker-gateway.yaml).
+		// somewhere else (deploy/feed/compose.yaml, do-deploy's apps/seeker-gateway.yaml).
 		for _, name := range []string{
 			"BROADCAST_ADMIN_ADDRESS", "BROADCAST_ADMIN_PATH", "BROADCAST_ADMIN_SESSION_MINUTES",
 			"BROADCAST_ADMIN_LOGIN_RATE", "BROADCAST_ADMIN_LOGIN_BURST",

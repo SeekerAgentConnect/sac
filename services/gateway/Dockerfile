@@ -83,7 +83,7 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifica
 # A default here would make "both" the resting state of every Postgres deployment, which would
 # then be working only for as long as somebody remembered to blank a variable they never set. The
 # image was never startable with no configuration anyway: BROADCAST_PUBLIC_URL has no default
-# either, for the same reason. The four Compose presets name the file; deploy/seeker-gateway.yaml
+# either, for the same reason. The four Compose presets name the file; do-deploy's apps/seeker-gateway.yaml
 # names the URL.
 # The image's safe standalone default is loopback. The portable Compose preset
 # overrides these with explicit container-network binds and publishes only its

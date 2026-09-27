@@ -168,7 +168,7 @@ gateway push relay is configured: https://feeds.example.com as server <uuid>
 gateway push relay is off; SKR_STAKING_RELAY_URL is not configured
 ```
 
-The App Platform spec (`deploy/seeker-skr-staking-mcp.yaml`) already sets `SKR_STAKING_H2C=true`, so
+The App Platform spec (`apps/seeker-skr-staking-mcp.yaml` in the `do-deploy` repository) already sets `SKR_STAKING_H2C=true`, so
 the stream needs nothing there. The relay needs the three keys added as encrypted secrets by whoever
 holds the gateway registration; they are deliberately **not** in the committed spec, because two of
 three would stop the deployment from starting.
