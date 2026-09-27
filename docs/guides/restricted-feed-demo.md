@@ -379,7 +379,7 @@ reference is a floor.
 The deployed signals demo is `https://signals-demo-fzs2q.ondigitalocean.app`, with the trader UI at
 `/trader` and therefore the Devices page at `/trader/devices`; the admin login is `DEMO_ADMIN_USER`
 and `DEMO_ADMIN_PWD` from `~/.env` ([emulator-e2e.md](../development/emulator-e2e.md)).
-[`deploy/signals-demo.yaml`](../../deploy/signals-demo.yaml) sets
+[`do-deploy/apps/signals-demo.yaml`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/apps/signals-demo.yaml) sets
 `PUBLISHER_AUTH_ORIGIN=https://signals-demo-fzs2q.ondigitalocean.app`, with `/access/v1` served
 beside the API on the one public port and `/trader` routed to `copytrading-admin` by the ingress.
 
@@ -390,7 +390,7 @@ with `feed-gatewayctl access` in the gateway component's App Platform console, w
 `BROADCAST_DATABASE_URL` is already set. Whether it has
 been done is recorded nowhere in this repository, and until it is, the publisher publishes nothing
 and says `access_unconfirmed`. **The image:**
-[`deploy/signals-demo.yaml`](../../deploy/signals-demo.yaml) pins `copytrading-0.1.5`, and the
+[`do-deploy/apps/signals-demo.yaml`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/apps/signals-demo.yaml) pins `copytrading-0.1.5`, and the
 deployed servers are known to lag the repository
 ([emulator-e2e.md](../development/emulator-e2e.md) § Known issues), so confirm the running image
 contains SEE-156 before reading a failure as a bug.

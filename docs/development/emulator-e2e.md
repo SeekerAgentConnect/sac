@@ -19,8 +19,8 @@ are absent, so nothing can be signed.
 | CopyTrading demo feed (signals) | `https://signals-demo-fzs2q.ondigitalocean.app` (admin at `/trader`) | `a7aba189-c59f-4e0b-a0b0-0ccd8442036b` |
 | Prediction demo feed | `https://prediction-demo-quni7.ondigitalocean.app` | `326326e6-43c2-4aa1-893c-a3607b77e6ef` |
 
-The specs are in `deploy/*.yaml`, and the `doctl apps update` commands are in `deploy/README.md`
-§ 9. `doctl` is authenticated for `apps` only; `doctl account get` answers 403, and that is normal.
+The App Platform specs and the `doctl apps update` commands are in the separate
+[`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy) repository. `doctl` is authenticated for `apps` only; `doctl account get` answers 403, and that is normal.
 
 Credentials are in `~/.env`, never in the repository. Load them with `set -a; source ~/.env; set +a`,
 and never print them:

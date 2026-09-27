@@ -15,7 +15,7 @@ type Config struct {
 	// AuthAddress is PUBLISHER_AUTH_ADDRESS: a listener of its own for the endpoint, so the
 	// publisher's token-protected API can stay on loopback while this one is published. Empty — the
 	// default — serves /access/v1 on the API's own listener beside the token-protected /v1, which is
-	// what a platform that gives a service one public port needs (deploy/signals-demo.yaml).
+	// what a platform that gives a service one public port needs (do-deploy's apps/signals-demo.yaml).
 	AuthAddress string
 	// GrantLifetime is PUBLISHER_ACCESS_GRANT_HOURS: how long a grant runs before this publisher
 	// renews it, which is also the bound on how long access outlives this publisher's reach.
