@@ -9,7 +9,7 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 )
 
-// The panel's pairing QR codes (SEE-163). A phone pairs with this feed the way it pairs with
+// The panel's pairing QR codes. A phone pairs with this feed the way it pairs with
 // anything: SAC → Add connection → Scan QR code, pointed at what the input beside the code
 // already shows. Nothing new is encoded and nothing new is granted — the reference carries no
 // secret, and a restricted feed's invitation is single use and bound to the one device it was

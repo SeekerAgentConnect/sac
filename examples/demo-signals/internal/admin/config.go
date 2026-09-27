@@ -8,7 +8,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/config"
 )
 
-// Config is the trader UI's deployment (SEE-126). It is a client of the CopyTrading API, not a
+// Config is the trader UI's deployment. It is a client of the CopyTrading API, not a
 // second writer: the token here is presented to that API, never to a browser.
 type Config struct {
 	ListenAddress string

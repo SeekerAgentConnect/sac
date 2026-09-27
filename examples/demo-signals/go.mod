@@ -1,6 +1,6 @@
 // demo-signals (the CopyTrading demo) is one of two independent public-feed demonstrations. It builds, runs, tests
 // and deploys on its own: it needs a reachable feed gateway and nothing else — not the Prediction
-// demo, not the MCP server, and not the Direct Server SDK (SEE-134).
+// demo, not the MCP server, and not the Direct Server SDK.
 //
 // The replace below is how a repository checkout resolves the shared source library. A copy of
 // this demo taken out of the repository replaces it with an explicit module revision instead; the

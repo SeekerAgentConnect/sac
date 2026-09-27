@@ -10,7 +10,7 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 )
 
-// SEE-163: the panel pairs a device by letting the phone scan the reference, and an approved
+// The panel pairs a device by letting the phone scan the reference, and an approved
 // device out of the room by scanning its invitation. What is drawn has to be the encoder's own
 // matrix, quiet zone and all — a drawing that drops or shifts one module does not scan as what
 // the input beside it says, and one that paints into the quiet zone does not scan at all.

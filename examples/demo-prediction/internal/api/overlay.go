@@ -19,7 +19,7 @@ import (
 // Overlay adds this demo's operator search and select on top of the shared publisher API.
 //
 // Callers still cannot POST /v1/requests: those stay 403. Selecting a market asks discovery to
-// publish that market through the same store path a cycle uses (SEE-138).
+// publish that market through the same store path a cycle uses.
 func Overlay(next http.Handler, token string, finder Finder, drain Drain) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/discovery/markets", authorize(token, search(finder)))

@@ -1,5 +1,5 @@
 // Package boundary_test states what this demo is, as tests over its own source rather than as
-// prose in a README (SEE-96, SEE-134, AGENTS.md).
+// prose in a README (AGENTS.md).
 //
 // The rules every public-feed publisher obeys are the shared library's, said once over the library
 // (packages/publisher-support/api/boundary_test.go). These are the rules about *this* module: it is one of
@@ -54,7 +54,7 @@ func shipped(t *testing.T) map[string]string {
 //
 // It is the whole of what "two independent demonstrations" means, and it is a test because an
 // import is one line: a shared helper reached for in a hurry would make one demo's build, image and
-// release depend on the other's, and nothing else would notice (SEE-134).
+// release depend on the other's, and nothing else would notice.
 func TestThisDemoDoesNotImportTheOtherDemo(t *testing.T) {
 	for path, source := range shipped(t) {
 		if strings.Contains(source, "SeekerAgentWallet/demo-copytrading") {
@@ -130,7 +130,7 @@ func TestThisDemoDeliversNothingItself(t *testing.T) {
 				}
 				if pattern.MatchString(line) {
 					t.Fatalf("%s: %q appears in code (%s). Streaming and push delivery are the "+
-						"gateway's (SEE-91, SEE-92); a publisher submits a document and stops",
+						"gateway's; a publisher submits a document and stops",
 						path, word, trimmed)
 				}
 			}
@@ -238,7 +238,7 @@ func TestNoSubscriberIsKnownHere(t *testing.T) {
 	}
 }
 
-// The Prediction demo is the public-feed example (SEE-156): anyone holding its reference may read
+// The Prediction demo is the public-feed example: anyone holding its reference may read
 // it. It compiles in nothing of the restricted-feed machinery — no access service, no
 // authentication endpoint, no authentication origin in its manifest — so a configuration mistake
 // cannot turn it into something else. The CopyTrading demo asserts the opposite.

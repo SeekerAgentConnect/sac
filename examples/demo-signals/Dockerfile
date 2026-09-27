@@ -6,17 +6,17 @@
 # go.mod replaces the shared source library with ../../packages/publisher-support, so the
 # build needs that directory as well as this one. It needs nothing else — and
 # examples/demo-prediction/ is never copied in, so no provider client, no discovery and
-# no prediction binary exists anywhere in this image (SEE-134).
+# no prediction binary exists anywhere in this image.
 #
 # This is none of the other images. `services/gateway/` is the shared service this
-# publishes to (SEE-90); `servers/mcp-server/` is one owner's own direct server
-# (SEE-132). This is a developer's own publisher: it submits documents to that
-# gateway and serves its own small API to whoever writes the signals
+# publishes to; `servers/mcp-server/` is one owner's own direct server. This is
+# a developer's own publisher: it submits documents to that gateway and serves
+# its own small API to whoever writes the signals
 # (docs/wiki/copytrading-template.md).
 #
 # Two binaries, both this demo's. `/copytrading` is the entrypoint and publishes
-# a trader's own signals (SEE-95); `/copytrading-admin` is the password-gated
-# HTML UI that calls its API (SEE-126); `/publishctl` is the operator's client
+# a trader's own signals; `/copytrading-admin` is the password-gated
+# HTML UI that calls its API; `/publishctl` is the operator's client
 # of that same API.
 
 # Pinned to the version examples/demo-signals/go.mod requires, so a build from a clean
@@ -31,7 +31,7 @@ ARG GO_VERSION=1.27.1
 # for the target: CGO is off, so GOOS/GOARCH is all it takes, and `docker buildx
 # build --platform linux/amd64` from an Apple silicon Mac needs no emulation (as
 # in servers/mcp-server/Dockerfile).
-# Release identity (SEE-168). The defaults make a local `docker build` produce an image that is
+# Release identity. The defaults make a local `docker build` produce an image that is
 # honestly labelled as one, and .github/workflows/release.yml passes the released version and the
 # exact commit it was built from, so an image digest can always be traced back to a revision.
 ARG VERSION=0.0.0-dev
@@ -73,8 +73,6 @@ ARG REVISION
 LABEL org.opencontainers.image.title="Seeker Agent Connect CopyTrading demo" \
       org.opencontainers.image.description="A demonstration publisher: a trader's own signals, submitted to the shared feed gateway." \
       org.opencontainers.image.source="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.url="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.documentation="https://github.com/BrRenat/SeekerAgentConnect/blob/master/examples/demo-signals/README.md" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Seeker Agent Connect" \
       org.opencontainers.image.version="${VERSION}" \
@@ -82,18 +80,11 @@ LABEL org.opencontainers.image.title="Seeker Agent Connect CopyTrading demo" \
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 # The signals this demo holds and what the gateway has confirmed about each. It
 # is the only writable path, and it is this demo's alone: the Prediction demo has
-# its own file, its own volume and its own publisher identity (SEE-134).
-#
-# The name is unchanged from the combined image on purpose. An operator upgrading
-# from it mounts the same volume and finds the same database, rather than an
-# empty one beside their publisher identity and their pending publications. A
-# deployment that prefers the module's own name sets PUBLISHER_DATABASE_PATH to
-# /data/copytrading.db and moves the file once, deliberately
-# (examples/demo-signals/README.md).
+# its own file, its own volume and its own publisher identity.
 ENV PUBLISHER_DATABASE_PATH=/data/publisher.db
-# The image's safe standalone default is loopback. The portable Compose preset
-# overrides it with an explicit container-network bind and publishes the API
-# directly on host loopback; no proxy is bundled with this demo.
+# The image's safe standalone default is loopback. To reach the API from outside
+# the container, set PUBLISHER_API_ADDRESS=0.0.0.0:8092 and publish the port on
+# the host's loopback address; no proxy is bundled with this demo.
 ENV PUBLISHER_API_ADDRESS=127.0.0.1:8092
 
 COPY --from=build /out/copytrading /out/publishctl /out/copytrading-admin /

@@ -1,5 +1,5 @@
 // Package boundary_test states what this demo is, as tests over its own source rather than as
-// prose in a README (SEE-95, SEE-134, AGENTS.md).
+// prose in a README (AGENTS.md).
 //
 // The rules every public-feed publisher obeys are the shared library's, said once over the library
 // (packages/publisher-support/api/boundary_test.go). These are the rules about *this* module: it is one of
@@ -51,7 +51,7 @@ func shipped(t *testing.T) map[string]string {
 //
 // It is the whole of what "two independent demonstrations" means, and it is a test because an
 // import is one line: a shared helper reached for in a hurry would make one demo's build, image and
-// release depend on the other's, and nothing else would notice (SEE-134).
+// release depend on the other's, and nothing else would notice.
 func TestThisDemoDoesNotImportTheOtherDemo(t *testing.T) {
 	for path, source := range shipped(t) {
 		if strings.Contains(source, "SeekerAgentWallet/demo-prediction") {
@@ -115,7 +115,7 @@ func TestThisDemoDeliversNothingItself(t *testing.T) {
 				}
 				if pattern.MatchString(line) {
 					t.Fatalf("%s: %q appears in code (%s). Streaming and push delivery are the "+
-						"gateway's (SEE-91, SEE-92); a publisher submits a document and stops",
+						"gateway's; a publisher submits a document and stops",
 						path, word, trimmed)
 				}
 			}
@@ -197,7 +197,7 @@ func TestThisDemoSaysItsSignalsAreItsCallers(t *testing.T) {
 // and never reports back, so the vocabulary of a returned outcome is vocabulary this module's code
 // may not carry.
 //
-// Since SEE-156 this demo's feed is restricted, so it does know which wallets and devices it
+// This demo's feed is restricted, so it does know which wallets and devices it
 // admitted — deciding that is its job, and the shared library (publisher-support/access) holds that
 // state behind its own API. What stays forbidden here is the rest: an owner's decision about a
 // signal, an execution result, and a device binding in the retired gateway-private sense.
@@ -226,7 +226,7 @@ func TestNoSubscriberIsKnownHere(t *testing.T) {
 	}
 }
 
-// The shipped CopyTrading demo is the restricted-feed example (SEE-156), and that is compiled in
+// The shipped CopyTrading demo is the restricted-feed example, and that is compiled in
 // rather than configured: its main builds the access service with the operator's manual approval,
 // guards every publication on the gateway confirming the restriction, and serves the
 // authentication endpoint. The Prediction demo is the public one and asserts the opposite.

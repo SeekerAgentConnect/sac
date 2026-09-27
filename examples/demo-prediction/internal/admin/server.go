@@ -1,4 +1,4 @@
-// Package admin is the password-gated Prediction operator UI (SEE-138).
+// Package admin is the password-gated Prediction operator UI.
 //
 // It is a client of the template's existing /v1 API and nothing else: the publisher token stays in
 // this process, operators log in with named bcrypt passwords, and the public origin serves HTML on

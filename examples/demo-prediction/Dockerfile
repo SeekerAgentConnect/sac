@@ -6,15 +6,15 @@
 # go.mod replaces the shared source library with ../../packages/publisher-support, so the
 # build needs that directory as well as this one. It needs nothing else — and
 # examples/demo-signals/ is never copied in, so no swap-writing API, no CopyTrading
-# trader UI and no CopyTrading binary exists anywhere in this image (SEE-134).
+# trader UI and no CopyTrading binary exists anywhere in this image.
 #
 # This is none of the other images. `services/gateway/` is the shared service this
-# publishes to (SEE-90); `servers/mcp-server/` is one owner's own direct server
-# (SEE-132). This one discovers Jupiter Prediction markets and publishes those
-# (SEE-96, docs/wiki/prediction-template.md).
+# publishes to; `servers/mcp-server/` is one owner's own direct server. This
+# one discovers Jupiter Prediction markets and publishes those
+# (docs/wiki/prediction-template.md).
 #
 # Three binaries. `/prediction` is the entrypoint; `/publishctl` is the operator's
-# client of its API; `/prediction-admin` is the password-gated HTML UI (SEE-138).
+# client of its API; `/prediction-admin` is the password-gated HTML UI.
 
 # Pinned to the version examples/demo-prediction/go.mod requires, so a build from a clean
 # checkout uses the toolchain the tests were run with
@@ -28,7 +28,7 @@ ARG GO_VERSION=1.27.1
 # for the target: CGO is off, so GOOS/GOARCH is all it takes, and `docker buildx
 # build --platform linux/amd64` from an Apple silicon Mac needs no emulation (as
 # in servers/mcp-server/Dockerfile).
-# Release identity (SEE-168). The defaults make a local `docker build` produce an image that is
+# Release identity. The defaults make a local `docker build` produce an image that is
 # honestly labelled as one, and .github/workflows/release.yml passes the released version and the
 # exact commit it was built from, so an image digest can always be traced back to a revision.
 ARG VERSION=0.0.0-dev
@@ -71,8 +71,6 @@ ARG REVISION
 LABEL org.opencontainers.image.title="Seeker Agent Connect Prediction demo" \
       org.opencontainers.image.description="A demonstration publisher: Jupiter Prediction markets, discovered and published to the feed gateway." \
       org.opencontainers.image.source="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.url="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.documentation="https://github.com/BrRenat/SeekerAgentConnect/blob/master/examples/demo-prediction/README.md" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Seeker Agent Connect" \
       org.opencontainers.image.version="${VERSION}" \
@@ -81,11 +79,11 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifica
 # The markets this demo tracks, the signals it publishes for them, and what the
 # gateway has confirmed about each. It is the only writable path, and it is this
 # demo's alone: the CopyTrading demo has its own file, its own volume and its own
-# publisher identity (SEE-134).
+# publisher identity.
 ENV PUBLISHER_DATABASE_PATH=/data/prediction.db
-# The image's safe standalone default is loopback. The portable Compose preset
-# overrides it with an explicit container-network bind and publishes the API
-# directly on host loopback; no proxy is bundled with this demo.
+# The image's safe standalone default is loopback. To reach the API from outside
+# the container, set PUBLISHER_API_ADDRESS=0.0.0.0:8092 and publish the port on
+# the host's loopback address; no proxy is bundled with this demo.
 ENV PUBLISHER_API_ADDRESS=127.0.0.1:8092
 
 COPY --from=build /out/prediction /out/publishctl /out/prediction-admin /

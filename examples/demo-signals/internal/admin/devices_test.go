@@ -29,7 +29,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/store"
 )
 
-// The Devices page against the real thing (SEE-156): the publisher's own API with its access
+// The Devices page against the real thing: the publisher's own API with its access
 // service over a real store, and a gateway that can be told to fail. What is asserted is what an
 // operator sees and what their clicks change.
 

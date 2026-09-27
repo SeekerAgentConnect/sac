@@ -21,7 +21,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/store"
 )
 
-// The Prediction template against the same real gateway (SEE-96).
+// The Prediction template against the same real gateway.
 //
 // It is a second test rather than a second case in the first one, because what it proves is
 // different: the document a *discovered* market becomes — built by the reconciler's own path,
@@ -30,7 +30,7 @@ import (
 // each of them chooses a side and a stake"; the device half is the owner's run
 // (docs/testing/stage-7-1.md).
 //
-// It also proves the thing the ticket asks for last: after the source ends a market, the proposal
+// It also proves one last thing: after the source ends a market, the proposal
 // a phone can read is cancelled, so nothing new is executed from it.
 func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 	binary := os.Getenv("SEEKERVAULT_FEED_GATEWAY")
@@ -170,7 +170,7 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 			t.Fatalf("the document a phone reads has a %q field:\n%s", absent, first)
 		}
 	}
-	// Since SEE-157 the document does carry two addresses, and only those two: where the
+	// The document does carry two addresses, and only those two: where the
 	// provider's own app and site keep this market. Anything else that looked like a link would
 	// be a publisher putting one on a phone's screen, which is still refused — so the two are
 	// counted rather than searched past.

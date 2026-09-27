@@ -1,4 +1,4 @@
-// Command copytrading-admin is the password-gated CopyTrading trader UI (SEE-126).
+// Command copytrading-admin is the password-gated CopyTrading trader UI.
 //
 // It is a client of the template's existing JSON API: judges log in with named bcrypt passwords,
 // this process presents PUBLISHER_API_TOKEN to loopback /v1, and the browser never sees that token.

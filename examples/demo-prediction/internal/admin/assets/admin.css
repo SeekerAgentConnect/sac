@@ -1,4 +1,4 @@
-/* The Prediction publisher's admin UI, in the feed gateway's visual system (SEE-164): the same dark
+/* The Prediction publisher's admin UI, in the feed gateway's visual system: the same dark
    theme, lime accent and bundled Roboto faces. It is a copy, not a shared file — this demo builds
    and ships without the gateway's source — and it is entirely self-hosted: no font service, CDN,
    analytics, or browser-side secret is involved. */

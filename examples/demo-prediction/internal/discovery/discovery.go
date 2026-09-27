@@ -1,5 +1,5 @@
-// Package discovery turns a provider's listing into this template's own proposals (SEE-96,
-// docs/wiki/prediction-template.md).
+// Package discovery turns a provider's listing into this template's own proposals
+// (docs/wiki/prediction-template.md).
 //
 // The Prediction template does not wait to be told what to publish. It walks the provider's
 // listing, applies the filters its operator configured, and publishes one proposal per market that

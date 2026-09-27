@@ -1,5 +1,5 @@
-// Command prediction is the Prediction publisher template (SEE-96,
-// docs/wiki/prediction-template.md).
+// Command prediction is the Prediction publisher template
+// (docs/wiki/prediction-template.md).
 //
 // It reads Jupiter's prediction listing, applies the filters its operator configured, and publishes
 // one proposal per market that matches — once, to the shared feed gateway. Every phone
@@ -67,7 +67,7 @@ func run(log *slog.Logger) error {
 	}
 
 	// The one kind this template publishes. Registering it here is what makes this a template: the
-	// CopyTrading template (SEE-95) is the same core with the other kind, and no setting turns
+	// CopyTrading template is the same core with the other kind, and no setting turns
 	// either into the other.
 	kind := signals.Prediction{}
 	description := manifest.Settings{
@@ -200,7 +200,7 @@ func run(log *slog.Logger) error {
 			Now:       time.Now,
 			// Nobody may write a signal here: they are this template's own, and a caller's would
 			// be undone by the next cycle (internal/api). Selecting a market is discovery writing,
-			// not a caller posting a request (SEE-138).
+			// not a caller posting a request.
 			Authorship: api.ByDiscovery,
 			Markets:    documents,
 			// The reconciler, described: what this demo looks for is a provider's vocabulary, and
@@ -224,7 +224,7 @@ func run(log *slog.Logger) error {
 	}()
 
 	// Telling the gateway this process is running, so a phone can be shown that this feed is
-	// online and not merely that the gateway is (SEE-150). It publishes nothing; a publisher with
+	// online and not merely that the gateway is. It publishes nothing; a publisher with
 	// markets to publish has already checked in by publishing them.
 	checked := make(chan struct{})
 	go func() {

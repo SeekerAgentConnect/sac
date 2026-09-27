@@ -18,7 +18,7 @@ import (
 const HashCost = bcrypt.DefaultCost
 
 // File is a named bcrypt password list. Every request re-reads it when the mtime moves, so
-// deleting a line logs that name out of existing sessions on the next request (SEE-138).
+// deleting a line logs that name out of existing sessions on the next request.
 type File struct {
 	mu      sync.Mutex
 	path    string

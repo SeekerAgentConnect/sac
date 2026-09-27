@@ -8,13 +8,13 @@
 # ~/.hermes/config.yaml. Don't replace that file, and don't remove other entries.
 # Keep the token out of this file: put it in ~/.hermes/.env as
 #
-#   MCP_SEEKER_VAULT_API_KEY=<the MCP_TOKEN value from compose/mcp/.env in do-deploy>
+#   MCP_SEEKER_VAULT_API_KEY=<the MCP_TOKEN value from the server's .env>
 #
 # Before this works:
-#   - do-deploy's `compose/mcp` and the independently managed `compose/ingress/direct`
-#     project are running, and the ingress certificate is a real one;
-#   - the deployment's MCP_ALLOWED_HOSTS carries the domain, which the overlay
-#     sets to DIRECT_DOMAIN, or the MCP server answers 403;
+#   - the MCP server is running behind a TLS ingress, and the ingress
+#     certificate is a real one;
+#   - the deployment's MCP_ALLOWED_HOSTS carries the domain, or the MCP server
+#     answers 403;
 #   - the OAuth profile is **off**. Hermes sends a fixed bearer token, and with
 #     OAuth on the public endpoint takes only access tokens from the configured
 #     authorization server (docs/integrations/claude.md).

@@ -1,5 +1,5 @@
-// Command copytrading is the CopyTrading publisher template (SEE-95,
-// docs/wiki/copytrading-template.md).
+// Command copytrading is the CopyTrading publisher template
+// (docs/wiki/copytrading-template.md).
 //
 // A trader — or a strategy system on their behalf — posts one signal here. The template publishes
 // it once to the shared feed gateway, and every phone subscribed to this publisher's channel
@@ -7,7 +7,7 @@
 // it there, and executes it through the bundled `jupiter.swap` plugin. **None of that comes back
 // here**: this process never learns what anyone chose, whether they went ahead, or what came of it.
 //
-// The feed is **restricted** (SEE-156, docs/wiki/restricted-feeds.md). A phone proves it controls a
+// The feed is **restricted** (docs/wiki/restricted-feeds.md). A phone proves it controls a
 // wallet by signing a challenge — not a transaction — at PUBLISHER_AUTH_ORIGIN, the operator
 // approves or rejects that device on the trader page, and an approved device redeems a one-use
 // invitation for a session the gateway enforces. So this process does know which wallets and
@@ -59,7 +59,7 @@ func main() {
 
 func run(log *slog.Logger) error {
 	settings, problems := config.Load(os.LookupEnv)
-	// This demo's feed is restricted (SEE-156): only devices the operator approved may read it. That
+	// This demo's feed is restricted: only devices the operator approved may read it. That
 	// is compiled in, like the kind below, rather than a setting — the Prediction demo is the public
 	// one — so the settings it needs are required rather than optional.
 	reader := config.NewReader(os.LookupEnv)
@@ -76,7 +76,7 @@ func run(log *slog.Logger) error {
 	}
 
 	// The one kind this template publishes. Registering it here — rather than choosing one from a
-	// setting — is what makes this a template: the prediction template (SEE-96) is the same core
+	// setting — is what makes this a template: the prediction template is the same core
 	// with a different kind, and neither can be turned into the other by configuration.
 	kind := signals.Swap{}
 	description := manifest.Settings{
@@ -122,7 +122,7 @@ func run(log *slog.Logger) error {
 	}
 	// Nothing is published until the gateway confirms it enforces this feed as restricted: a gateway
 	// too old to know, or one whose operator registered the feed as public, would serve every signal
-	// to anybody (SEE-156).
+	// to anybody.
 	guard := access.NewGuard(gateway, restricted.AuthOrigin, time.Now)
 	drainer := publish.NewDrainer(publish.Plan{
 		Documents: documents,
@@ -249,7 +249,7 @@ func run(log *slog.Logger) error {
 	}()
 
 	// Telling the gateway this process is running, so a phone can be shown that this feed is
-	// online and not merely that the gateway is (SEE-150). It publishes nothing; a publisher with
+	// online and not merely that the gateway is. It publishes nothing; a publisher with
 	// signals to send has already checked in by sending them.
 	checked := make(chan struct{})
 	go func() {

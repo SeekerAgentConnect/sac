@@ -9,7 +9,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
-// The Devices / Feed access page (SEE-156, docs/wiki/restricted-feeds.md#the-operators-page).
+// The Devices / Feed access page (docs/wiki/restricted-feeds.md#the-operators-page).
 //
 // This demo's feed is restricted: a phone proves it controls a wallet, and the operator decides
 // here whether that device may read. Like the signal page, this is a client of the publisher's own

@@ -1,5 +1,5 @@
 // The reconciler, over the real store and — for one test — the real provider client answering with
-// the answers the provider really gave (SEE-96).
+// the answers the provider really gave.
 //
 // It is an external test package because the store is written against this one: `store` imports
 // `discovery` for the two row types it keeps, so a test inside `discovery` could not open a
@@ -294,7 +294,7 @@ func TestARealListingBecomesProposals(t *testing.T) {
 		t.Fatalf("the provider's own floor is not in the terms: %v", signal.Terms)
 	// Where the owner carries on, which only this side knows: the page is addressed by the
 	// event's slug, and a phone left to compose one out of the market identifier lands near the
-	// market rather than on it (SEE-157).
+	// market rather than on it.
 	case signal.Terms[signals.ProviderDeepLink] != first.Market.SourceURL:
 		t.Fatalf("the provider's own app link is not in the terms: %v", signal.Terms)
 	case signal.Terms[signals.ProviderWebURL] != first.Market.SourceURL:

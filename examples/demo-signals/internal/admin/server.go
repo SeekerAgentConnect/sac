@@ -1,4 +1,4 @@
-// Package admin is the password-gated CopyTrading trader UI (SEE-126).
+// Package admin is the password-gated CopyTrading trader UI.
 //
 // It is a client of the template's existing /v1 API and nothing else: the publisher token stays in
 // this process, judges log in with named bcrypt passwords, and the public origin serves HTML on
@@ -103,7 +103,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST "+s.path+"/create", s.create)
 	mux.HandleFunc("POST "+s.path+"/signals/{id}/cancel", s.cancel)
 	mux.HandleFunc("POST "+s.path+"/signals/{id}/retry", s.retry)
-	// Devices / feed access (SEE-156).
+	// Devices / feed access.
 	mux.HandleFunc("GET "+s.path+"/devices", s.showDevices)
 	mux.HandleFunc("POST "+s.path+"/devices/{id}/{action}", s.actOnDevice)
 	mux.HandleFunc("POST "+s.path+"/wallets/{wallet}/revoke", s.revokeWallet)

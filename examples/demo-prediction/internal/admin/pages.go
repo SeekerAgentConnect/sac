@@ -8,7 +8,7 @@ import (
 
 // The pages and the files they load, compiled into the binary.
 //
-// The look is the feed gateway's administration (SEE-164), copied rather than shared: this demo
+// The look is the feed gateway's administration, copied rather than shared: this demo
 // builds and ships without the gateway's source, so it carries its own stylesheet, script and the
 // two fonts they use. Nothing is fetched from a font service or a CDN, which is what lets the
 // content policy stay `default-src 'none'` with only this origin's own files allowed.

@@ -21,8 +21,8 @@ import (
 )
 
 // Prediction is the Prediction template's own deployment: the provider it reads, the filters its
-// operator chose, and the deposit terms every signal it publishes carries (SEE-96,
-// docs/wiki/prediction-template.md).
+// operator chose, and the deposit terms every signal it publishes carries
+// (docs/wiki/prediction-template.md).
 //
 // It is beside [Config] rather than inside it because the two templates are two deployments. A
 // CopyTrading publisher has no provider and no filters; a Prediction publisher has both, and no

@@ -22,7 +22,7 @@ import (
 )
 
 // The Prediction template's API: the same endpoints for reading, none for writing, and two of its
-// own for what discovery is doing (SEE-96).
+// own for what discovery is doing.
 
 // provider is a listing a test scripts.
 type provider struct {
@@ -300,7 +300,7 @@ func TestTheDiscoveryAnswerSaysWhatItLooksForAndWhatItFound(t *testing.T) {
 			market["last_checked_at"])
 	}
 	// The document carries identifiers, which is what lets a phone look the market up for itself,
-	// and since SEE-157 exactly two addresses: where the provider's own app and site keep this
+	// and exactly two addresses: where the provider's own app and site keep this
 	// market. Nothing else in it is a URL — not in the note, not in the title, not anywhere a
 	// publisher's prose reaches — and that is what is checked here, term by term rather than by
 	// searching the whole document, so a URL appearing somewhere new still fails.

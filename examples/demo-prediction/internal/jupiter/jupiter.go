@@ -1,5 +1,5 @@
-// Package jupiter is the prediction provider, as this template reads it (SEE-96,
-// docs/integrations/jupiter.md#prediction-discovery).
+// Package jupiter is the prediction provider, as this template reads it
+// (docs/integrations/jupiter.md#prediction-discovery).
 //
 // Two calls, and both of them read public information: which events and markets exist, and what one
 // market currently is. Nothing here is about anybody — no wallet, no order, no position, no history
@@ -220,7 +220,7 @@ type Event struct {
 
 // Market is a market as the provider states it. Every field is the provider's claim, and the phone
 // reads them all again for itself before anything is prepared: what is published is which market,
-// not what the market currently is (SEE-94).
+// not what the market currently is.
 type Market struct {
 	MarketID string
 	EventID  string

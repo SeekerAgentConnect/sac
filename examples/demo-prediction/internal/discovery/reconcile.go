@@ -559,7 +559,7 @@ func (r *Reconciler) statement(one candidate, row markets.Market, now time.Time)
 	if r.deposit.Most > 0 {
 		terms[signals.MostDeposit] = strconv.FormatUint(r.deposit.Most, 10)
 	}
-	// Where the owner may carry on with this market, on the provider's own property (SEE-157).
+	// Where the owner may carry on with this market, on the provider's own property.
 	//
 	// This template is the only side that knows it. The page is addressed by the event's slug,
 	// which is in the listing this template reads and in nothing the phone can ask for, so a phone
