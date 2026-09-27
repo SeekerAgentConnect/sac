@@ -75,9 +75,16 @@ const workflow = read(".github/workflows/release.yml");
 check("the npm scope is the one the release token can write", () => {
   assert.equal(registries.npmScope, "@seeker_agent_connect");
 });
-check("the GHCR namespace is the agreed one", () => {
-  assert.equal(registries.ghcr, "ghcr.io/seekeragentconnect");
+check("the Docker Hub repository is the agreed one", () => {
+  assert.equal(registries.docker, "docker.io/brenat/seeker-agent-connect");
 });
+check("the npm dry-run switch is a boolean", () => {
+  assert.equal(typeof registries.npmDryRun, "boolean");
+});
+
+// Every image shares one repository, so the tag prefix is what tells them apart; two components
+// with the same prefix would overwrite each other's tags.
+const tagPrefixes = new Set();
 
 const identifiers = new Set();
 for (const component of components) {
@@ -224,12 +231,17 @@ for (const component of components) {
     check(`${where} names a Dockerfile that exists`, () => {
       assert.ok(existsSync(join(ROOT, image.dockerfile)), image.dockerfile);
     });
-    check(`${where} names an image a registry accepts`, () => {
+    check(`${where} has a unique image tag prefix`, () => {
       assert.match(
-        image.name,
-        /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/,
-        "image names are lowercase",
+        image.tagPrefix,
+        /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+        "tag prefixes are lowercase words joined by hyphens",
       );
+      assert.ok(
+        !tagPrefixes.has(image.tagPrefix),
+        `${image.tagPrefix} is used by two components`,
+      );
+      tagPrefixes.add(image.tagPrefix);
     });
     check(`${where} supports both published platforms`, () => {
       assert.deepEqual([...image.platforms].sort(), [

@@ -5,8 +5,14 @@ Everything here runs from a registry. Nothing on this page needs a clone of this
 how these artifacts are produced, see
 [docs/development/releases.md](../development/releases.md).
 
-The published namespaces are the npm scope **`@seeker_agent_connect`** and the container namespace
-**`ghcr.io/seekeragentconnect`**.
+The published namespaces are the npm scope **`@seeker_agent_connect`** and the Docker Hub
+repository **`docker.io/brenat/seeker-agent-connect`**. Every image shares that one repository and
+is told apart by its tag prefix: `<prefix>-<version>`, `<prefix>-latest` (stable only) and
+`<prefix>-sha-<commit>`.
+
+npm releases currently run as a dry run (`registries.npmDryRun` in `release/components.json`), so
+new versions reach npm only once that switch is turned off; the versions already on the registry
+stay installable.
 
 Requirements: Node **24.21.0 or newer** for the npm packages (the SDK and both MCP servers use the
 stable `node:sqlite`, which arrived in Node 24), and Docker with `buildx`/Compose v2 for the
@@ -129,12 +135,12 @@ seeker-agent-connect-mcp --version
 
 | Image | Ports | Data | Health |
 | -- | -- | -- | -- |
-| `ghcr.io/seekeragentconnect/mcp-server` | 8080 | `/data` (SQLite) | `HEALTHCHECK` in the image |
-| `ghcr.io/seekeragentconnect/mcp-skr-staking` | 8090 | `/data` (SQLite) | `HEALTHCHECK` in the image |
-| `ghcr.io/seekeragentconnect/gateway` | 8090 read, 8091 publish, 8092 admin | `/data`, or Postgres | external probe, see below |
-| `ghcr.io/seekeragentconnect/gateway-centrifugo` | 8000 client, 11000 internal | none | Centrifugo's own `/health` |
-| `ghcr.io/seekeragentconnect/demo-signals` | 8092 | `/data` (SQLite) | external probe |
-| `ghcr.io/seekeragentconnect/demo-prediction` | 8092 | `/data` (SQLite) | external probe |
+| `docker.io/brenat/seeker-agent-connect:mcp-*` | 8080 | `/data` (SQLite) | `HEALTHCHECK` in the image |
+| `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-*` | 8090 | `/data` (SQLite) | `HEALTHCHECK` in the image |
+| `docker.io/brenat/seeker-agent-connect:gateway-*` | 8090 read, 8091 publish, 8092 admin | `/data`, or Postgres | external probe, see below |
+| `docker.io/brenat/seeker-agent-connect:centrifugo-*` | 8000 client, 11000 internal | none | Centrifugo's own `/health` |
+| `docker.io/brenat/seeker-agent-connect:copytrading-*` | 8092 | `/data` (SQLite) | external probe |
+| `docker.io/brenat/seeker-agent-connect:prediction-*` | 8092 | `/data` (SQLite) | external probe |
 
 Every image runs as an unprivileged fixed uid/gid (`10001`), so a named volume's ownership is the
 same on every host. The Go images — the gateway and both demos — are `scratch` images with no
@@ -157,7 +163,7 @@ docker run --rm \
   -e MCP_TOKEN=<64 hex characters> \
   -e PHONE_TOKEN=<64 hex characters> \
   -e MCP_ENABLED=true \
-  ghcr.io/seekeragentconnect/mcp-server:0.2.0
+  docker.io/brenat/seeker-agent-connect:mcp-0.2.0
 ```
 
 The process is PID 1 and handles `SIGTERM` itself: it stops accepting, finishes what is in flight,
@@ -170,12 +176,12 @@ The presets under `deploy/` build from a checkout by default, and every one of t
 as a variable — so the same preset runs published images with nothing rebuilt:
 
 ```bash
-MCP_SERVER_IMAGE=ghcr.io/seekeragentconnect/mcp-server:0.2.0 \
+MCP_SERVER_IMAGE=docker.io/brenat/seeker-agent-connect:mcp-0.2.0 \
   docker compose -f deploy/mcp/compose.yaml up -d
 ```
 
 ```bash
-BROADCAST_IMAGE=ghcr.io/seekeragentconnect/gateway:0.2.0 \
+BROADCAST_IMAGE=docker.io/brenat/seeker-agent-connect:gateway-0.2.0 \
   docker compose -f deploy/feed/compose.yaml up -d
 ```
 
@@ -188,7 +194,7 @@ Without a checkout at all, this is a complete file:
 # compose.yaml
 services:
   mcp-server:
-    image: ghcr.io/seekeragentconnect/mcp-server:0.2.0
+    image: docker.io/brenat/seeker-agent-connect:mcp-0.2.0
     restart: unless-stopped
     environment:
       SIDECAR_HOST: 0.0.0.0
@@ -219,10 +225,10 @@ docker compose exec mcp-server node servers/mcp-server/dist/cli.js pair
 Pin an exact version everywhere, and a digest anywhere that matters. A digest cannot be moved:
 
 ```bash
-docker pull ghcr.io/seekeragentconnect/gateway:0.2.0
-docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/seekeragentconnect/gateway:0.2.0
+docker pull docker.io/brenat/seeker-agent-connect:gateway-0.2.0
+docker inspect --format '{{index .RepoDigests 0}}' docker.io/brenat/seeker-agent-connect:gateway-0.2.0
 # then deploy the digest form
-#   ghcr.io/seekeragentconnect/gateway@sha256:<digest>
+#   docker.io/brenat/seeker-agent-connect@sha256:<digest>
 ```
 
 Rolling back is pulling the previous exact version or digest. `latest` is a convenience for a first
@@ -233,25 +239,24 @@ Release candidates are published under `X.Y.Z-rc.N` and the npm `next` dist-tag,
 
 ```bash
 npm install @seeker_agent_connect/server-sdk@next
-docker pull ghcr.io/seekeragentconnect/gateway:0.2.0-rc.1
+docker pull docker.io/brenat/seeker-agent-connect:gateway-0.2.0-rc.1
 ```
 
 ---
 
-## Migrating from the previous artifact names
+## Upgrading from the 0.1.x images
 
-Before SEE-168 the images were published to Docker Hub under one repository, with the component in
-the tag. The GHCR images are the same services; the name moved, and the version restarted at
-`0.2.0` above every previous tag.
+The images stay in the same Docker Hub repository with the same tag prefixes as before SEE-168;
+only the version moved on, restarting at `0.2.0` above every previous tag.
 
 | Previous | Now |
 | -- | -- |
-| `docker.io/brenat/seeker-agent-connect:gateway-0.1.10` | `ghcr.io/seekeragentconnect/gateway:0.2.0` |
-| `docker.io/brenat/seeker-agent-connect:centrifugo-0.1.2` | `ghcr.io/seekeragentconnect/gateway-centrifugo:0.2.0` |
-| `docker.io/brenat/seeker-agent-connect:mcp-0.1.8` | `ghcr.io/seekeragentconnect/mcp-server:0.2.0` |
-| `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-0.1.3` | `ghcr.io/seekeragentconnect/mcp-skr-staking:0.2.0` |
-| `docker.io/brenat/seeker-agent-connect:copytrading-0.1.7` | `ghcr.io/seekeragentconnect/demo-signals:0.2.0` |
-| `docker.io/brenat/seeker-agent-connect:prediction-0.1.9` | `ghcr.io/seekeragentconnect/demo-prediction:0.2.0` |
+| `docker.io/brenat/seeker-agent-connect:gateway-0.1.10` | `docker.io/brenat/seeker-agent-connect:gateway-0.2.0` |
+| `docker.io/brenat/seeker-agent-connect:centrifugo-0.1.2` | `docker.io/brenat/seeker-agent-connect:centrifugo-0.2.0` |
+| `docker.io/brenat/seeker-agent-connect:mcp-0.1.8` | `docker.io/brenat/seeker-agent-connect:mcp-0.2.0` |
+| `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-0.1.3` | `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-0.2.0` |
+| `docker.io/brenat/seeker-agent-connect:copytrading-0.1.7` | `docker.io/brenat/seeker-agent-connect:copytrading-0.2.0` |
+| `docker.io/brenat/seeker-agent-connect:prediction-0.1.9` | `docker.io/brenat/seeker-agent-connect:prediction-0.2.0` |
 
 No npm package was ever published under the old `@seeker-vault` scope, so there is nothing to
 migrate there; `@seeker-vault/*` names in this repository's history refer to packages that only
