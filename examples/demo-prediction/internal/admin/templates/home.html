@@ -1,0 +1,162 @@
+{{template "head" .}}
+<div class="page-heading">
+  <div><p class="eyebrow">Prediction publisher</p><h1>Markets</h1></div>
+  <a class="button primary" href="#market-search"><span aria-hidden="true">⌕</span> Search markets</a>
+</div>
+{{template "flash" .}}
+<p class="section-copy">Search live markets and publish one onto the feed; each owner chooses side
+and stake in SAC.</p>
+
+<section class="card reference-card" aria-labelledby="reference-title">
+  <div>
+    <h2 id="reference-title">Shared feed reference</h2>
+    <p class="hint">Add this in SAC. It carries no secret.</p>
+    {{if .Reference}}
+    <div class="reference-value"><code>{{.Reference}}</code>{{template "copy-button" .Reference}}</div>
+    <p class="sub">Or scan it with SAC — Add connection → Scan QR code.</p>
+    {{else}}<p class="sub">The publisher has not answered with a reference yet.</p>{{end}}
+  </div>
+  <div class="qr-box">{{.ReferenceQR}}</div>
+</section>
+
+<section class="section-block" aria-labelledby="published-title">
+  <div class="section-head">
+    <h2 id="published-title">Published on this feed</h2>
+  </div>
+  {{if not .Signals}}
+  <div class="empty-state">
+    <span class="empty-glyph" aria-hidden="true">▤</span>
+    <p>None yet. Search the market API below and publish one.</p>
+  </div>
+  {{else}}
+  <div class="table-card">
+    <div class="table-scroll">
+      <table class="list">
+        <thead><tr><th>Market</th><th>State</th><th>Publication</th><th>Expires</th><th></th></tr></thead>
+        <tbody>
+        {{range .Signals}}
+          <tr>
+            <td>
+              <span class="cell-title">{{.Market}}</span>
+              {{with .Event}}<span class="sub block">{{.}}</span>{{end}}
+              {{with .Note}}<span class="sub block">{{.}}</span>{{end}}
+              <code class="id block">{{.ID}}</code>
+            </td>
+            <td><span class="pill {{if eq .Status "open"}}good{{else}}neutral{{end}}">{{.Status}}</span></td>
+            <td>
+              <span class="pill {{if eq .Publication "published"}}good{{else if eq .Publication "refused"}}bad{{else}}warn{{end}}">{{.Publication}}</span>
+              {{if .Problem}}<span class="sub block">{{.Problem}}: {{.Detail}}</span>{{end}}
+            </td>
+            <td><span class="sub nowrap">{{.ExpiresAt}}</span></td>
+            <td>
+              <div class="row-actions">
+                <form method="post" action="{{$.Path}}/signals/{{.ID}}/retry"><button class="button secondary small" type="submit" data-busy="Retrying…">Retry</button></form>
+              </div>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {{end}}
+</section>
+
+<section id="market-search" class="section-block" aria-labelledby="search-title">
+  <h2 id="search-title">Market API</h2>
+  <form method="get" action="{{.Path}}" class="card">
+    <input type="hidden" name="search" value="1">
+    <div class="form-grid">
+      <div class="field">
+        <label for="source">Source</label>
+        <select id="source" name="source">
+          <option value="polymarket" {{if eq .Query.Source "polymarket"}}selected{{end}}>polymarket</option>
+          <option value="kalshi" {{if eq .Query.Source "kalshi"}}selected{{end}}>kalshi</option>
+          <option value="bisonfi" {{if eq .Query.Source "bisonfi"}}selected{{end}}>bisonfi</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="category">Category</label>
+        <input id="category" name="category" value="{{.Query.Category}}" placeholder="crypto">
+      </div>
+      <div class="field">
+        <label for="filter">Named filter</label>
+        <select id="filter" name="filter">
+          <option value="" {{if eq .Query.Filter ""}}selected{{end}}>(none)</option>
+          <option value="new" {{if eq .Query.Filter "new"}}selected{{end}}>new</option>
+          <option value="live" {{if eq .Query.Filter "live"}}selected{{end}}>live</option>
+          <option value="trending" {{if eq .Query.Filter "trending"}}selected{{end}}>trending</option>
+          <option value="upcoming" {{if eq .Query.Filter "upcoming"}}selected{{end}}>upcoming</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="keywords">Keywords</label>
+        <input id="keywords" name="keywords" value="{{.Query.Keywords}}" placeholder="eth, sol">
+      </div>
+      <div class="field">
+        <label for="tags">Tags</label>
+        <input id="tags" name="tags" value="{{.Query.Tags}}" placeholder="fed-rates">
+      </div>
+      <div class="field">
+        <label for="state">State</label>
+        <select id="state" name="state">
+          <option value="open" {{if eq .Query.State "open"}}selected{{end}}>open</option>
+          <option value="any" {{if eq .Query.State "any"}}selected{{end}}>any (sandbox)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="least-close">Soonest close (minutes)</label>
+        <input id="least-close" name="least_close_minutes" value="{{.Query.LeastCloseMinutes}}" placeholder="2">
+      </div>
+      <div class="field">
+        <label for="most-close">Latest close (minutes)</label>
+        <input id="most-close" name="most_close_minutes" value="{{.Query.MostCloseMinutes}}" placeholder="120">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="button primary" data-busy="Searching…">Search markets</button>
+    </div>
+  </form>
+
+  {{if .Searched}}
+  <p class="hint after">Showing up to 10 matching markets.</p>
+  {{if not .Markets}}
+  <div class="empty-state">
+    <span class="empty-glyph" aria-hidden="true">⌕</span>
+    <p>No markets matched those filters.</p>
+  </div>
+  {{else}}
+  <div class="table-card">
+    <div class="table-scroll">
+      <table class="list">
+        <thead><tr><th>Market</th><th>Category</th><th>Closes</th><th></th></tr></thead>
+        <tbody>
+        {{range .Markets}}
+          <tr>
+            <td>
+              <span class="cell-title">{{if .EventTitle}}{{.EventTitle}} — {{end}}{{.Title}}</span>
+              <code class="id block">{{.MarketID}}</code>
+              {{if .Published}}<span class="pill neutral">already published</span>{{end}}
+            </td>
+            <td>{{.Category}}{{with .Tags}}<span class="sub block">{{.}}</span>{{end}}</td>
+            <td><span class="sub nowrap">{{.CloseAt}}</span></td>
+            <td>
+              {{if not .Published}}
+              <div class="row-actions">
+                <form method="post" action="{{$.Path}}/select">
+                  <input type="hidden" name="market_id" value="{{.MarketID}}">
+                  <button type="submit" class="button primary small" data-busy="Publishing…">Publish to the feed</button>
+                </form>
+              </div>
+              {{end}}
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {{end}}
+  {{end}}
+</section>
+{{template "foot" .}}

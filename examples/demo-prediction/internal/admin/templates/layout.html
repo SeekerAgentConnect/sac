@@ -1,0 +1,89 @@
+{{define "mark"}}<svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true">
+  <rect x="4" y="5" width="28" height="7" rx="3.5"></rect>
+  <rect x="9" y="15" width="23" height="7" rx="3.5"></rect>
+  <rect x="4" y="25" width="28" height="7" rx="3.5"></rect>
+</svg>{{end}}
+
+{{define "copy-button"}}<button class="copy" type="button" data-copy="{{.}}">
+  <span class="copy-glyph" aria-hidden="true">▣</span><span class="copy-label">Copy</span>
+</button>{{end}}
+
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Prediction admin</title>
+  <link rel="stylesheet" href="{{.Path}}/assets/admin.css">
+  <script src="{{.Path}}/assets/admin.js" defer></script>
+</head>
+<body class="{{if .LoggedIn}}app-page{{else}}login-page{{end}}">
+{{if .LoggedIn}}
+<div class="busy-mask" role="status" aria-live="polite"><span>Working…</span></div>
+<div class="shell">
+  <aside class="sidebar" aria-label="Prediction administration">
+    <div class="sidebar-brand">
+      {{template "mark"}}
+      <div><strong>Prediction</strong><span>Publisher admin</span></div>
+    </div>
+
+    <div class="deployment-card">
+      <span>Signed in as</span>
+      <div><code>{{.Name}}</code></div>
+      <span>Environment</span>
+      <div><code>{{.Environment}}</code></div>
+    </div>
+
+    <nav class="sidebar-nav" aria-label="Administration">
+      <a class="nav-item active" href="{{.Path}}">
+        <span class="nav-glyph" aria-hidden="true">▤</span>
+        <span>Published</span>
+        <span class="count">{{len .Signals}}</span>
+      </a>
+      <a class="nav-item" href="{{.Path}}#market-search">
+        <span class="nav-glyph" aria-hidden="true">⌕</span>
+        <span>Search markets</span>
+      </a>
+    </nav>
+
+    <p class="sidebar-explanation">Sandbox demo. This page is a client of the publisher's own API:
+    the API token stays on the server, and side and stake are chosen on each phone — nothing here
+    sees them.</p>
+
+    <form method="post" action="{{.Path}}/logout" class="logout-form">
+      <button type="submit" class="nav-item logout">
+        <span class="nav-glyph" aria-hidden="true">↪</span>
+        <span>Log out</span>
+      </button>
+    </form>
+  </aside>
+  <main class="content">
+{{else}}
+<main class="login-main">
+{{end}}
+{{end}}
+
+{{define "flash"}}
+{{with .Error}}<div class="flash problem" role="alert"><span aria-hidden="true">!</span><p>{{.}}</p></div>{{end}}
+{{with .Message}}<div class="flash notice" role="status"><span aria-hidden="true">✓</span><p>{{.}}</p></div>{{end}}
+{{end}}
+
+{{define "foot"}}
+</main>
+{{if .LoggedIn}}</div>{{end}}
+<dialog id="confirmation-dialog" class="confirmation-dialog" role="alertdialog"
+        aria-modal="true" aria-labelledby="confirmation-title"
+        aria-describedby="confirmation-message">
+  <div class="dialog-card">
+    <h2 id="confirmation-title">Confirm this action</h2>
+    <p id="confirmation-message"></p>
+    <div class="dialog-actions">
+      <button type="button" class="button secondary" data-cancel-confirm>Cancel</button>
+      <button type="button" class="button danger-fill" data-run-confirm>Confirm</button>
+    </div>
+  </div>
+</dialog>
+</body>
+</html>
+{{end}}

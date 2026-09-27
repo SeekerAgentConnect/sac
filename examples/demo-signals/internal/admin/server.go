@@ -2,7 +2,8 @@
 //
 // It is a client of the template's existing /v1 API and nothing else: the publisher token stays in
 // this process, judges log in with named bcrypt passwords, and the public origin serves HTML on
-// /trader rather than /v1. Forms only — no script — so a CSP without scripts is honest.
+// /trader rather than /v1. Forms carry every action; the one script, served from this origin, only
+// copies a reference and asks before a cancel or a revocation, so the page works without it.
 package admin
 
 import (
@@ -106,6 +107,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+s.path+"/devices", s.showDevices)
 	mux.HandleFunc("POST "+s.path+"/devices/{id}/{action}", s.actOnDevice)
 	mux.HandleFunc("POST "+s.path+"/wallets/{wallet}/revoke", s.revokeWallet)
+	mux.HandleFunc("GET "+s.path+"/assets/{file}", s.asset)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		request.Body = http.MaxBytesReader(writer, request.Body, MostBodyBytes)
 		s.headers(writer)
@@ -116,6 +118,20 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) health(writer http.ResponseWriter, _ *http.Request) {
 	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = writer.Write([]byte("ok\n"))
+}
+
+// asset serves the embedded stylesheet, script and fonts. They are public, like the login page
+// that needs them, and carry nothing of any trader's.
+func (s *Server) asset(writer http.ResponseWriter, request *http.Request) {
+	body, kind, ok := assetFor(request.PathValue("file"))
+	if !ok {
+		http.NotFound(writer, request)
+		return
+	}
+	writer.Header().Set("Content-Type", kind)
+	// They ship inside the image and change only when it does.
+	writer.Header().Set("Cache-Control", "private, max-age=600")
+	_, _ = writer.Write(body)
 }
 
 func (s *Server) showLogin(writer http.ResponseWriter, request *http.Request) {
@@ -321,7 +337,8 @@ func (s *Server) headers(writer http.ResponseWriter) {
 	// document used no-referrer, and that fails the check below.
 	writer.Header().Set("Referrer-Policy", "same-origin")
 	writer.Header().Set("Content-Security-Policy",
-		"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+		"default-src 'none'; style-src 'self'; script-src 'self'; font-src 'self'; "+
+			"form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 }
 
 func (s *Server) setCookie(writer http.ResponseWriter, value string, maxAge int) {

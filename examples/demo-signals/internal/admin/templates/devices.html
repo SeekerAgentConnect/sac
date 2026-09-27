@@ -1,0 +1,75 @@
+{{template "head" .}}
+<div class="page-heading">
+  <div><p class="eyebrow">CopyTrading trader</p><h1>Devices · feed access</h1></div>
+</div>
+{{template "flash" .}}
+<p class="section-copy">This feed is restricted: a device reads it only after it proved its wallet
+and you approved it.</p>
+
+<section class="card" aria-label="How access works">
+  <p class="hint last">Every request below was signed by the wallet it names. The device label is what
+  the phone calls itself — a claim, not a proof; the installation is the fingerprint of the device
+  key the wallet signed for. Approving one device never approves another, even of the same
+  wallet.</p>
+</section>
+
+<section class="section-block" aria-labelledby="requests-title">
+  <h2 id="requests-title">Access requests</h2>
+  {{if not .Devices}}
+  <div class="empty-state">
+    <span class="empty-glyph" aria-hidden="true">◫</span>
+    <p>No device has asked for access yet.</p>
+  </div>
+  {{else}}
+  <div class="table-card">
+    <div class="table-scroll">
+      <table class="list devices-table">
+        <thead><tr><th>Wallet</th><th>Device</th><th>Requested</th><th>Access</th><th></th></tr></thead>
+        <tbody>
+        {{range .Devices}}
+          <tr>
+            <td><code class="id" title="{{.Wallet}}">{{.Wallet}}</code></td>
+            <td>
+              <span class="cell-title">{{.Label}}</span>
+              <span class="sub block">label (user-supplied)</span>
+              <span class="sub block">installation <code class="id">{{.Installation}}</code></span>
+            </td>
+            <td>
+              <span class="sub nowrap">{{.RequestedAt}}</span>
+              {{if .DecidedAt}}<span class="sub block">decided {{.DecidedAt}}{{if .DecidedBy}} by {{.DecidedBy}}{{end}}</span>{{end}}
+              {{if .RevokedAt}}<span class="sub block">revoked {{.RevokedAt}}</span>{{end}}
+            </td>
+            <td>
+              <span class="pill {{if .Bad}}warn{{else if eq .Access "connected"}}good{{else}}neutral{{end}}">{{.Sentence}}</span>
+              {{if .Link}}
+              <span class="sub block">Invitation (single use, for this device only, until {{.Invitation.ExpiresAt}}):</span>
+              <div class="reference-value"><code>{{.Link}}</code>{{template "copy-button" .Link}}</div>
+              <div class="qr-box small">{{.InvitationQR}}</div>
+              {{end}}
+            </td>
+            <td>
+              <div class="row-actions">
+                {{if .Pending}}
+                <form method="post" action="{{$.Path}}/devices/{{.RequestID}}/approve"><button class="button primary small" type="submit" data-busy="Approving…">Approve</button></form>
+                <form method="post" action="{{$.Path}}/devices/{{.RequestID}}/reject"><button class="button secondary small" type="submit" data-busy="Rejecting…">Reject</button></form>
+                {{end}}
+                {{if .Reissuable}}
+                <form method="post" action="{{$.Path}}/devices/{{.RequestID}}/reissue"><button class="button secondary small" type="submit" data-busy="Reissuing…">Reissue invitation</button></form>
+                {{end}}
+                {{if .Revocable}}
+                <form method="post" action="{{$.Path}}/devices/{{.RequestID}}/revoke"><button class="button danger-outline small" type="submit" data-busy="Revoking…"
+                  data-confirm="Revoke this device? The gateway is told to stop admitting it; until it confirms, the device can still read." data-confirm-label="Revoke device">Revoke device</button></form>
+                <form method="post" action="{{$.Path}}/wallets/{{.Wallet}}/revoke"><button class="button danger-outline small" type="submit" data-busy="Revoking…"
+                  data-confirm="Revoke every device of this wallet? Each one has to ask again and be approved again to read this feed." data-confirm-label="Revoke all">Revoke all devices of this wallet</button></form>
+                {{end}}
+              </div>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {{end}}
+</section>
+{{template "foot" .}}

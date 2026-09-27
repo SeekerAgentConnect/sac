@@ -1,0 +1,99 @@
+{{template "head" .}}
+<div class="page-heading">
+  <div><p class="eyebrow">CopyTrading trader · {{.Environment}}</p><h1>Signals</h1></div>
+  <a class="button primary" href="#new-swap"><span aria-hidden="true">＋</span> New swap</a>
+</div>
+{{template "flash" .}}
+<p class="section-copy">Create a sandbox swap; each owner chooses their own amount in SAC.</p>
+
+<section class="card reference-card" aria-labelledby="reference-title">
+  <div>
+    <h2 id="reference-title">Feed reference</h2>
+    <p class="hint">Add this in SAC. It carries no secret and grants nothing: this feed is
+    restricted, so each device is verified and then waits for your approval on the
+    <a href="{{.Path}}/devices">Devices</a> page.</p>
+    {{if .Reference}}
+    <div class="reference-value"><code>{{.Reference}}</code>{{template "copy-button" .Reference}}</div>
+    <p class="sub">Or scan it with SAC — Add connection → Scan QR code.</p>
+    {{else}}<p class="sub">The publisher has not answered with a reference yet.</p>{{end}}
+  </div>
+  <div class="qr-box">{{.ReferenceQR}}</div>
+</section>
+
+<section id="new-swap" class="section-block" aria-labelledby="new-swap-title">
+  <h2 id="new-swap-title">Publish a sandbox swap</h2>
+  <form method="post" action="{{.Path}}/create" class="card">
+    <div class="form-grid">
+      <div class="field">
+        <label for="pair">Pair</label>
+        <select id="pair" name="pair">
+          <option value="usdc-sol">USDC → SOL</option>
+          <option value="sol-usdc">SOL → USDC</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="slippage">Max slippage (bps)</label>
+        <input id="slippage" name="slippage" type="number" min="1" max="10000" value="50" required>
+      </div>
+      <div class="field">
+        <label for="expires">Actionable for</label>
+        <select id="expires" name="expires">
+          <option value="15m">15 minutes</option>
+          <option value="1h" selected>1 hour</option>
+          <option value="2h">2 hours</option>
+          <option value="4h">4 hours</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="note">Note <span class="sub">(optional)</span></label>
+      <input id="note" name="note" maxlength="1024" placeholder="shown as the trader's words">
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="button primary" data-busy="Publishing…">Publish sandbox swap</button>
+    </div>
+  </form>
+</section>
+
+<section class="section-block" aria-labelledby="signals-title">
+  <h2 id="signals-title">Signals this publisher currently holds</h2>
+  {{if not .Signals}}
+  <div class="empty-state">
+    <span class="empty-glyph" aria-hidden="true">▤</span>
+    <p>None yet. Publish a sandbox swap above.</p>
+  </div>
+  {{else}}
+  <div class="table-card">
+    <div class="table-scroll">
+      <table class="list">
+        <thead><tr><th>Pair</th><th>State</th><th>Publication</th><th>Expires</th><th></th></tr></thead>
+        <tbody>
+        {{range .Signals}}
+          <tr>
+            <td>
+              <span class="cell-title">{{.Pair}}</span>
+              {{with .Note}}<span class="sub block">{{.}}</span>{{end}}
+              <code class="id block">{{.ID}}</code>
+            </td>
+            <td><span class="pill {{if eq .Status "open"}}good{{else}}neutral{{end}}">{{.Status}}</span></td>
+            <td>
+              <span class="pill {{if eq .Publication "published"}}good{{else if eq .Publication "refused"}}bad{{else}}warn{{end}}">{{.Publication}}</span>
+              {{if .Problem}}<span class="sub block">{{.Problem}}: {{.Detail}}</span>{{end}}
+            </td>
+            <td><span class="sub nowrap">{{.ExpiresAt}}</span></td>
+            <td>
+              <div class="row-actions">
+                <form method="post" action="{{$.Path}}/signals/{{.ID}}/retry"><button class="button secondary small" type="submit" data-busy="Retrying…">Retry</button></form>
+                <form method="post" action="{{$.Path}}/signals/{{.ID}}/cancel"><button class="button danger-outline small" type="submit" data-busy="Cancelling…"
+                  data-confirm="Cancel this signal? The feed marks it cancelled, and no phone can act on it any more." data-confirm-label="Cancel signal">Cancel</button></form>
+              </div>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {{end}}
+</section>
+{{template "foot" .}}

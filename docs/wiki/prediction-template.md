@@ -29,7 +29,9 @@ already on the feed, searches the provider listing with typed filters, and asks 
 a named market. Callers still cannot `POST /v1/requests`. Side and stake stay on the phone. Beside
 the reference the panel also draws it as a QR code (SEE-163), so a phone pairs by pointing SAC's
 camera at the screen instead of typing; the code is an inline SVG that carries exactly what the
-input beside it carries, and the page still loads no images and no scripts.
+input beside it carries, and the page still loads no images. The panel uses the feed gateway's
+admin look (SEE-164). Its stylesheet, script and fonts are this demo's own copies, embedded in the
+binary and served from `/trader/assets/`.
 
 Everything else is shared, and deliberately: the configuration, the store, the outbox, the drainer,
 the manifest and the API are [`packages/publisher-support/`](../../packages/publisher-support), a source library that

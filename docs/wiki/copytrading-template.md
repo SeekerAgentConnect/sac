@@ -254,7 +254,10 @@ The publisher token never enters the browser. Beside the feed reference the page
 QR code (SEE-163), so a phone pairs by pointing SAC's camera at the screen instead of typing, and
 the Devices page draws each live invitation the same way — single use and bound to that one device,
 so showing it to a camera gives nobody else anything. The codes are inline SVG that carry exactly
-what the inputs beside them carry, and the page still loads no images and no scripts.
+what the inputs beside them carry, and the page still loads no images. The page uses the feed
+gateway's admin look (SEE-164). Its stylesheet, script and fonts are this demo's own copies,
+embedded in the binary and served from `/trader/assets/`. The script only copies references and
+asks before a cancel or a revocation; every action is still a plain form post.
 `deploy/copytrading` makes the page an opt-in
 host-loopback profile; neither it nor `/v1` is placed on the public feed ingress. See
 [`deploy/README.md`](../../deploy/README.md).

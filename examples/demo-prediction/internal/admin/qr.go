@@ -14,9 +14,8 @@ import (
 // already shows. Nothing new is encoded and nothing new is granted — the reference carries no
 // secret — so the code is a convenience for the same flow, not a second one.
 //
-// It is an inline SVG because the pages' CSP loads no images and no scripts and stays that way:
-// an <svg> in the document is neither a fetch nor a script, so a page that cannot run anything
-// still shows it.
+// It is an inline SVG because the pages' CSP loads no images and stays that way: an <svg> in the
+// document is neither a fetch nor a script, so a page with its script switched off still shows it.
 
 // ReferenceQR is the shared feed reference as a scannable code.
 func (v homeView) ReferenceQR() template.HTML {
