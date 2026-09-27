@@ -60,8 +60,7 @@ switch/check/radio rows. Their public state axes and visual verification record 
 [`docs/wiki/design-system-atoms.md`](../../../docs/wiki/design-system-atoms.md). The same internal
 deterministic source palette drives `SourceChip` and `SourceAvatar`.
 
-Every captured atom variant has one exact-text `@Preview` and `@DesignRef`. The committed
-[`reference | actual` review](../../../docs/reviews/see-117/README.md) is the PR evidence set. The
+Every captured atom variant has one exact-text `@Preview` and `@DesignRef`. The
 icon-button remains deferred because its required hand-written component spec is absent.
 
 ## Molecule library
@@ -71,9 +70,8 @@ section headers, text fields, notice cards, empty states, and source-filter bars
 state axes, ticket/spec resolutions, and visual verification record are documented in
 [`docs/wiki/design-system-molecules.md`](../../../docs/wiki/design-system-molecules.md).
 
-Each of the 22 captured component variants has one exact-text `@Preview` and `@DesignRef`. The
-committed [`reference | actual` review](../../../docs/reviews/see-118/README.md) is the PR evidence set;
-an additional 390dp preview composes four `NavItem` instances into the required bottom bar.
+Each of the 22 captured component variants has one exact-text `@Preview` and `@DesignRef`; an
+additional 390dp preview composes four `NavItem` instances into the required bottom bar.
 
 ## Organism library
 
@@ -83,8 +81,7 @@ and the reusable sheet scaffold. The public APIs, composition boundaries, missin
 and ticket/spec resolutions are documented in
 [`docs/wiki/design-system-organisms.md`](../../../docs/wiki/design-system-organisms.md).
 
-All 43 generated organism variants have exact-copy `@Preview` and `@DesignRef` coverage. The
-committed [`reference | actual` review](../../../docs/reviews/see-119/README.md) contains every pair.
+All 43 generated organism variants have exact-copy `@Preview` and `@DesignRef` coverage.
 The carousel follows SEE-119's 358dp viewport and centred highlight while retaining SEE-81's
 start/centre/end snapping policy.
 
@@ -94,8 +91,7 @@ SEE-120 adds one natural-height `ReviewSheet` and a UI-only `ReviewSheetState` f
 Prediction, Signature, and Acknowledge. Requests and signals differ only in mapped data. The
 template composes the existing design-system tiers, owns warning confirmation, and applies the
 caller's action gate after requiring that confirmation. Five exact-copy fixtures record against
-the canonical unrolled `design/screens/sheet-*.png` references; see the
-[`reference | actual` review](../../../docs/reviews/see-120/README.md).
+the canonical unrolled `design/screens/sheet-*.png` references.
 
 ## Guardrail
 

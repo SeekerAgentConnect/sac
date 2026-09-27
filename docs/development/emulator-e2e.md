@@ -163,15 +163,11 @@ still true:
   (`skr-staking-mcp-0.1.2`) advertises no live updates and has no relay configured. Probe with the
   real procedure path: the gateway answers 200 to an unknown path. Until those images are rebuilt,
   feed presence can only be tried against a local gateway built from the repository, reached with
-  `adb reverse` — debug builds allow plain HTTP to `127.0.0.1` only. SEE-155's run shows how.
+  `adb reverse` — debug builds allow plain HTTP to `127.0.0.1` only.
 - **Every staking tool needs a wallet**, including the read-only `get_staking_status`; a wallet-less
   phone gets `WALLET_NOT_CONNECTED`, so no staking item can be made to reach the app on the emulator.
 - **The first feed-presence read after a cold start comes one poll interval late** (about 30–40 s);
   foregrounding from the background reads at once. Recorded as an observation, not yet a ticket.
-
-The runs behind these, with commands, scenario matrices and screenshots, are
-[`emulator-e2e-see151.md`](emulator-e2e-see151.md) (the first, on an earlier build) and
-[`emulator-e2e-see155.md`](emulator-e2e-see155.md) (the integrated PR #66 build).
 
 [SEE-152]: https://linear.app/seekeragentwallet/issue/SEE-152
 [SEE-153]: https://linear.app/seekeragentwallet/issue/SEE-153

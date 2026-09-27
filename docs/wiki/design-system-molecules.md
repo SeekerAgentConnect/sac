@@ -32,8 +32,7 @@ the 390dp Home / Inbox / Wallet / Activity bottom bar required by the ticket.
 ## Visual verification
 
 The 22 captured guide variants each have one exact-copy dark `@Preview` and `@DesignRef` recorded at
-3×. Their committed [visual review](../reviews/see-118/README.md) places the generated design image
-and Roborazzi output side by side. The four-item navigation-bar preview is additional acceptance
+3×. The four-item navigation-bar preview is additional acceptance
 evidence because the generated component guide contains only single-item references.
 
 The guide and ticket disagree on one atom choice: the generated filter-bar HTML shows a medium

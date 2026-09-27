@@ -49,6 +49,5 @@ states. Five dark previews record under `screens/sheet-*.png` at 390dp wide and 
 `designCompare` includes only those five unrolled screen references in addition to the generated
 component corpus.
 
-The committed [SEE-120 visual review](../reviews/see-120/README.md) contains every labelled
-reference/actual pair. `ReviewSheetTest` also verifies that a warning-state primary action cannot
+`ReviewSheetTest` verifies that a warning-state primary action cannot
 run before confirmation and becomes enabled after confirmation.
