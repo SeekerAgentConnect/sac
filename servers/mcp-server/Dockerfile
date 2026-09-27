@@ -27,6 +27,7 @@ FROM deps AS build
 WORKDIR /app
 COPY packages/server-sdk/ packages/server-sdk/
 COPY servers/mcp-server/ servers/mcp-server/
+COPY scripts/package-mcp-artifact.mjs scripts/
 RUN pnpm --filter @seeker_agent_connect/mcp-server run build
 
 FROM deps AS prod-deps

@@ -28,6 +28,7 @@ FROM deps AS build
 WORKDIR /app
 COPY packages/server-sdk/ packages/server-sdk/
 COPY servers/mcp-skr-staking/ servers/mcp-skr-staking/
+COPY scripts/package-mcp-artifact.mjs scripts/
 RUN pnpm --filter @seeker_agent_connect/mcp-skr-staking run build
 
 FROM deps AS prod-deps

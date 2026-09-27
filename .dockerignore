@@ -37,6 +37,7 @@ examples/*.yaml
 fixtures/
 packages/protocol/
 scripts/
+!scripts/package-mcp-artifact.mjs
 .claude/
 .github/
 .git/
