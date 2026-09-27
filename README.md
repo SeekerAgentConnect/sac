@@ -1,7 +1,7 @@
 <div align="center">
   <img width="128" src="docs/assets/readme/logo.png" alt="Seeker Agent Connect" />
   <h1>Seeker Agent Connect</h1>
-  <p><strong>Let AI agents propose. You approve on your Seeker.</strong></p>
+  <p><strong>A permission layer between your AI agents and your Solana wallet.</strong></p>
   <p>
     An open-source Android app and self-hosted server stack that lets AI agents send wallet
     requests to your Solana Seeker, where you review and sign every one yourself.
