@@ -31,8 +31,13 @@
 
 ## Table of contents
 
-- [🌈 Highlights](#-highlights)
+- [Table of contents](#table-of-contents)
+- [⚡️ Highlights](#️-highlights)
 - [✨ Features](#-features)
+  - [📥 Requests inbox](#-requests-inbox)
+  - [🔗 Connections and pairing](#-connections-and-pairing)
+  - [📈 Feeds, swaps and predictions](#-feeds-swaps-and-predictions)
+  - [🤖 Agent side](#-agent-side)
 - [🧩 How it works](#-how-it-works)
 - [🚀 Getting started](#-getting-started)
 - [📦 Components](#-components)
@@ -42,7 +47,7 @@
 - [🙌 Contributing](#-contributing)
 - [📄 License](#-license)
 
-## 🌈 Highlights
+## ⚡️ Highlights
 
 - 🙋 **You stay in control.** Agents only propose. Every transfer, swap, prediction or signature is
   reviewed on the phone and approved through the wallet (Seed Vault, Mobile Wallet Adapter).
