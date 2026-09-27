@@ -348,4 +348,4 @@ they are kept.
 | The four tables (schema version 4) | [`packages/publisher-support/store/access.go`](../../packages/publisher-support/store/access.go) |
 | The publisher API client | [`packages/publisher-support/gateway/gateway.go`](../../packages/publisher-support/gateway/gateway.go) |
 | A worked wiring | [`examples/demo-signals/cmd/copytrading/main.go`](../../examples/demo-signals/cmd/copytrading/main.go), [`examples/demo-signals/.env.example`](../../examples/demo-signals/.env.example) |
-| A deployment | [`deploy/copytrading/compose.yaml`](../../deploy/copytrading/compose.yaml), [`do-deploy/apps/signals-demo.yaml`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/apps/signals-demo.yaml) |
+| A deployment | [`do-deploy/compose/copytrading/compose.yaml`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/copytrading/compose.yaml), [`do-deploy/apps/signals-demo.yaml`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/apps/signals-demo.yaml) |

@@ -28,10 +28,10 @@ SEEKERVAULT_REDIS=/path/to/redis-server \
 ```
 
 - **`SEEKERVAULT_CENTRIFUGO`** is the pinned Centrifugo release — v6.9.6, the version
-  `deploy/feed/compose.yaml` runs and `packages/protocol/third_party/centrifugo/README.md` pins the client schema to.
+  `compose/feed/compose.yaml` in `do-deploy` runs and `packages/protocol/third_party/centrifugo/README.md` pins the client schema to.
   Verify the download against the release's own `centrifugo_6.9.6_checksums.txt` before using it.
   Without it, every scenario that streams is NOT RUN.
-- **`SEEKERVAULT_REDIS`** is `redis-server`, matching `deploy/feed/compose.yaml`'s `redis:8.2`.
+- **`SEEKERVAULT_REDIS`** is `redis-server`, matching the `redis:8.2` of `compose/feed/compose.yaml` in `do-deploy`.
   Without it the harness runs one broker node on the memory engine, and the two-node scenarios are
   NOT RUN: Redis is what makes two nodes one broker.
 
@@ -69,11 +69,11 @@ and the report says it did.
 
 Everything in the path is the shipped thing. The gateway is the `broadcast` binary on its own SQLite
 file; the broker nodes run `services/gateway/centrifugo.yaml` unchanged; Redis runs the settings
-`deploy/feed/compose.yaml` gives it; a publisher exists only because `feed-gatewayctl register` made one.
+`compose/feed/compose.yaml` in `do-deploy` gives it; a publisher exists only because `feed-gatewayctl register` made one.
 
 Three things are not:
 
-- **Caddy.** `deploy/ingress/feed/Caddyfile` is in front of all of this in a public deployment, and there is no
+- **Caddy.** `compose/ingress/feed/Caddyfile` in `do-deploy` is in front of all of this in a public deployment, and there is no
   Docker daemon on the machine these runs were made on. The proxy hop is therefore named as excluded
   rather than folded into a latency number. Point the harness at your own deployment (below) to
   include it.

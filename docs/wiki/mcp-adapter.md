@@ -64,7 +64,7 @@ may import only `@seeker_agent_connect/server-sdk` or its documented `./protocol
 
 ```bash
 MCP_ENABLED=false pnpm dev:mcp-server
-# or, for the portable deployment, set MCP_ENABLED=false in deploy/mcp/.env
+# or, for the portable deployment, set MCP_ENABLED=false in compose/mcp/.env (do-deploy)
 ```
 
 - `/mcp` answers **404**, and so do both `/.well-known/oauth-protected-resource` paths. Not served rather than locked: a 401 would suggest that some credential would open one.
@@ -84,5 +84,5 @@ the public request API directly; that needs no MCP endpoint.
 - Not a plugin marketplace, and not a runtime extension point. Compare `docs/wiki/client-plugins.md`, which is the *phone's* plugin boundary for actions — a different boundary, on a different side, for a different purpose.
 - Not a rewrite of the Node sidecar in Go, and not a migration of private agent traffic to the shared gateway. Both are explicitly out of scope.
 - Not a new mandatory service: the switch changes the adapter inside the same direct server. The
-  canonical container remains the single-service `deploy/mcp/compose.yaml` project; its optional
-  `deploy/ingress/direct/` edge is separately managed and the feed gateway is unrelated.
+  canonical container remains the single-service `compose/mcp/compose.yaml` project in `do-deploy`;
+  its optional `compose/ingress/direct/` edge is separately managed and the feed gateway is unrelated.

@@ -65,12 +65,12 @@ Write down four values before going on:
 
 OAuth runs over HTTPS on a real domain: the redirect URIs, the token request, and the MCP calls
 themselves. Set up the generic native-TLS direct endpoint in the canonical
-[`deploy/README.md`](../../deploy/README.md#3-direct-mcp-over-native-https-and-http2) and check it
-works before adding any of this.
+[deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md#3-direct-mcp-over-native-https-and-http2) in `do-deploy` and
+check it works before adding any of this.
 
 ### 2. Tell the sidecar about the authorization server
 
-In `deploy/mcp/.env`:
+In `compose/mcp/.env` of a `do-deploy` checkout:
 
 ```sh
 MCP_OAUTH_ISSUER=https://auth.example.com/realms/seeker
@@ -80,12 +80,12 @@ MCP_OAUTH_SCOPE=seeker-vault:agent
 # MCP_OAUTH_JWKS_URL=https://auth.example.com/realms/seeker/protocol/openid-connect/certs
 ```
 
-Then replace the MCP service and start the independent ingress:
+Then, from the `do-deploy` checkout, replace the MCP service and start the independent ingress:
 
 ```sh
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --build
-docker compose --env-file deploy/ingress/direct/.env \
-  -f deploy/ingress/direct/compose.yaml up -d
+docker compose --env-file compose/mcp/.env -f compose/mcp/compose.yaml up -d
+docker compose --env-file compose/ingress/direct/.env \
+  -f compose/ingress/direct/compose.yaml up -d
 ```
 
 `MCP_OAUTH_ISSUER` is the switch. Without it there is no OAuth at all, and the other three
@@ -149,7 +149,7 @@ this page is where it goes). As of writing, in Claude's settings:
   the update stream — takes the phone's credentials, and an access token opens none of it. A
   hosted client never gains a phone approval credential.
 - `/healthz` and the Stage 1 `LiveCommandService` diagnostic are not on the public interface at
-  all ([`deploy/ingress/direct/Caddyfile`](../../deploy/ingress/direct/Caddyfile)).
+  all ([`compose/ingress/direct/Caddyfile`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/ingress/direct/Caddyfile) in `do-deploy`).
 - `MCP_TOKEN` still opens the host-loopback endpoint. It does **not** open `/mcp` under the public
   name while OAuth is on, so there is no second way in through the public ingress that skips the
   authorization server.
@@ -174,7 +174,8 @@ back to being the way in.
 ## When it does not work
 
 The refusal says which check failed, both in the response and in
-`docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml logs mcp-server`.
+`docker compose --env-file compose/mcp/.env -f compose/mcp/compose.yaml logs mcp-server` (from
+the `do-deploy` checkout).
 None of these ever quotes the token.
 
 | What you see | What it means |

@@ -15,7 +15,8 @@ own — and nothing else: not a database, not a credential, not a container, not
 Restarting or cancelling here does nothing to the other demo's source.
 
 For a clean-host deployment beside the gateway or all four applications, follow the canonical
-numbered [`deploy/README.md`](../../deploy/README.md). This guide remains the application/API reference.
+numbered [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy`. This guide remains the
+application/API reference.
 
 **Nothing comes back.** This server never learns who is subscribed, which side anyone took, whether
 they went ahead, or what came of it. There is no table for any of that, no field in its API that
@@ -38,8 +39,8 @@ can see would be a publisher that argues with itself.
 | [`internal/api`](internal/api) | How its discovery joins the shared API frame |
 | [`internal/boundary`](internal/boundary) | What this demo is, as tests over its own source |
 | [`Dockerfile`](Dockerfile) | This demo's image, and only this demo's |
-| [`../../deploy/prediction/compose.yaml`](../../deploy/prediction/compose.yaml) | The portable stack: only this demo on host loopback. `ctl` is an opt-in profile |
-| [`../../deploy/prediction/.env.example`](../../deploy/prediction/.env.example) | Deployment-only settings and the explicit durable volume name |
+| [`compose/prediction/compose.yaml`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/prediction/compose.yaml) in `do-deploy` | The portable stack: only this demo on host loopback. `ctl` is an opt-in profile |
+| [`compose/prediction/.env.example`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/prediction/.env.example) in `do-deploy` | Deployment-only settings and the explicit durable volume name |
 | [`.env.example`](.env.example) | Every setting, with its default and what it means. Copy to `.env` here, which git ignores |
 
 Everything durable — the market rows, the signals, their revisions, their idempotency keys and the
@@ -96,8 +97,8 @@ source is registered **separately from the CopyTrading demo**, under its own UUI
 credential:
 
 ```sh
-# from the repository root, on the gateway's host
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
+# from a do-deploy checkout, on the gateway's host
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml \
   --profile operator run --rm gateway-ctl register \
   --server 7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d \
   --label "prediction"
@@ -153,29 +154,29 @@ docker buildx build --platform linux/amd64 -f examples/demo-prediction/Dockerfil
   -t demo-prediction:local --load .
 ```
 
-The packaged stack starts this demo and nothing else:
+The packaged stack, from a `do-deploy` checkout, starts this demo and nothing else:
 
 ```sh
-cp deploy/prediction/.env.example deploy/prediction/.env
+cp compose/prediction/.env.example compose/prediction/.env
 # fill in PUBLISHER_SERVER_ID, PUBLISHER_GATEWAY_URL, PUBLISHER_PUBLISH_URL,
 # BROADCAST_CREDENTIAL and a PUBLISHER_API_TOKEN of your own
-docker compose --env-file deploy/prediction/.env \
-  -f deploy/prediction/compose.yaml up -d --build
-docker compose --env-file deploy/prediction/.env \
-  -f deploy/prediction/compose.yaml --profile operator run --rm ctl status
+docker compose --env-file compose/prediction/.env \
+  -f compose/prediction/compose.yaml up -d
+docker compose --env-file compose/prediction/.env \
+  -f compose/prediction/compose.yaml --profile operator run --rm ctl status
 ```
 
-For the remaining Compose snippets, run from `deploy/prediction`; Compose then reads the local
-`compose.yaml` and `.env` automatically. The base preset has no ingress, domain, certificate, feed,
-MCP server, or CopyTrading process.
+For the remaining Compose snippets, run from `compose/prediction` in `do-deploy`; Compose then
+reads the local `compose.yaml` and `.env` automatically. The base preset has no ingress, domain,
+certificate, feed, MCP server, or CopyTrading process.
 
-There is no image published anywhere. `seeker-prediction/prediction:local` is a local tag that
-`docker compose up --build` produces; nothing pulls it from a registry.
+The preset pulls the published `docker.io/brenat/seeker-agent-connect:prediction-<version>`
+image; set `PREDICTION_IMAGE` to run one built from this directory instead.
 
 ## 5. Configuration
 
 Application settings are documented in [`.env.example`](.env.example); deployment-only settings
-and their examples are in [`../../deploy/prediction/.env.example`](../../deploy/prediction/.env.example).
+and their examples are in [`compose/prediction/.env.example`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/prediction/.env.example) in `do-deploy`.
 The publisher's own half is read by exactly the same code as the other demo's; the `PREDICTION_*`
 half is this demo's alone.
 
@@ -247,7 +248,7 @@ Those are the standalone deployment's established identities. The old combined s
 `seeker-agent-wallet-server_prediction-data`; preserve that lineage by setting
 `PREDICTION_VOLUME_NAME` after inspecting and backing up the exact volume. Never merge two non-empty
 SQLite lineages or delete an unfamiliar volume. The full mapping is in
-[`deploy/README.md`](../../deploy/README.md#7-back-up-replace-and-roll-back). This data is never
+[deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md#7-back-up-replace-and-roll-back). This data is never
 shared with CopyTrading.
 
 ## 8. Health and a first publication
@@ -329,7 +330,7 @@ There is no internet-facing overlay for this demo and it needs none: its signals
 own discovery, so its API is something an operator reads rather than something a strategy engine
 writes to. Keep it on loopback, or reach it over a VPN or an SSH tunnel. If a deployment genuinely
 needs it published, put it behind an ingress of the deployment's own — see
-[`deploy/README.md`](../../deploy/README.md) — and remember that the token on it is still a grant.
+the [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy` — and remember that the token on it is still a grant.
 
 The only optional credential here is `PREDICTION_API_KEY`, described in [§1](#1-what-it-needs).
 There is no FCM and no OAuth: push is the gateway's
@@ -368,11 +369,11 @@ docker run --rm \
 docker compose start prediction
 ```
 
-To upgrade, take that backup, then `docker compose up -d --build`. The default Compose project is
-still `seeker-prediction` and its physical volume is explicitly
+To upgrade, take that backup, then `docker compose pull` and `docker compose up -d`. The default
+Compose project is still `seeker-prediction` and its physical volume is explicitly
 `seeker-prediction_prediction-data`. If migrating an old combined installation, configure its exact
-volume using the mapping in `deploy/README.md`; do not remove volumes to silence Compose warnings.
-To roll back, stop the service, restore the archive into the same empty volume, and start the
+volume using the mapping in the `do-deploy` runbook; do not remove volumes to silence Compose
+warnings. To roll back, stop the service, restore the archive into the same empty volume, and start the
 previous image. Never point an older binary at a newer database file.
 
 Restarting, upgrading or rolling back this demo does nothing to the CopyTrading demo or to the

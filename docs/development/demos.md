@@ -57,7 +57,7 @@ a dependency of that.
 | Written by | its callers, through the API | itself, from the provider's listing |
 | Its API | create, update, cancel, read | read only; the three writing endpoints answer 403 |
 | Its binaries | `copytrading`, `copytrading-admin`, `publishctl` | `prediction`, `prediction-admin`, `publishctl` |
-| Its portable preset | `deploy/copytrading/compose.yaml` | `deploy/prediction/compose.yaml` |
+| Its portable preset (in `do-deploy`) | `compose/copytrading/compose.yaml` | `compose/prediction/compose.yaml` |
 | Why it is shaped so | [copytrading-template.md](../wiki/copytrading-template.md) | [prediction-template.md](../wiki/prediction-template.md) |
 
 That single line — who writes the signals — is `api.Authorship` in the shared frame, and it is the
@@ -130,7 +130,7 @@ go run ./cmd/copytrading
 `PUBLISHER_PUBLISH_URL` is needed **only** in this shape, and it is the one setting worth
 understanding before the first start. Run natively, the gateway has separate loopback listeners —
 feeds on 8090 and publications on 8091 — so the origin a phone reads from is not the address a
-publication goes to. The canonical `deploy/feed` preset preserves those separate listeners, so its
+publication goes to. The canonical `compose/feed` preset in `do-deploy` preserves those separate listeners, so its
 demo presets set the private publisher URL explicitly. An operator may instead add the independent
 feed ingress and deliberately route both APIs on one origin. Get it wrong and the publication gets
 a 404 from a listener that has no handler which could write anything; the demo says so at startup,
@@ -148,9 +148,10 @@ go run ./cmd/publishctl create --in 2h --note "trimming SOL into USDC" \
   --term max_slippage_bps=50
 ```
 
-In Docker, copy `deploy/copytrading/.env.example` to `.env` beside it, then start
-`deploy/copytrading/compose.yaml`. The build context is the repository root, because the `replace`
-line needs `../publisher-support`; the canonical Compose file already says so, and
+In Docker, from a checkout of the separate `do-deploy` repository, copy
+`compose/copytrading/.env.example` to `.env` beside it, then start
+`compose/copytrading/compose.yaml`, which pulls the published image. Building the image yourself
+takes the repository root as the context, because the `replace` line needs `../publisher-support`;
 [`examples/demo-signals/README.md`](../../examples/demo-signals/README.md#4-build-and-run-the-image) has the
 plain `docker build` form. There is no bundled public ingress: what it publishes is a write API,
 not the gateway's public read port.
@@ -191,12 +192,12 @@ go run ./cmd/publishctl discovery | jq '{filters, markets: [.markets[].market_id
 ```
 
 In Docker it is its own preset in its own deployment directory, for the same reason it is its own everything
-else:
+else (from a `do-deploy` checkout):
 
 ```sh
-cd deploy/prediction
+cd compose/prediction
 cp .env.example .env
-docker compose up -d --build
+docker compose up -d
 docker compose run --rm ctl discovery
 ```
 
@@ -325,7 +326,7 @@ an absolute one. The answer is JSON on stdout so it can be piped; what a person 
 | `internal/admin` | That UI's implementation: named bcrypt file, sessions, CSRF, pages, its own rate limits |
 | `internal/boundary` | What this module is, as tests over its own source |
 | `sdk/` | A small Go client of this demo's request API |
-| `Dockerfile`, `.env.example` | This demo's image and application configuration; its portable preset is `deploy/copytrading` |
+| `Dockerfile`, `.env.example` | This demo's image and application configuration; its portable preset is `compose/copytrading` in `do-deploy` |
 
 ### demo-prediction
 
@@ -503,17 +504,18 @@ node scripts/capture-jupiter.mjs --events
 
 ## Deployment
 
-Each demo has an independent canonical preset under `deploy/`, and each demo's README is the
+Each demo has an independent canonical preset under `compose/` in the separate `do-deploy`
+repository, and each demo's README is the
 deployment guide for it, end to end:
 identity and credential, the image, the stack, every setting, the persistent volume, health, the
 first publication, logs, common errors, backup, upgrade, rollback, and copying the demo out of the
 repository.
 
 - **[`examples/demo-signals/README.md`](../../examples/demo-signals/README.md)** — application image and
-  configuration plus `deploy/copytrading`: Compose project `seeker-publisher`, explicit physical
+  configuration plus `compose/copytrading`: Compose project `seeker-publisher`, explicit physical
   volume `seeker-publisher_publisher-data`.
 - **[`examples/demo-prediction/README.md`](../../examples/demo-prediction/README.md)** — application image and
-  configuration plus `deploy/prediction`: Compose project `seeker-prediction`, explicit physical
+  configuration plus `compose/prediction`: Compose project `seeker-prediction`, explicit physical
   volume `seeker-prediction_prediction-data`.
 
 **Two images, not one.** Each demo's Dockerfile builds only that demo's binaries, so no provider
@@ -523,8 +525,8 @@ Both builds take the repository root as their context, because each module's `go
 shared library with `../publisher-support` and the build needs that directory too; neither copies the
 other demo in. The canonical projects use explicit physical volume and database-file identities.
 Those identities differ from some historical combined-stack names, so operators must follow the
-mapping and backup procedure in [`deploy/README.md`](../../deploy/README.md) instead of assuming a
-new project automatically reuses old data.
+mapping and backup procedure in the [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy`
+instead of assuming a new project automatically reuses old data.
 
 Two things differ from the gateway's assets, and each for a reason:
 
@@ -536,6 +538,9 @@ Two things differ from the gateway's assets, and each for a reason:
   direct that source. A deployment whose signals are written locally should keep the default
   loopback bind and use a tunnel or separately managed private network when remote access is needed.
 
-`pnpm check:deployments` resolves every canonical Compose file without starting a daemon and checks
-the ingress route boundaries — which is how they were checked here
-([`docs/changelog/2026-09-17.md`](../changelog/2026-09-17.md)).
+The Compose presets are checked in `do-deploy` by `node scripts/check-compose.mjs`, which resolves
+every canonical Compose file without starting a daemon and checks the ingress route boundaries —
+which is how they were checked here, before they moved
+([`docs/changelog/2026-09-17.md`](../changelog/2026-09-17.md)). This repository's
+`pnpm check:deployments` keeps only the repository-side checks: Dockerfile health commands, package
+`.env.example` names and ports, and the retired layout.

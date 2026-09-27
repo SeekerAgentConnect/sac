@@ -454,11 +454,11 @@ replacement until you know what happened.
 ## Running the packaged MCP server
 
 The portable project runs the same application as a single `mcp-server` container. From the
-repository root, inspect it with:
+root of your `do-deploy` checkout, inspect it with:
 
 ```sh
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml ps
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml logs mcp-server
+docker compose --env-file compose/mcp/.env -f compose/mcp/compose.yaml ps
+docker compose --env-file compose/mcp/.env -f compose/mcp/compose.yaml logs mcp-server
 curl --fail http://127.0.0.1:8080/healthz
 ```
 
@@ -466,12 +466,12 @@ The default host mapping is the application's own loopback port; there is no man
 sidecar container or shared network namespace. A refused connection means the MCP project is not
 running or its configured `MCP_SERVER_BIND`/`MCP_SERVER_PORT` differs.
 
-### The configuration lives in `deploy/mcp/.env`
+### The configuration lives in `compose/mcp/.env` in `do-deploy`
 
-The root `.env` belongs to the source start. The portable container reads `deploy/mcp/.env`, copied
-from its adjacent example. After editing it, rerun the exact Compose command from the deployment
-guide so the service is recreated. The optional public edge in `deploy/ingress/direct/` is a
-separate project with its own lifecycle; it is never required for a loopback or VPN-only start.
+The root `.env` belongs to the source start. The portable container reads `compose/mcp/.env` in
+your `do-deploy` checkout, copied from its adjacent example. After editing it, rerun the exact
+Compose command from the deployment guide so the service is recreated. The optional public edge in
+`compose/ingress/direct/` is a separate project with its own lifecycle; it is never required for a loopback or VPN-only start.
 
 ### A database from a newer sidecar is refused
 
@@ -482,7 +482,7 @@ the database has schema version 6, newer than this sidecar's 5; run a newer side
 ```
 
 That is the guard working. Go back to the newer images, or restore the backup you took before
-updating ([Back up, replace, and roll back](../../deploy/README.md#7-back-up-replace-and-roll-back)).
+updating (the `do-deploy` runbook's [Back up, replace, and roll back](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md#7-back-up-replace-and-roll-back)).
 
 ## Reporting a problem
 

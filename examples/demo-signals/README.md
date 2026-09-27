@@ -13,7 +13,8 @@ no image and no deployment of its own — and nothing else: not a database, not 
 container, not a lifecycle. Restarting or cancelling here does nothing to the other demo's source.
 
 For a clean-host deployment beside the gateway or all four applications, follow the canonical
-numbered [`deploy/README.md`](../../deploy/README.md). This guide remains the application/API reference.
+numbered [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy`. This guide remains the
+application/API reference.
 
 **Nothing comes back.** This server never learns who is subscribed, what anyone chose, whether they
 went ahead, or what came of it. There is no table for any of that, no field in its API that would
@@ -29,8 +30,8 @@ this process.
 | [`internal/boundary`](internal/boundary) | What this demo is, as tests over its own source |
 | [`sdk`](sdk) | A small Go client of this demo's request API |
 | [`Dockerfile`](Dockerfile) | This demo's image, and only this demo's |
-| [`../../deploy/copytrading/compose.yaml`](../../deploy/copytrading/compose.yaml) | The portable stack: this demo on host loopback. Operator tools and the admin UI are opt-in profiles |
-| [`../../deploy/copytrading/.env.example`](../../deploy/copytrading/.env.example) | Deployment-only settings and the explicit durable volume name |
+| [`compose/copytrading/compose.yaml`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/copytrading/compose.yaml) in `do-deploy` | The portable stack: this demo on host loopback. Operator tools and the admin UI are opt-in profiles |
+| [`compose/copytrading/.env.example`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/copytrading/.env.example) in `do-deploy` | Deployment-only settings and the explicit durable volume name |
 | [`.env.example`](.env.example) | Every setting, with its default and what it means. Copy to `.env` here, which git ignores |
 
 Everything durable — the signals, their revisions, their idempotency keys and the outbox that gets
@@ -59,8 +60,8 @@ lowercase UUID for this source and ask whoever runs the gateway to register it �
 if you run both:
 
 ```sh
-# from the repository root, on the gateway's host
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
+# from a do-deploy checkout, on the gateway's host
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml \
   --profile operator run --rm gateway-ctl register \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
   --label "copy trading"
@@ -118,29 +119,29 @@ docker buildx build --platform linux/amd64 -f examples/demo-signals/Dockerfile \
   -t demo-copytrading:local --load .
 ```
 
-The packaged stack starts this demo and nothing else:
+The packaged stack, from a `do-deploy` checkout, starts this demo and nothing else:
 
 ```sh
-cp deploy/copytrading/.env.example deploy/copytrading/.env
+cp compose/copytrading/.env.example compose/copytrading/.env
 # fill in PUBLISHER_SERVER_ID, PUBLISHER_GATEWAY_URL, PUBLISHER_PUBLISH_URL,
 # BROADCAST_CREDENTIAL and a PUBLISHER_API_TOKEN of your own
-docker compose --env-file deploy/copytrading/.env \
-  -f deploy/copytrading/compose.yaml up -d --build
-docker compose --env-file deploy/copytrading/.env \
-  -f deploy/copytrading/compose.yaml --profile operator run --rm ctl status
+docker compose --env-file compose/copytrading/.env \
+  -f compose/copytrading/compose.yaml up -d
+docker compose --env-file compose/copytrading/.env \
+  -f compose/copytrading/compose.yaml --profile operator run --rm ctl status
 ```
 
-For the remaining Compose snippets, run from `deploy/copytrading`; Compose then reads the local
-`compose.yaml` and `.env` automatically. The base preset has no ingress, domain, certificate, feed,
-MCP server, or Prediction process.
+For the remaining Compose snippets, run from `compose/copytrading` in `do-deploy`; Compose then
+reads the local `compose.yaml` and `.env` automatically. The base preset has no ingress, domain,
+certificate, feed, MCP server, or Prediction process.
 
-There is no image published anywhere. `seeker-publisher/copytrading:local` is a local tag that
-`docker compose up --build` produces; nothing pulls it from a registry.
+The preset pulls the published `docker.io/brenat/seeker-agent-connect:copytrading-<version>`
+image; set `COPYTRADING_IMAGE` to run one built from this directory instead.
 
 ## 5. Configuration
 
 Application settings are documented in [`.env.example`](.env.example); deployment-only settings
-and their examples are in [`../../deploy/copytrading/.env.example`](../../deploy/copytrading/.env.example).
+and their examples are in [`compose/copytrading/.env.example`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/copytrading/.env.example) in `do-deploy`.
 In summary:
 
 | Variable | Required | Default | What it is |
@@ -194,7 +195,7 @@ Those are the standalone deployment's established identities. The old combined s
 `seeker-agent-wallet-server_copytrading-data` and `/data/copytrading.db`; preserving it requires
 setting **both** `COPYTRADING_VOLUME_NAME` and `PUBLISHER_DATABASE_PATH`. Inspect and back up the
 exact volume first; never merge two non-empty SQLite lineages or delete an unfamiliar volume. The
-full mapping is in [`deploy/README.md`](../../deploy/README.md#7-back-up-replace-and-roll-back).
+full mapping is in [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md#7-back-up-replace-and-roll-back).
 This data is never shared with Prediction.
 
 ## 8. Health and a first request
@@ -335,11 +336,11 @@ docker run --rm \
 docker compose start copytrading
 ```
 
-To upgrade, take that backup, then `docker compose up -d --build`. The default Compose project is
-still `seeker-publisher` and its physical volume is explicitly
+To upgrade, take that backup, then `docker compose pull` and `docker compose up -d`. The default
+Compose project is still `seeker-publisher` and its physical volume is explicitly
 `seeker-publisher_publisher-data`. If migrating an old combined installation, configure its exact
-volume and database path using the mapping in `deploy/README.md`; do not remove volumes to silence
-Compose warnings. To roll back, stop the service, restore the archive into the same empty volume,
+volume and database path using the mapping in the `do-deploy` runbook; do not remove volumes to
+silence Compose warnings. To roll back, stop the service, restore the archive into the same empty volume,
 and start the previous image. Never point an older binary at a newer database file.
 
 Restarting, upgrading or rolling back this demo does nothing to the Prediction demo or to the

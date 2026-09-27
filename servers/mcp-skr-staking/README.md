@@ -54,11 +54,12 @@ The two values with no default are `SKR_STAKING_MCP_TOKEN` (generate one with `o
 and `SKR_STAKING_RPC_URL` (a mainnet-beta endpoint). Everything else has a working default;
 `.env.example` documents each one.
 
-With Docker, from the repository root:
+With Docker, from a checkout of the separate `do-deploy` repository, whose preset pulls the
+published `skr-staking-mcp-<version>` image (`SKR_STAKING_IMAGE` overrides it):
 
 ```bash
-cp deploy/skr-staking/.env.example deploy/skr-staking/.env    # then fill it in
-docker compose --env-file deploy/skr-staking/.env -f deploy/skr-staking/compose.yaml up --build
+cp compose/skr-staking/.env.example compose/skr-staking/.env    # then fill it in
+docker compose --env-file compose/skr-staking/.env -f compose/skr-staking/compose.yaml up
 ```
 
 ## Connecting a phone

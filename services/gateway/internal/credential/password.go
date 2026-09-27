@@ -27,8 +27,8 @@ import (
 //
 // The separator is a dot rather than the `$` of the usual PHC spelling, and that is a deliberate
 // change made after watching it break: Docker Compose interpolates `$name` inside an env file, so a
-// `$`-separated hash pasted into deploy/feed/.env arrives at the container truncated at its first
-// separator, and the only symptom is a login that never succeeds. A dot is outside base64url's
+// `$`-separated hash pasted into do-deploy's compose/feed/.env arrives at the container truncated
+// at its first separator, and the only symptom is a login that never succeeds. A dot is outside base64url's
 // alphabet, survives .env files, YAML, shells and app-platform consoles unescaped, and costs
 // nothing — the encoding is this service's own, read only by this file.
 //

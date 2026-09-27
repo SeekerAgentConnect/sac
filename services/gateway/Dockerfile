@@ -5,7 +5,7 @@
 #
 # This is the shared service a developer's publisher publishes to and every
 # subscribed phone reads from (SEE-90). Portable orchestration and optional
-# ingress are separate under deploy/ (SEE-135).
+# ingress live in the do-deploy repository (SEE-135).
 
 # Pinned to the version services/gateway/go.mod requires, so a build from a clean
 # checkout uses the toolchain the tests were run with

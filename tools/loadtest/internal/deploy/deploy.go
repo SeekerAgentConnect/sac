@@ -2,11 +2,12 @@
 //
 // Everything in it is the shipped thing: the `broadcast` binary on its own SQLite file, the pinned
 // Centrifugo release on `services/gateway/centrifugo.yaml` unchanged, real Redis on the settings
-// `deploy/feed/compose.yaml` gives it, and `feed-gatewayctl` as the only way a publisher comes to exist.
+// do-deploy's `compose/feed/compose.yaml` gives it, and `feed-gatewayctl` as the only way a
+// publisher comes to exist.
 // A load run against a stack assembled for the load run would measure the assembly.
 //
-// What is **not** here is the proxy. `deploy/ingress/feed/Caddyfile` is in front of all of this in a
-// deployment, and there is no Docker daemon on the machine these runs were made on
+// What is **not** here is the proxy. do-deploy's `compose/ingress/feed/Caddyfile` is in front of
+// all of this in a deployment, and there is no Docker daemon on the machine these runs were made on
 // (docs/testing/stage-7.md), so the hop is named as excluded in the report rather than folded into
 // a latency number. Nothing else in the path is stood in for except Firebase (push.go), which SEE-99
 // requires to be stood in for.
@@ -186,8 +187,8 @@ func Start(ctx context.Context, options Options) (*Deployment, error) {
 			redis, err := start(ctx, process{
 				What:    "redis",
 				Command: options.Redis,
-				// The settings deploy/feed/compose.yaml gives it: a cache, not a store. Nothing is
-				// persisted, because everything in it can be rebuilt by the phones that read the
+				// The settings do-deploy's compose/feed/compose.yaml gives it: a cache, not a store.
+				// Nothing is persisted, because everything in it can be rebuilt by the phones that read the
 				// gateway — and a Redis that survived a restart would be a second place a feed's
 				// history lived.
 				Args: []string{
@@ -248,7 +249,7 @@ func Start(ctx context.Context, options Options) (*Deployment, error) {
 				Command: options.Broker,
 				// The shipped configuration, unchanged. Only the ports, the two secrets and the engine
 				// are overridden, because those are what a deployment sets from its own environment
-				// (deploy/feed/compose.yaml does exactly this).
+				// (do-deploy's compose/feed/compose.yaml does exactly this).
 				Args: []string{"-c", brokerConfig},
 				Dir:  dir,
 				Environment: append(engine,

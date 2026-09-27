@@ -258,6 +258,6 @@ what the inputs beside them carry, and the page still loads no images. The page 
 gateway's admin look (SEE-164). Its stylesheet, script and fonts are this demo's own copies,
 embedded in the binary and served from `/trader/assets/`. The script only copies references and
 asks before a cancel or a revocation; every action is still a plain form post.
-`deploy/copytrading` makes the page an opt-in
-host-loopback profile; neither it nor `/v1` is placed on the public feed ingress. See
-[`deploy/README.md`](../../deploy/README.md).
+`compose/copytrading` in `do-deploy` makes the page an opt-in
+host-loopback profile; neither it nor `/v1` is placed on the public feed ingress. See the
+[deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy`.

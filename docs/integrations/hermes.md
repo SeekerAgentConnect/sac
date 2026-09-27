@@ -30,7 +30,7 @@ It covers Hermes on the Mac, Hermes on a VPS, and Hermes against the
   [`servers/mcp-server/README.md`](../../servers/mcp-server/README.md). Keep it running; Hermes connects to its URL.
 - Hermes is installed and works on its own. Its MCP support is part of the standard install.
 - You need the `MCP_TOKEN` used by the chosen start: root `.env` for source,
-  `deploy/mcp/.env` for Compose, or the explicit npm `config.env`. It is the agent credential; the
+  `compose/mcp/.env` in `do-deploy` for Compose, or the explicit npm `config.env`. It is the agent credential; the
   phone credential does not work here.
 - For the durable tools, the phone is paired with the server ([`pairing.md`](../guides/pairing.md)).
   The optional acknowledgement demo additionally needs `MCP_DEMO_TOOLS=true` in that same config.
@@ -79,7 +79,7 @@ mcp_servers:
    chmod 600 ~/.hermes/.env
    ```
 
-   For Compose, read `deploy/mcp/.env`; for npm, read the `config.env` passed to the executable.
+   For Compose, read `compose/mcp/.env` in `do-deploy`; for npm, read the `config.env` passed to the executable.
    If `~/.hermes/.env` already has a `MCP_SEEKER_VAULT_API_KEY` line, edit that line instead.
 
 What each setting does:
@@ -453,7 +453,7 @@ The tunnel lasts only as long as the SSH session. When it drops, calls fail with
 
 In these source-start tunnel examples, the sidecar stays on the Mac's loopback address: never
 expose its cleartext port 8080 to the internet. Container production can instead use the native-TLS
-listener from the canonical [deployment guide](../../deploy/README.md#3-direct-mcp-over-native-https-and-http2),
+listener from the canonical `do-deploy` [deployment guide](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md#3-direct-mcp-over-native-https-and-http2),
 which preserves the phone's HTTP/2 update stream and also serves Hermes at `/mcp`.
 
 ### Over a VPN you already use
@@ -503,9 +503,10 @@ not put `npm exec`, `npx`, or the executable in Hermes command/arguments fields:
 an HTTP server and does not implement MCP stdio. The baseline is always two independently started
 processes: the server, then Hermes connecting with the HTTP `url` configuration above.
 
-The canonical container deployment ([`deploy/README.md`](../../deploy/README.md)) runs the same
-application as one `mcp-server` service. For a complete public direct deployment, use its generic
-native-TLS overlay. The older independent `deploy/ingress/direct` HTTP reverse proxy remains an
+The canonical container deployment (the [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy`)
+runs the same application as one `mcp-server` service. For a complete public direct deployment, use
+its generic native-TLS overlay. The older independent `compose/ingress/direct` HTTP reverse proxy
+remains an
 MCP/unary option but cannot carry the phone's bidirectional UpdateService stream.
 
 **Keep your own `~/.hermes/config.yaml`.** Everything in section 1 still holds: back it up, merge
@@ -513,11 +514,11 @@ the one `seeker_vault` entry into `mcp_servers`, and remove nothing else.
 
 ### On the machine that runs the application
 
-The `deploy/mcp` preset publishes the application on host loopback, so the entry from
+The `compose/mcp` preset in `do-deploy` publishes the application on host loopback, so the entry from
 [`examples/hermes.config.yaml`](../../examples/hermes.config.yaml) works unchanged when
 `MCP_SERVER_PORT` keeps its default 8080. Two details differ from a source start:
 
-- The token is the `MCP_TOKEN` in `deploy/mcp/.env`, not the repository root's `.env`.
+- The token is the `MCP_TOKEN` in `compose/mcp/.env`, not the repository root's `.env`.
 - `vault_request_ack` exists only if that deployment sets `MCP_DEMO_TOOLS=true`, which a deployment
   normally does not. `hermes mcp test seeker_vault` lists what is actually served.
 

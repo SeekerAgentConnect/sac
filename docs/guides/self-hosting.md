@@ -1,29 +1,35 @@
 # Self-host Seeker Agent Connect
 
-The one step-by-step deployment runbook is [`deploy/README.md`](../../deploy/README.md). Start there
-for direct MCP only, public feeds only, or the collision-free combined-host setup. It includes
-native HTTPS/HTTP/2 updates, credentials, publisher registration, SAC verification, restarts,
-backup, rollback, and troubleshooting.
+The one step-by-step deployment runbook is
+[`compose/README.md`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md)
+in the separate `do-deploy` repository. Start there for direct MCP only,
+public feeds only, or the collision-free combined-host setup. It includes native HTTPS/HTTP/2
+updates, credentials, publisher registration, SAC verification, restarts, backup, rollback, and
+troubleshooting. Its Compose presets pull the published images; none builds from this checkout.
 
 This page is a boundary reference. It deliberately does not duplicate commands from the canonical
 runbook.
 
 ## Deployment boundaries
 
-- [`deploy/mcp`](../../deploy/mcp) starts one owner's direct MCP server and database. The generic
-  [`compose.tls.yaml`](../../deploy/mcp/compose.tls.yaml) overlay mounts operator-managed PEM files
-  and preserves HTTP/2 to UpdateService without requiring Tailscale.
-- [`deploy/feed`](../../deploy/feed) starts the shared public-feed gateway, Centrifugo, Redis, and a
-  local operator profile. [`deploy/ingress/feed`](../../deploy/ingress/feed) is its separately
-  managed public HTTPS edge.
-- [`deploy/copytrading`](../../deploy/copytrading) and
-  [`deploy/prediction`](../../deploy/prediction) each start one demo and one database. Neither owns
-  or imports the gateway or the other demo.
-- [`deploy/operators/tailscale`](../../deploy/operators/tailscale) is optional operator-specific
-  routing. It is not the generic production path.
-- [`deploy/ingress/direct`](../../deploy/ingress/direct) is an independent optional Caddy project
-  for MCP and unary phone calls. It is not the complete production path because it does not carry
-  the bidirectional UpdateService stream.
+All of these are Compose projects under `compose/` in `do-deploy`:
+
+- [`compose/mcp`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/mcp) starts one owner's direct MCP server and database. The
+  generic [`compose.tls.yaml`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/mcp/compose.tls.yaml) overlay
+  mounts operator-managed PEM files and preserves HTTP/2 to UpdateService without requiring
+  Tailscale.
+- [`compose/feed`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/feed) starts the shared public-feed gateway, Centrifugo,
+  Redis, and a local operator profile.
+  [`compose/ingress/feed`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/ingress/feed) is its separately managed public
+  HTTPS edge.
+- [`compose/copytrading`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/copytrading) and
+  [`compose/prediction`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/prediction) each start one demo and one
+  database. Neither owns or imports the gateway or the other demo.
+- [`compose/operators/tailscale`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/operators/tailscale) is optional
+  operator-specific routing. It is not the generic production path.
+- [`compose/ingress/direct`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/ingress/direct)
+  is an independent optional Caddy project for MCP and unary phone calls. It is not the complete production path because it
+  does not carry the bidirectional UpdateService stream.
 
 Every application remains an independent Compose project. The combined overlays add only one
 private demo-to-gateway publication network; publishers do not gain ingress/trusted-proxy status.
@@ -56,8 +62,8 @@ exclusive transaction, not file presence or a PID, establishes ownership. Never 
 recover from a crash.
 
 The current and legacy physical volume mapping, one-time ownership upgrade rule, exact cold-backup
-procedure, and restore/rollback constraints are maintained only in
-[`deploy/README.md`](../../deploy/README.md#7-back-up-replace-and-roll-back).
+procedure, and restore/rollback constraints are maintained only in the
+[deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md#7-back-up-replace-and-roll-back) in `do-deploy`.
 
 ## Application references
 

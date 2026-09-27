@@ -17,7 +17,7 @@ run the whole thing end to end and watch each decision land, locally and against
 | | What | Why |
 | --- | --- | --- |
 | A feed gateway | [`services/gateway/`](../../services/gateway), reads on `127.0.0.1:8090` and publications on `127.0.0.1:8091` by default ([feed-gateway.md](../development/feed-gateway.md)) | It is what enforces the restriction. The publisher only decides |
-| A broker | Centrifugo and Redis, as `deploy/feed/compose.yaml` runs them, plus `BROADCAST_STREAM_URL`, `BROADCAST_STREAM_API_KEY` and `BROADCAST_STREAM_TOKEN_KEY` on the gateway — all three or none | Only §8 needs it. Without them the gateway answers every read and says once that there is no stream, so a revocation shows on the next read rather than on an open one |
+| A broker | Centrifugo and Redis, as `compose/feed/compose.yaml` in `do-deploy` runs them, plus `BROADCAST_STREAM_URL`, `BROADCAST_STREAM_API_KEY` and `BROADCAST_STREAM_TOKEN_KEY` on the gateway — all three or none | Only §8 needs it. Without them the gateway answers every read and says once that there is no stream, so a revocation shows on the next read rather than on an open one |
 | The demo | [`examples/demo-signals/`](../../examples/demo-signals): `copytrading`, `copytrading-admin`, `publishctl` | The publisher, the operator's page, and the signal client |
 | A phone with a wallet | A real Seeker, or any device with a wallet the app can ask to sign | The flow is a wallet signature, once |
 
@@ -395,10 +395,10 @@ deployed servers are known to lag the repository
 ([emulator-e2e.md](../development/emulator-e2e.md) § Known issues), so confirm the running image
 contains SEE-156 before reading a failure as a bug.
 
-For Compose, [`deploy/copytrading/compose.yaml`](../../deploy/copytrading/compose.yaml) now requires
-`PUBLISHER_AUTH_ORIGIN` — the service refuses to start without it — and passes
+For Compose, [`compose/copytrading/compose.yaml`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/copytrading/compose.yaml) in
+`do-deploy` now requires `PUBLISHER_AUTH_ORIGIN` — the service refuses to start without it — and passes
 `PUBLISHER_ACCESS_GRANT_HOURS` and `PUBLISHER_ACCESS_INVITATION_MINUTES` through from
-`deploy/copytrading/.env`. The admin UI stays an opt-in host-loopback profile and is never placed on
+`compose/copytrading/.env`. The admin UI stays an opt-in host-loopback profile and is never placed on
 the public feed ingress.
 
 ## Where to look next

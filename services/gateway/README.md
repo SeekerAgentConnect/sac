@@ -3,11 +3,12 @@
 `services/gateway/` is the independently buildable shared public-feed service. Authenticated publisher
 backends publish public manifests and feed documents once; anonymous clients read those documents.
 The gateway never routes a private request, holds a subscriber decision, or contacts a publisher.
-Portable orchestration lives under [`deploy/feed/`](../../deploy/feed); optional public routing lives
-separately under [`deploy/ingress/feed/`](../../deploy/ingress/feed).
+Portable orchestration lives in the separate `do-deploy` repository under
+[`compose/feed/`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/feed); optional public routing lives separately under
+[`compose/ingress/feed/`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/ingress/feed).
 
-Use the canonical numbered [`deploy/README.md`](../../deploy/README.md) for a clean-host feeds-only or
-combined deployment, including the collision-free ports, public stream, publisher registration,
+Use the canonical numbered [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy` for a clean-host
+feeds-only or combined deployment, including the collision-free ports, public stream, publisher registration,
 and restart checks.
 
 The runtime is intentionally small:
@@ -92,20 +93,21 @@ docker run --rm --name feed-gateway \
 
 This direct `docker run` is a loopback-only development example. For the portable reference stack,
 copy the deployment environment, create the two Centrifugo secrets it requests, then run from the
-repository root:
+root of a `do-deploy` checkout (the `compose/...` commands below all run from there):
 
 ```sh
-cp deploy/feed/.env.example deploy/feed/.env
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --build
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml ps
+cp compose/feed/.env.example compose/feed/.env
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml up -d
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml ps
 curl --fail "http://127.0.0.1:${BROADCAST_PORT:-8090}/healthz"
 ```
 
 The proxyless stack starts the gateway, Centrifugo, and colocated Redis—no MCP server or demo.
 Gateway read and authenticated publication ports bind host loopback; the broker API/stream and
-Redis have no host port. There is no published remote image assumed by this repository:
-`seeker-feed-gateway/gateway:local` is built locally. The independent
-[`deploy/ingress/feed/`](../../deploy/ingress/feed) project adds a domain, certificates, and the
+Redis have no host port. The preset pulls the published
+`docker.io/brenat/seeker-agent-connect:gateway-<version>` image; set `BROADCAST_IMAGE` to run one
+built from this directory instead. The independent
+[`compose/ingress/feed/`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/ingress/feed) project in `do-deploy` adds a domain, certificates, and the
 same-origin HTTPS/HTTP2 stream without coupling proxy and application lifecycle.
 
 The image is `FROM scratch`, runs as uid/gid `10001`, and writes only `/data`. A bind mount must be
@@ -167,7 +169,7 @@ The process reads these variables. Empty optional values use the stated default.
 The portable Compose files additionally use the host bind/port and physical volume/network names,
 `CENTRIFUGO_API_KEY`, `CENTRIFUGO_TOKEN_KEY`, `CENTRIFUGO_REDIS_URL`, its supported Redis TLS trust
 and client-identity settings, `REDIS_MAX_MEMORY`, and the optional host-side push credential. The exact contract is
-[`deploy/feed/.env.example`](../../deploy/feed/.env.example). Redis authentication belongs in its
+[`compose/feed/.env.example`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/feed/.env.example). Redis authentication belongs in its
 `redis://`/`rediss://` URL; no Redis port is published.
 
 ## Register a publisher
@@ -194,13 +196,13 @@ Run it against the same SQLite file:
   --label "example publisher"
 ```
 
-It prints one bearer credential once and stores only its SHA-256 hash. In the packaged stack:
+It prints one bearer credential once and stores only its SHA-256 hash. In the packaged stack, from a `do-deploy` checkout:
 
 ```sh
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml run --rm gateway-ctl register \
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml run --rm gateway-ctl register \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
   --label "example publisher"
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml run --rm gateway-ctl list
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml run --rm gateway-ctl list
 ```
 
 `register` refuses a server ID that is already registered, rather than quietly adding a credential
@@ -383,9 +385,9 @@ only. Hints contain no document or subscriber identity; topic membership remains
 Useful checks:
 
 ```sh
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml ps
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml logs --tail=100 feed-gateway centrifugo redis
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml run --rm gateway-ctl list
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml ps
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml logs --tail=100 feed-gateway centrifugo redis
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml run --rm gateway-ctl list
 curl --fail "http://127.0.0.1:${BROADCAST_PORT:-8090}/healthz"
 # The admin page, when one is configured. Anonymous requests are sent to its login form.
 curl -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:${BROADCAST_ADMIN_PORT:-8092}/admin/"
@@ -402,18 +404,18 @@ For a consistent backup, stop the writer, archive the existing named volume, and
 
 ```sh
 mkdir -p backups
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml stop feed-gateway
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml stop feed-gateway
 docker run --rm \
   -v seeker-broadcast_broadcast-data:/from:ro \
   -v "$PWD/backups:/to" alpine:3.22 \
   tar -C /from -czf /to/feed-gateway-data.tgz .
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml start feed-gateway
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml start feed-gateway
 ```
 
 The Compose project remains `seeker-broadcast` and defaults to the physical volume
 `seeker-broadcast_broadcast-data`, so the current standalone lineage reuses its data. The combined
-server lineage is selected explicitly with `BROADCAST_VOLUME_NAME`; see
-[`deploy/README.md`](../../deploy/README.md#7-back-up-replace-and-roll-back). On first open, the
+server lineage is selected explicitly with `BROADCAST_VOLUME_NAME`; see the
+[deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md#7-back-up-replace-and-roll-back). On first open, the
 gateway transactionally migrates the schema forward — v2 to v3 retires the removed private-routing
 tables; v3 to v4 adds a publisher's optional host as a column on its existing registration — while
 preserving all public manifests, feed items, publisher credentials, sequences, and pending notices.

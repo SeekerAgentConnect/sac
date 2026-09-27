@@ -28,7 +28,6 @@ packages/protocol/proto/            Protobuf contract, Buf, Kotlin and TypeScrip
 packages/server-sdk/       TypeScript direct-server lifecycle, persistence and phone services
 servers/mcp-server/       TypeScript/Node MCP application and executable packaging
 apps/android/          Kotlin/Compose: connections, policies, requests, MWA, history
-deploy/           Independent MCP, feed, demo and optional-ingress presets
 services/gateway/     The shared feed gateway (Go): the publication and feed-read API
 packages/publisher-support/  Go library the two feed demos share: publication, store, manifest, API
 examples/demo-signals/   Go feed demo: a trader's own signals, plus the create-request SDK for its API
@@ -36,6 +35,10 @@ examples/demo-prediction/    Go feed demo: the Jupiter Prediction markets it dis
 tools/test-agent/       Minimal MCP client for testing and demos
 docs/             Architecture, protocol, policies, setup, and integrations
 ```
+
+The independent MCP, feed, demo and optional-ingress Compose presets live in the separate
+[`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose) repository under
+`compose/`, and pull the images this repository publishes.
 
 **Android:** Kotlin, Compose, Material 3, `connect-kotlin`, `mobile-wallet-adapter-clientlib-ktx`, and a QR scanner. We will select the SDK for parsing Solana transactions during integration validation; `sol4k` is a candidate, not a mandatory dependency.
 

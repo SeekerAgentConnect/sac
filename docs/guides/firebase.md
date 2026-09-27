@@ -361,13 +361,13 @@ it is the news that a public broadcast changed, with no document in it at all.
 
 One Firebase project for the whole deployment — the same project whose `google-services.json` the
 APK was built with, or the messages will be sent to topics no phone is subscribed to. Then, in
-`deploy/feed/.env`:
+`compose/feed/.env` of your `do-deploy` checkout (and run the command from its root):
 
 ```bash
 BROADCAST_PUSH_CREDENTIALS_FILE=/run/secrets/seeker-broadcast-fcm.json
 BROADCAST_PUSH_ENVIRONMENT=production
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
-  -f deploy/feed/compose.push.yaml up -d --build
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml \
+  -f compose/feed/compose.push.yaml up -d
 ```
 
 The credential is a service-account JSON for that project, with permission to send (Firebase's

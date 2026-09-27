@@ -146,7 +146,7 @@ Every image runs as an unprivileged fixed uid/gid (`10001`), so a named volume's
 same on every host. The Go images — the gateway and both demos — are `scratch` images with no
 shell, which is why they carry no `HEALTHCHECK`: there is no `/bin/sh` for Docker's default shell
 form and no shipped probe binary. Probe them from outside the container over HTTP instead, which is
-what the Compose presets and the platform specs in `deploy/` do.
+what the Compose presets and the platform specs in the `do-deploy` repository do.
 
 None of these images contains a credential, a host name, or a database. Configuration is entirely
 environment variables, and the gateway deliberately has no default for `BROADCAST_PUBLIC_URL` or
@@ -172,21 +172,23 @@ the volume survives it and a restart picks up the same server identity and pairi
 
 ### Compose
 
-The presets under `deploy/` build from a checkout by default, and every one of them takes the image
-as a variable — so the same preset runs published images with nothing rebuilt:
+The presets live under `compose/` in the separate
+[`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose) repository. They
+run the published images by default and build nothing; every one of them takes the image as a
+variable, so a different tag (or a local build) is one setting away. From a `do-deploy` checkout:
 
 ```bash
 MCP_SERVER_IMAGE=docker.io/brenat/seeker-agent-connect:mcp-0.2.0 \
-  docker compose -f deploy/mcp/compose.yaml up -d
+  docker compose -f compose/mcp/compose.yaml up -d
 ```
 
 ```bash
 BROADCAST_IMAGE=docker.io/brenat/seeker-agent-connect:gateway-0.2.0 \
-  docker compose -f deploy/feed/compose.yaml up -d
+  docker compose -f compose/feed/compose.yaml up -d
 ```
 
-The variables are `MCP_SERVER_IMAGE`, `SKR_STAKING_IMAGE`, `BROADCAST_IMAGE`, `COPYTRADING_IMAGE`
-and `PREDICTION_IMAGE`.
+The variables are `MCP_SERVER_IMAGE`, `SKR_STAKING_IMAGE`, `BROADCAST_IMAGE`, `CENTRIFUGO_IMAGE`,
+`COPYTRADING_IMAGE` and `PREDICTION_IMAGE`.
 
 Without a checkout at all, this is a complete file:
 
@@ -272,7 +274,8 @@ docker compose up -d
 ```
 
 Do **not** run `docker compose down -v`. That removes the volumes, and with them the server
-identity, the pairings and the publication history. `deploy/README.md` lists the durable volume and
+identity, the pairings and the publication history. The `do-deploy`
+[deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md#7-back-up-replace-and-roll-back) lists the durable volume and
 database names each deployment has carried, including the ones inherited from earlier layouts.
 
 The old Docker Hub tags are not deleted; anything already pinned to one keeps working. They will

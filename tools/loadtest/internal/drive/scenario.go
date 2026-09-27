@@ -236,7 +236,7 @@ func topology(deployment *deploy.Deployment, profile Profile) Topology {
 		Engine:      engine,
 		Push:        push,
 		// Said out loud because it is the one part of the deployment that is not in the path.
-		Proxy:  "none: deploy/ingress/feed is not in this path (no Docker daemon on this machine)",
+		Proxy:  "none: do-deploy's compose/ingress/feed is not in this path (no Docker daemon on this machine)",
 		Limits: limits,
 	}
 }
@@ -640,8 +640,8 @@ func converged(result Result) []string {
 // listeners that could not be caught up from history having read the gateway instead.
 //
 // Redis is a cache and not the source of truth — the gateway's SQLite file is that
-// (deploy/feed/compose.yaml says so where it declares the service) — so the thing to assert is the
-// fallback, not the stream. What would be serious is a listener that ended the run short of a
+// (do-deploy's compose/feed/compose.yaml says so where it declares the service) — so the thing to
+// assert is the fallback, not the stream. What would be serious is a listener that ended the run short of a
 // document, or one that neither recovered nor read a snapshot.
 func fellBack(result Result) []string {
 	failures := recovered(result)
