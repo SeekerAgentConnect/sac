@@ -14,9 +14,6 @@ servers/mcp-skr-staking/package/
 .env
 .env.*
 !.env.example
-deploy/**/secrets/
-deploy/**/backups/
-deploy/**/tls/
 local.properties
 *.jks
 *.keystore

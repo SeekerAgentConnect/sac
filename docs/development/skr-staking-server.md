@@ -81,15 +81,21 @@ apps/android/gradlew -p apps/android :app:testDebugUnitTest --tests 'io.github.b
 
 ## Deploying it
 
+The Compose preset lives in the separate `do-deploy` repository; from a checkout of it:
+
 ```bash
-cp deploy/skr-staking/.env.example deploy/skr-staking/.env
-docker compose --env-file deploy/skr-staking/.env -f deploy/skr-staking/compose.yaml up --build
+cp compose/skr-staking/.env.example compose/skr-staking/.env
+docker compose --env-file compose/skr-staking/.env -f compose/skr-staking/compose.yaml up
 ```
 
-The image is built from the repository root, because the checkout supplies the unpublished SDK. It
-runs as an unprivileged user, drops every capability, keeps its database on a named volume, and its
-health check is a Node script rather than a shell fetch. `scripts/check-deployments.mjs` resolves the
-compose project and asserts both.
+It pulls the published `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-<version>` image;
+`SKR_STAKING_IMAGE` overrides it. The image is built from this repository's root, because the
+checkout supplies the unpublished SDK. It runs as an unprivileged user, drops every capability,
+keeps its database on a named volume, and its health check is a Node script rather than a shell
+fetch. The Compose preset is checked in `do-deploy` by `node scripts/check-compose.mjs`; this
+repository's `pnpm check:deployments` (`scripts/check-deployments.mjs`) keeps only the
+repository-side checks: the Dockerfile health command, the package `.env.example` names and ports,
+and the retired layout.
 
 The compose project joins the same `direct-ingress` network the general server uses, so one ingress
 can serve both; the two are separate services with separate volumes and separate ports.

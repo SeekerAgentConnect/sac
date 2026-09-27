@@ -14,8 +14,8 @@
 mcp_servers:
   seeker_vault:
     # The sidecar's MCP endpoint. For Hermes on a VPS, use the VPS end of the SSH tunnel
-    # instead, for example http://127.0.0.1:18080/mcp. The deploy/mcp preset publishes
-    # the application on this same address and port by default.
+    # instead, for example http://127.0.0.1:18080/mcp. The compose/mcp preset in do-deploy
+    # publishes the application on this same address and port by default.
     url: "http://127.0.0.1:8080/mcp"
     headers:
       # Hermes fills in ${...} from ~/.hermes/.env or the environment. An unset variable is

@@ -10,7 +10,8 @@ the public gateway is shaped the way it is;
 [`docs/guides/server-development.md`](../guides/server-development.md) is what a developer does with
 it, in order.
 
-**It is not the optional direct ingress.** [`deploy/ingress/direct/`](../../deploy/ingress/direct)
+**It is not the optional direct ingress.**
+[`compose/ingress/direct/`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/ingress/direct) in `do-deploy`
 is one owner's independently managed edge in front of their MCP server, serving that direct
 connection. This is a shared service, run by whoever hosts the public feed, serving every
 subscriber. Where the two could be confused this page says "feed gateway" and "direct ingress".
@@ -371,7 +372,7 @@ to anything, and nothing in this build treats it as one.
 The credential, and any way to choose a topic.
 
 The Firebase service account belongs to the deployment. It is a file mounted read-only into the
-gateway's container and nothing else (`deploy/feed/compose.push.yaml`), read once at startup, and no
+gateway's container and nothing else (`compose/feed/compose.push.yaml` in `do-deploy`), read once at startup, and no
 part of it appears in an answer, an error or a log line. A publisher publishes to the gateway, as it
 always did, and the gateway is what holds this — which is the whole reason the relay is here rather
 than in each publisher's own deployment.
@@ -701,8 +702,8 @@ that named both has already lost track of which one holds it.
 The store has one hard requirement — a publication and its notice must commit together — and a
 single-file transactional database does that with nothing to operate. The driver is pure Go, so the
 image carries no libc and the tests need no service. The load is bounded documents at human rates.
-For a gateway on a host with a disk, that is the whole design, and §4 of
-[`deploy/README.md`](../../deploy/README.md) is how the file is backed up.
+For a gateway on a host with a disk, that is the whole design, and §4 of the
+[deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy` is how the file is backed up.
 
 The file must stay on local storage, not NFS or another network filesystem.
 

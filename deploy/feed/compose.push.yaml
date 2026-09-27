@@ -1,9 +1,0 @@
-services:
-  feed-gateway:
-    environment:
-      BROADCAST_PUSH_CREDENTIALS: /run/secrets/firebase.json
-    volumes:
-      - type: bind
-        source: ${BROADCAST_PUSH_CREDENTIALS_FILE:?set BROADCAST_PUSH_CREDENTIALS_FILE to the Firebase service-account JSON}
-        target: /run/secrets/firebase.json
-        read_only: true

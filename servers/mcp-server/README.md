@@ -18,8 +18,8 @@ The commands below build **local** artifacts and publish nothing. For the publis
 [docs/development/releases.md](../../docs/development/releases.md).
 
 For a clean-host container deployment, use the canonical numbered
-[`deploy/README.md`](../../deploy/README.md). It covers direct-only, feeds-only, and combined hosting,
-including generic native HTTPS/HTTP/2 without requiring Tailscale.
+[deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy`. It covers direct-only, feeds-only, and
+combined hosting, including generic native HTTPS/HTTP/2 without requiring Tailscale.
 
 ## Requirements and boundaries
 
@@ -121,16 +121,22 @@ credential and cancels its pending requests.
 
 ## Option 2: standalone Docker
 
-The build uses the repository root only to compile the declared MCP package and unpublished SDK:
+The build uses the repository root only to compile the declared MCP package and unpublished SDK.
+The Compose preset lives in the separate `do-deploy` repository and pulls the published
+`docker.io/brenat/seeker-agent-connect:mcp-<version>` image; set `MCP_SERVER_IMAGE` to run a local
+build instead. The `compose/...` commands run from a `do-deploy` checkout:
 
 ```sh
+# in this repository
 docker build -f servers/mcp-server/Dockerfile \
   -t seeker-agent-connect/mcp-server:local .
-cp deploy/mcp/.env.example deploy/mcp/.env
+# in a do-deploy checkout
+cp compose/mcp/.env.example compose/mcp/.env
 # replace the tokens; keep the local public URL for host-loopback development
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --build
+# optional: MCP_SERVER_IMAGE=seeker-agent-connect/mcp-server:local in compose/mcp/.env
+docker compose --env-file compose/mcp/.env -f compose/mcp/compose.yaml up -d
 curl --fail http://127.0.0.1:8080/healthz
-docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml exec mcp-server \
+docker compose --env-file compose/mcp/.env -f compose/mcp/compose.yaml exec mcp-server \
   node servers/mcp-server/dist/cli.js pair
 ```
 
@@ -254,7 +260,7 @@ and a restrictive Content-Security-Policy (`connect-src 'none'`, `script-src 'se
 configured public origin is embedded in the HTML; a fragment that names a different server cannot
 use this page as a launch surface.
 
-**Ingress:** `deploy/ingress/direct/Caddyfile` currently reverse-proxies `/mcp` and the Connect
+**Ingress:** `compose/ingress/direct/Caddyfile` in `do-deploy` currently reverse-proxies `/mcp` and the Connect
 phone APIs, then aborts every other path, including `/pair` and `/pair/page.js`. Phone pairing
 through that example Caddy file needs an operator-added route for `/pair` and those four assets, or
 the phone/browser must reach the MCP listener directly. This package does not change that
@@ -320,15 +326,18 @@ application does not provide login, client registration, consent, accounts, or a
 
 TLS, domains, Caddy and Tailscale/Funnel are separate deployment layers. For the phone's live update
 stream, use the server's TLS listener with a trusted PEM identity and preserve HTTP/2, or forward raw
-TCP. [`deploy/ingress/direct/`](../../deploy/ingress/direct) is the separately managed Caddy example
-for MCP and unary phone calls; it deliberately does not claim to proxy the production update
-stream. [`deploy/operators/tailscale/`](../../deploy/operators/tailscale) shows the native-TLS/raw-TCP
-layout without host networking. The older gateway-private routing is retired and is not a
+TCP. In `do-deploy`,
+[`compose/ingress/direct/`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/ingress/direct) is the
+separately managed Caddy example for MCP and unary phone calls; it deliberately does not claim to
+proxy the production update stream.
+[`compose/operators/tailscale/`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/operators/tailscale) shows
+the native-TLS/raw-TCP layout without host networking. The older gateway-private routing is retired and is not a
 reachability solution.
 
 The portable project mounts the explicitly named `MCP_VOLUME_NAME` at `/data`. Its clean default
 preserves `seeker-agent-connect-mcp_mcp-data`; older `gateway/` and combined-server lineages are
-selected explicitly and backed up first using the mapping in [`deploy/README.md`](../../deploy/README.md).
+selected explicitly and backed up first using the mapping in the
+[deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy`.
 Replace only `mcp-server` with `up -d --no-deps mcp-server`; ingress and every feed component stay
 running.
 

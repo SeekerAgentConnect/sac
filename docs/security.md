@@ -498,14 +498,17 @@ This is the optional reverse proxy in front of one owner's direct server, and no
 gateway of SEE-90 above: different service, different operator, different deployment
 ([`services/gateway/README.md`](../services/gateway/README.md)).
 
-The portable server in [`deploy/mcp`](../deploy/mcp) is host-loopback by default. The public
-[`deploy/ingress/direct/Caddyfile`](../deploy/ingress/direct/Caddyfile) belongs to a separate Compose
-project, so a domain and certificate cannot become an application default by omission.
+The portable server in [`compose/mcp`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/mcp) (in the
+separate `do-deploy` repository) is host-loopback by default. The public
+[`compose/ingress/direct/Caddyfile`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/ingress/direct/Caddyfile)
+belongs to a separate Compose project, so a domain and certificate cannot become an application
+default by omission.
 
 This HTTP reverse-proxy profile remains useful for MCP and unary phone calls, but it does not carry
 the UpdateService stream. The generic complete direct deployment instead uses the application's
-native-TLS overlay in [`deploy/mcp/compose.tls.yaml`](../deploy/mcp/compose.tls.yaml); the canonical
-commands are in [`deploy/README.md`](../deploy/README.md).
+native-TLS overlay in
+[`compose/mcp/compose.tls.yaml`](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/mcp/compose.tls.yaml); the
+canonical commands are in the [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy`.
 
 - **Only named endpoints exist on the public interface.** `/mcp`, OAuth metadata, and the phone's
   unary pairing and request services are forwarded. `/healthz`, the Stage 1 `LiveCommandService`
@@ -553,9 +556,9 @@ The following older examples remain suitable for the Stage 1 diagnostic and unar
 Only devices on the tailnet can reach this endpoint.
 
 **Caddy,** on a machine with a public DNS name and ports 80 and 443 open. The configured unary form
-is the independent [`deploy/ingress/direct`](../deploy/ingress/direct) project. Set
+is the independent [`compose/ingress/direct`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/ingress/direct) project in `do-deploy`. Set
 `SIDECAR_PUBLIC_URL=https://vault.example.com`. For the production update stream, use the native
-TLS listener using the generic [native-TLS deployment](../deploy/README.md#3-direct-mcp-over-native-https-and-http2)
+TLS listener using the generic [native-TLS deployment](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md#3-direct-mcp-over-native-https-and-http2)
 so HTTP/2 remains end to end.
 
 Don't use a self-signed certificate. The phone rightly refuses it, and the only way around that is weakening its checks. The automated production-listener test trusts a throwaway local certificate only inside the test process; no such trust configuration ships.

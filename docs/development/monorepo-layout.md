@@ -34,7 +34,7 @@ Directories that are not components keep their paths:
 
 | Path | What it is |
 | --- | --- |
-| `deploy/` | The Compose projects, ingress and operator examples. Project names, volume names and file paths are unchanged. The DigitalOcean App Platform specs have since moved to the `do-deploy` repository |
+| `deploy/` | The Compose projects, ingress and operator examples. Project names, volume names and file paths were unchanged by this layout. They have since moved, with the DigitalOcean App Platform specs, to the `do-deploy` repository, where the Compose projects live under [`compose/`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose) and pull published images |
 | `design/` | The Android design guide, tokens and captured references |
 | `docs/` | Documentation |
 | `fixtures/` | Test data shared by the app and the servers (transfer transactions, captured Jupiter answers, the restricted-feed challenge) |
@@ -135,7 +135,7 @@ pnpm check:android                      # android (needs a JDK and the Android S
 pnpm check:gateway                      # gateway (needs Go)
 pnpm check:demos                        # publisher-support, demo-signals, demo-prediction (needs Go)
 pnpm check:loadtest                     # loadtest (needs Go)
-pnpm check:deployments                  # every Compose preset resolves
+pnpm check:deployments                  # Dockerfile health commands, package .env.example, retired layout
 ```
 
 | Component | Build | Run locally | Container |
@@ -153,7 +153,11 @@ pnpm check:deployments                  # every Compose preset resolves
 | `loadtest` | `(cd tools/loadtest && go build ./...)` | `pnpm test:load` | — |
 
 Every Dockerfile still builds from the repository root as its context, except the Centrifugo image,
-whose context is `services/gateway/`. The Compose projects under `deploy/` build the same way.
+whose context is `services/gateway/`. The Compose presets, now under `compose/` in `do-deploy`,
+pull the published images instead of building. They are checked there by
+`node scripts/check-compose.mjs`; this repository's `pnpm check:deployments` keeps only the
+repository-side checks (Dockerfile health commands, package `.env.example` names and ports, and the
+retired layout).
 
 ## What did not change
 
@@ -167,6 +171,7 @@ whose context is `services/gateway/`. The Compose projects under `deploy/` build
   [Migrating](#go-module-paths) about fetching them by path.
 - **Images and deployments.** Docker image names and tags, Compose project names, service names,
   volume names, ports, environment variables, the `deploy/` file paths and the DigitalOcean specs.
+  (`deploy/` has since moved to the `do-deploy` repository as `compose/`.)
 - **The app.** The application ID `io.github.brrenat.seekervault`, the `seekervault://` pairing and
   feed links, the generated protocol code and the wire contract.
 - **Commands.** Every existing root `pnpm` command still works. The ones that named an old folder
@@ -196,6 +201,10 @@ settings using the mapping above, for example `node mcp-server/src/cli.ts` →
 `node servers/mcp-server/src/cli.ts` and `cd android` → `cd apps/android`.
 
 ### Compose deployments (`deploy/`)
+
+The Compose projects have since moved to the separate `do-deploy` repository: `deploy/<project>/`
+is now `compose/<project>/` there, run from a `do-deploy` checkout with `up -d` against published
+images. What follows describes the SEE-167 move itself.
 
 No operator action beyond pulling. The commands (`docker compose --env-file deploy/<project>/.env
 -f deploy/<project>/compose.yaml …`), project names and volume names are unchanged; only the build

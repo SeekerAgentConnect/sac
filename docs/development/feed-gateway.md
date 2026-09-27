@@ -6,7 +6,8 @@ restricted one. SEE-130 removed the former invitation/device API for private ser
 [`docs/wiki/feed-gateway.md`](../wiki/feed-gateway.md) is why it is shaped the way it is;
 this page is how to run it, what its settings do, and where its code and tests are.
 
-It is not the optional direct ingress in [`deploy/ingress/direct/`](../../deploy/ingress/direct),
+It is not the optional direct ingress in
+[`compose/ingress/direct/`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/ingress/direct) in `do-deploy`,
 which is one owner's independently managed edge in front of their MCP server. Different service,
 different operator, different deployment.
 
@@ -59,9 +60,10 @@ curl -sS http://127.0.0.1:8090/seekervault.gateway.v1.FeedService/ListRequests \
 `PublishRequest`/`CancelRequest` and `ListRequests`/`GetRequest` are the primary SEE-108
 operations. The proposal operations remain compatibility adapters over the same rows and sequence.
 
-In Docker, copy `deploy/feed/.env.example` to `deploy/feed/.env`, start
-`deploy/feed/compose.yaml`, then register through the `gateway-ctl` operator profile. Public HTTPS
-is the separate `deploy/ingress/feed` project, so plain HTTP cannot become the public default by
+In Docker, from a checkout of the separate `do-deploy` repository, copy
+`compose/feed/.env.example` to `compose/feed/.env`, start `compose/feed/compose.yaml`, then register
+through the `gateway-ctl` operator profile. Public HTTPS is the separate `compose/ingress/feed`
+project, so plain HTTP cannot become the public default by
 omission. The exact commands are in [`services/gateway/README.md`](../../services/gateway/README.md).
 
 ## Configuration
@@ -99,14 +101,14 @@ The admin group is all-or-nothing like the stream and the relay: a setting with 
 it is a startup problem rather than a line that does nothing, with one exception — declaring
 `BROADCAST_ADMIN_PASSWORD_HASH` and leaving it **empty** keeps the whole group inert, which is what
 lets a deployment template write the group down where an operator can see it and turn it on with one
-secret (`deploy/feed/compose.yaml`, `apps/seeker-gateway.yaml` in the `do-deploy` repository).
+secret (`compose/feed/compose.yaml` and `apps/seeker-gateway.yaml` in the `do-deploy` repository).
 
 **There is no publishing credential in the configuration.** A publisher's credential is created by
 `feed-gatewayctl` or by the admin page and kept as a SHA-256, so there is nothing in the environment,
 a process list or a compose file for one to leak from. The operator's own password is the one secret
 the environment carries, and it carries it as a PBKDF2 hash that cannot be turned back into it. SEE-92's push credential is the one thing that has to be usable
 rather than compared, and it is still not in the environment: what is configured is a **path**, the
-file is mounted read-only into the gateway alone (`deploy/feed/compose.push.yaml`), and it is read once at
+file is mounted read-only into the gateway alone (`compose/feed/compose.push.yaml` in `do-deploy`), and it is read once at
 startup — a missing or malformed one stops the process with a message that names the field and no
 part of its contents.
 
@@ -349,8 +351,9 @@ left after them is the device run: a real phone, a real certificate, one origin
 
 ## Deployment
 
-The application image remains in this module. Canonical orchestration is in `deploy/feed`; optional
-public HTTPS/HTTP2 is a separately operated `deploy/ingress/feed` project.
+The application image remains in this module. Canonical orchestration is `compose/feed` in the
+separate `do-deploy` repository, which pulls the published image; optional public HTTPS/HTTP2 is a
+separately operated `compose/ingress/feed` project there.
 
 Three details matter:
 
@@ -364,5 +367,8 @@ Three details matter:
   and may delete the admin block entirely and reach the page over a tunnel instead. Nothing answers
   on the admin upstream until a password is configured.
 
-`pnpm check:deployments` resolves every canonical Compose preset without a Docker daemon. A Caddy
-runtime can additionally validate the ingress configuration without starting applications.
+The Compose presets are checked in `do-deploy` by `node scripts/check-compose.mjs`, which resolves
+each one without a Docker daemon; this repository's `pnpm check:deployments` keeps only the
+repository-side checks (Dockerfile health commands, package `.env.example` names and ports, and the
+retired layout). A Caddy runtime can additionally validate the ingress configuration without
+starting applications.

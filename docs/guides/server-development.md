@@ -75,18 +75,20 @@ In `gateway_feed` mode the phone calls nothing of yours, so there is no path for
 
 **One naming trap, once.** `services/gateway/` is the shared feed application: what you publish to and
 what phones read from. Its portable project and optional public ingress are separate directories
-under `deploy/`. The direct MCP server is a different service and operator.
+under `compose/` in the `do-deploy` repository. The direct MCP server is a different service and operator.
 
 ## 1. Get a gateway to publish to
 
 If somebody already runs one, skip to [step 2](#2-be-registered-as-a-publisher); what you need from them is its **origin** (`https://feeds.example.com`, character for character) and a **credential**.
 
-To run your own, use the packaged portable feed from the repository root:
+To run your own, use the packaged portable feed from the root of a
+[`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy) checkout, which pulls the published
+images:
 
 ```sh
-cp deploy/feed/.env.example deploy/feed/.env
+cp compose/feed/.env.example compose/feed/.env
 # generate the two broker secrets it asks for
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --build
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml up -d
 ```
 
 That is the local reference configuration: the read and authenticated publisher listeners are
@@ -94,9 +96,9 @@ plain HTTP on host loopback. Public ingress is an independent project; the optio
 an application overlay:
 
 ```sh
-docker compose --env-file deploy/ingress/feed/.env -f deploy/ingress/feed/compose.yaml up -d
-docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml \
-  -f deploy/feed/compose.push.yaml up -d --build
+docker compose --env-file compose/ingress/feed/.env -f compose/ingress/feed/compose.yaml up -d
+docker compose --env-file compose/feed/.env -f compose/feed/compose.yaml \
+  -f compose/feed/compose.push.yaml up -d
 ```
 
 The portable base starts three services: the gateway, Centrifugo, and Redis. It starts no proxy,
@@ -104,7 +106,7 @@ demo, or MCP server. **Starting it creates no publisher** — that takes step 2,
 act through the operator profile with no network surface.
 
 What to read rather than have repeated here: [`services/gateway/README.md`](../../services/gateway/README.md)
-and [`deploy/README.md`](../../deploy/README.md). A public domain must already resolve to the host
+and the [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md) in `do-deploy`. A public domain must already resolve to the host
 and ports 80 and 443 must be reachable before the optional ingress obtains a certificate.
 
 Without Docker, the same thing as two processes and a broker:
@@ -367,7 +369,7 @@ Then configure it. `cp .env.example .env` and fill it in; the file documents eve
 
 Those last two are different things and confusing them is the first mistake to avoid. `BROADCAST_CREDENTIAL` is how the gateway knows you; `PUBLISHER_API_TOKEN` is how your own strategy process, or your own hand at a terminal, is allowed to tell your template what to say. Either may be a file instead of a value (`BROADCAST_CREDENTIAL_FILE`, `PUBLISHER_API_TOKEN_FILE`) for a deployment that mounts secrets; setting both a value and a file is a configuration error, because then there would be two answers and no way to tell which was used.
 
-One more is worth setting deliberately: `PUBLISHER_PUBLISH_URL`. Empty means `PUBLISHER_GATEWAY_URL`, which is right only when an operator's independent ingress serves both APIs on one origin. The canonical `deploy/feed` preset keeps separate loopback listeners (feeds on 8090 and publications on 8091), so its demo presets name 8091 explicitly. Also set it when an operator keeps publishing off the internet and you reach it over a tunnel. Getting it wrong is the one mistake the gateway cannot report: a read origin has no handler that could write anything, so a publication gets a 404. The template says so at startup and names the variable.
+One more is worth setting deliberately: `PUBLISHER_PUBLISH_URL`. Empty means `PUBLISHER_GATEWAY_URL`, which is right only when an operator's independent ingress serves both APIs on one origin. The canonical `compose/feed` preset in `do-deploy` keeps separate loopback listeners (feeds on 8090 and publications on 8091), so its demo presets name 8091 explicitly. Also set it when an operator keeps publishing off the internet and you reach it over a tunnel. Getting it wrong is the one mistake the gateway cannot report: a read origin has no handler that could write anything, so a publication gets a 404. The template says so at startup and names the variable.
 
 **Both `.env` examples ship as sandbox deployments**, so copying one and running it demonstrates the whole path without anybody's money. Promoting to production is a deliberate edit of one line ([step 11](#11-sandbox-and-production)).
 
@@ -388,7 +390,7 @@ PUBLISHER_API_TOKEN=$(openssl rand -base64 32) \
 go run ./cmd/copytrading
 ```
 
-For the repository's packaged route, use `deploy/copytrading/compose.yaml`; it publishes the
+For the packaged route, use `compose/copytrading/compose.yaml` in `do-deploy`; it publishes the
 application's own API on `127.0.0.1:8092` and starts no proxy. A copied-out source module contains
 no Compose or ingress assets unless you copy and adapt that deployment preset too.
 
@@ -702,7 +704,7 @@ That is the whole payload. No proposal, no revision, no sequence, no publisher, 
 **Bounds.** One hint per topic per ten seconds with five in hand (`BROADCAST_PUSH_RATE`, `BROADCAST_PUSH_BURST`); over the quota a hint is dropped rather than queued, because the next one wakes a phone that reads everything anyway. One collapse key for every feed, so a phone that was off for an hour is woken once. Five-minute expiry. Nothing about a hint is retried, and a hint that fails never fails the publication — a hint is a hint, and the stream and the periodic read are what the app actually relies on.
 
 For a deployment that wants the relay on, the operator's side is
-`deploy/feed/compose.push.yaml` and the walkthrough in
+`compose/feed/compose.push.yaml` in `do-deploy` and the walkthrough in
 [`docs/guides/firebase.md#the-broadcast-relay-and-feed-topics-see-92`](firebase.md#the-broadcast-relay-and-feed-topics-see-92).
 `BROADCAST_PUSH_ENVIRONMENT` is a topic label, not [step 11](#11-sandbox-and-production)'s
 environment, and sandbox and production publishers must not share one.

@@ -140,12 +140,11 @@ These are the canonical post-refactor boundaries:
 | `packages/protocol/proto/` | Shared direct/feed contracts plus compatibility reservations | Retired private-gateway identifiers stay reserved |
 | `packages/server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Embeddable library; no MCP/product configuration |
 | `servers/mcp-server/` | Self-hosted MCP host, executable CLI, providers and standalone Docker/npm packaging | Consumes only the Direct Server SDK's public API; the npm artifact vendors the unpublished runtime |
-| `deploy/mcp/`, `deploy/ingress/direct/` | Portable direct server and separately managed TLS/OAuth ingress | Application and ingress have independent lifecycles |
 | `services/gateway/` | Shared Go feed gateway with public-read and publisher listeners, storage contract and local SQLite implementation | The only shared public-feed service |
 | `packages/publisher-support/` | Go source library shared by both feed demos: publication bindings, document rules, manifest, store, gateway client, API and operator CLI | No command, image or deployment of its own |
-| `examples/demo-signals/` | CopyTrading application: commands, admin UI, SDK and image | Independent preset in `deploy/copytrading/` |
-| `examples/demo-prediction/` | Prediction application: command, provider client, discovery cycle and image | Independent preset in `deploy/prediction/` |
-| `deploy/` | Portable feed/MCP/demo presets, separate ingress and isolated operator examples | Canonical orchestration with explicit volume identities |
+| `examples/demo-signals/` | CopyTrading application: commands, admin UI, SDK and image | Independent preset in `compose/copytrading/` in `do-deploy` |
+| `examples/demo-prediction/` | Prediction application: command, provider client, discovery cycle and image | Independent preset in `compose/prediction/` in `do-deploy` |
+| [`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose) `compose/` (separate repository) | Portable feed/MCP/demo presets on published images, including `compose/mcp/` with its separately managed `compose/ingress/direct/` TLS/OAuth ingress, other separate ingress and isolated operator examples | Canonical orchestration with explicit volume identities; application and ingress have independent lifecycles |
 | `tools/test-agent/` | Developer MCP client | Development and verification only |
 
 **There is one shared feed gateway.** Direct MCP traffic stays out of it; optional direct and feed

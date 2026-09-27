@@ -264,19 +264,6 @@ func TestSuccessfulLoginsDoNotConsumeFailureLimits(t *testing.T) {
 	}
 }
 
-func TestTailscaleProxyPreservesThePublicPortForOriginChecks(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "..", "deploy", "server", "Caddyfile.tailscale")
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		t.Skipf("the server deployment is not beside this copied-out publisher module: %v", err)
-	}
-	config := string(contents)
-	forwarded := "header_up X-Forwarded-Host {http.request.hostport}"
-	if !strings.Contains(config, forwarded) {
-		t.Fatalf("%s does not preserve the browser's original host and public port", forwarded)
-	}
-}
-
 func TestExcessCreatesAreRefusedWithoutCallingTheAPI(t *testing.T) {
 	ui, stub := startUI(t, func(plan *Plan) {
 		plan.CreatePerUser = 1
