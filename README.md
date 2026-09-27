@@ -1,10 +1,11 @@
 <div align="center">
   <img width="128" src="docs/assets/readme/logo.png" alt="Seeker Agent Connect" />
   <h1>Seeker Agent Connect</h1>
-  <p><strong>A permission layer between your AI agents and your Solana wallet.</strong></p>
+  <p><strong>A mobile inbox for your agents, services, and communities.</strong></p>
   <p>
-    An open-source Android app and self-hosted server stack that lets AI agents send wallet
-    requests to your Solana Seeker, where you review and sign every one yourself.
+    An open-source Android app for your Solana Seeker: receive requests and signals, review each one,
+    and decide what happens.
+    When an action needs a signature, Seed Vault Wallet signs it. SAC never holds your wallet's keys.
   </p>
 </div>
 
@@ -29,15 +30,21 @@
   <img src="docs/assets/readme/hero.png" alt="Seeker Agent Connect: an agent request reviewed and approved on the Seeker" />
 </p>
 
+<p align="center">
+  <a href="https://seekeragentconnect.github.io/landing/">Website</a> ·
+  <a href="https://seekeragentconnect.github.io/docs/getting-started">Documentation</a> ·
+  <a href="https://github.com/SeekerAgentConnect/sac/releases">Get the app</a>
+</p>
+
 ## Table of contents
 
-- [Table of contents](#table-of-contents)
 - [⚡️ Highlights](#️-highlights)
 - [✨ Features](#-features)
-  - [📥 Requests inbox](#-requests-inbox)
+  - [📥 Unified inbox](#-unified-inbox)
   - [🔗 Connections and pairing](#-connections-and-pairing)
   - [📈 Feeds, swaps and predictions](#-feeds-swaps-and-predictions)
-  - [🤖 Agent side](#-agent-side)
+  - [🤖 Agents and SKR staking](#-agents-and-skr-staking)
+  - [🔔 Live updates and notifications](#-live-updates-and-notifications)
 - [🧩 How it works](#-how-it-works)
 - [🚀 Getting started](#-getting-started)
 - [📦 Components](#-components)
@@ -49,20 +56,22 @@
 
 ## ⚡️ Highlights
 
-- 🙋 **You stay in control.** Agents only propose. Every transfer, swap, prediction or signature is
-  reviewed on the phone and approved through the wallet (Seed Vault, Mobile Wallet Adapter).
-  Nothing is signed automatically.
-- 🔍 **The phone checks the transaction itself.** Before a wallet opens, the app decodes the
-  prepared bytes on-device, so what you see is what gets signed, not what the server says.
-- 🤖 **Works with any MCP agent.** Hermes, Claude over OAuth, or any Model Context Protocol client.
-- 📡 **Private requests and public feeds.** Pair your own agent directly, or subscribe to signal
-  feeds such as copy-trading and prediction markets.
-- 🧱 **Self-hosted, no account.** You run the servers; there is no cloud service of ours in the path.
-- 📏 **Rules you set.** Per-connection and global policies for actions, assets and addresses.
+- 🙋 **You stay in control.** Every request or signal waits for your decision on the phone.
+  Actions that need a signature also require wallet confirmation. Nothing is signed automatically.
+- 🔍 **The phone checks the transaction.** SAC decodes and checks supported transactions on-device
+  before opening the wallet; server descriptions do not replace those checks.
+- 🤖 **Bring your agents and services.** Connect an MCP client such as Hermes, OpenClaw or Claude,
+  or build a direct server with the shared protocol and TypeScript Server SDK.
+- 📡 **Direct requests, Public and Restricted feeds.** Pair a server for private requests and
+  results, or follow signals from a publisher. Restricted feeds admit only approved subscribers.
+- 🧱 **Build on an existing mobile app.** Developers provide the service; SAC provides the inbox,
+  review, notifications and wallet interaction. The SAC team operates the feed gateway and push relay.
+- 📏 **Rules you set.** Global and per-connection rules flag requests outside your preferences.
+  They never approve or sign for you.
 
 ## ✨ Features
 
-### 📥 Requests inbox
+### 📥 Unified inbox
 
 Everything your agents and feeds ask for lands in one queue. Open a request to see what it does,
 who sent it and whether it matches your rules.
@@ -75,8 +84,10 @@ who sent it and whether it matches your rules.
 
 ### 🔗 Connections and pairing
 
-Pair a self-hosted MCP server with a one-time QR code, or add a public feed. Each connection has
-its own status, history and rules.
+Pair a direct server using its one-use link or QR code, or add a feed link from its publisher.
+Feeds can be **Public** or **Restricted**. For a Restricted feed, prove wallet ownership by signing
+an access message and wait for the publisher to approve your device. Each connection has its own
+status, history and rules.
 
 <p align="center">
   <img src="docs/assets/readme/pairing.png" width="30%" alt="Pairing with a QR code" />
@@ -89,20 +100,41 @@ its own status, history and rules.
 Built-in Jupiter plugins turn a feed signal into a swap or a prediction-market order with your own
 amount and side. The app reads the route and the transaction before handing it to the wallet.
 
+Feeds may offer **Sandbox** or **Production** environments. Sandbox lets you review and simulate
+without signing or sending; it is not a Solana test network. Production opens the wallet after
+approval. Publishers can use Restricted feeds for paid or private communities; billing and
+membership decisions stay in their own systems.
+
 <p align="center">
   <img src="docs/assets/readme/feed-signal.png" width="30%" alt="Feed signal" />
   <img src="docs/assets/readme/review-prediction.png" width="30%" alt="Prediction review" />
   <img src="docs/assets/readme/activity.png" width="30%" alt="Activity history" />
 </p>
 
-### 🤖 Agent side
+### 🤖 Agents and SKR staking
 
-Your agent calls ordinary MCP tools such as `vault_transfer`, `vault_sign_message` or
-`vault_get_address`, and waits for the result from the phone.
+The general MCP server supports acknowledgements, message signing and SOL/SPL-token transfers.
+Your agent creates a request with tools such as `vault_transfer` or `vault_sign_message`, then
+reads its outcome with `vault_get_request`. Read-only tools such as `vault_get_address` do not
+create approval requests.
+
+The separate **SKR Staking MCP server** reads staking positions and prepares stake, unstake,
+cancel-unstake and withdrawal requests on mainnet. You review each operation in SAC and confirm
+it in the wallet. Swaps and prediction orders are provided through feeds.
 
 <p align="center">
   <img src="docs/assets/readme/agent-terminal.png" width="80%" alt="An agent sending a request over MCP" />
 </p>
+
+### 🔔 Live updates and notifications
+
+While SAC is open, supported direct servers and the gateway stream new requests, signals and
+status changes into the app. In-app banners take you to the relevant item. When SAC is in the
+background, configured push delivery sends a wake-up so the app can fetch current state.
+Opening a notification never approves anything.
+
+See [Notifications and live updates](https://seekeragentconnect.github.io/docs/notifications)
+for requirements and fallback behavior.
 
 ## 🧩 How it works
 
@@ -112,60 +144,68 @@ Your agent calls ordinary MCP tools such as `vault_transfer`, `vault_sign_messag
 
 There are two connection modes:
 
-| Mode | Path | Use it for |
+| Mode | Path | Results |
 | --- | --- | --- |
-| **Private direct** | Agent → your MCP server → your phone | Your own agent asking your wallet to transfer, sign, swap or acknowledge |
-| **Public feed** | Publisher → feed gateway → every subscriber | Signals that many people follow, such as copy-trading or prediction markets |
+| **Direct** | Agent or service → your direct server ↔ SAC | Requests and results travel directly between the server and its paired phone |
+| **Feed** | Publisher → SAC gateway → subscribers | Each subscriber's choices, amounts and results stay on their phone |
 
-More detail is in [`docs/architecture.md`](docs/architecture.md) and the product design in
-[`RFC.md`](RFC.md).
+**Public** and **Restricted** are feed access policies, not additional connection modes. A
+Restricted publisher decides who may read; the gateway enforces access for approved devices.
+Both policies use the same publication and delivery path.
+
+A direct server needs no gateway to pair or serve requests. It can optionally use the SAC push
+relay for content-free wake-ups; private request content and results still travel directly.
+When a reviewed action needs a signature, SAC opens Seed Vault Wallet through Mobile Wallet
+Adapter. Acknowledgements and Sandbox simulations finish without signing.
+
+Read [How it works](https://seekeragentconnect.github.io/docs/how-it-works) for the architecture
+and data boundaries, or [Build your own server](https://seekeragentconnect.github.io/docs/direct-or-feed)
+to choose an integration path.
 
 ## 🚀 Getting started
 
-**From zero to a message on the phone:** follow the
-[MacBook + Seeker quickstart](docs/guides/macbook-seeker-quickstart.md). No Android experience
-needed.
+| I want to… | Start here |
+| --- | --- |
+| Use SAC on my phone | [Get the app](https://github.com/SeekerAgentConnect/sac/releases), then [connect a wallet](https://seekeragentconnect.github.io/docs/wallet-setup) |
+| Connect my AI agent | [General MCP server](https://seekeragentconnect.github.io/docs/mcp-quickstart) and [agent configuration](https://seekeragentconnect.github.io/docs/connect-your-agent) |
+| Manage SKR staking | [SKR Staking MCP server](https://seekeragentconnect.github.io/docs/skr-staking-server) |
+| Build my own direct server | [Direct Server SDK](https://seekeragentconnect.github.io/docs/server-sdk) |
+| Publish signals to an audience | [Publish your first feed](https://seekeragentconnect.github.io/docs/publish-your-first-feed) |
+| Restrict access to a feed | [Restricted feeds](https://seekeragentconnect.github.io/docs/restricted-feeds) and [subscriber access](https://seekeragentconnect.github.io/docs/manage-subscriber-access) |
 
-**Run the MCP server without cloning:**
+The MCP servers are standalone HTTP services available through npm, Docker or a source checkout.
+Follow the matching guide for configuration, credentials, pairing and a phone-reachable endpoint;
+running an MCP command alone is not a complete setup.
 
-```bash
-npx --package=@seeker_agent_connect/mcp-server -- seeker-agent-connect-mcp
-```
+The **Direct Server SDK** implements direct connections. Feed publishers use the gateway's
+publisher API from any backend; the Go publisher library in this repository powers the examples.
 
-**Embed the server SDK in your own Node app:**
-
-```bash
-npm install @seeker_agent_connect/server-sdk
-```
-
-**Run with Docker:** images are published at `docker.io/brenat/seeker-agent-connect`, one tag
-prefix per component (`mcp-*`, `gateway-*`, …). See the
-[installation guide](docs/guides/installation.md), and the
-[`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy) repository for Compose presets.
-
-**Connect an agent:** [Hermes](docs/integrations/hermes.md) ·
-[Claude over OAuth](docs/integrations/claude.md)
+For feeds or optional direct-server push, follow
+[Connect to the SAC gateway](https://seekeragentconnect.github.io/docs/connect-to-gateway).
+The SAC team operates the gateway; integration does not require deploying or administering it.
 
 ## 📦 Components
 
 | Component | Path | Description |
 | --- | --- | --- |
 | 📱 `android` | [`apps/android`](apps/android) | Kotlin/Compose app: connections, review and wallet flows, policies, history |
-| 🌐 `gateway` | [`services/gateway`](services/gateway) | Go feed gateway: publish once, every subscriber reads through isolated listeners |
-| 📜 `protocol` | [`packages/protocol`](packages/protocol) | The single Protobuf/Buf contract; generated Kotlin and TypeScript |
+| 🌐 `gateway` | [`services/gateway`](services/gateway) | SAC-operated feed delivery, Public/Restricted access enforcement and optional direct-server push relay |
+| 📜 `protocol` | [`packages/protocol`](packages/protocol) | Shared Protobuf/Buf contracts with generated Kotlin, TypeScript and Go bindings |
 | 🧰 `server-sdk` | [`packages/server-sdk`](packages/server-sdk) | TypeScript SDK for direct servers: pairing, durable requests, phone APIs |
-| 🧩 `publisher-support` | [`packages/publisher-support`](packages/publisher-support) | Go library shared by the example feeds |
+| 🧩 `publisher-support` | [`packages/publisher-support`](packages/publisher-support) | Go library for feed publication and Restricted subscriber access |
 | 🤖 `mcp-server` | [`servers/mcp-server`](servers/mcp-server) | Self-hosted MCP server that connects an agent to the phone |
 | 🥩 `mcp-skr-staking` | [`servers/mcp-skr-staking`](servers/mcp-skr-staking) | MCP server for SKR staking; builds unsigned transactions only |
-| 📊 `demo-signals` | [`examples/demo-signals`](examples/demo-signals) | Example feed: copy-trading signals |
+| 📊 `demo-signals` | [`examples/demo-signals`](examples/demo-signals) | Restricted feed example: copy-trading signals and subscriber access management |
 | 🔮 `demo-prediction` | [`examples/demo-prediction`](examples/demo-prediction) | Example feed: prediction markets |
 | 🧪 `test-agent` | [`tools/test-agent`](tools/test-agent) | Minimal MCP client for trying things without an LLM |
 | 🏋️ `loadtest` | [`tools/loadtest`](tools/loadtest) | Load, isolation and failover harness for the gateway |
 
 ## 🛠️ Development
 
-Requires Node.js 24.21.0 (`.nvmrc`), pnpm 9.7+, Go, the Android SDK (Platform 37, Build-Tools
-36.0.0) and a JDK 17+. Exact versions are in [`docs/development/toolchain.md`](docs/development/toolchain.md).
+For Node development, use Node.js 24.21.0 (`.nvmrc`) and pnpm 12.3.4
+(`package.json`). Go components require the version in their `go.mod`; Android development uses
+SDK Platform 37, Build-Tools 36.0.0 and a Gradle daemon pinned to Temurin 21.
+See the [toolchain guide](docs/development/toolchain.md) for setup and exact pins.
 
 ```bash
 nvm install && corepack enable pnpm
@@ -178,25 +218,43 @@ pnpm check:demos        # example feeds (Go)
 pnpm build              # SDK, MCP server and test agent
 ```
 
-Run the stack locally:
+Run the general MCP server locally:
 
 ```bash
 cp .env.example .env
-openssl rand -hex 32    # twice: MCP_TOKEN and PHONE_TOKEN
-pnpm dev:mcp-server     # /mcp, the phone API and /healthz
-pnpm pair               # one-time pairing QR code for the phone
-pnpm agent hello "Hi"   # send a message and wait for the acknowledgement
+# Generate two different tokens and set MCP_TOKEN and PHONE_TOKEN in .env.
+openssl rand -hex 32    # run once for each token
+pnpm build:server-sdk
+pnpm dev:mcp-server     # leave running: /mcp, the phone API and /healthz
 ```
+
+In another terminal, after installing the app and making the server reachable from the phone:
+
+```bash
+pnpm pair              # open or scan the one-use pairing link in SAC
+pnpm agent ack "Hi" --wait  # acknowledge on the phone; no wallet signature needed
+```
+
+For the complete device setup, including USB forwarding for local development, follow the
+[MacBook + Seeker quickstart](docs/guides/macbook-seeker-quickstart.md). A remote phone needs a
+reachable HTTPS endpoint; direct live updates require HTTP/2 end to end.
 
 More commands (`pnpm generate`, `pnpm test:integration`, `pnpm test:load`, `pnpm agent …`) are in
 `package.json` and [`docs/development/`](docs/development).
 
 ## 🔐 Security
 
-- The app never holds keys; signing happens in the wallet, after you approve.
-- Transactions are decoded and checked on the phone before the wallet opens.
-- Servers are yours and credentials stay on your infrastructure. Firebase push is optional and off
-  by default.
+- SAC and its servers never hold your wallet's private keys. Wallet signing follows your explicit
+  approval; connecting a source grants no spending authority.
+- Supported transactions are decoded and checked on the phone before the wallet opens. Rules
+  provide warnings, not automatic approval.
+- Direct servers store their own requests and returned results. Feed subscribers' decisions,
+  amounts and outcomes stay on their phones.
+- The gateway retains feed publications for delivery and catch-up, plus the access and push-routing
+  data needed for Restricted feeds and optional wake-ups. Restricted publishers verify wallet
+  ownership and manage eligibility; the gateway uses opaque access references.
+- Push carries a wake-up, not private request content or approval. It requires configuration and
+  Android notification permission.
 
 Read the full model in [`docs/security.md`](docs/security.md). Please report vulnerabilities
 privately through [GitHub security advisories](https://github.com/SeekerAgentConnect/sac/security/advisories/new)
@@ -206,7 +264,8 @@ rather than public issues.
 
 | | |
 | --- | --- |
-| 📖 [Guides](docs/guides) | Installation, pairing, wallet setup, transfers, policies, self-hosting, troubleshooting |
+| 🌐 [Public documentation](https://seekeragentconnect.github.io/docs/getting-started) | App setup, MCP servers, direct integrations, Public/Restricted feeds and recipes |
+| 📖 [Repository guides](docs/guides) | Source-level setup, development and operational reference |
 | 🔌 [Integrations](docs/integrations) | Hermes, Claude, Jupiter and other external services |
 | 🧠 [Wiki](docs/wiki) | How each feature works |
 | 📡 [Protocol](docs/protocol.md) | The wire contract between servers and the app |
@@ -215,9 +274,10 @@ rather than public issues.
 
 ## 🙌 Contributing
 
-Issues and pull requests are welcome. Before opening a PR, run `pnpm check` (and
-`pnpm check:android` for app changes). CI runs the Node, Go, Android and emulator checks on every
-pull request.
+Issues and pull requests are welcome. Before opening a PR, run `pnpm check` and the checks for
+the components you changed (`pnpm check:android`, `pnpm check:gateway` or `pnpm check:demos`).
+The [CI workflow](.github/workflows/ci.yml) defines Node, Go, Android and emulator checks;
+it currently runs through manual dispatch.
 
 ## 📄 License
 
