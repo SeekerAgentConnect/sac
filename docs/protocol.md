@@ -1,6 +1,6 @@
 # Protocol
 
-The phone–sidecar contract lives in [`proto/`](../proto) and is the single source of truth for both runtimes. This page covers the Stage 1 live diagnostic flow and the durable request workflow that starts in Stage 2: their messages, rules, and errors, the agent's MCP tools, and how the generated code is kept in sync. How the parts fit together is in [`architecture.md`](architecture.md).
+The phone–sidecar contract lives in [`packages/protocol/proto/`](../packages/protocol/proto) and is the single source of truth for both runtimes. This page covers the Stage 1 live diagnostic flow and the durable request workflow that starts in Stage 2: their messages, rules, and errors, the agent's MCP tools, and how the generated code is kept in sync. How the parts fit together is in [`architecture.md`](architecture.md).
 
 ## Stage 1: the live diagnostic flow
 
@@ -20,7 +20,7 @@ sequenceDiagram
     Sidecar-->>Agent: {id, result: OK}
 ```
 
-The contract is `LiveCommandService` in [`proto/seekervault/live/v1/live.proto`](../proto/seekervault/live/v1/live.proto). The sidecar serves the MCP tool `vault_display_command` and the Connect service; see [`docs/development/mcp-server.md`](development/mcp-server.md). The Android app's live-test screen is the phone side; see [`docs/development/android.md`](development/android.md).
+The contract is `LiveCommandService` in [`packages/protocol/proto/seekervault/live/v1/live.proto`](../packages/protocol/proto/seekervault/live/v1/live.proto). The sidecar serves the MCP tool `vault_display_command` and the Connect service; see [`docs/development/mcp-server.md`](development/mcp-server.md). The Android app's live-test screen is the phone side; see [`docs/development/android.md`](development/android.md).
 
 | RPC | Kind | Purpose |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ The contract is `LiveCommandService` in [`proto/seekervault/live/v1/live.proto`]
   - For any other ID, the result is `UNKNOWN_COMMAND`.
 - **Nothing is durable.** There is no backlog, replay, persistence, or pending-request API. A sidecar restart loses the in-flight command, and a reconnecting phone never receives a command sent before it connected.
 
-The rules are implemented without I/O in [`server-sdk/src/live/command.ts`](../server-sdk/src/live/command.ts) as `invalidTextReason`, `isExpired`, and `LiveCommandSlot`. [`server-sdk/src/live/bridge.ts`](../server-sdk/src/live/bridge.ts) adds the in-memory waiter around them: deadline timers, the watcher, and cancellation. On Android, the deadline check is `LiveCommand.isExpiredAt` in [`LiveCommandDeadline.kt`](../android/app/src/main/java/io/github/brrenat/seekervault/live/LiveCommandDeadline.kt).
+The rules are implemented without I/O in [`packages/server-sdk/src/live/command.ts`](../packages/server-sdk/src/live/command.ts) as `invalidTextReason`, `isExpired`, and `LiveCommandSlot`. [`packages/server-sdk/src/live/bridge.ts`](../packages/server-sdk/src/live/bridge.ts) adds the in-memory waiter around them: deadline timers, the watcher, and cancellation. On Android, the deadline check is `LiveCommand.isExpiredAt` in [`LiveCommandDeadline.kt`](../apps/android/app/src/main/java/io/github/brrenat/seekervault/live/LiveCommandDeadline.kt).
 
 ## Errors
 
@@ -93,9 +93,9 @@ Stage 2 introduces a separate, durable request workflow over unary RPCs; see [St
 
 From Stage 2 on, agents propose actions that are stored and decided later. SAW-009 defines the contract:
 
-- the phone's side in [`proto/seekervault/request/v1`](../proto/seekervault/request/v1)
+- the phone's side in [`packages/protocol/proto/seekervault/request/v1`](../packages/protocol/proto/seekervault/request/v1)
 - the agent's side as the [MCP tools](#agent-api-mcp) below
-- the rules as pure code in [`mcp-server/src/requests/`](../mcp-server/src/requests)
+- the rules as pure code in [`servers/mcp-server/src/requests/`](../servers/mcp-server/src/requests)
 
 SAW-010 serves the workflow:
 
@@ -139,9 +139,9 @@ The queued acknowledgement (`ack`) takes a short path: `ListPending`, then `Subm
 
 | Module | Rules |
 | --- | --- |
-| [`action.ts`](../server-sdk/src/requests/action.ts) | `invalidActionReason` (every kind's required fields and formats), `parseBaseUnits`, `isAddress`, `messageBytes`, `invalidNoteReason` |
-| [`identity.ts`](../server-sdk/src/requests/identity.ts) | `checkRef` (connection scope), `invalidIdempotencyKeyReason`, `actionFingerprint`, `resolveIdempotency` |
-| [`lifecycle.ts`](../server-sdk/src/requests/lifecycle.ts) | `TRANSITIONS`, `canTransition`, `isTerminal`, `successState`, `resultTarget`, `decideResult` (results and approval binding), `isOverdue` |
+| [`action.ts`](../packages/server-sdk/src/requests/action.ts) | `invalidActionReason` (every kind's required fields and formats), `parseBaseUnits`, `isAddress`, `messageBytes`, `invalidNoteReason` |
+| [`identity.ts`](../packages/server-sdk/src/requests/identity.ts) | `checkRef` (connection scope), `invalidIdempotencyKeyReason`, `actionFingerprint`, `resolveIdempotency` |
+| [`lifecycle.ts`](../packages/server-sdk/src/requests/lifecycle.ts) | `TRANSITIONS`, `canTransition`, `isTerminal`, `successState`, `resultTarget`, `decideResult` (results and approval binding), `isOverdue` |
 
 ### Connections and request identity
 
@@ -424,7 +424,7 @@ A `sign_message` request is the one wallet action with no transaction: it produc
 - **`vault_get_address` is read-only and always served.** It fails with `NOT_PAIRED` when no phone is paired, and `WALLET_NOT_CONNECTED` when the owner has connected no wallet. There is no fallback address: the sidecar never makes one. The owner can change or disconnect the wallet at any time, so agents read it again rather than caching it. Its result is `{"wallet": "...", "network": "devnet", "bound_at": "2026-09-12T09:30:00.000Z"}`.
 - **`vault_transfer` creates the request and nothing else.** No transaction is built, signed, or sent when it is called; the sidecar only reads the mint, so an agent hears at once about a token it can't send. The owner sees the request when they next open the app, and the transaction is built then ([transfers](#transfers-saw-019)). It is served only when the sidecar has a chain endpoint; without one it is absent from `tools/list` and from `operations`.
 - **`network`** is `"mainnet"`, `"devnet"`, or `"testnet"`.
-- **`token_mint`** names a classic SPL token; leaving it out sends native SOL. `asset`, `input_asset`, and `output_asset` in `proto/` hold the same choice.
+- **`token_mint`** names a classic SPL token; leaving it out sends native SOL. `asset`, `input_asset`, and `output_asset` in `packages/protocol/proto/` hold the same choice.
 - **Amounts are strings, always in base units:** lamports for SOL, and the mint's base units for a token. Never a human-readable decimal.
 - **`expires_in_seconds` is optional, from 60 to 604800.** Without it, the sidecar's `REQUEST_TTL_SECONDS` applies, which is a day unless configured.
 - **Sizes are bounded:**
@@ -502,7 +502,7 @@ https://mac.tailnet.ts.net/pair?v=1&url=https%3A%2F%2Fmac.tailnet.ts.net&server=
 | `server` | The sidecar's lasting ID | A lowercase UUID. It survives restarts and pairings. |
 | `token` | The one-use pairing token | 43 base64url characters (32 random bytes) |
 
-The phone reads the code by the same rules as `parsePairingUri` in [`server-sdk/src/pairing/uri.ts`](../server-sdk/src/pairing/uri.ts), and refuses a code that breaks one.
+The phone reads the code by the same rules as `parsePairingUri` in [`packages/server-sdk/src/pairing/uri.ts`](../packages/server-sdk/src/pairing/uri.ts), and refuses a code that breaks one.
 
 **`Pair`** takes the pairing token as its bearer credential:
 
@@ -554,7 +554,7 @@ SAW-056 adds the separate content-free invalidation below.
 ### The server manifest (SEE-88)
 
 A server says what it is, and the phone reads it rather than assuming. The document is
-[`seekervault.server.v1.ServerManifest`](../proto/seekervault/server/v1/manifest.proto), and
+[`seekervault.server.v1.ServerManifest`](../packages/protocol/proto/seekervault/server/v1/manifest.proto), and
 [`docs/wiki/server-manifests.md`](wiki/server-manifests.md) is the architecture page; this section
 is the contract.
 
@@ -675,7 +675,7 @@ Each credential opens one role:
 - **`PHONE_TOKEN` is the Stage 1 development credential.** It opens the live diagnostic and nothing else.
 - **`GET /healthz` needs no credential.**
 - **`GET /pair` needs no credential.** It is the HTTPS landing page for a pairing code; the secret is the token in the query, the same as the QR.
-- `mcp-server/src/pairing/roles.test.ts` checks every cell, and every new RPC or tool joins that test.
+- `servers/mcp-server/src/pairing/roles.test.ts` checks every cell, and every new RPC or tool joins that test.
 
 ### Compatibility with Stage 1
 
@@ -689,7 +689,7 @@ The durable contract leaves the live diagnostic as it was.
 | **Errors** | `LiveCommandError` | `RequestError` |
 | **Credentials** | `MCP_TOKEN` and `PHONE_TOKEN` from `.env` | `MCP_TOKEN`, and the phone credential from [pairing](#pairing) (SAW-011) |
 
-- **Neither package imports the other,** and the live service keeps its two RPCs. `server-sdk/src/requests/live-compat.test.ts` checks both.
+- **Neither package imports the other,** and the live service keeps its two RPCs. `packages/server-sdk/src/requests/live-compat.test.ts` checks both.
 - **`buf breaking` against the previous commit passes,** so no live message or field changed.
 - **`vault_display_command` and its tests are unchanged.**
 - **The durable rules reuse two live rules without changing them:** an `ack`'s text follows `invalidTextReason`, and `expires_at` has `isExpired`'s boundary.
@@ -698,7 +698,7 @@ The durable contract leaves the live diagnostic as it was.
 
 ## Production updates (SAW-048–SAW-053)
 
-The production update contract is [`seekervault.update.v1.UpdateService`](../proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar; SAW-050 gives Android one persistent, headless reconciliation path; SAW-051 owns the foreground streams; SAW-052 calls the same unary path from one unique, network-constrained periodic WorkManager job; and SAW-053 validates that joined path across real sidecar processes, the MCP client, and the production Android transport.
+The production update contract is [`seekervault.update.v1.UpdateService`](../packages/protocol/proto/seekervault/update/v1/update.proto). It carries durable request state and is deliberately unrelated to `LiveCommandService`: closing an update stream loses no request, and no agent call waits for one. SAW-048 defines and proves the transport; SAW-049 serves it from the durable sidecar; SAW-050 gives Android one persistent, headless reconciliation path; SAW-051 owns the foreground streams; SAW-052 calls the same unary path from one unique, network-constrained periodic WorkManager job; and SAW-053 validates that joined path across real sidecar processes, the MCP client, and the production Android transport.
 
 | RPC | Wire protocol | Lifetime | Purpose |
 | --- | --- | --- | --- |
@@ -775,7 +775,7 @@ The suite deliberately does not simulate a push wake-up, wallet action, or trans
 
 ## The common request envelope (SEE-108)
 
-[`seekervault.request.v2.Request`](../proto/seekervault/request/v2/request.proto) is the
+[`seekervault.request.v2.Request`](../packages/protocol/proto/seekervault/request/v2/request.proto) is the
 source-authored contract for a private request and a feed signal. It contains:
 
 | Part | Rule |
@@ -804,7 +804,7 @@ read listener remain different services. See
 A publisher broadcasts an operation once and everyone subscribed receives the same document. That is
 a different contract from the durable request above, and it is a separate package:
 Stage 7.1 first shipped
-[`seekervault.proposal.v1.Proposal`](../proto/seekervault/proposal/v1/proposal.proto). SEE-108
+[`seekervault.proposal.v1.Proposal`](../packages/protocol/proto/seekervault/proposal/v1/proposal.proto). SEE-108
 retains it as a compatibility representation of a feed-audience common request; the revision,
 identity, terms, cancellation and retention rules below are unchanged.
 [`docs/wiki/shared-proposals.md`](wiki/shared-proposals.md) is the architecture page; this section is
@@ -897,7 +897,7 @@ fact about execution, and a stale signal shows as a closed market rather than as
 fails. The side and the stake are the owner's, and neither is in the document
 ([`wiki/jupiter-prediction.md`](wiki/jupiter-prediction.md)).
 
-From SEE-96 these terms have a publisher: `demo-prediction/cmd/prediction` discovers markets through its
+From SEE-96 these terms have a publisher: `examples/demo-prediction/cmd/prediction` discovers markets through its
 operator's filters and writes exactly this set, with the provider's own five-dollar minimum already
 raised into `least_deposit` so that the document says what will be enforced
 ([`wiki/prediction-template.md`](wiki/prediction-template.md)).
@@ -907,7 +907,7 @@ raised into `least_deposit` so that the document says what will be enforced
 A publisher publishes to the shared gateway and every subscribed phone reads from it. That is a
 different relationship from the durable request above — nobody is addressed, and nothing comes back
 — so it is a separate package with two services in it:
-[`seekervault.gateway.v1`](../proto/seekervault/gateway/v1).
+[`seekervault.gateway.v1`](../packages/protocol/proto/seekervault/gateway/v1).
 [`docs/wiki/feed-gateway.md`](wiki/feed-gateway.md) is the architecture page,
 [`docs/development/feed-gateway.md`](development/feed-gateway.md) is how to run one, and
 [`docs/guides/server-development.md`](guides/server-development.md) is the numbered walkthrough for
@@ -925,7 +925,7 @@ Authenticated with `Authorization: Bearer <credential>`, which says which server
 publishes as. Every document is checked against that rather than against what the document claims.
 The first thing to call it is the CopyTrading template (SEE-95,
 [`development/demos.md`](development/demos.md)); nothing about the contract is specific to
-it, and an opt-in test in the library both demos share ([`publisher-support/`](../publisher-support))
+it, and an opt-in test in the library both demos share ([`packages/publisher-support/`](../packages/publisher-support))
 runs the real gateway to keep the two honest about it.
 
 | Method | What it does | Rules |
@@ -1011,7 +1011,7 @@ host is **absent from the grant rather than fatal**, because a ticket is about s
 refusing one would take the stream away from all of them. The ticket carries no identity, and the
 gateway keeps no record of minting it.
 
-**The broker's own client schema is vendored, not ours.** `third_party/centrifugo` holds the pinned
+**The broker's own client schema is vendored, not ours.** `packages/protocol/third_party/centrifugo` holds the pinned
 release's `unistream.proto` with its digest, and `buf.gen.centrifugo.yaml` generates Kotlin from it
 into a directory of its own — so the sidecar and the gateway are never compiled against a client
 protocol neither of them speaks, and the app's one adapter file is the only place that imports it
@@ -1054,7 +1054,7 @@ the gateway stamps it onto the manifest it serves and refuses a publication that
 what is on the wire. All of it is additive: a public feed's manifest, reads and events are byte for
 byte what they were.
 
-**The manifest says who may read** ([`manifest.proto`](../proto/seekervault/server/v1/manifest.proto)).
+**The manifest says who may read** ([`manifest.proto`](../packages/protocol/proto/seekervault/server/v1/manifest.proto)).
 
 | Field | What it is |
 | --- | --- |
@@ -1068,7 +1068,7 @@ whose manifest claims another policy or another origin is `GATEWAY_PROBLEM_ACCES
 client reads an absent `FeedAccess` as public, because that is what every manifest before SEE-156
 meant, and reads an unspecified or unknown policy as one it does not support — never as public.
 
-**A reader presents one thing, and it is a session** ([`feed.proto`](../proto/seekervault/gateway/v1/feed.proto)).
+**A reader presents one thing, and it is a session** ([`feed.proto`](../packages/protocol/proto/seekervault/gateway/v1/feed.proto)).
 It is an opaque bearer value the feed's publisher handed an approved device; the gateway holds only
 its SHA-256, against a grant the publisher registered, so it names no wallet and no person.
 
@@ -1097,7 +1097,7 @@ leaves out a restricted channel the caller has no live session for. A granted re
 revocation, so a listener attached under an earlier name receives nothing more.
 
 **The publisher grants and revokes with the credential it already publishes with**
-([`publish.proto`](../proto/seekervault/gateway/v1/publish.proto)), and only for its own channel.
+([`publish.proto`](../packages/protocol/proto/seekervault/gateway/v1/publish.proto)), and only for its own channel.
 
 | Message | Fields |
 | --- | --- |
@@ -1110,13 +1110,13 @@ revocation, so a listener attached under an earlier name receives nothing more.
 | `PublishManifestResponse.access` = 3 | The access the gateway stamped on the manifest it now holds |
 
 **One event.** `FeedEvent.access_changed` = 5 carries an `AccessChanged`
-([`event.proto`](../proto/seekervault/gateway/v1/event.proto)), a message with no fields at all: it
+([`event.proto`](../packages/protocol/proto/seekervault/gateway/v1/event.proto)), a message with no fields at all: it
 is published once, on the stream name a revocation retires, and which grant ended is the publisher's
 business. A listener that receives it asks for a fresh ticket and is granted the channel again only
 if its own grant is still live.
 
 **Eight problems, numbered 47 to 54** after the retired 35–46 range, which stays retired
-([`problem.proto`](../proto/seekervault/gateway/v1/problem.proto)). None of them reuses a number or
+([`problem.proto`](../packages/protocol/proto/seekervault/gateway/v1/problem.proto)). None of them reuses a number or
 a meaning that range carried.
 
 | Problem | When | Connect code |
@@ -1164,10 +1164,10 @@ migration behavior.
 
 | Runtime | Output | Generators | Runtime libraries |
 | --- | --- | --- | --- |
-| TypeScript (direct SDK) | `server-sdk/src/gen`, as `.js` plus `.d.ts` | `protoc-gen-es` 2.14.1 through `buf.gen.server-sdk.yaml` | `@bufbuild/protobuf` 2.14.1 |
-| TypeScript (MCP host fixture) | `mcp-server/src/gen`, proposal only | `protoc-gen-es` 2.14.1 through `buf.gen.mcp-server.yaml` | `@bufbuild/protobuf` 2.14.1 |
-| Go (feed gateway) | `feed-gateway/internal/gen` | `protocolbuffers/go` 1.36.12 and `connectrpc/go` 1.21.0, from `buf.gen.feed-gateway.yaml` | `google.golang.org/protobuf` 1.36.12, `connectrpc.com/connect` 1.21.0 |
-| Kotlin (Android) | `android/app/src/main/generated/java` and `android/app/src/main/generated/kotlin` | `protocolbuffers/java` and `protocolbuffers/kotlin` v36.1 (lite), `connectrpc/kotlin` v0.9.0 | `protobuf-kotlin-lite` 4.36.1, `connect-kotlin` 0.9.0 |
+| TypeScript (direct SDK) | `packages/server-sdk/src/gen`, as `.js` plus `.d.ts` | `protoc-gen-es` 2.14.1 through `buf.gen.server-sdk.yaml` | `@bufbuild/protobuf` 2.14.1 |
+| TypeScript (MCP host fixture) | `servers/mcp-server/src/gen`, proposal only | `protoc-gen-es` 2.14.1 through `buf.gen.mcp-server.yaml` | `@bufbuild/protobuf` 2.14.1 |
+| Go (feed gateway) | `services/gateway/internal/gen` | `protocolbuffers/go` 1.36.12 and `connectrpc/go` 1.21.0, from `buf.gen.feed-gateway.yaml` | `google.golang.org/protobuf` 1.36.12, `connectrpc.com/connect` 1.21.0 |
+| Kotlin (Android) | `apps/android/app/src/main/generated/java` and `apps/android/app/src/main/generated/kotlin` | `protocolbuffers/java` and `protocolbuffers/kotlin` v36.1 (lite), `connectrpc/kotlin` v0.9.0 | `protobuf-kotlin-lite` 4.36.1, `connect-kotlin` 0.9.0 |
 
 - **`pnpm generate`** regenerates code and binary fixtures from every configured template. Commit
   the result, and never edit generated files by hand.
@@ -1184,16 +1184,16 @@ migration behavior.
 
 ## Cross-runtime fixtures
 
-Each fixture case is a Protobuf JSON file at `proto/fixtures/<package path>/<Message>/<case>.json`. `pnpm generate` writes the matching `.binpb` with `buf convert`, so a third implementation, Buf's Go runtime, produces the reference bytes.
+Each fixture case is a Protobuf JSON file at `packages/protocol/proto/fixtures/<package path>/<Message>/<case>.json`. `pnpm generate` writes the matching `.binpb` with `buf convert`, so a third implementation, Buf's Go runtime, produces the reference bytes.
 
 - **The sidecar tests** decode the JSON with protobuf-es, and require both the encoding and the decoding to match the `.binpb` byte for byte.
 - **The Android unit tests** build the same message in Kotlin, and require both parsing and serialization to match the same bytes.
-- **The gateway's Go tests** go the other way round for `seekervault/gateway/v1` (SEE-90): `feed-gateway/internal/gateway/fixtures_test.go` runs the scenario those fixtures describe through the real service and requires each committed file to be exactly what it answered, and `GatewayProtocolFixturesTest` then requires the phone's own validators to accept what is in them. The sidecar is not in that pair: it neither publishes a proposal nor subscribes to one.
+- **The gateway's Go tests** go the other way round for `seekervault/gateway/v1` (SEE-90): `services/gateway/internal/gateway/fixtures_test.go` runs the scenario those fixtures describe through the real service and requires each committed file to be exactly what it answered, and `GatewayProtocolFixturesTest` then requires the phone's own validators to accept what is in them. The sidecar is not in that pair: it neither publishes a proposal nor subscribes to one.
 
 | Package | Sidecar test | Android test | Cases |
 | --- | --- | --- | --- |
-| `seekervault/live/v1` | `server-sdk/src/live/fixtures.test.ts` | `LiveProtocolFixturesTest` | ASCII text; Unicode text (a combining mark, an emoji with a skin-tone modifier, a ZWJ sequence, CJK, Arabic, and a newline); a 4096-byte text; nanosecond and maximum deadlines; an empty message; the `ready` event and a command event; acknowledgements |
-| `seekervault/request/v1` | `server-sdk/src/requests/fixtures.test.ts` | `RequestProtocolFixturesTest` | A pending ack, and the same request ID under another connection; a transfer of the u64 maximum; a confirmed token transfer with its approval and signature; message text with CRLF, a decomposed and a precomposed accent, and a ZWJ emoji; message bytes with 0x00 and 0xFF; a swap above 2^53; an empty request; a prepared transaction whose hash is the SHA-256 of its bytes, and the uint32 and uint64 maximums; an approval, an empty rejection, and a transaction submission; a page of pending requests; an error detail; a wallet binding, and publishing a wallet and clearing one |
+| `seekervault/live/v1` | `packages/server-sdk/src/live/fixtures.test.ts` | `LiveProtocolFixturesTest` | ASCII text; Unicode text (a combining mark, an emoji with a skin-tone modifier, a ZWJ sequence, CJK, Arabic, and a newline); a 4096-byte text; nanosecond and maximum deadlines; an empty message; the `ready` event and a command event; acknowledgements |
+| `seekervault/request/v1` | `packages/server-sdk/src/requests/fixtures.test.ts` | `RequestProtocolFixturesTest` | A pending ack, and the same request ID under another connection; a transfer of the u64 maximum; a confirmed token transfer with its approval and signature; message text with CRLF, a decomposed and a precomposed accent, and a ZWJ emoji; message bytes with 0x00 and 0xFF; a swap above 2^53; an empty request; a prepared transaction whose hash is the SHA-256 of its bytes, and the uint32 and uint64 maximums; an approval, an empty rejection, and a transaction submission; a page of pending requests; an error detail; a wallet binding, and publishing a wallet and clearing one |
 
 To add a case, add the JSON file, run `pnpm generate`, and assert the case in both of its package's tests. The request tests fail when a fixture in their package isn't listed.
 
@@ -1205,7 +1205,7 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with the versions in [`docs/d
 | --- | --- |
 | `pnpm check` | PASS: Prettier, `buf format`, ESLint, `buf lint`, `tsc`, 38/38 sidecar tests (configuration, protocol rules, fixtures) |
 | `pnpm check:android` | PASS. Kotlin compiles the generated messages and `LiveCommandServiceClient`. 10 fixture tests and 3 deadline tests pass, lint reports no issues, and the debug APK builds. |
-| `pnpm build` | PASS: `mcp-server/dist` includes the generated JavaScript, and the built `LiveCommandSlot` runs |
+| `pnpm build` | PASS: `servers/mcp-server/dist` includes the generated JavaScript, and the built `LiveCommandSlot` runs |
 | Running generation twice | PASS: two more `pnpm generate` runs left all 46 generated files and fixtures byte-identical, and `pnpm check:generated` passes |
 | `pnpm check:generated` catches drift | Each of these failed it: a hand-edited generated file, a fixture JSON changed without regenerating, a stray file in a generated directory |
 | Fixture tests catch disagreement | Flipping one byte of `LiveCommand/unicode.binpb` failed both the TypeScript fixture test and `LiveProtocolFixturesTest.liveCommandUnicode` |
@@ -1223,6 +1223,6 @@ Run on 2026-09-11 on macOS 26.5.2 (Apple silicon), with Node 24.21.0, pnpm 12.3.
 | `pnpm check:generated` | PASS, before and after the deliberate breaks |
 | `buf breaking --against '.git#ref=HEAD'` | PASS: nothing in `seekervault.live.v1` changed |
 | `pnpm test:hello` | PASS: the 9/9 Stage 1 acceptance cases on a simulated device, unchanged |
-| `pnpm build` | PASS: `mcp-server/dist` includes `requests/` and the generated `request/v1` code, and the built `TRANSITIONS` loads |
+| `pnpm build` | PASS: `servers/mcp-server/dist` includes `requests/` and the generated `request/v1` code, and the built `TRANSITIONS` loads |
 | Deliberate breaks | Each break failed the matching tests, and each file was restored byte for byte afterwards:<ul><li>A transition that lets the agent cancel a PROCESSING request failed the four per-kind tables and the actor rule.</li><li>A fingerprint of the action kind alone failed the idempotency conflict tests.</li><li>Accepting amounts above u64 failed the amount tests.</li><li>A `checkRef` that ignores the connection failed the scope and fixture tests.</li><li>One flipped digit in `ActionRequest/transfer_max_amount.binpb` failed the TypeScript fixture tests and `RequestProtocolFixturesTest.transferMaxAmount`.</li></ul> |
 | Physical device | NOT RUN: SAW-009 has no device behavior |

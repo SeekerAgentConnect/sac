@@ -1,7 +1,7 @@
 # Running a restricted feed (SEE-156)
 
 How a third-party publisher runs a feed only devices it approved may read, on the shared
-[`publisher-support/access`](../../publisher-support/access) library. Everything here is library
+[`packages/publisher-support/access`](../../packages/publisher-support/access) library. Everything here is library
 code: there is no service to sign up to, no account system, and nothing this page describes is
 private to the demos.
 
@@ -11,10 +11,10 @@ deliberately not told, and what the six-hour offline bound is buying — is
 says what you do with it. The publication side, which a restricted feed does not change, is
 [`signal-api.md`](signal-api.md).
 
-The worked example is [`demo-copytrading`](../../demo-copytrading): its
-[`cmd/copytrading/main.go`](../../demo-copytrading/cmd/copytrading/main.go) wires every piece named
+The worked example is [`demo-signals`](../../examples/demo-signals): its
+[`cmd/copytrading/main.go`](../../examples/demo-signals/cmd/copytrading/main.go) wires every piece named
 below in about forty lines, and its Devices page
-([`internal/admin/devices.go`](../../demo-copytrading/internal/admin/devices.go)) is one way — not
+([`internal/admin/devices.go`](../../examples/demo-signals/internal/admin/devices.go)) is one way — not
 the only way — to give an operator somewhere to decide. Point at it; do not copy it wholesale,
 because its policy is *ask a human*, and yours probably is not.
 
@@ -38,10 +38,10 @@ sets it:
 feed-gatewayctl access --server <uuid> --access restricted --auth-origin https://auth.example.com
 ```
 
-([`feed-gateway/cmd/feed-gatewayctl/main.go`](../../feed-gateway/cmd/feed-gatewayctl/main.go).) Ask
+([`services/gateway/cmd/feed-gatewayctl/main.go`](../../services/gateway/cmd/feed-gatewayctl/main.go).) Ask
 for it before you write a line, because until it is done your publisher will refuse to publish, by
 design. The origin must be an origin: HTTPS, no path, no query, no fragment, and plain HTTP only on
-loopback (`config.Origin` in [`publisher-support/config/config.go`](../../publisher-support/config/config.go)).
+loopback (`config.Origin` in [`packages/publisher-support/config/config.go`](../../packages/publisher-support/config/config.go)).
 Agree it character for character with the operator — `https://Auth.Example.com:443/` and
 `https://auth.example.com` are not the same string to a phone, and only one of them is what your
 manifest will claim.
@@ -49,7 +49,7 @@ manifest will claim.
 ## Configuration, and failing closed
 
 A restricted feed reads its own settings beside the ordinary `PUBLISHER_*` ones, through
-`access.Load` ([`publisher-support/access/config.go`](../../publisher-support/access/config.go)):
+`access.Load` ([`packages/publisher-support/access/config.go`](../../packages/publisher-support/access/config.go)):
 
 | Variable | Default | What it is |
 | --- | --- | --- |
@@ -67,7 +67,7 @@ are fields on `access.Settings`, not variables, and default to five minutes each
 The origin goes in two places, and they must agree. It is `access.Settings.AuthOrigin`, which is the
 first line of every challenge a wallet signs, and it is `manifest.Settings.AuthOrigin`, which is
 what makes your published manifest say the feed is restricted
-([`publisher-support/manifest/manifest.go`](../../publisher-support/manifest/manifest.go)). A
+([`packages/publisher-support/manifest/manifest.go`](../../packages/publisher-support/manifest/manifest.go)). A
 manifest that claims a policy or an origin the operator did not register is refused with
 `GATEWAY_PROBLEM_ACCESS_MISMATCH`.
 
@@ -92,7 +92,7 @@ the registration is right.
 
 ## The eligibility hook
 
-One method, in [`publisher-support/access/access.go`](../../publisher-support/access/access.go):
+One method, in [`packages/publisher-support/access/access.go`](../../packages/publisher-support/access/access.go):
 
 ```go
 type Eligibility interface {
@@ -170,7 +170,7 @@ devices := access.New(access.Plan{
 ## The endpoint phones call
 
 `Service.Handler(access.Limits{PerHour: …})` is the whole public surface
-([`publisher-support/access/http.go`](../../publisher-support/access/http.go)). It holds no
+([`packages/publisher-support/access/http.go`](../../packages/publisher-support/access/http.go)). It holds no
 credential and tells nobody anything about anybody but the caller. Every body is one strict JSON
 object: unknown fields are refused rather than dropped, nothing may follow it, and 16 KiB is the
 most it may be. Base64 is accepted in either alphabet, padded or not, because Android's default and
@@ -196,7 +196,7 @@ your clock or the call is `stale_proof`.
 ### What is signed, and by whom
 
 Two keys, kept apart on purpose
-([`publisher-support/access/proof.go`](../../publisher-support/access/proof.go)):
+([`packages/publisher-support/access/proof.go`](../../packages/publisher-support/access/proof.go)):
 
 - The **wallet** — an Ed25519 Solana key — signs exactly one thing, ever: the challenge text
   returned as `message`. It is plain ASCII built from the challenge's own fields, it names the
@@ -223,7 +223,7 @@ Why each of those bindings is there, and what goes wrong without it, is
 ### The operator's routes
 
 `Service.AdminRoutes()` returns the mutations, for your own token-protected API to mount as
-`api.Plan.Access` ([`publisher-support/api/api.go`](../../publisher-support/api/api.go)):
+`api.Plan.Access` ([`packages/publisher-support/api/api.go`](../../packages/publisher-support/api/api.go)):
 `GET /v1/access/devices`, `POST /v1/access/devices/{id}/approve`, `…/reject`, `…/revoke`,
 `…/reissue`, and `POST /v1/access/wallets/{wallet}/revoke`. They take an optional `{"by": "…"}`,
 recorded as who decided. Mounting them there rather than beside `/access/v1` is deliberate: they
@@ -237,7 +237,7 @@ where its access stands — `pending_approval`, `rejected`, `invited`, `invitati
 ## Granting and revoking at the gateway
 
 You never tell the gateway who anybody is. `Syncer` calls three methods on the publisher API
-([`publisher-support/gateway/gateway.go`](../../publisher-support/gateway/gateway.go)):
+([`packages/publisher-support/gateway/gateway.go`](../../packages/publisher-support/gateway/gateway.go)):
 
 - `DescribeAccess` — which policy the gateway enforces for you, the origin it registered, and
   `MostGrant`, the longest grant it will honour (`BROADCAST_MAX_GRANT_HOURS` at its end). Ask for
@@ -249,7 +249,7 @@ You never tell the gateway who anybody is. `Syncer` calls three methods on the p
   error: there is nothing to take back.
 
 Every grant is an outbox row in `access_grant`
-([`publisher-support/store/access.go`](../../publisher-support/store/access.go)): `revision` is what
+([`packages/publisher-support/store/access.go`](../../packages/publisher-support/store/access.go)): `revision` is what
 you want the gateway to hold, `synced_revision` is what it confirmed. A grant, a renewal and a
 revocation are each a new revision. `Syncer.Pass` sends what is behind — at most 32 rows a pass —
 records the confirmation conditionally on the revision, so a revocation written while a grant was in
@@ -314,7 +314,7 @@ that a device has stopped reading when it has not.
 
 **Do not reuse a retired problem number.** The gateway's access problems are 47 to 54, after the
 `gateway_private` range 35 to 46 that is `reserved` in
-[`problem.proto`](../../proto/seekervault/gateway/v1/problem.proto) — old logs, stored status and
+[`problem.proto`](../../packages/protocol/proto/seekervault/gateway/v1/problem.proto) — old logs, stored status and
 clients still carry those meanings.
 
 **Do not ask for a second wallet signature at redemption.** The device key signs it, and the whole
@@ -340,12 +340,12 @@ they are kept.
 
 | | |
 | --- | --- |
-| The service, the hook, the decisions | [`publisher-support/access/access.go`](../../publisher-support/access/access.go) |
-| The signatures and the challenge text | [`publisher-support/access/proof.go`](../../publisher-support/access/proof.go) |
-| The HTTP surface and the operator's routes | [`publisher-support/access/http.go`](../../publisher-support/access/http.go) |
-| The settings | [`publisher-support/access/config.go`](../../publisher-support/access/config.go) |
-| The gateway outbox, renewal and the publication guard | [`publisher-support/access/sync.go`](../../publisher-support/access/sync.go) |
-| The four tables (schema version 4) | [`publisher-support/store/access.go`](../../publisher-support/store/access.go) |
-| The publisher API client | [`publisher-support/gateway/gateway.go`](../../publisher-support/gateway/gateway.go) |
-| A worked wiring | [`demo-copytrading/cmd/copytrading/main.go`](../../demo-copytrading/cmd/copytrading/main.go), [`demo-copytrading/.env.example`](../../demo-copytrading/.env.example) |
+| The service, the hook, the decisions | [`packages/publisher-support/access/access.go`](../../packages/publisher-support/access/access.go) |
+| The signatures and the challenge text | [`packages/publisher-support/access/proof.go`](../../packages/publisher-support/access/proof.go) |
+| The HTTP surface and the operator's routes | [`packages/publisher-support/access/http.go`](../../packages/publisher-support/access/http.go) |
+| The settings | [`packages/publisher-support/access/config.go`](../../packages/publisher-support/access/config.go) |
+| The gateway outbox, renewal and the publication guard | [`packages/publisher-support/access/sync.go`](../../packages/publisher-support/access/sync.go) |
+| The four tables (schema version 4) | [`packages/publisher-support/store/access.go`](../../packages/publisher-support/store/access.go) |
+| The publisher API client | [`packages/publisher-support/gateway/gateway.go`](../../packages/publisher-support/gateway/gateway.go) |
+| A worked wiring | [`examples/demo-signals/cmd/copytrading/main.go`](../../examples/demo-signals/cmd/copytrading/main.go), [`examples/demo-signals/.env.example`](../../examples/demo-signals/.env.example) |
 | A deployment | [`deploy/copytrading/compose.yaml`](../../deploy/copytrading/compose.yaml), [`deploy/signals-demo.yaml`](../../deploy/signals-demo.yaml) |

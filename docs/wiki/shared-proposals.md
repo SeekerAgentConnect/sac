@@ -23,7 +23,7 @@ touches the private workflow. A request still returns its result to the server t
 
 ## The document
 
-[`proto/seekervault/proposal/v1/proposal.proto`](../../proto/seekervault/proposal/v1/proposal.proto),
+[`packages/protocol/proto/seekervault/proposal/v1/proposal.proto`](../../packages/protocol/proto/seekervault/proposal/v1/proposal.proto),
 published by the Go templates (SEE-95, SEE-96) through the gateway (SEE-90).
 
 | Field | What it is |
@@ -55,7 +55,7 @@ carry any of that has to be added to the check first.
 
 ## The two halves of a record
 
-[`proposals/ProposalState.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/proposals/ProposalState.kt).
+[`proposals/ProposalState.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/proposals/ProposalState.kt).
 One file per proposal holds both, and they belong to different people:
 
 | The publisher's half | This device's half |
@@ -112,7 +112,7 @@ publisher with something else to propose publishes another proposal, which is an
 
 ## What a signature is bound to
 
-[`proposals/ProposalBinding.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/proposals/ProposalBinding.kt).
+[`proposals/ProposalBinding.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/proposals/ProposalBinding.kt).
 Because a proposal is common, the thing an owner executes never is. It is the terms *as they stood*,
 with the parameters *this* owner chose, from the wallet *they* had selected, prepared by the plugin
 *this build* carries, as one particular set of bytes. All five are pinned in an `ExecutionBinding`
@@ -229,7 +229,7 @@ proposal whatever directory it is in.
 ## What this build does and doesn't do
 
 Both halves are joined up as of SEE-93. Proposals arrive through
-[`ProposalFeed`](../../android/app/src/main/java/io/github/brrenat/seekervault/connections/ProposalFeed.kt)
+[`ProposalFeed`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/connections/ProposalFeed.kt)
 — the gateway is SEE-90, the live stream SEE-91, and a hint that wakes the app SEE-92 — and
 `jupiter.swap` is what reads a swap signal's terms, collects the owner's amount and prepares its
 bytes ([`jupiter-swap.md`](jupiter-swap.md)).

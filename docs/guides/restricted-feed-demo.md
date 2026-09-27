@@ -16,9 +16,9 @@ run the whole thing end to end and watch each decision land, locally and against
 
 | | What | Why |
 | --- | --- | --- |
-| A feed gateway | [`feed-gateway/`](../../feed-gateway), reads on `127.0.0.1:8090` and publications on `127.0.0.1:8091` by default ([feed-gateway.md](../development/feed-gateway.md)) | It is what enforces the restriction. The publisher only decides |
+| A feed gateway | [`services/gateway/`](../../services/gateway), reads on `127.0.0.1:8090` and publications on `127.0.0.1:8091` by default ([feed-gateway.md](../development/feed-gateway.md)) | It is what enforces the restriction. The publisher only decides |
 | A broker | Centrifugo and Redis, as `deploy/feed/compose.yaml` runs them, plus `BROADCAST_STREAM_URL`, `BROADCAST_STREAM_API_KEY` and `BROADCAST_STREAM_TOKEN_KEY` on the gateway — all three or none | Only §8 needs it. Without them the gateway answers every read and says once that there is no stream, so a revocation shows on the next read rather than on an open one |
-| The demo | [`demo-copytrading/`](../../demo-copytrading): `copytrading`, `copytrading-admin`, `publishctl` | The publisher, the operator's page, and the signal client |
+| The demo | [`examples/demo-signals/`](../../examples/demo-signals): `copytrading`, `copytrading-admin`, `publishctl` | The publisher, the operator's page, and the signal client |
 | A phone with a wallet | A real Seeker, or any device with a wallet the app can ask to sign | The flow is a wallet signature, once |
 
 **No funds move.** The one wallet interaction in the whole flow is an Ed25519 signature over ASCII
@@ -45,8 +45,8 @@ Expires: 2026-09-25T12:05:00Z
 
 The phone rebuilds that text from the challenge's fields and compares it with the publisher's copy
 *before* the wallet is opened at all
-([`FeedAccessProof.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/access/FeedAccessProof.kt),
-[`proof.go`](../../publisher-support/access/proof.go)).
+([`FeedAccessProof.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/access/FeedAccessProof.kt),
+[`proof.go`](../../packages/publisher-support/access/proof.go)).
 
 **The headless emulator cannot finish this flow.** Seed Vault Wallet and Mobile Wallet Adapter are
 absent there, so nothing can be signed ([emulator-e2e.md](../development/emulator-e2e.md)) and the
@@ -59,7 +59,7 @@ The policy lives in the **gateway operator's registration**, not in the publishe
 and not in the link. Either register a new publisher as restricted:
 
 ```sh
-cd feed-gateway
+cd services/gateway
 go run ./cmd/feed-gatewayctl register --database ./broadcast.db \
   --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d --label "copy trading" \
   --access restricted --auth-origin http://127.0.0.1:8092
@@ -74,7 +74,7 @@ go run ./cmd/feed-gatewayctl access --database ./broadcast.db \
 ```
 
 `access` prints the new policy and then, verbatim from
-[`main.go`](../../feed-gateway/cmd/feed-gatewayctl/main.go):
+[`main.go`](../../services/gateway/cmd/feed-gatewayctl/main.go):
 
 ```text
 Every stream name issued under the old policy is retired. The publisher should publish its
@@ -97,13 +97,13 @@ the policy and the live grant count for a restricted publisher.
 read its feed* choice with the authentication origin, and an existing publisher's page has a **Who
 may read** form. Choose *Restricted*, enter the origin, type the server ID to confirm, **Save
 access**. The rules and the result are the CLI's
-([`internal/admin/admin.go`](../../feed-gateway/internal/admin/admin.go)).
+([`internal/admin/admin.go`](../../services/gateway/internal/admin/admin.go)).
 
 ### If you forget this step
 
 Nothing is published. The publisher's drainer asks `DescribeAccess` before every pass and fails
 closed with this exact refusal from
-[`publisher-support/access/sync.go`](../../publisher-support/access/sync.go):
+[`packages/publisher-support/access/sync.go`](../../packages/publisher-support/access/sync.go):
 
 ```text
 the gateway does not enforce this feed as restricted at <origin>; register it with
@@ -120,7 +120,7 @@ Everything the public demo needed, plus `PUBLISHER_AUTH_ORIGIN`
 ([demos.md](../development/demos.md) has the public form):
 
 ```sh
-cd demo-copytrading
+cd examples/demo-signals
 PUBLISHER_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
@@ -133,8 +133,8 @@ go run ./cmd/copytrading
 ```
 
 The restricted settings, from
-[`publisher-support/access/config.go`](../../publisher-support/access/config.go) and
-[`demo-copytrading/.env.example`](../../demo-copytrading/.env.example):
+[`packages/publisher-support/access/config.go`](../../packages/publisher-support/access/config.go) and
+[`examples/demo-signals/.env.example`](../../examples/demo-signals/.env.example):
 
 | Variable | Default | What it is |
 | --- | --- | --- |
@@ -149,11 +149,11 @@ auth origin above matches the API's own listener. **Watch for a collision:** the
 admin page defaults to the same `127.0.0.1:8092` (`BROADCAST_ADMIN_ADDRESS`). Running both on one
 machine means moving one of them.
 
-At startup [`cmd/copytrading/main.go`](../../demo-copytrading/cmd/copytrading/main.go) logs
+At startup [`cmd/copytrading/main.go`](../../examples/demo-signals/cmd/copytrading/main.go) logs
 `access=restricted` with the auth origin and the grant hours, logs that the authentication endpoint
 is served beside the API at `/access/v1`, and prints the feed reference on **stdout**. A restricted
 feed's reference carries `&access=restricted`
-([`manifest.ReferenceOf`](../../publisher-support/manifest/manifest.go)):
+([`manifest.ReferenceOf`](../../packages/publisher-support/manifest/manifest.go)):
 
 ```text
 seekervault://feed?v=1&gateway=http%3A%2F%2F127.0.0.1%3A8090&server=3f1b2c4d-…&access=restricted
@@ -164,7 +164,7 @@ ever send a wallet proof to, off the **manifest** the gateway stamps from its ow
 
 The four endpoints the phone uses are `POST /access/v1/challenges`, `/access/v1/requests`,
 `/access/v1/requests/{id}/status` and `/access/v1/redeem`
-([http.go](../../publisher-support/access/http.go)). They are public and signature-checked, never
+([http.go](../../packages/publisher-support/access/http.go)). They are public and signature-checked, never
 token-protected; the operator's own `/v1/access/...` routes stay behind `PUBLISHER_API_TOKEN`.
 
 ## 4. Start the trader UI and find the Devices page
@@ -173,7 +173,7 @@ The UI is a client of the publisher's own `/v1`, holding `PUBLISHER_API_TOKEN` s
 does. Passwords are named bcrypt lines in a file; `hash` prints one:
 
 ```sh
-cd demo-copytrading
+cd examples/demo-signals
 printf '%s\n' 'the-password-you-chose' | go run ./cmd/copytrading-admin hash trader >> ./admin-passwords
 
 ADMIN_API_URL=http://127.0.0.1:8092 \
@@ -183,7 +183,7 @@ PUBLISHER_API_TOKEN=<the same token the publisher was started with> \
 go run ./cmd/copytrading-admin
 ```
 
-Defaults from [`internal/admin/config.go`](../../demo-copytrading/internal/admin/config.go):
+Defaults from [`internal/admin/config.go`](../../examples/demo-signals/internal/admin/config.go):
 `ADMIN_LISTEN_ADDRESS` is `127.0.0.1:8096` and `ADMIN_PUBLIC_PATH` is `/trader`. So the signals page
 is <http://127.0.0.1:8096/trader> and **Devices / feed access** is
 <http://127.0.0.1:8096/trader/devices>, linked from the signals page.
@@ -191,7 +191,7 @@ is <http://127.0.0.1:8096/trader> and **Devices / feed access** is
 Log in with the name you hashed (`trader` above) and its password. `ADMIN_SESSION_SECRET` and
 `PUBLISHER_API_TOKEN` must each be at least 32 characters, and both may instead be `…_FILE` paths.
 Every mutation POST is checked same-origin
-([`internal/admin/server.go`](../../demo-copytrading/internal/admin/server.go)) and rate limited per
+([`internal/admin/server.go`](../../examples/demo-signals/internal/admin/server.go)) and rate limited per
 signed-in name, so drive the page from a browser rather than a bare `curl`.
 
 ## 5. The happy path
@@ -202,14 +202,14 @@ signed-in name, so drive the page from a browser rather than a bare `curl`.
    signing a message, not a transaction, which moves no funds — and then decides whether this
    device may read it."* Tap **Add feed**.
 2. **The signature.** Adding a restricted feed asks for access straight away
-   ([`ConnectionsViewModel.confirmFeed`](../../android/app/src/main/java/io/github/brrenat/seekervault/connections/ConnectionsViewModel.kt)):
+   ([`ConnectionsViewModel.confirmFeed`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/connections/ConnectionsViewModel.kt)):
    the phone generates a P-256 Keystore key for this connection, fetches a challenge, rebuilds the
    text, compares it, and only then opens the wallet — once, showing the text in §1. The answer is
    verified against the address before anything is sent.
 3. **Pending.** The connection's status line says *"Waiting for the publisher to approve this
    device."* It is not shown as a problem: it is the flow working.
 4. **The request appears.** Reload
-   [`/trader/devices`](../../demo-copytrading/internal/admin/devices.go). The row shows the wallet,
+   [`/trader/devices`](../../examples/demo-signals/internal/admin/devices.go). The row shows the wallet,
    the device-key fingerprint (`installation`), the label the phone claimed — marked *"label
    (user-supplied)"*, because it is a claim — the request time, and **Pending approval**.
 5. **Approve.** The page answers *"approved; the device receives a single-use invitation"*. The row
@@ -218,7 +218,7 @@ signed-in name, so drive the page from a browser rather than a bare `curl`.
    phone it does nothing.
 6. **The phone redeems.** There is **no background poll for a decision**: the phone checks when the
    owner opens that connection's detail sheet or taps **Refresh** on it
-   ([`SeekerVaultApp.kt`](../../android/app/src/main/java/io/github/brrenat/seekervault/SeekerVaultApp.kt)).
+   ([`SeekerVaultApp.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/SeekerVaultApp.kt)).
    A feed with no request yet *asks*, which opens the wallet; one that already has a request only
    *checks*, signed with the device key, and a check that finds an invitation redeems it.
 7. **Connected.** The row moves to `grant_pending` — *"Approved — the gateway has not confirmed the
@@ -239,7 +239,7 @@ On the phone the status line becomes *"The publisher didn't approve this device.
 new request."* — and **Refresh** on that connection is the "ask again": a rejected or revoked record
 is the one case where asking again starts a fresh request instead of a check, which opens the wallet
 once more
-([`FeedAccessManager.requestAccess`](../../android/app/src/main/java/io/github/brrenat/seekervault/access/FeedAccessManager.kt)).
+([`FeedAccessManager.requestAccess`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/access/FeedAccessManager.kt)).
 Rejected is treated as a problem on the connection row, because it needs the owner to do something.
 
 ## 7. A second device on the same wallet
@@ -267,7 +267,7 @@ The retired name gets one last, field-less `AccessChanged` event.
 **On the phone.** A listener that sees `AccessChanged` spends its ticket whatever the broker said
 about the close, reads the feed once to find out, and is refused — and the refusal is what records
 the revocation
-([`ForegroundFeedManager`](../../android/app/src/main/java/io/github/brrenat/seekervault/feeds/ForegroundFeedManager.kt)).
+([`ForegroundFeedManager`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/feeds/ForegroundFeedManager.kt)).
 The status line becomes *"The publisher revoked this device's access to the feed. Signals already on
 this phone stay."* The other feeds on that stream come back on the next pass. Without a broker the
 same revocation lands on the next read instead — the same enforcement, arriving less promptly.
@@ -284,12 +284,12 @@ and a signal a phone already read stays on that phone — which is what the copy
 A restricted channel is **always absent** from `GetFeedTopics` — it has no public topic. Each
 approved device instead registers its own push target with `SetFeedPushTarget`, under the session
 its grant was issued with, and the gateway sends that grant's hints to it
-([`internal/relay/restricted.go`](../../feed-gateway/internal/relay/restricted.go)). A Firebase
+([`internal/relay/restricted.go`](../../services/gateway/internal/relay/restricted.go)). A Firebase
 registration re-states this device's target under every live grant
-([`SeekerVaultMessagingService`](../../android/app/src/main/java/io/github/brrenat/seekervault/push/SeekerVaultMessagingService.kt)).
+([`SeekerVaultMessagingService`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/push/SeekerVaultMessagingService.kt)).
 
 To simulate a missed hint, pick whichever is easiest: run a debug build with no
-`android/app/google-services.json`, so Firebase fails to initialize, there is no background push and
+`apps/android/app/google-services.json`, so Firebase fails to initialize, there is no background push and
 no target is ever registered ([firebase.md](firebase.md)); turn the app's notifications off, or use
 airplane mode across the publication or the revocation; or leave `BROADCAST_PUSH_CREDENTIALS`,
 `BROADCAST_PUSH_ENDPOINT` and `BROADCAST_PUSH_ENVIRONMENT` unset on the gateway, which is the local
@@ -312,7 +312,7 @@ An invitation is single use, bound to the device key, and lives for
 
 **Reissue invitation** appears only for a device that is approved right now and has neither a live
 invitation nor a live grant
-([`Device.Reissuable`](../../demo-copytrading/internal/admin/devices.go)). It answers *"a fresh
+([`Device.Reissuable`](../../examples/demo-signals/internal/admin/devices.go)). It answers *"a fresh
 invitation was issued; the previous one no longer works"* — the replaced token is refused by name as
 `invitation_superseded`. Reissuing is refused for anything that is not approved, so it can never
 undo a revocation; the refusal is `wrong_state`.
@@ -320,7 +320,7 @@ undo a revocation; the refusal is `wrong_state`.
 Two ways for the device to use one. **It redeems it itself:** open the connection on the phone, or
 tap **Refresh** — a check redeems a waiting invitation. **Or the link:** the page shows
 `seekervault://feed?v=1&gateway=…&server=…&access=restricted&invitation=<token>`
-([`Service.Link`](../../publisher-support/access/access.go)), which is for a phone **adding the
+([`Service.Link`](../../packages/publisher-support/access/access.go)), which is for a phone **adding the
 feed** — adding a restricted feed from a reference carrying an invitation asks for access and
 redeems the invitation straight after. A phone that already holds the connection uses Refresh
 instead. **(Not observed.)**
@@ -333,7 +333,7 @@ outlives the publisher's reach, and a tighter one costs renewal traffic.
 ## 11. When it does not work
 
 Publisher refusals are a stable code and a status, from
-[`publisher-support/access/access.go`](../../publisher-support/access/access.go):
+[`packages/publisher-support/access/access.go`](../../packages/publisher-support/access/access.go):
 
 | Code | Status | Means |
 | --- | --- | --- |
@@ -405,8 +405,8 @@ the public feed ingress.
 
 Why it is shaped this way: [`../wiki/restricted-feeds.md`](../wiki/restricted-feeds.md). The demo's
 own settings, one paragraph per variable:
-[`../../demo-copytrading/.env.example`](../../demo-copytrading/.env.example) and
-[`../../demo-copytrading/README.md`](../../demo-copytrading/README.md). Running the demos generally:
+[`examples/demo-signals/.env.example`](../../examples/demo-signals/.env.example) and
+[`examples/demo-signals/README.md`](../../examples/demo-signals/README.md). Running the demos generally:
 [`../development/demos.md`](../development/demos.md). The gateway and `feed-gatewayctl`:
 [`../development/feed-gateway.md`](../development/feed-gateway.md) and
 [`../wiki/feed-gateway.md`](../wiki/feed-gateway.md). Driving a phone with nobody at it:

@@ -35,13 +35,13 @@ sidecar does not receive another sidecar's credential and does not stop the othe
 
 1. In the [Firebase console](https://console.firebase.google.com/), create or select a project.
 2. Add an Android app whose package name is exactly `io.github.brrenat.seekervault`.
-3. Download `google-services.json` and place it at `android/app/google-services.json`. Do not commit
+3. Download `google-services.json` and place it at `apps/android/app/google-services.json`. Do not commit
    it; `.gitignore` excludes every file with that name.
 4. Build the app with `pnpm check:android` or from Android Studio.
 
 The app pins Firebase through the Android BoM and uses the main `firebase-messaging` module, not the
 retired KTX artifact. The Google Services Gradle plugin is applied only when
-`android/app/google-services.json` exists. Without that file the same debug and test APK tasks build,
+`apps/android/app/google-services.json` exists. Without that file the same debug and test APK tasks build,
 there is no default Firebase project configuration, and Firebase Messaging cannot obtain a token.
 Delete the file and rebuild to produce an unconfigured installation again.
 
@@ -378,7 +378,7 @@ malformed credential stops the process with a message that names the field and n
 contents.
 
 The gateway's own image carries a CA bundle from SEE-92 onwards, because this is its first outbound
-TLS connection (`feed-gateway/Dockerfile` says so in a comment beside the line that copies it).
+TLS connection (`services/gateway/Dockerfile` says so in a comment beside the line that copies it).
 
 ### What the phone does with a hint
 
@@ -501,7 +501,7 @@ the internet keeps both halves of its publishing surface and both halves of its 
 The app registers with **one** relay: the origin its build was given.
 
 ```sh
-android/gradlew -p android :app:assembleDebug \
+apps/android/gradlew -p apps/android :app:assembleDebug \
   -Pseekervault.relayUrl=https://feeds.example.com
 ```
 

@@ -21,15 +21,15 @@ import { basename, join, resolve, sep } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { parsePairingUri } from "../server-sdk/src/index.ts";
+import { parsePairingUri } from "../packages/server-sdk/src/index.ts";
 import {
   connectAgent as connectTestAgent,
   pairingClient,
   requestClient,
-} from "../mcp-server/src/testing/clients.ts";
+} from "../servers/mcp-server/src/testing/clients.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const SOURCE_PACKAGE = join(ROOT, "mcp-server", "package");
+const SOURCE_PACKAGE = join(ROOT, "servers", "mcp-server", "package");
 const scratch = mkdtempSync(join(tmpdir(), "seeker-mcp-package-"));
 const artifacts = join(scratch, "artifacts");
 const localPrefix = join(scratch, "local-install");
@@ -41,7 +41,9 @@ const firstCwd = join(scratch, "first-cwd");
 const secondCwd = join(scratch, "second-cwd");
 const dataDirectory = join(scratch, "durable-data");
 const configPath = join(dataDirectory, "config.env");
-const expectedVersion = "0.1.0";
+// The release manifest decides a component's version; an audit that hardcoded one would keep
+// passing after a bump and prove nothing about the artifact actually being released (SEE-168).
+const expectedVersion = releaseVersion("mcp-server");
 const mcpToken = "m".repeat(64);
 const phoneToken = "p".repeat(64);
 let running;
@@ -61,16 +63,20 @@ try {
     mkdirSync(directory, { recursive: true });
   }
 
-  run("pnpm", ["--filter", "@seeker-vault/mcp-server", "run", "build"], {
-    cwd: ROOT,
-  });
+  run(
+    "pnpm",
+    ["--filter", "@seeker_agent_connect/mcp-server", "run", "build"],
+    {
+      cwd: ROOT,
+    },
+  );
 
   const dryRun = pack(["--dry-run", "--json", SOURCE_PACKAGE], ROOT)[0];
   const packed = pack(
     ["--json", "--pack-destination", artifacts, SOURCE_PACKAGE],
     ROOT,
   )[0];
-  assert.equal(dryRun.name, "@seeker-vault/mcp-server");
+  assert.equal(dryRun.name, "@seeker_agent_connect/mcp-server");
   assert.equal(dryRun.version, expectedVersion);
   assert.deepEqual(
     fileNames(dryRun),
@@ -85,7 +91,7 @@ try {
   const localPackage = join(
     localPrefix,
     "node_modules",
-    "@seeker-vault",
+    "@seeker_agent_connect",
     "mcp-server",
   );
   auditManifest(localPackage);
@@ -96,7 +102,7 @@ try {
   );
   assert.ok(
     !existsSync(
-      join(localPrefix, "node_modules", "@seeker-vault", "server-sdk"),
+      join(localPrefix, "node_modules", "@seeker_agent_connect", "server-sdk"),
     ),
     "the artifact does not require a separately installed unpublished SDK",
   );
@@ -288,6 +294,15 @@ try {
   rmSync(scratch, { recursive: true, force: true });
 }
 
+function releaseVersion(id) {
+  const manifest = JSON.parse(
+    readFileSync(join(ROOT, "release", "components.json"), "utf8"),
+  );
+  const component = manifest.components.find((entry) => entry.id === id);
+  assert.ok(component, `release/components.json declares no component ${id}`);
+  return component.version;
+}
+
 function pack(args, cwd) {
   const result = run("npm", ["pack", ...args], { cwd });
   const parsed = JSON.parse(result.stdout);
@@ -319,22 +334,39 @@ function auditManifest(packageRoot) {
   const manifest = JSON.parse(
     readFileSync(join(packageRoot, "package.json"), "utf8"),
   );
-  assert.equal(manifest.name, "@seeker-vault/mcp-server");
+  assert.equal(manifest.name, "@seeker_agent_connect/mcp-server");
   assert.equal(manifest.version, expectedVersion);
-  assert.equal(manifest.private, true);
-  assert.deepEqual(manifest.engines, { node: ">=24.21.0 <25" });
+  // The artifact is published now (SEE-168), so the two fields npm reads before it will accept a
+  // scoped package are part of what this audit proves. `private: true` would refuse the publish;
+  // a missing `publishConfig.access` would silently make it a private package nobody can install.
+  assert.notEqual(manifest.private, true);
+  assert.deepEqual(manifest.publishConfig, { access: "public" });
+  assert.deepEqual(manifest.engines, { node: ">=24.21.0" });
+  for (const field of [
+    "description",
+    "license",
+    "homepage",
+    "bugs",
+    "repository",
+    "author",
+  ]) {
+    assert.ok(manifest[field], `the published manifest is missing ${field}`);
+  }
   assert.deepEqual(manifest.bin, {
     "seeker-agent-connect-mcp": "./dist/cli.js",
   });
   assert.deepEqual(manifest.files, ["dist", "README.md", "LICENSE"]);
   assert.equal(manifest.scripts, undefined);
-  assert.equal(manifest.dependencies["@seeker-vault/server-sdk"], undefined);
+  assert.equal(
+    manifest.dependencies["@seeker_agent_connect/server-sdk"],
+    undefined,
+  );
   for (const value of Object.values(manifest.dependencies)) {
     assert.doesNotMatch(value, /^(?:workspace:|catalog:|file:|link:)/);
     assert.doesNotMatch(value, /[/\\](?:Users|home|workspace|worktrees)[/\\]/);
   }
   const emitted = readAllJavaScript(join(packageRoot, "dist"));
-  assert.doesNotMatch(emitted, /["']@seeker-vault\/server-sdk/);
+  assert.doesNotMatch(emitted, /["']@seeker_agent_connect\/server-sdk/);
   assert.ok(emitted.includes("vendor/server-sdk"));
 }
 

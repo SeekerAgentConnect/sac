@@ -108,7 +108,7 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 
 | Task | Status |
 | --- | --- |
-| SAW-009: Durable request contract and lifecycle | Done. `seekervault.request.v1` defines the phone's `PairingService` and `RequestService`, the actions, the lifecycle and its transitions, idempotency, and the errors. [`docs/protocol.md`](docs/protocol.md#stage-2-durable-requests) specifies all of that plus the agent's MCP tools, and [`docs/architecture.md`](docs/architecture.md) shows how the parts fit together. The rules exist as tested pure code in `mcp-server/src/requests/`, with fixtures checked in both runtimes. SAW-010 serves it. |
+| SAW-009: Durable request contract and lifecycle | Done. `seekervault.request.v1` defines the phone's `PairingService` and `RequestService`, the actions, the lifecycle and its transitions, idempotency, and the errors. [`docs/protocol.md`](docs/protocol.md#stage-2-durable-requests) specifies all of that plus the agent's MCP tools, and [`docs/architecture.md`](docs/architecture.md) shows how the parts fit together. The rules exist as tested pure code in `servers/mcp-server/src/requests/`, with fixtures checked in both runtimes. SAW-010 serves it. |
 | SAW-010: Persistent sidecar queue and async MCP lifecycle | Done. The MCP server stores requests in SQLite (`DATABASE_PATH`, default `~/.seeker-agent-connect/mcp-server/direct-server.db`), with migrations and durable commits, and creation and results are idempotent. Agents call `vault_request_ack`, `vault_get_request`, and `vault_cancel_request`, which answer at once. The phone's `RequestService` lists, reads, and answers requests. Requests survive restarts, and nothing runs on its own. See [`docs/development/mcp-server.md`](docs/development/mcp-server.md#storage-and-lifecycle). |
 | SAW-011: Secure pairing and separate access roles | Done. `pnpm pair` shows a one-use pairing code, as a QR code and as text, and the phone exchanges it for its own credential. Only that credential opens the phone's `RequestService`. The agent's MCP token opens `/mcp` only, and `PHONE_TOKEN` stays with the Stage 1 live-test screen. One phone is paired at a time, and `pnpm pair revoke` revokes it. A phone on another network reaches the loopback sidecar through a trusted TLS endpoint, such as Tailscale Serve. See [`docs/security.md`](docs/security.md). |
 | SAW-012: Android pairing and multiple connections | Done. The app opens on **Connections**. It pairs by scanning the `pnpm pair` QR code or by entering the code, and it shows the server for the owner to confirm first. Each sidecar's connection is kept apart, with its own name, address, and credential. The credential is encrypted under an Android Keystore key and never backed up. **Connection details** refreshes, renames, and disconnects, which revokes the connection on the sidecar. See [`docs/guides/pairing.md`](docs/guides/pairing.md). |
@@ -127,33 +127,60 @@ Stage 5.2 (SAW-048 through SAW-053) remains complete. `pnpm test:updates` crosse
 | SAW-002: Live-command protocol and generated clients | Done. `LiveCommandService`, generated TypeScript and Kotlin code, and cross-runtime fixtures; see [`docs/protocol.md`](docs/protocol.md). |
 | SAW-003: Live MCP command bridge | Done. `/mcp` with `vault_display_command`, the phone's Connect API, and `/healthz`; see [`docs/development/mcp-server.md`](docs/development/mcp-server.md). |
 | SAW-004: Android hello-world screen | Done. A stock Material 3 live-test screen: connect, the received text, and a one-tap OK, with lifecycle handling; see [`docs/development/android.md`](docs/development/android.md). The owner's check on the physical Seeker passed on 2026-09-11. |
-| SAW-005: MCP test client | Done. `pnpm agent hello "Hello Seeker"` calls the tool over MCP and prints the acknowledgement; see [`test-agent/README.md`](test-agent/README.md). The owner's check on the physical Seeker passed on 2026-09-11. |
+| SAW-005: MCP test client | Done. `pnpm agent hello "Hello Seeker"` calls the tool over MCP and prints the acknowledgement; see [`tools/test-agent/README.md`](tools/test-agent/README.md). The owner's check on the physical Seeker passed on 2026-09-11. |
 | SAW-006: MacBook → Seeker build and run guide | Done. A quickstart from a fresh MacBook to an acknowledged "Hello Seeker", and a troubleshooting page; see [`docs/guides/macbook-seeker-quickstart.md`](docs/guides/macbook-seeker-quickstart.md). The owner followed it on their Seeker on 2026-09-11. The Android Studio run isn't recorded. |
 | SAW-007: Real Hermes connection | Done. A Hermes `mcp_servers` entry to merge ([`examples/hermes.config.yaml`](examples/hermes.config.yaml)) and a guide for Hermes on the Mac or on a VPS through an SSH reverse tunnel; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md). Hermes's own MCP client passed against the sidecar. The owner's real Hermes session with the Seeker passed on 2026-09-11. |
 | SAW-008: Stage 1 acceptance gate | Done. `pnpm test:hello` runs the acceptance suite, and `pnpm test:hello --device` runs the round trip on a device or emulator. CI runs both, the device one on an emulator. Stage boundary guards run on every check. See [`docs/testing/stage-1.md`](docs/testing/stage-1.md). The owner's Hermes → Seeker → OK → Hermes round trip passed on 2026-09-11. `pnpm test:hello --device` hasn't run on the Seeker yet. |
 
-## Repository structure
+## Repository layout
+
+This is one product monorepo: the app, the protocol, the SDK, the servers and the demos change
+together in one pull request, and each component still installs, builds and ships on its own. A
+component's identifier is the same in its folder name, the root `pnpm` commands, its published
+artifact and its release tag. The old → new path mapping, component dependencies and the migration
+steps for deployments that used the old paths are in
+[`docs/development/monorepo-layout.md`](docs/development/monorepo-layout.md).
+
+Components are released independently and can be installed from a registry without this checkout:
+npm under `@seeker_agent_connect` and containers in the Docker Hub repository
+`docker.io/brenat/seeker-agent-connect`, one tag prefix per component (`gateway-0.2.0`,
+`mcp-0.2.0`). [`docs/guides/installation.md`](docs/guides/installation.md) has the install, `npx`,
+Docker and Compose examples and the tag table;
+[`docs/development/releases.md`](docs/development/releases.md) has the release process.
+
+| Component | Path | What it is | Build and check (from the root) |
+| --- | --- | --- | --- |
+| `android` | `apps/android/` | Kotlin/Compose Android project with `app` and `designsystem` modules: the two connection modes, review/wallet flows, reusable UI and previews; see [`docs/development/android.md`](docs/development/android.md) | `pnpm check:android`; `(cd apps/android && ./gradlew :app:assembleDebug)` |
+| `gateway` | `services/gateway/` | The shared feed gateway in Go: public feeds are published once and read by every subscriber through isolated read and publisher listeners; its admin UI, push relay and Centrifugo image live here too; see [`docs/wiki/feed-gateway.md`](docs/wiki/feed-gateway.md) and [`docs/development/feed-gateway.md`](docs/development/feed-gateway.md) | `pnpm check:gateway`; `docker build -f services/gateway/Dockerfile .` |
+| `protocol` | `packages/protocol/` | The one canonical protocol source: the Buf module in `proto/` with its cross-runtime fixtures in `proto/fixtures`, `buf.yaml`, every `buf.gen*.yaml` template (each names the component directory it writes), and the vendored Centrifugo schema in `third_party/`; see [`packages/protocol/proto/README.md`](packages/protocol/proto/README.md) and [`docs/protocol.md`](docs/protocol.md) | `pnpm generate`; `pnpm check:generated` |
+| `server-sdk` | `packages/server-sdk/` | Embeddable TypeScript Direct Server SDK: durable lifecycle, pairing, phone APIs, updates and public package exports; see [`packages/server-sdk/README.md`](packages/server-sdk/README.md) and [`docs/development/server-sdk.md`](docs/development/server-sdk.md) | `pnpm build:server-sdk`; `pnpm test:server-sdk-package` |
+| `publisher-support` | `packages/publisher-support/` | The Go source library the two public-feed demos share: the durable publication/outbox engine, the gateway HTTP/Connect client, the feed document rules and the business-API frame. It has no command, no image and no deployment of its own, and it is not a published feed-publisher client. See [`packages/publisher-support/README.md`](packages/publisher-support/README.md). | `pnpm check:publisher-support` |
+| `mcp-server` | `servers/mcp-server/` | Self-hosted TypeScript/Node MCP product: one source/npm/Docker CLI, `/mcp`, `/healthz`, direct phone APIs, provider adapters, stable external state and artifact verification, consuming only the public SDK API; see its [`README`](servers/mcp-server/README.md) and [`docs/development/mcp-server.md`](docs/development/mcp-server.md) | `pnpm dev:mcp-server`; `pnpm test:mcp-server-package`; `docker build -f servers/mcp-server/Dockerfile .` |
+| `mcp-skr-staking` | `servers/mcp-skr-staking/` | A second, independent direct server (SEE-146): a standalone MCP server for one owner's SKR staking position, with five tools, its own connection, its own `SKR_STAKING_*` configuration and its own deployment. It builds unsigned transactions and never signs or sends; see its [`README`](servers/mcp-skr-staking/README.md), [`docs/wiki/skr-staking.md`](docs/wiki/skr-staking.md) and [`docs/development/skr-staking-server.md`](docs/development/skr-staking-server.md) | `pnpm dev:mcp-skr-staking`; `pnpm test:skr-staking-package`; `docker build -f servers/mcp-skr-staking/Dockerfile .` |
+| `demo-signals` | `examples/demo-signals/` | The CopyTrading signals demo — an independent public-feed demo (SEE-95): its own module, image, database, and guide. The canonical portable preset is `deploy/copytrading`; it starts no feed, MCP server, Prediction demo, or ingress. | `pnpm check:demo-signals`; `docker build -f examples/demo-signals/Dockerfile .` |
+| `demo-prediction` | `examples/demo-prediction/` | An independent public-feed demo (SEE-96): its own module, image, database, and guide. The canonical portable preset is `deploy/prediction`; neither demo builds, starts, imports, or shares data with the other. | `pnpm check:demo-prediction`; `docker build -f examples/demo-prediction/Dockerfile .` |
+| `test-agent` | `tools/test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`tools/test-agent/README.md`](tools/test-agent/README.md). | `pnpm agent`; `pnpm test:hello`; `pnpm test:queue` |
+| `loadtest` | `tools/loadtest/` | The load, isolation and failover harness for the gateway, in a Go module of its own; see [`tools/loadtest/README.md`](tools/loadtest/README.md) and [`docs/development/load.md`](docs/development/load.md) | `pnpm check:loadtest`; `pnpm test:load` |
+
+Shared directories that are not components:
 
 | Path | Contents |
 | --- | --- |
-| `android/` | Kotlin/Compose Android project with `app` and `designsystem` modules: the two connection modes, review/wallet flows, reusable UI and previews; see [`docs/development/android.md`](docs/development/android.md) |
-| `server-sdk/` | Embeddable TypeScript Direct Server SDK: durable lifecycle, pairing, phone APIs, updates and public package exports; see [`server-sdk/README.md`](server-sdk/README.md) and [`docs/development/server-sdk.md`](docs/development/server-sdk.md) |
-| `mcp-server/` | Self-hosted TypeScript/Node MCP product: one source/npm/Docker CLI, `/mcp`, `/healthz`, direct phone APIs, provider adapters, stable external state and artifact verification, consuming only the public SDK API; see its [`README`](mcp-server/README.md) and [`docs/development/mcp-server.md`](docs/development/mcp-server.md) |
-| `skr-staking-server/` | A second, independent direct server (SEE-146): a standalone MCP server for one owner's SKR staking position, with five tools, its own connection, its own `SKR_STAKING_*` configuration and its own deployment. It builds unsigned transactions and never signs or sends; see its [`README`](skr-staking-server/README.md), [`docs/wiki/skr-staking.md`](docs/wiki/skr-staking.md) and [`docs/development/skr-staking-server.md`](docs/development/skr-staking-server.md) |
-| `android/app/src/main/java/.../skr/` | The phone's own reading of that program (SEE-146): its compiled-in program ID and mint, the PDAs it derives for itself, the account decoders, and `inspectStaking` — an independent reading of the prepared bytes rather than a check of the server's claims |
-| `proto/` | Protobuf contract (a Buf module) and cross-runtime fixtures in `proto/fixtures`; see [`docs/protocol.md`](docs/protocol.md) |
-| `scripts/` | `generate.mjs`, which backs `pnpm generate` and `pnpm check:generated` |
-| `test-agent/` | Minimal MCP test client (`pnpm agent`). It uses the same MCP interface as Hermes, with no LLM; see [`test-agent/README.md`](test-agent/README.md). |
 | `deploy/` | Canonical independent Compose projects for feed, direct MCP, SKR staking, CopyTrading, Prediction, optional public ingress, and isolated host-specific operator examples; see [`deploy/README.md`](deploy/README.md) |
-| `android/app/src/main/java/.../jupiter/` | The two bundled client plugins (Stage 7.1, SEE-93, SEE-94): `jupiter.swap` — a publisher's spot-swap signal, the owner's own amount, a route from the provider — and `jupiter.prediction` — a market a publisher pointed at, the owner's own side and stake, and a real order. Both read the bytes themselves before any wallet opens. See [`docs/wiki/jupiter-swap.md`](docs/wiki/jupiter-swap.md), [`docs/wiki/jupiter-prediction.md`](docs/wiki/jupiter-prediction.md) and [`docs/integrations/jupiter.md`](docs/integrations/jupiter.md) |
-| `android/app/src/main/java/.../solana/` | The app's only chain endpoint (Stage 7.1, SEE-94): one read-only call, used to resolve the address lookup tables a prediction order's transaction names. Provider-neutral, the application's own endpoint, and empty by default. See [`docs/security.md`](docs/security.md#resolving-a-lookup-table) |
-| `feed-gateway/` | The shared feed gateway in Go: public feeds are published once and read by every subscriber through isolated read and publisher listeners; see [`docs/wiki/feed-gateway.md`](docs/wiki/feed-gateway.md) and [`docs/development/feed-gateway.md`](docs/development/feed-gateway.md) |
-| `publisher-support/` | The Go source library the two public-feed demos share: the durable publication/outbox engine, the gateway HTTP/Connect client, the feed document rules and the business-API frame. It has no command, no image and no deployment of its own, and it is not a published feed-publisher client. See [`publisher-support/README.md`](publisher-support/README.md). |
-| `demo-copytrading/` | An independent public-feed demo (SEE-95): its own module, image, database, and guide. The canonical portable preset is `deploy/copytrading`; it starts no feed, MCP server, Prediction demo, or ingress. |
-| `demo-prediction/` | An independent public-feed demo (SEE-96): its own module, image, database, and guide. The canonical portable preset is `deploy/prediction`; neither demo builds, starts, imports, or shares data with the other. |
-| `examples/` | Configuration to merge into other tools: `hermes.config.yaml`; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md) |
+| `fixtures/` | Cross-runtime test data the app and the servers both read: transfer transactions, captured Jupiter answers and the restricted-feed challenge |
+| `scripts/` | Root commands: `generate.mjs` (`pnpm generate`, `pnpm check:generated`), the Go and deployment checks, the acceptance/integration/load runners, and the emulator helpers |
+| `examples/*.yaml` | Configuration to merge into other tools: `hermes.config.yaml`; see [`docs/integrations/hermes.md`](docs/integrations/hermes.md) |
+| `design/` | The Android design guide, tokens and captured references; see [`design/README.md`](design/README.md) |
 | `docs/` | The architecture and the protocol, plus development docs, guides, testing notes, and the changelog |
 | `.github/workflows/ci.yml` | CI for pull requests and pushes |
+
+Inside the Android app:
+
+| Path | Contents |
+| --- | --- |
+| `apps/android/app/src/main/java/.../skr/` | The phone's own reading of the SKR staking program (SEE-146): its compiled-in program ID and mint, the PDAs it derives for itself, the account decoders, and `inspectStaking` — an independent reading of the prepared bytes rather than a check of the server's claims |
+| `apps/android/app/src/main/java/.../jupiter/` | The two bundled client plugins (Stage 7.1, SEE-93, SEE-94): `jupiter.swap` — a publisher's spot-swap signal, the owner's own amount, a route from the provider — and `jupiter.prediction` — a market a publisher pointed at, the owner's own side and stake, and a real order. Both read the bytes themselves before any wallet opens. See [`docs/wiki/jupiter-swap.md`](docs/wiki/jupiter-swap.md), [`docs/wiki/jupiter-prediction.md`](docs/wiki/jupiter-prediction.md) and [`docs/integrations/jupiter.md`](docs/integrations/jupiter.md) |
+| `apps/android/app/src/main/java/.../solana/` | The app's only chain endpoint (Stage 7.1, SEE-94): one read-only call, used to resolve the address lookup tables a prediction order's transaction names. Provider-neutral, the application's own endpoint, and empty by default. See [`docs/security.md`](docs/security.md#resolving-a-lookup-table) |
 
 ## Quickstart
 
@@ -167,6 +194,16 @@ restart verification, backup, rollback, and troubleshooting. The shorter
 [`self-hosting` reference](docs/guides/self-hosting.md) collects boundaries and external needs.
 
 Everything builds from this checkout, and nothing in the path is ours. It does need things from other people — a domain and a certificate authority to go public, somebody's Solana RPC endpoint for transfers, an authorization server for a hosted client — and [What this needs from outside](docs/guides/self-hosting.md#what-this-needs-from-outside) is the full list. Connecting an agent is [Hermes](docs/integrations/hermes.md) by default, or [Claude over OAuth](docs/integrations/claude.md) as an option.
+
+## Installing from a registry
+
+Nothing here needs this checkout. `npm install @seeker_agent_connect/server-sdk` embeds the Direct
+Server SDK in your own Node application; `npx --package=@seeker_agent_connect/mcp-server --
+seeker-agent-connect-mcp` runs the MCP server; `docker.io/brenat/seeker-agent-connect:gateway-*` and the rest
+run the services. [`docs/guides/installation.md`](docs/guides/installation.md) has the full set,
+including a checkout-free Compose file, how to pin by digest, and the migration table from the
+previous Docker Hub names. [`docs/development/releases.md`](docs/development/releases.md) is how
+those artifacts are produced.
 
 ## Building a server of your own
 
@@ -191,15 +228,15 @@ corepack enable pnpm             # or: npm install --global pnpm
 pnpm install --frozen-lockfile
 pnpm check                       # formatting, lint, type checks, tests
 pnpm check:android               # design-literal guard, Kotlin formatting/tests/lint, debug APKs
-pnpm check:feed-gateway             # the feed gateway: gofmt, go vet, go test (needs Go)
+pnpm check:gateway               # the feed gateway: gofmt, go vet, go test (needs Go)
 pnpm check:demos                 # the shared library and both demos, each on its own (needs Go)
 pnpm test:integration            # the Stage 7.1 cross-component run (needs Go)
 pnpm check:loadtest              # the load harness: gofmt, go vet, go test (needs Go)
 pnpm test:load                   # the load, isolation and failover run (needs Go and a broker)
-(cd android && ./gradlew :app:assembleDebug)
+(cd apps/android && ./gradlew :app:assembleDebug)
 ```
 
-The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. Android displays it as **Seeker Agent Connect**, with the supplied lime launcher icon. The application ID remains `io.github.brrenat.seekervault`, so installing this branding update upgrades the existing app and preserves its data. The automated evidence and physical-device status are in [`docs/testing/see-65.md`](docs/testing/see-65.md).
+The debug APK is written to `apps/android/app/build/outputs/apk/debug/app-debug.apk`. Android displays it as **Seeker Agent Connect**, with the supplied lime launcher icon. The application ID remains `io.github.brrenat.seekervault`, so installing this branding update upgrades the existing app and preserves its data. The automated evidence and physical-device status are in [`docs/testing/see-65.md`](docs/testing/see-65.md).
 
 ## Commands
 
@@ -208,20 +245,21 @@ The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 | `pnpm install --frozen-lockfile` | Installs exactly what the committed lockfile specifies | Works |
 | `pnpm check` | Runs Prettier, `buf format`, ESLint, `buf lint`, the SDK build, and every pnpm workspace's type checks and tests without changing files | Works |
 | `pnpm check:android` | Rejects raw production colour/dimension/type literals outside `:designsystem`, runs Spotless (ktfmt), Android unit tests and both modules' lint, and builds the debug APK and instrumentation test APK | Works |
-| `pnpm check:feed-gateway` | Checks the feed gateway (SEE-90): `gofmt`, `go vet`, and its Go tests. Needs Go; demo, integration, and load checks do too | Works |
+| `pnpm check:gateway` | Checks the feed gateway (SEE-90), `services/gateway`; `pnpm check:feed-gateway` is a migration alias: `gofmt`, `go vet`, and its Go tests. Needs Go; demo, integration, and load checks do too | Works |
 | `pnpm check:deployments` | Resolves all eight portable/ingress/operator Compose presets and checks their service, network, route, Redis, and volume boundaries without contacting the Docker daemon | Works |
-| `pnpm check:demos` | Checks the shared library and both public-feed demos (SEE-95, SEE-96, SEE-134): `gofmt`, `go vet`, and the Go tests, **one module at a time** — including the two that run the **real** gateway as a separate process, which it builds for you. `pnpm check:publisher-support`, `pnpm check:copytrading` and `pnpm check:prediction` run one of them. The test that reads the live prediction provider is opt-in (`SEEKERVAULT_JUPITER=1`) and is not in it. Needs Go | Works |
+| `pnpm check:demos` | Checks the shared library and both public-feed demos (SEE-95, SEE-96, SEE-134): `gofmt`, `go vet`, and the Go tests, **one module at a time** — including the two that run the **real** gateway as a separate process, which it builds for you. `pnpm check:publisher-support`, `pnpm check:demo-signals` and `pnpm check:demo-prediction` run one of them (`check:copytrading` and `check:prediction` remain as aliases). The test that reads the live prediction provider is opt-in (`SEEKERVAULT_JUPITER=1`) and is not in it. Needs Go | Works |
 | `docker compose --env-file deploy/feed/.env -f deploy/feed/compose.yaml up -d --build` | Builds and starts the feed gateway, Centrifugo, and Redis on the portable reference topology | NOT RUN: Docker daemon socket permission denied |
-| `pnpm build` | Compiles the SDK, MCP server and test agent; the SDK runtime and declarations go to `server-sdk/dist`, and the staged self-contained MCP package goes to `mcp-server/package` | Works |
+| `pnpm build` | Compiles the SDK, MCP server and test agent; the SDK runtime and declarations go to `packages/server-sdk/dist`, and the staged self-contained MCP package goes to `servers/mcp-server/package` | Works |
 | `pnpm test:server-sdk-package` | Runs real `npm pack --dry-run` and `npm pack`, audits the tarball, installs it outside the workspace, type-checks its public exports, verifies import has no side effects, and exercises pairing/lifecycle/restart/idempotency | Works; never publishes |
 | `pnpm test:mcp-server-package` | Builds the exact executable MCP tarball, audits its vendored SDK and dependencies, exercises local/global-style/transient installs, then drives health, pairing, MCP discovery, phone result, restart persistence, reinstall, and competing-store refusal outside the workspace | Works; never publishes |
+| `pnpm test:skr-staking-package` | Builds the exact SKR staking tarball, audits its published manifest and vendored SDK, installs it outside the workspace, and drives health, pairing, MCP discovery and a read-only `get_staking_status` round trip against a stub mainnet endpoint before a clean SIGTERM | Works; never publishes, reaches no cluster |
 | `docker compose --env-file deploy/mcp/.env -f deploy/mcp/compose.yaml up -d --build` | Builds and starts only the direct MCP server on host loopback ([self-hosting](docs/guides/self-hosting.md)) | NOT RUN: Docker daemon socket permission denied |
-| `pnpm dev:mcp-server` | Starts the MCP server with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. `pnpm dev:sidecar` is a migration alias. | Works |
+| `pnpm dev:mcp-server` | Starts the MCP server with the `.env` configuration: `/mcp`, the phone API, and `/healthz`. Ctrl+C stops it. `pnpm dev:sidecar` is a migration alias; `pnpm dev:mcp-skr-staking` starts the SKR staking server the same way. | Works |
 | `pnpm pair [status \| revoke]` | Shows a one-use pairing code for the phone, as a QR code and as text. `status` shows the paired phone, and `revoke` revokes it. See [`docs/development/mcp-server.md`](docs/development/mcp-server.md#pairing-a-phone), and for the app, [`docs/guides/pairing.md`](docs/guides/pairing.md). | Works |
-| `pnpm generate` | Regenerates the TypeScript and Kotlin protocol code and the binary fixtures from `proto/`; needs network access | Works |
+| `pnpm generate` | Regenerates the TypeScript and Kotlin protocol code and the binary fixtures from `packages/protocol/proto/`; needs network access | Works |
 | `pnpm check:generated` | Fails if the committed generated code or fixtures differ from a fresh generation; changes no files | Works |
 | `pnpm agent hello [text]` | Shows text on the phone through MCP and prints the acknowledgement. OFFLINE, BUSY, TIMEOUT, and connection errors each get their own exit code. | Works |
-| `pnpm agent ack <text>`, `get <id>`, `cancel <id>` | Queues an acknowledgement for the owner, reads a request back, or withdraws one, through the durable MCP tools. Each prints the request as JSON. See [`test-agent/README.md`](test-agent/README.md). | Works; needs a paired phone, and `ack` needs `MCP_DEMO_TOOLS=true` |
+| `pnpm agent ack <text>`, `get <id>`, `cancel <id>` | Queues an acknowledgement for the owner, reads a request back, or withdraws one, through the durable MCP tools. Each prints the request as JSON. See [`tools/test-agent/README.md`](tools/test-agent/README.md). | Works; needs a paired phone, and `ack` needs `MCP_DEMO_TOOLS=true` |
 | `pnpm agent address` | Prints the wallet the owner connected on their phone, and its network, through `vault_get_address`. See [`docs/guides/wallet-setup.md`](docs/guides/wallet-setup.md). | Works; exits 9 with `WALLET_NOT_CONNECTED` until the owner connects one |
 | `pnpm agent sign <text>` | Asks the owner's wallet to sign the text, through `vault_sign_message`. It prints the request as PENDING; the owner approves it on the phone, and `pnpm agent get <id>` reads the signature back and verifies it. See [`docs/guides/message-signing.md`](docs/guides/message-signing.md). | Works; needs a connected wallet |
 | `pnpm agent transfer <to> <amount> --wallet <address> --network <name>` | Asks the named owner wallet to send `<amount>` base units to `<to>`, through `vault_transfer`; `--mint <address>` sends a classic SPL token instead of SOL. It prints the request as PENDING, and builds, signs, and sends nothing. See [`docs/guides/transfers.md`](docs/guides/transfers.md). | Works; needs a connected wallet and `SOLANA_RPC_URL` |
@@ -262,15 +300,19 @@ openssl rand -hex 32   # run twice: once for MCP_TOKEN, once for PHONE_TOKEN
 
 `.github/workflows/ci.yml` runs on pull requests and on pushes to `master` and `develop`:
 
-- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check:deployments`, `pnpm check`, `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer`, both exact package tests, `pnpm check:generated`, and `pnpm build`
-- **Feed gateway:** `pnpm check:feed-gateway`, with the Go version read from `feed-gateway/go.mod`
-- **Publisher support:** `pnpm check:publisher-support`, with the Go version read from `publisher-support/go.mod`
-- **CopyTrading demo:** `pnpm check:copytrading` and its own `docker build`, from `demo-copytrading/go.mod`
-- **Prediction demo:** `pnpm check:prediction` and its own `docker build`, from `demo-prediction/go.mod`. Each demo has a job of its own, because "either demo builds without the other" is a claim and a job that builds exactly one of them is what tests it
+- **Node:** `pnpm install --frozen-lockfile`, then `pnpm check:deployments`, `pnpm check:release`, `pnpm check`, `pnpm test:hello`, `pnpm test:queue`, `pnpm test:transfer`, all three exact package tests, `pnpm check:generated`, and `pnpm build`
+- **Gateway:** `pnpm check:gateway`, with the Go version read from `services/gateway/go.mod`
+- **Publisher support:** `pnpm check:publisher-support`, with the Go version read from `packages/publisher-support/go.mod`
+- **Signals demo (CopyTrading):** `pnpm check:demo-signals` and its own `docker build`, from `examples/demo-signals/go.mod`
+- **Prediction demo:** `pnpm check:demo-prediction` and its own `docker build`, from `examples/demo-prediction/go.mod`. Each demo has a job of its own, because "either demo builds without the other" is a claim and a job that builds exactly one of them is what tests it
 - **Android:** `pnpm check:android` on Temurin 21
 - **Emulator:** `pnpm test:hello --device` on an Android 16 (API 36) emulator. An emulator run never counts as the physical Seeker check.
 
-The workflow has read-only repository permissions and never commits.
+The workflow has read-only repository permissions, never commits, and cannot publish: it holds no
+registry credential, and `pnpm check:release` fails if a publish step ever appears in it.
+
+`.github/workflows/release.yml` is the one workflow that publishes, and only a `<component>-v<version>`
+tag or a deliberate dispatch starts it. See [`docs/development/releases.md`](docs/development/releases.md).
 
 ## License
 

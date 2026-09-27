@@ -5,7 +5,7 @@ Seeker Agent Connect. A backend embeds it in-process: backend code creates and r
 requests through the library, while the phone uses the mounted Connect API. MCP is one host adapter,
 not part of the SDK.
 
-Package: `@seeker-vault/server-sdk`
+Package: `@seeker_agent_connect/server-sdk`
 
 Runtime: Node.js 24.21 or newer within the Node 24 release line
 
@@ -44,7 +44,7 @@ to it.
 
 ## Public entry points
 
-`@seeker-vault/server-sdk` exports:
+`@seeker_agent_connect/server-sdk` exports:
 
 - `openDirectServer(options)`: explicitly opens/migrates the configured SQLite file and initializes
   one direct engine. Importing the module does none of those things.
@@ -61,7 +61,7 @@ to it.
   update streams without closing SQLite under an in-flight response; the second drains queued
   invalidations and closes the database. `close()` calls `beginShutdown()` if needed and is
   idempotent.
-- `@seeker-vault/server-sdk/protocol`: the direct protobuf messages and service descriptors needed
+- `@seeker_agent_connect/server-sdk/protocol`: the direct protobuf messages and service descriptors needed
   by callers and phone protocol clients. There are no wildcard exports into private source paths.
 
 Required initialization values are the database path, the externally advertised public origin and
@@ -102,6 +102,8 @@ for those files, then the real tarball is installed in a temporary project outsi
 That project imports and type-checks the package, starts the phone API, pairs a protocol client,
 creates and observes a request, records the phone result and shuts both listener and SDK down.
 
-A future release owner may choose a version, review the packed file list and provenance, authenticate
-to the intended registry and run a deliberate `npm publish` from the package directory. Those steps
-are intentionally manual and are not performed or automated by SEE-131.
+SEE-168 turned that audit into a release gate. The package is published to
+`@seeker_agent_connect/server-sdk`; the version lives in `release/components.json`, a
+`server-sdk-v<version>` tag runs `.github/workflows/release.yml`, and that workflow re-runs this
+same audit against the tagged commit before it publishes. No publish happens from a pull request
+or from a developer's machine. See [releases.md](releases.md).

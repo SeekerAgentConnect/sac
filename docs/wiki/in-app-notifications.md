@@ -39,7 +39,7 @@ contract.
 
 The design system is also the only place that *can* own it. `StageBoundaryTest`'s
 `theV4PresentationUsesOnlySolidOpaqueLayers` rejects `shadow(`, `graphicsLayer`, `copy(alpha` and a
-translucent colour anywhere under `android/app/src/main`, and a banner that floats over the content
+translucent colour anywhere under `apps/android/app/src/main`, and a banner that floats over the content
 and fades under a finger needs all of them.
 
 `:app`'s `notifications/` owns everything about *which* banner is visible:

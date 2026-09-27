@@ -27,7 +27,7 @@ It covers Hermes on the Mac, Hermes on a VPS, and Hermes against the
 ## Before you start
 
 - Start the MCP server by one supported source, Docker, or npm-tarball route in
-  [`mcp-server/README.md`](../../mcp-server/README.md). Keep it running; Hermes connects to its URL.
+  [`servers/mcp-server/README.md`](../../servers/mcp-server/README.md). Keep it running; Hermes connects to its URL.
 - Hermes is installed and works on its own. Its MCP support is part of the standard install.
 - You need the `MCP_TOKEN` used by the chosen start: root `.env` for source,
   `deploy/mcp/.env` for Compose, or the explicit npm `config.env`. It is the agent credential; the
@@ -497,7 +497,7 @@ For problems on the phone or the Mac, see [`troubleshooting.md`](../guides/troub
 ## 9. Hermes against the packaged server
 
 Sections 1 to 7 apply unchanged to the source, standalone Docker, and executable npm-tarball starts
-in [`mcp-server/README.md`](../../mcp-server/README.md). Start
+in [`servers/mcp-server/README.md`](../../servers/mcp-server/README.md). Start
 `seeker-agent-connect-mcp start`, leave it running, and give Hermes the resulting `/mcp` URL. Do
 not put `npm exec`, `npx`, or the executable in Hermes command/arguments fields: the executable is
 an HTTP server and does not implement MCP stdio. The baseline is always two independently started
@@ -544,7 +544,7 @@ the only agent is your own.
 ### Compare with the repository test agent
 
 The portable project intentionally starts no test client. From a checkout, point the separately
-started [`test-agent`](../../test-agent/README.md) at the same reachable MCP URL and token, then run
+started [`test-agent`](../../tools/test-agent/README.md) at the same reachable MCP URL and token, then run
 `pnpm agent capabilities`. If that works and Hermes does not, inspect the Hermes registry entry,
 environment loading and transport selection. This comparison does not replace the real Hermes
 request/result walkthrough.

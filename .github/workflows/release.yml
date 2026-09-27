@@ -1,0 +1,313 @@
+name: Release
+
+# Publishing lives here and nowhere else. CI (.github/workflows/ci.yml) builds and audits the same
+# artifacts on every run and never contacts a registry, so a pull request cannot publish: the only
+# way into this workflow is a version tag or a deliberate dispatch by somebody who can push one.
+#
+# Tags are `<component>-v<version>`, the identifiers in release/components.json — `gateway-v1.2.0`,
+# `server-sdk-v1.2.0-rc.1`. One tag releases one component; a component's npm package and its
+# image share the tag's version and the commit it points at.
+#
+# Images go to the one Docker Hub repository docker.io/brenat/seeker-agent-connect, separated by
+# each component's tag prefix (`gateway-1.2.0`, `mcp-sha-<commit>`). npm is a dry run while
+# release/components.json sets `registries.npmDryRun`: the tarball is packed, never uploaded.
+on:
+  push:
+    tags:
+      - "*-v*"
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Component identifier from release/components.json
+        required: true
+        type: string
+      channel:
+        description: >-
+          release = publish the manifest's version as the tag would;
+          development = push only <prefix>-sha-<commit> and <prefix>-develop images, never npm.
+        required: true
+        default: development
+        type: choice
+        options: [development, release]
+      dry_run:
+        description: Build and audit everything, publish nothing
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  # Per component: two releases of the same component must never interleave, but the gateway and
+  # the SDK are independent and there is no reason for one to wait on the other.
+  group: release-${{ github.event.inputs.component || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve the component and version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      component: ${{ steps.plan.outputs.component }}
+      version: ${{ steps.plan.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      development: ${{ steps.plan.outputs.development }}
+      dry_run: ${{ steps.plan.outputs.dry_run }}
+      npm_dry_run: ${{ steps.plan.outputs.npm_dry_run }}
+      npm_name: ${{ steps.plan.outputs.npm_name }}
+      npm_directory: ${{ steps.plan.outputs.npm_directory }}
+      npm_tag: ${{ steps.plan.outputs.npm_tag }}
+      has_npm: ${{ steps.plan.outputs.has_npm }}
+      has_image: ${{ steps.plan.outputs.has_image }}
+      image_ref: ${{ steps.plan.outputs.image_ref }}
+      image_version_tag: ${{ steps.plan.outputs.image_version_tag }}
+      image_tags: ${{ steps.plan.outputs.image_tags }}
+      dockerfile: ${{ steps.plan.outputs.dockerfile }}
+      context: ${{ steps.plan.outputs.context }}
+      target: ${{ steps.plan.outputs.target }}
+      platforms: ${{ steps.plan.outputs.platforms }}
+      title: ${{ steps.plan.outputs.title }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - id: plan
+        name: Read release/components.json
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          INPUT_COMPONENT: ${{ github.event.inputs.component }}
+          INPUT_CHANNEL: ${{ github.event.inputs.channel }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
+          COMMIT: ${{ github.sha }}
+        run: node scripts/release-plan.mjs >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Build and audit the artifact
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The manifest, the npm manifests and the Dockerfiles have to agree before anything is built.
+      - run: pnpm check:release
+      # The same audits CI runs: the exact tarball, installed outside the workspace and exercised
+      # through its documented entry points. A release runs them again against the tagged commit.
+      - if: needs.resolve.outputs.component == 'server-sdk'
+        run: pnpm test:server-sdk-package
+      - if: needs.resolve.outputs.component == 'mcp-server'
+        run: pnpm test:mcp-server-package
+      - if: needs.resolve.outputs.component == 'mcp-skr-staking'
+        run: pnpm test:skr-staking-package
+
+  npm:
+    name: Publish to npm
+    needs: [resolve, verify]
+    if: needs.resolve.outputs.has_npm == 'true' && needs.resolve.outputs.development != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: Build the artifact
+        run: pnpm --filter ${{ needs.resolve.outputs.npm_name }} run build
+
+      # A published version is immutable, so a rerun of a finished release must stop here rather
+      # than fail halfway through. docs/development/releases.md § Retrying a partial release.
+      - name: Refuse to overwrite a published version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NAME: ${{ needs.resolve.outputs.npm_name }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          DRY: ${{ needs.resolve.outputs.npm_dry_run }}
+        run: |
+          if npm view "$NAME@$VERSION" version --json > /dev/null 2>&1; then
+            # A dry run uploads nothing, so an existing version is only worth a warning there.
+            if [ "$DRY" = "true" ]; then
+              echo "::warning::$NAME@$VERSION is already on the registry; a real publish would refuse it"
+              exit 0
+            fi
+            echo "::error::$NAME@$VERSION is already on the registry; bump the version instead of retagging"
+            exit 1
+          fi
+          echo "$NAME@$VERSION is not published yet"
+
+      # npm seeds `latest` on a package's very first publish whatever `--tag` says, and it will not
+      # let `latest` be deleted afterwards. So the rule "a prerelease never advances latest" is
+      # only meaningful once a stable version exists — and from then on it is checked, below.
+      - id: before
+        name: Record the current latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NAME: ${{ needs.resolve.outputs.npm_name }}
+        run: |
+          latest="$(npm view "$NAME@latest" version 2>/dev/null || true)"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ -z "$latest" ]; then
+            echo "::notice::$NAME has no published version yet. npm will point latest at this" \
+                 "one even though it is a release candidate; the first stable release moves it."
+          fi
+
+      - name: Publish
+        if: needs.resolve.outputs.npm_dry_run != 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        working-directory: ${{ needs.resolve.outputs.npm_directory }}
+        # --tag is what keeps a release candidate off `latest`: an RC goes to `next`, and a
+        # consumer running `npm install <name>` keeps getting the last stable version.
+        run: npm publish --access public --tag "${{ needs.resolve.outputs.npm_tag }}"
+
+      - name: Dry run
+        if: needs.resolve.outputs.npm_dry_run == 'true'
+        working-directory: ${{ needs.resolve.outputs.npm_directory }}
+        run: npm publish --access public --tag "${{ needs.resolve.outputs.npm_tag }}" --dry-run
+
+      # The acceptance criterion, as a check rather than a claim: publishing a release candidate
+      # must leave `latest` exactly where it was. It cannot run when there was no `latest` to
+      # begin with, which is the seeding case noted above.
+      - name: A release candidate must not have moved latest
+        if: >-
+          needs.resolve.outputs.npm_dry_run != 'true' &&
+          needs.resolve.outputs.prerelease == 'true' &&
+          steps.before.outputs.latest != ''
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NAME: ${{ needs.resolve.outputs.npm_name }}
+          BEFORE: ${{ steps.before.outputs.latest }}
+        run: |
+          after="$(npm view "$NAME@latest" version)"
+          if [ "$after" != "$BEFORE" ]; then
+            echo "::error::publishing a release candidate moved latest from $BEFORE to $after"
+            exit 1
+          fi
+          echo "latest is still $after"
+
+      - name: Summarise
+        env:
+          NAME: ${{ needs.resolve.outputs.npm_name }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          NPM_TAG: ${{ needs.resolve.outputs.npm_tag }}
+          DRY: ${{ needs.resolve.outputs.npm_dry_run }}
+        run: |
+          {
+            echo "### npm"
+            echo
+            echo "| field | value |"
+            echo "| -- | -- |"
+            echo "| package | \`$NAME@$VERSION\` |"
+            echo "| dist-tag | \`$NPM_TAG\` |"
+            echo "| dry run | $DRY |"
+            echo "| install | \`npm install $NAME@$VERSION\` |"
+            echo "| registry | https://www.npmjs.com/package/$NAME/v/$VERSION |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  image:
+    name: Publish to Docker Hub
+    needs: [resolve, verify]
+    if: needs.resolve.outputs.has_image == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require a Docker Hub credential
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN must be set: an account" \
+                 "with write access to brenat/seeker-agent-connect and a Docker Hub access token" \
+                 "with Read & Write scope. See docs/development/releases.md."
+            exit 1
+          fi
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Same rule as npm: a released tag is a fixed point. `<prefix>-sha-<commit>` and
+      # `<prefix>-develop` are the development channel's moving tags and are deliberately exempt.
+      - name: Refuse to overwrite a released tag
+        if: needs.resolve.outputs.development != 'true'
+        env:
+          RELEASED: ${{ needs.resolve.outputs.image_version_tag }}
+        run: |
+          if docker buildx imagetools inspect "$RELEASED" > /dev/null 2>&1; then
+            echo "::error::$RELEASED already exists; bump the version instead of retagging"
+            exit 1
+          fi
+          echo "$RELEASED is free"
+
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ needs.resolve.outputs.context }}
+          file: ${{ needs.resolve.outputs.dockerfile }}
+          target: ${{ needs.resolve.outputs.target }}
+          platforms: ${{ needs.resolve.outputs.platforms }}
+          push: ${{ needs.resolve.outputs.dry_run != 'true' }}
+          tags: ${{ needs.resolve.outputs.image_tags }}
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            VERSION=${{ needs.resolve.outputs.version }}
+            REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.resolve.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          cache-from: type=gha,scope=${{ needs.resolve.outputs.component }}
+          cache-to: type=gha,mode=max,scope=${{ needs.resolve.outputs.component }}
+
+      - name: Summarise
+        env:
+          IMAGE: ${{ needs.resolve.outputs.image_ref }}
+          RELEASED: ${{ needs.resolve.outputs.image_version_tag }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ needs.resolve.outputs.image_tags }}
+          DRY: ${{ needs.resolve.outputs.dry_run }}
+        run: |
+          {
+            echo "### Docker Hub"
+            echo
+            echo "| field | value |"
+            echo "| -- | -- |"
+            echo "| image | \`$RELEASED\` |"
+            echo "| digest | \`$DIGEST\` |"
+            echo "| dry run | $DRY |"
+            echo "| pull by digest | \`docker pull $IMAGE@$DIGEST\` |"
+            echo
+            echo "Tags pushed:"
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

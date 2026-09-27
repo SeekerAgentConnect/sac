@@ -1,14 +1,17 @@
 # Embedding the Direct Server SDK
 
-`@seeker-vault/server-sdk` lets a TypeScript backend host a private direct connection to Seeker
-Agent Connect without running MCP, a feed gateway, Redis or a deployment proxy. The package is
-prepared and tested as a local npm tarball in SEE-131; it has not been published to a registry.
+`@seeker_agent_connect/server-sdk` lets a TypeScript backend host a private direct connection to Seeker
+Agent Connect without running MCP, a feed gateway, Redis or a deployment proxy.
 
-The supported runtime is Node.js `>=24.21.0 <25`, using ESM. Install a reviewed local tarball as
-described in [`server-sdk/README.md`](../../server-sdk/README.md). Import only:
+```sh
+npm install @seeker_agent_connect/server-sdk
+```
 
-- `@seeker-vault/server-sdk` for initialization, request/pairing APIs and optional provider types;
-- `@seeker-vault/server-sdk/protocol` for the direct protobuf messages and service descriptors.
+The supported runtime is Node.js `>=24.21.0`, using ESM; releases are tested on 24.21.0, and the
+floor is where the `node:sqlite` the SDK stores state through became stable. Import only:
+
+- `@seeker_agent_connect/server-sdk` for initialization, request/pairing APIs and optional provider types;
+- `@seeker_agent_connect/server-sdk/protocol` for the direct protobuf messages and service descriptors.
 
 Source-relative imports and any other package subpath are private and unsupported.
 
@@ -29,7 +32,7 @@ Source-relative imports and any other package subpath are private and unsupporte
 Importing either package entry point alone does not read `.env`, open a file/database or port,
 register a process signal, initialize Firebase/Solana/MCP, or start a timer/background loop.
 
-The runnable [`minimal.ts`](../../server-sdk/examples/minimal.ts) example shows this sequence using
+The runnable [`minimal.ts`](../../packages/server-sdk/examples/minimal.ts) example shows this sequence using
 only public imports. Production ingress, TLS, authorization, health checks and process signals stay
 in the embedding host.
 

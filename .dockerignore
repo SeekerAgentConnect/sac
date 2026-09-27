@@ -29,12 +29,13 @@ google-services.json
 *.sqlite
 *.sqlite3
 
-# The images build the Node workspace only.
-android/
+# The images build the Node workspace and the Go services and demos only. Demo modules under
+# examples/ are build inputs; the tool configurations beside them are not.
+apps/
 docs/
-examples/
+examples/*.yaml
 fixtures/
-proto/
+packages/protocol/
 scripts/
 .claude/
 .github/

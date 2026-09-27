@@ -1,16 +1,16 @@
 pnpm-lock.yaml
 *.md
 .claude/
-android/
+apps/android/
 **/gen/
-# Written by `node mcp-server/src/testing/transaction-fixtures.ts`; its own test checks it byte for
+# Written by `node servers/mcp-server/src/testing/transaction-fixtures.ts`; its own test checks it byte for
 # byte, so reformatting it here would only make the two disagree.
 fixtures/transactions/
 # Real answers from Jupiter's prediction API, written by `node scripts/capture-jupiter.mjs
 # --events` (SEE-96). What they are for is the shape the provider really sends, so a formatter
 # rewriting them would make the committed file disagree with the next capture — and with what the
 # tests serve back.
-demo-prediction/internal/jupiter/testdata/
+examples/demo-prediction/internal/jupiter/testdata/
 # Approved Linear design attachments; docs/design/README.md records their exact hashes.
 docs/design/*.html
 # Claude Design exports and their generated, byte-compared reference output (SEE-113).

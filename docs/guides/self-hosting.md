@@ -39,8 +39,10 @@ A public deployment needs resources the repository does not issue or operate:
 - an external authorization server only when optional MCP OAuth is enabled; and
 - an operator-supplied Firebase project/credential only when optional wake-up hints are enabled.
 
-The repository supplies no hosted service, certificate authority, OAuth issuer, Firebase project,
-wallet key, npm release, or public container image.
+The repository supplies no hosted service, certificate authority, OAuth issuer, Firebase project
+or wallet key. It does publish the SDK and both MCP servers on npm under `@seeker_agent_connect`,
+and the gateway, MCP servers and demos as images in `docker.io/brenat/seeker-agent-connect`
+([docs/guides/installation.md](installation.md)); running them is still entirely yours to operate.
 
 ## Security and data rules
 
@@ -59,10 +61,10 @@ procedure, and restore/rollback constraints are maintained only in
 
 ## Application references
 
-- Direct application settings and source/npm starts: [`mcp-server/README.md`](../../mcp-server/README.md)
+- Direct application settings and source/npm starts: [`servers/mcp-server/README.md`](../../servers/mcp-server/README.md)
 - Hermes: [`docs/integrations/hermes.md`](../integrations/hermes.md)
 - OpenClaw: [`docs/integrations/openclaw.md`](../integrations/openclaw.md)
-- Feed operation and publisher registration: [`feed-gateway/README.md`](../../feed-gateway/README.md)
+- Feed operation and publisher registration: [`services/gateway/README.md`](../../services/gateway/README.md)
 - Feed publisher development: [`docs/guides/server-development.md`](server-development.md)
 - Optional Firebase: [`docs/guides/firebase.md`](firebase.md)
 - General troubleshooting: [`docs/guides/troubleshooting.md`](troubleshooting.md)

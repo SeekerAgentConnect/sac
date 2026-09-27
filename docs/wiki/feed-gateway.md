@@ -4,7 +4,7 @@ SEE-88 made the kind of server part of a connection's record, and left `FeedGate
 publisher's manifest arrives through. SEE-89 added the document a publisher broadcasts, and left
 `ProposalFeed` as the seam it arrives through. Both said the same thing: the gateway is SEE-90.
 
-This is it: a Go service in [`feed-gateway/`](../../feed-gateway), with an authenticated publisher API
+This is it: a Go service in [`services/gateway/`](../../services/gateway), with an authenticated publisher API
 and a read-only public-feed API. SEE-130 retired its former invitation/device API. This page is why
 the public gateway is shaped the way it is;
 [`docs/guides/server-development.md`](../guides/server-development.md) is what a developer does with
@@ -44,7 +44,7 @@ Separate services, on separate listeners, with credentials matched to each role:
 
 | | Publisher API | Public-feed API |
 | --- | --- | --- |
-| Contract | [`publish.proto`](../../proto/seekervault/gateway/v1/publish.proto) | [`feed.proto`](../../proto/seekervault/gateway/v1/feed.proto) |
+| Contract | [`publish.proto`](../../packages/protocol/proto/seekervault/gateway/v1/publish.proto) | [`feed.proto`](../../packages/protocol/proto/seekervault/gateway/v1/feed.proto) |
 | Who calls it | A developer's backend | Every feed subscriber |
 | Credential | Bearer credential scoped to one server | None: a feed is a broadcast |
 | What it can do | Publish and cancel feed documents | Read public manifests and feed requests |
@@ -54,7 +54,7 @@ Two sockets rather than one service with a check per method make the separation 
 mistakes. The publisher listener has no subscriber operation and the public read listener has no
 mutation. A boundary test holds both directions of that separation and requires every retired RPC
 and onboarding path to return 404
-([`boundary_test.go`](../../feed-gateway/internal/gateway/boundary_test.go)).
+([`boundary_test.go`](../../services/gateway/internal/gateway/boundary_test.go)).
 
 Since SEE-141 there is a third listener when a deployment configures one: the operator's admin page,
 on `BROADCAST_ADMIN_ADDRESS`, under `BROADCAST_ADMIN_PATH`. It is not an API — it serves HTML to one
@@ -66,7 +66,7 @@ SAC has no publisher service client. It is generated only for the public-feed co
 ## What a publisher may say
 
 Everything in a document is the publisher's own, and three things are not up to it. The rules are in
-[`internal/rules`](../../feed-gateway/internal/rules), as pure functions, and each is the phone's own
+[`internal/rules`](../../services/gateway/internal/rules), as pure functions, and each is the phone's own
 rule applied one hop earlier — `proposals/ProposalValidation.kt` and `servers/ManifestValidation.kt`
 apply the same ones to the same documents, because neither side trusts the other.
 
@@ -140,8 +140,8 @@ are told. There is no way to make that atomic — one is a database transaction,
 message to another system — so the only question is which failure a crash between them leaves.
 
 The gateway commits the notice **in the same transaction as the document**
-([`internal/storage`](../../feed-gateway/internal/storage)), and a drainer sends it
-([`internal/dispatch`](../../feed-gateway/internal/dispatch)). So:
+([`internal/storage`](../../services/gateway/internal/storage)), and a drainer sends it
+([`internal/dispatch`](../../services/gateway/internal/dispatch)). So:
 
 - a crash before the commit leaves nothing: the publication was never accepted;
 - a crash after it leaves a notice that has not gone out, which the next start finds and sends;
@@ -567,7 +567,7 @@ docker compose run --rm ctl rotate --server 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
 docker compose run --rm ctl revoke --credential d7baec00
 ```
 
-[`feed-gatewayctl`](../../feed-gateway/cmd/feed-gatewayctl) is the first: the operator runs it on the
+[`feed-gatewayctl`](../../services/gateway/cmd/feed-gatewayctl) is the first: the operator runs it on the
 host that holds the database, and it needs no listener, no password and no browser. That is why it
 stays after SEE-141 rather than being replaced — it is the recovery path, and the right tool for a
 deployment that never exposes an administrative route.
@@ -592,7 +592,7 @@ may not publish, and never whether the thing it presented used to work.
 SEE-141 added a second surface for the paragraph above, because "the operator runs a command on the
 host that holds the database" stops being reasonable the moment the host is a container on somebody
 else's platform. It is deliberately the smallest thing that removes that requirement, and it is
-[`internal/admin`](../../feed-gateway/internal/admin): server-rendered HTML, one stylesheet and one
+[`internal/admin`](../../services/gateway/internal/admin): server-rendered HTML, one stylesheet and one
 script plus two font files out of the image, no framework, no CDN, and no browser-side secret of any
 kind.
 
@@ -684,14 +684,14 @@ which is how it gets back under it.
 
 In one of two databases, and the deployment picks which by naming it. Business and delivery code
 depend on the focused interfaces in
-[`internal/storage`](../../feed-gateway/internal/storage); each implementation alone owns SQL, schema
+[`internal/storage`](../../services/gateway/internal/storage); each implementation alone owns SQL, schema
 migration and transaction mechanics, and a boundary test keeps it that way. Nothing above the store
 knows which one it has — which is why the second one was a new package rather than an edit.
 
 | Set | Store | For |
 | --- | --- | --- |
-| `BROADCAST_DATABASE_PATH` | [`internal/storage/sqlite`](../../feed-gateway/internal/storage/sqlite/store.go) | A self-hosted gateway. One file, one process, nothing to operate |
-| `BROADCAST_DATABASE_URL` | [`internal/storage/postgres`](../../feed-gateway/internal/storage/postgres/store.go) | A deployment whose filesystem does not survive the container (SEE-145) |
+| `BROADCAST_DATABASE_PATH` | [`internal/storage/sqlite`](../../services/gateway/internal/storage/sqlite/store.go) | A self-hosted gateway. One file, one process, nothing to operate |
+| `BROADCAST_DATABASE_URL` | [`internal/storage/postgres`](../../services/gateway/internal/storage/postgres/store.go) | A deployment whose filesystem does not survive the container (SEE-145) |
 
 Setting both is refused at startup. They are two authorities for the same state, and a deployment
 that named both has already lost track of which one holds it.
@@ -775,7 +775,7 @@ and `TestAFileFromALaterVersionIsRefused` pins the rollback guard.
   answers every read and says once that there is no stream.
 - **The cross-runtime fixtures cover the stream too.** `FeedEvent/settings`, `FeedEvent/proposal`
   and `FeedEvent/withdrawn` are taken from the gateway's own outbox by
-  [`fixtures_test.go`](../../feed-gateway/internal/gateway/fixtures_test.go) and read back through the
+  [`fixtures_test.go`](../../services/gateway/internal/gateway/fixtures_test.go) and read back through the
   phone's validators by `GatewayProtocolFixturesTest`.
 - **It relays hints through Firebase**, and the phone subscribes to them: what is sent is pinned by
   the relay's own tests, that Firebase accepts it is an opt-in test against a real project

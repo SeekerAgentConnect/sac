@@ -29,14 +29,14 @@ feed-gatewayctl register --server <uuid> --label "copy trading" \
 
 The registration holds three things — the policy, the authentication origin, and an epoch this page
 comes back to (`publisher.access_policy`, `auth_origin`, `access_epoch`, schema v7 in
-[`internal/storage/sqlite/store.go`](../../feed-gateway/internal/storage/sqlite/store.go)). Every
+[`internal/storage/sqlite/store.go`](../../services/gateway/internal/storage/sqlite/store.go)). Every
 registration that existed before v7 migrates to exactly what it was: public, with no origin.
 
 Three consequences follow from putting it there rather than anywhere else.
 
 **The manifest is stamped, not relayed.** A phone reads the policy off the manifest the gateway
 serves, and the gateway writes that field from its own registration whatever the stored document
-says (`stamped` in [`internal/gateway/access.go`](../../feed-gateway/internal/gateway/access.go)). A
+says (`stamped` in [`internal/gateway/access.go`](../../services/gateway/internal/gateway/access.go)). A
 feed switched to restricted after its manifest was published is never served as public, and a public
 feed's manifest is byte for byte what every manifest was before SEE-156, because a public feed
 carries no `FeedAccess` at all.
@@ -57,7 +57,7 @@ That is the whole reason the origin is registered separately from the publisher'
 The publisher checks the other direction for itself before it says anything at all. A restricted
 publisher's drainer asks `DescribeAccess` and refuses to publish until the gateway confirms it
 enforces this feed as restricted at this origin (`Guard` in
-[`publisher-support/access/sync.go`](../../publisher-support/access/sync.go)). A gateway too old to
+[`packages/publisher-support/access/sync.go`](../../packages/publisher-support/access/sync.go)). A gateway too old to
 know about restricted feeds, or one where the operator registered the feed as public, therefore
 never receives a signal — the failure is a deferred publication rather than an audience nobody
 approved.
@@ -174,7 +174,7 @@ redemptions exactly one succeeds. A superseded invitation is refused by name
 **Approval is checked again at redemption.** Approval is the one thing in the list that can change
 between being granted and being used. So the eligibility rule is asked again, the stored state is
 read again inside the transaction, and a device revoked in the meantime gets `not_approved` rather
-than a session (`Redeem` in [`publisher-support/store/access.go`](../../publisher-support/store/access.go)).
+than a session (`Redeem` in [`packages/publisher-support/store/access.go`](../../packages/publisher-support/store/access.go)).
 
 **Every signed step carries a moment, checked against a five-minute skew.** A recorded status
 question or redemption is worth nothing for long, and a phone whose clock is wrong is told so rather
@@ -205,7 +205,7 @@ a status answer — so one stale feed on a phone never costs it the others.
 
 The eight problem codes are numbered 47 to 54, after the retired private range, and none of them
 reuses a number or a meaning that range carried
-([`problem.proto`](../../proto/seekervault/gateway/v1/problem.proto)):
+([`problem.proto`](../../packages/protocol/proto/seekervault/gateway/v1/problem.proto)):
 
 | Problem | What it means | Connect code |
 | --- | --- | --- |
@@ -235,7 +235,7 @@ gateway enforces it.**
 
 At the gateway, `RevokeAccess` ends the grants and **moves the channel's access epoch** in the same
 write. A restricted channel's broker stream name carries that epoch
-(`RestrictedStreamChannel` in [`internal/stream/stream.go`](../../feed-gateway/internal/stream/stream.go)),
+(`RestrictedStreamChannel` in [`internal/stream/stream.go`](../../services/gateway/internal/stream/stream.go)),
 so publications after a revocation go out under a new name and a listener still attached under the
 old one — a revoked device replaying an old ticket, say — receives nothing more. Revocation does not
 depend on the broker closing anybody's connection.
@@ -290,7 +290,7 @@ own target instead through `SetFeedPushTarget`, under the session its grant was 
 target is kept against the grant, used only for that grant's hints, never returned by a read outside
 the relay, and dropped with the grant. At send time the live grants are read fresh, so a grant
 revoked a second ago is not among them
-([`internal/relay/restricted.go`](../../feed-gateway/internal/relay/restricted.go)).
+([`internal/relay/restricted.go`](../../services/gateway/internal/relay/restricted.go)).
 
 What is sent is the same content-free hint a topic carries. It grants nothing, and the phone it
 wakes reads the feed under its own session like any other read.
@@ -298,7 +298,7 @@ wakes reads the feed under its own session like any other read.
 ## On the phone
 
 Restricted access lives in
-[`android/.../access/`](../../android/app/src/main/java/io/github/brrenat/seekervault/access) and is
+[`apps/android/.../access/`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/access) and is
 per feed connection.
 
 **Six states**, which are what the connection's status line says
@@ -347,7 +347,7 @@ asked for, or that claims to last longer than thirty minutes, before the wallet 
 ## The operator's page
 
 The shipped demo's Devices / Feed access page is
-[`demo-copytrading/internal/admin/devices.go`](../../demo-copytrading/internal/admin/devices.go),
+[`examples/demo-signals/internal/admin/devices.go`](../../examples/demo-signals/internal/admin/devices.go),
 inside the existing password-gated trader UI, and it is the operator's whole surface: list, approve,
 reject, revoke, reissue, and revoke every device of a wallet. Its mutations go through the
 publisher's existing token-protected API path and through the one process that owns the store, so
@@ -399,8 +399,8 @@ because it was never told.
 
 | | |
 | --- | --- |
-| The contracts | [`feed.proto`](../../proto/seekervault/gateway/v1/feed.proto), [`publish.proto`](../../proto/seekervault/gateway/v1/publish.proto), [`event.proto`](../../proto/seekervault/gateway/v1/event.proto), [`problem.proto`](../../proto/seekervault/gateway/v1/problem.proto), [`manifest.proto`](../../proto/seekervault/server/v1/manifest.proto) |
-| The publisher's side | [`publisher-support/access/`](../../publisher-support/access) and [`publisher-support/store/access.go`](../../publisher-support/store/access.go) |
-| The gateway's side | [`internal/gateway/access.go`](../../feed-gateway/internal/gateway/access.go), [`internal/relay/restricted.go`](../../feed-gateway/internal/relay/restricted.go), schema v7 in `internal/storage/` |
-| The phone's side | [`android/.../access/`](../../android/app/src/main/java/io/github/brrenat/seekervault/access), `servers/ManifestValidation.kt`, `feeds/ConnectFeedGateway.kt` |
+| The contracts | [`feed.proto`](../../packages/protocol/proto/seekervault/gateway/v1/feed.proto), [`publish.proto`](../../packages/protocol/proto/seekervault/gateway/v1/publish.proto), [`event.proto`](../../packages/protocol/proto/seekervault/gateway/v1/event.proto), [`problem.proto`](../../packages/protocol/proto/seekervault/gateway/v1/problem.proto), [`manifest.proto`](../../packages/protocol/proto/seekervault/server/v1/manifest.proto) |
+| The publisher's side | [`packages/publisher-support/access/`](../../packages/publisher-support/access) and [`packages/publisher-support/store/access.go`](../../packages/publisher-support/store/access.go) |
+| The gateway's side | [`internal/gateway/access.go`](../../services/gateway/internal/gateway/access.go), [`internal/relay/restricted.go`](../../services/gateway/internal/relay/restricted.go), schema v7 in `internal/storage/` |
+| The phone's side | [`apps/android/.../access/`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/access), `servers/ManifestValidation.kt`, `feeds/ConnectFeedGateway.kt` |
 | The shared fixture | [`fixtures/restricted-feeds/challenge.json`](../../fixtures/restricted-feeds/challenge.json), pinned by a test on each side |

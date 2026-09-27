@@ -2,7 +2,8 @@
 node_modules/
 dist/
 build/
-mcp-server/package/
+servers/mcp-server/package/
+servers/mcp-skr-staking/package/
 *.tgz
 .gradle/
 .kotlin/
@@ -25,15 +26,15 @@ google-services.json
 *.pem
 *.key
 
-# Go binaries built in place by `go build` in feed-gateway/, the two demos and loadtest/
-/feed-gateway/feed-gateway
-/feed-gateway/feed-gatewayctl
-/demo-copytrading/copytrading
-/demo-copytrading/copytrading-admin
-/demo-copytrading/publishctl
-/demo-prediction/prediction
-/demo-prediction/publishctl
-/loadtest/loadtest
+# Go binaries built in place by `go build` in services/gateway/, the two demos and tools/loadtest/
+/services/gateway/feed-gateway
+/services/gateway/feed-gatewayctl
+/examples/demo-signals/copytrading
+/examples/demo-signals/copytrading-admin
+/examples/demo-signals/publishctl
+/examples/demo-prediction/prediction
+/examples/demo-prediction/publishctl
+/tools/loadtest/loadtest
 
 # Local databases
 *.db

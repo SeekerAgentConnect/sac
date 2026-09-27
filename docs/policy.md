@@ -456,7 +456,7 @@ Missing and unreadable remain different for both scopes. `StoredGlobalPolicy` an
 
 ## Test fixtures
 
-`android/app/src/test/java/.../policy/PolicyFixtures.kt` holds the table every assessment is held to. Each case is a policy, the facts of one request, the day's counters, and the verdict with every reason code it must carry, and `PolicyFixturesTest` runs all of them. A rule that only exists in a test's prose can be argued with; a rule in that table either holds for every case or fails one. The table also asserts that every reason code a request can produce appears in at least one case, so a new reason has to be given a case before it can be returned.
+`apps/android/app/src/test/java/.../policy/PolicyFixtures.kt` holds the table every assessment is held to. Each case is a policy, the facts of one request, the day's counters, and the verdict with every reason code it must carry, and `PolicyFixturesTest` runs all of them. A rule that only exists in a test's prose can be argued with; a rule in that table either holds for every case or fails one. The table also asserts that every reason code a request can produce appears in at least one case, so a new reason has to be given a case before it can be returned.
 
 The facts themselves are checked against real transactions rather than invented ones: `RequestFactsTest` reads `fixtures/transactions/cases.json` — the transfers the sidecar actually builds ([transaction fixtures](testing/transaction-fixtures.md)) — inspects them the way the review screen does, and assesses what comes out.
 
