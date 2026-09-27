@@ -4,7 +4,9 @@
  *
  * The decisions that matter to the ticket all live here rather than in YAML expressions, because
  * they are the ones worth testing: which dist-tag a version gets, which image tags are pushed, and
- * the rule that a release candidate never advances `latest`. scripts/release-plan.test.mjs is that
+ * the rule that a release candidate never advances `latest`. Every image goes to the one Docker Hub
+ * repository in `registries.docker`, and a component's tags carry its `image.tagPrefix`, so
+ * `gateway-0.2.0` and `mcp-0.2.0` sit side by side in that repository. scripts/release-plan.test.mjs is that
  * test, and it runs with no registry and no credential.
  */
 import { readFileSync } from "node:fs";
@@ -33,7 +35,7 @@ export function releasePlan(environment, manifest) {
     INPUT_CHANNEL = "",
     COMMIT = "",
   } = environment;
-  const ghcr = manifest.registries.ghcr;
+  const repository = manifest.registries.docker;
 
   // A tag is the real trigger; a dispatch is the deliberate one. A dispatch always has to say
   // whether it is a release or a development build, and it defaults to publishing nothing.
@@ -75,6 +77,9 @@ export function releasePlan(environment, manifest) {
     prerelease,
     development,
     dry_run: dryRun,
+    // npm is held at dry run for the whole repository while `registries.npmDryRun` is set: the
+    // tarball is still packed and checked on every release, it just never reaches the registry.
+    npm_dry_run: dryRun || manifest.registries.npmDryRun === true,
     title: component.description,
     has_npm: Boolean(component.npm) && !development,
     has_image: Boolean(component.image),
@@ -87,13 +92,17 @@ export function releasePlan(environment, manifest) {
     context: component.image?.context ?? ".",
     target: component.image?.target ?? "",
     platforms: component.image?.platforms?.join(",") ?? "",
-    image_ref: component.image ? `${ghcr}/${component.image.name}` : "",
+    image_ref: component.image ? repository : "",
+    image_version_tag: component.image
+      ? `${repository}:${component.image.tagPrefix}-${version}`
+      : "",
     image_tags: "",
   };
 
   if (component.image) {
     plan.image_tags = imageTags({
-      reference: plan.image_ref,
+      reference: repository,
+      prefix: component.image.tagPrefix,
       version,
       prerelease,
       development,
@@ -106,25 +115,28 @@ export function releasePlan(environment, manifest) {
 /**
  * The tags a build pushes.
  *
- * `sha-<commit>` is on every image, so any image can be traced to a revision without reading its
- * labels. A development build gets nothing else but `develop`. A stable release gets `latest`; a
- * release candidate deliberately does not, so `docker pull <image>` keeps resolving to the last
- * stable one.
+ * Every tag starts with the component's prefix, because all components share one repository.
+ * `<prefix>-sha-<commit>` is on every image, so any image can be traced to a revision without
+ * reading its labels. A development build gets nothing else but `<prefix>-develop`. A stable release
+ * gets `<prefix>-latest`; a release candidate deliberately does not, so pulling `<prefix>-latest`
+ * keeps resolving to the last stable one.
  */
 export function imageTags({
   reference,
+  prefix,
   version,
   prerelease,
   development,
   shortCommit,
 }) {
-  const tags = [`${reference}:sha-${shortCommit}`];
+  const tag = (suffix) => `${reference}:${prefix}-${suffix}`;
+  const tags = [tag(`sha-${shortCommit}`)];
   if (development) {
-    tags.push(`${reference}:develop`);
+    tags.push(tag("develop"));
     return tags;
   }
-  tags.push(`${reference}:${version}`);
-  if (!prerelease) tags.push(`${reference}:latest`);
+  tags.push(tag(version));
+  if (!prerelease) tags.push(tag("latest"));
   return tags;
 }
 

@@ -41,7 +41,7 @@ A public deployment needs resources the repository does not issue or operate:
 
 The repository supplies no hosted service, certificate authority, OAuth issuer, Firebase project
 or wallet key. It does publish the SDK and both MCP servers on npm under `@seeker_agent_connect`,
-and the gateway, MCP servers and demos as images under `ghcr.io/seekeragentconnect`
+and the gateway, MCP servers and demos as images in `docker.io/brenat/seeker-agent-connect`
 ([docs/guides/installation.md](installation.md)); running them is still entirely yours to operate.
 
 ## Security and data rules

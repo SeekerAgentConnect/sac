@@ -5,10 +5,11 @@ shapes: the direct MCP server only, public feeds only, or all four independently
 applications on one host. There is no all-in-one Compose project and no Tailscale dependency.
 
 The presets in this directory build local images from this checkout. Since SEE-168 the same
-services are also published to `ghcr.io/seekeragentconnect`, and every preset takes its image as a
+services are also published to `docker.io/brenat/seeker-agent-connect` (one tag prefix per
+component), and every preset takes its image as a
 variable, so a deployment host needs no checkout at all:
 
-    MCP_SERVER_IMAGE=ghcr.io/seekeragentconnect/mcp-server:0.2.0 \
+    MCP_SERVER_IMAGE=docker.io/brenat/seeker-agent-connect:mcp-0.2.0 \
       docker compose -f deploy/mcp/compose.yaml up -d
 
 [docs/guides/installation.md](../docs/guides/installation.md) has the published images, the

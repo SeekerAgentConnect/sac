@@ -8,15 +8,20 @@ its npm package and its container image, built from the one commit the release t
 
 ## The components
 
-| Component | npm | Image | Replaces |
-| -- | -- | -- | -- |
-| `server-sdk` | `@seeker_agent_connect/server-sdk` | — | — |
-| `mcp-server` | `@seeker_agent_connect/mcp-server` | `ghcr.io/seekeragentconnect/mcp-server` | `docker.io/brenat/seeker-agent-connect:mcp-*` |
-| `mcp-skr-staking` | `@seeker_agent_connect/mcp-skr-staking` | `ghcr.io/seekeragentconnect/mcp-skr-staking` | `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-*` |
-| `gateway` | — | `ghcr.io/seekeragentconnect/gateway` | `docker.io/brenat/seeker-agent-connect:gateway-*` |
-| `gateway-centrifugo` | — | `ghcr.io/seekeragentconnect/gateway-centrifugo` | `docker.io/brenat/seeker-agent-connect:centrifugo-*` |
-| `demo-signals` | — | `ghcr.io/seekeragentconnect/demo-signals` | `docker.io/brenat/seeker-agent-connect:copytrading-*` |
-| `demo-prediction` | — | `ghcr.io/seekeragentconnect/demo-prediction` | `docker.io/brenat/seeker-agent-connect:prediction-*` |
+Every image is published to the **one Docker Hub repository `docker.io/brenat/seeker-agent-connect`**,
+as it was before SEE-168, and each component is told apart by its **tag prefix**
+(`image.tagPrefix` in `release/components.json`). `pnpm check:release` refuses two components with
+the same prefix, since they would overwrite each other's tags.
+
+| Component | npm | Image tags in `docker.io/brenat/seeker-agent-connect` |
+| -- | -- | -- |
+| `server-sdk` | `@seeker_agent_connect/server-sdk` | — |
+| `mcp-server` | `@seeker_agent_connect/mcp-server` | `mcp-*` |
+| `mcp-skr-staking` | `@seeker_agent_connect/mcp-skr-staking` | `skr-staking-mcp-*` |
+| `gateway` | — | `gateway-*` |
+| `gateway-centrifugo` | — | `centrifugo-*` |
+| `demo-signals` | — | `copytrading-*` |
+| `demo-prediction` | — | `prediction-*` |
 
 `packages/protocol` is deliberately **not** published on its own. Its generated types are the SDK's
 public `@seeker_agent_connect/server-sdk/protocol` entry, which is the supported way to consume
@@ -39,12 +44,13 @@ Semantic versioning, per component.
 
 | Channel | npm | dist-tag | Image tags |
 | -- | -- | -- | -- |
-| Stable | `X.Y.Z` | `latest` | `X.Y.Z`, `latest`, `sha-<commit>` |
-| Release candidate | `X.Y.Z-rc.N` | `next` | `X.Y.Z-rc.N`, `sha-<commit>` |
-| Development | not published | — | `sha-<commit>`, `develop` |
+| Stable | `X.Y.Z` | `latest` | `<prefix>-X.Y.Z`, `<prefix>-latest`, `<prefix>-sha-<commit>` |
+| Release candidate | `X.Y.Z-rc.N` | `next` | `<prefix>-X.Y.Z-rc.N`, `<prefix>-sha-<commit>` |
+| Development | not published | — | `<prefix>-sha-<commit>`, `<prefix>-develop` |
 
 A release candidate **never** moves `latest` on either registry. `npm install <name>` and
-`docker pull <image>` keep resolving to the last stable release until a stable one replaces it.
+`docker pull …:<prefix>-latest` keep resolving to the last stable release until a stable one
+replaces it.
 `scripts/release-plan.test.mjs` is the test that says so, and the release workflow re-checks it
 against the live registry after every prerelease publish.
 
@@ -55,8 +61,17 @@ becomes `latest`**, whatever `--tag` asks for, and npm refuses to delete a `late
 a notice when it sees this; there is nothing to fix at the registry, and the fix is to ship the
 stable version. Every package released after its first one obeys the rule without qualification.
 
-Every image carries `sha-<commit>`, so an image in a deployment can always be traced back to a
+Every image carries `<prefix>-sha-<commit>`, so an image in a deployment can always be traced back to a
 revision without reading its labels.
+
+### npm is a dry run for now
+
+`registries.npmDryRun` in `release/components.json` is **`true`**. While it is, every npm release —
+tag or dispatch, stable or candidate — builds the package and runs `npm publish --dry-run`: the
+tarball is packed and its contents listed in the job log, and nothing is uploaded. The
+already-published-version guard downgrades to a warning, and the "a candidate must not move latest"
+check is skipped, because nothing moved. Images are unaffected and publish as normal. To publish
+to npm again, set the flag to `false`; `scripts/release-plan.test.mjs` covers both states.
 
 ## Releasing
 
@@ -77,12 +92,12 @@ revision without reading its labels.
    The tag format is `<component>-v<version>` using the identifiers in `release/components.json`.
    Pushing it starts `.github/workflows/release.yml`, which re-reads the manifest, refuses the
    release if the tag and the manifest disagree, re-runs the component's package audit against the
-   tagged commit, and then publishes.
+   tagged commit, and then publishes the image (and packs the npm tarball as a dry run while `npmDryRun` is set).
 
 A dry run first, without a tag, is **Actions → Release → Run workflow** with the component's
 identifier, `channel: release` and `dry_run: true`. It builds and audits everything and publishes
-nothing. `channel: development` pushes only `sha-<commit>` and `develop` images and never touches
-npm.
+nothing. `channel: development` pushes only `<prefix>-sha-<commit>` and `<prefix>-develop` images
+and never touches npm.
 
 ## What cannot publish
 
@@ -93,9 +108,9 @@ from a tag or a dispatch.
 
 A version that is already published cannot be republished. Both jobs check first — `npm view` for
 the package, `docker buildx imagetools inspect` for the image — and stop before doing anything if
-the version exists. Re-running a finished release is therefore a no-op that fails loudly rather
-than a silent overwrite. The moving development tags (`sha-<commit>`, `develop`) are exempt, which
-is what makes them moving tags.
+the version exists (for the image, `<prefix>-<version>`). Re-running a finished release is
+therefore a no-op that fails loudly rather than a silent overwrite. The moving development tags
+(`<prefix>-sha-<commit>`, `<prefix>-develop`) are exempt, which is what makes them moving tags.
 
 ## Access requirements
 
@@ -111,37 +126,16 @@ repository, and `BrRenat/SeekerAgentConnect` is private. When the repository bec
 configure each package's trusted publisher on npmjs.com, add `id-token: write` to the `npm` job,
 add `--provenance` to the publish command, and drop `NPM_TOKEN`.
 
-### GHCR
+### Docker Hub
 
-Images publish to `ghcr.io/seekeragentconnect`, the namespace of the **SeekerAgentConnect** GitHub
-organisation.
+Images publish to `docker.io/brenat/seeker-agent-connect`. The image job logs in with two secrets,
+which can be scoped to the `release` environment:
 
-This repository lives under the personal account `BrRenat`, not under that organisation. A
-workflow's built-in `GITHUB_TOKEN` can only write packages in its own repository owner's namespace,
-so it **cannot** push to the organisation. The release workflow therefore logs in with a
-`GHCR_TOKEN` repository secret, which must be:
+- `DOCKERHUB_USERNAME` — an account with write access to `brenat/seeker-agent-connect`;
+- `DOCKERHUB_TOKEN` — a Docker Hub personal access token for that account with **Read & Write**
+  scope.
 
-- a **classic** personal access token (fine-grained tokens cannot write GHCR),
-- with the `write:packages` scope,
-- held by an account with package-creation rights in the SeekerAgentConnect organisation.
-
-The job stops with an explicit error if the secret is absent, rather than failing deep inside a
-build.
-
-Two things have to be done **once, by hand, in the GitHub UI**, because no API call in a workflow
-can do them:
-
-1. **Make each package public** after its first push. A package created from a private repository
-   is private, and a private package is not installable by the external consumers this work exists
-   for: *Organisation → Packages → the package → Package settings → Change visibility → Public.*
-2. **Link each package to this repository**, so the GHCR page shows the source and the README:
-   *Package settings → Manage Actions access / Connect repository.* The
-   `org.opencontainers.image.source` label is already set on every image and does the same job for
-   tools that read labels.
-
-If this repository ever moves under the SeekerAgentConnect organisation, `GHCR_TOKEN` can be
-deleted and the login switched to `GITHUB_TOKEN`; the `packages: write` permission the job already
-declares is what it would use.
+The job stops with an explicit error if either is absent, rather than failing deep inside a build.
 
 ## Retrying a partial release
 
@@ -151,11 +145,11 @@ happen, never to redo the half that did.
 
 1. Read the failed run's job summary. Each job writes the artifact it published, its dist-tag or
    image tags, and the image digest.
-2. **If npm succeeded and GHCR failed:** fix the cause, then **Actions → Release → Run workflow**
+2. **If npm succeeded and Docker Hub failed:** fix the cause, then **Actions → Release → Run workflow**
    with the component, `channel: release`, `dry_run: false`. The npm job stops on its own
    ("already on the registry") and the image job proceeds. That refusal is the design, not a
    problem to work around.
-3. **If GHCR succeeded and npm failed:** the same dispatch. The image job refuses the existing tag
+3. **If Docker Hub succeeded and npm failed:** the same dispatch. The image job refuses the existing tag
    and the npm job proceeds.
 4. **If both failed before publishing anything:** delete and re-push the tag, or dispatch it.
 5. **Never** force a version over one that is already published. A published npm version is
@@ -171,11 +165,11 @@ Roll back by pinning an exact version, never by moving a tag:
 
 ```bash
 npm install @seeker_agent_connect/mcp-server@0.1.9
-docker pull ghcr.io/seekeragentconnect/gateway@sha256:<digest>
+docker pull docker.io/brenat/seeker-agent-connect@sha256:<digest>
 ```
 
-Pin images **by digest** in anything that matters. A digest cannot be moved; `:0.2.0` can be, by
-mistake, and the guard against that is a check in one workflow rather than a property of the
+Pin images **by digest** in anything that matters. A digest cannot be moved; `:gateway-0.2.0` can
+be, by mistake, and the guard against that is a check in one workflow rather than a property of the
 registry.
 
 ## Compatibility

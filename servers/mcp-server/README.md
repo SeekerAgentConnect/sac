@@ -9,7 +9,7 @@ The same application entry point has four supported starts:
 
 1. TypeScript source in this checkout;
 2. the Docker image, built from this checkout or pulled from
-   `ghcr.io/seekeragentconnect/mcp-server`;
+   `docker.io/brenat/seeker-agent-connect:mcp-*`;
 3. the executable npm tarball built locally from this checkout; or
 4. the published package, `npx --package=@seeker_agent_connect/mcp-server -- seeker-agent-connect-mcp`.
 

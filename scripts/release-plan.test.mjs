@@ -26,6 +26,8 @@ const tagFor = (id) => `${id}-v${versionOf(id)}`;
 // channel is constructed here rather than waited for.
 const asStable = (id) => versionOf(id).replace(/-.*$/, "");
 
+const REPOSITORY = "docker.io/brenat/seeker-agent-connect";
+
 test("a stable tag publishes latest on both registries", () => {
   const version = asStable("mcp-server");
   const resolved = releasePlan(
@@ -33,25 +35,29 @@ test("a stable tag publishes latest on both registries", () => {
     withVersion(manifest, "mcp-server", version),
   );
   assert.equal(resolved.npm_tag, "latest");
-  const image = "ghcr.io/seekeragentconnect/mcp-server";
-  assert.ok(resolved.image_tags.includes(`${image}:${version}`));
-  assert.ok(resolved.image_tags.includes(`${image}:latest`));
-  assert.ok(resolved.image_tags.includes(":sha-0123456789ab"));
+  assert.equal(resolved.image_ref, REPOSITORY);
+  assert.equal(resolved.image_version_tag, `${REPOSITORY}:mcp-${version}`);
+  assert.deepEqual(resolved.image_tags.split("\n"), [
+    `${REPOSITORY}:mcp-sha-0123456789ab`,
+    `${REPOSITORY}:mcp-${version}`,
+    `${REPOSITORY}:mcp-latest`,
+  ]);
 });
 
 test("a release candidate never advances latest", () => {
   const candidate = imageTags({
-    reference: "ghcr.io/seekeragentconnect/gateway",
+    reference: REPOSITORY,
+    prefix: "gateway",
     version: "1.4.0-rc.2",
     prerelease: true,
     development: false,
     shortCommit: "0123456789ab",
   });
   assert.deepEqual(candidate, [
-    "ghcr.io/seekeragentconnect/gateway:sha-0123456789ab",
-    "ghcr.io/seekeragentconnect/gateway:1.4.0-rc.2",
+    `${REPOSITORY}:gateway-sha-0123456789ab`,
+    `${REPOSITORY}:gateway-1.4.0-rc.2`,
   ]);
-  assert.ok(!candidate.some((tag) => tag.endsWith(":latest")));
+  assert.ok(!candidate.some((tag) => tag.endsWith("-latest")));
 });
 
 test("a prerelease version resolves to the next dist-tag", () => {
@@ -61,7 +67,7 @@ test("a prerelease version resolves to the next dist-tag", () => {
   );
   assert.equal(candidate.npm_tag, "next");
   assert.equal(candidate.prerelease, true);
-  assert.ok(!candidate.image_tags.includes(":latest"));
+  assert.ok(!candidate.image_tags.includes("-latest"));
 });
 
 test("a development build pushes moving tags only, and nothing to npm", () => {
@@ -72,9 +78,42 @@ test("a development build pushes moving tags only, and nothing to npm", () => {
   });
   assert.equal(development.has_npm, false);
   assert.deepEqual(development.image_tags.split("\n"), [
-    "ghcr.io/seekeragentconnect/gateway:sha-0123456789ab",
-    "ghcr.io/seekeragentconnect/gateway:develop",
+    `${REPOSITORY}:gateway-sha-0123456789ab`,
+    `${REPOSITORY}:gateway-develop`,
   ]);
+});
+
+test("every image shares one repository and keeps the tag prefix it had before", () => {
+  const prefixes = Object.fromEntries(
+    manifest.components
+      .filter((component) => component.image)
+      .map((component) => [component.id, component.image.tagPrefix]),
+  );
+  assert.deepEqual(prefixes, {
+    "mcp-server": "mcp",
+    "mcp-skr-staking": "skr-staking-mcp",
+    gateway: "gateway",
+    "gateway-centrifugo": "centrifugo",
+    "demo-signals": "copytrading",
+    "demo-prediction": "prediction",
+  });
+  for (const id of Object.keys(prefixes)) {
+    assert.equal(plan({ TAG: tagFor(id) }).image_ref, REPOSITORY);
+  }
+});
+
+test("npm stays a dry run while the manifest says so, even from a tag", () => {
+  const tagged = plan({ TAG: tagFor("server-sdk") });
+  assert.equal(tagged.dry_run, false);
+  assert.equal(tagged.npm_dry_run, manifest.registries.npmDryRun === true);
+  const released = releasePlan(
+    { TAG: tagFor("server-sdk"), COMMIT },
+    {
+      ...manifest,
+      registries: { ...manifest.registries, npmDryRun: false },
+    },
+  );
+  assert.equal(released.npm_dry_run, false);
 });
 
 test("a dispatch publishes nothing unless it says so", () => {

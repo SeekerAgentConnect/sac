@@ -142,9 +142,10 @@ steps for deployments that used the old paths are in
 [`docs/development/monorepo-layout.md`](docs/development/monorepo-layout.md).
 
 Components are released independently and can be installed from a registry without this checkout:
-npm under `@seeker_agent_connect` and containers under `ghcr.io/seekeragentconnect`.
-[`docs/guides/installation.md`](docs/guides/installation.md) has the install, `npx`, Docker and
-Compose examples and the migration table from the previous Docker Hub names;
+npm under `@seeker_agent_connect` and containers in the Docker Hub repository
+`docker.io/brenat/seeker-agent-connect`, one tag prefix per component (`gateway-0.2.0`,
+`mcp-0.2.0`). [`docs/guides/installation.md`](docs/guides/installation.md) has the install, `npx`,
+Docker and Compose examples and the tag table;
 [`docs/development/releases.md`](docs/development/releases.md) has the release process.
 
 | Component | Path | What it is | Build and check (from the root) |
@@ -198,7 +199,7 @@ Everything builds from this checkout, and nothing in the path is ours. It does n
 
 Nothing here needs this checkout. `npm install @seeker_agent_connect/server-sdk` embeds the Direct
 Server SDK in your own Node application; `npx --package=@seeker_agent_connect/mcp-server --
-seeker-agent-connect-mcp` runs the MCP server; `ghcr.io/seekeragentconnect/gateway` and the rest
+seeker-agent-connect-mcp` runs the MCP server; `docker.io/brenat/seeker-agent-connect:gateway-*` and the rest
 run the services. [`docs/guides/installation.md`](docs/guides/installation.md) has the full set,
 including a checkout-free Compose file, how to pin by digest, and the migration table from the
 previous Docker Hub names. [`docs/development/releases.md`](docs/development/releases.md) is how
