@@ -17,6 +17,7 @@ import io.github.brrenat.seekervault.notifications.ProposalNotificationIntent
 import io.github.brrenat.seekervault.notifications.ProposalRef
 import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
 import io.github.brrenat.seekervault.operations.OperationViewModel
+import io.github.brrenat.seekervault.positions.PositionsViewModel
 import io.github.brrenat.seekervault.policy.GlobalPolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.wallet.WalletViewModel
@@ -151,6 +152,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** The positions a purchase went into, and selling them (SEE-172). */
+    private val positions: PositionsViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val app = application as SeekerVaultApplication
+                PositionsViewModel(
+                    tracker = app.positionTracker,
+                    wallet = app.walletRepository,
+                    providers = { app.providerRegistry },
+                )
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         acceptNotificationTap(intent)
@@ -173,6 +188,7 @@ class MainActivity : ComponentActivity() {
                     connectionLinkTaps,
                     operations,
                     startInLiveTest = intent.getBooleanExtra(EXTRA_LIVE_TEST, false),
+                    positions = positions,
                 )
             }
         }
@@ -237,6 +253,8 @@ class MainActivity : ComponentActivity() {
         // And the chain is asked about anything this phone sent and hasn't seen settle, from the
         // phone itself (SEE-165). This is also where a force-stopped app catches up.
         (application as SeekerVaultApplication).onConfirmationsForeground()
+        // Positions: what came back from the wallet or from Jupiter is read, never repeated.
+        (application as SeekerVaultApplication).onPositionsForeground()
     }
 
     override fun onStop() {

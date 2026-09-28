@@ -46,6 +46,22 @@ interface JupiterPrediction {
         choice: PredictionChoice,
         wallet: String,
     ): PredictionOrder
+
+    /**
+     * One position as the provider holds it now (SEE-172). A position the provider has no record
+     * of throws [PredictionProblem.NotFound], which is **not** a sale, a loss or a zero: it is also
+     * what a position looks like before the indexer has caught up with a fill.
+     */
+    suspend fun position(positionPubkey: String): PredictionPosition
+
+    /** What the provider says happened to one order: its fills, and whether it is finished. */
+    suspend fun orderStatus(orderPubkey: String): PredictionOrderStatus
+
+    /**
+     * The order that would sell the whole of [positionPubkey], built for [owner] to sign. An
+     * answer is unsigned bytes and the provider's account of them — never a sale.
+     */
+    suspend fun closePosition(positionPubkey: String, owner: String): PredictionClose
 }
 
 /**
@@ -107,6 +123,113 @@ data class PredictionOrder(
     val requiredSigners: List<String>,
 )
 
+/**
+ * A position as the provider stated it (SEE-172): the wallet's **whole** holding of one side of one
+ * market, however many orders — from this app or anywhere else — went into it.
+ *
+ * Every figure is the provider's and is shown as the provider's. The ones Jupiter sends as null
+ * once a market has closed stay null here rather than becoming zero: a value nobody quoted is not a
+ * value of nothing.
+ */
+data class PredictionPosition(
+    val positionPubkey: String,
+    val owner: String,
+    val marketId: String,
+    val eventId: String,
+    val isYes: Boolean,
+    /** Contracts held, in millionths. */
+    val contractsMicro: ULong,
+    /** What the holding cost in total, in micro-dollars. */
+    val totalCostUsd: ULong,
+    /** What it is marked at now, or null when the provider quotes nothing (a closed market). */
+    val valueUsd: ULong?,
+    val markPriceUsd: ULong?,
+    /** The best price a contract of this side could be sold at now, or null when there is none. */
+    val sellPriceUsd: ULong?,
+    val avgPriceUsd: ULong?,
+    val pnlUsd: Long?,
+    val pnlUsdAfterFees: Long?,
+    val feesPaidUsd: ULong,
+    /** Orders on this position the provider has not finished with. */
+    val openOrders: Int,
+    val claimable: Boolean,
+    val claimed: Boolean,
+    val payoutUsd: ULong,
+    /** The market's own state, as the provider spells it: `open`, `closed`, `cancelled`… */
+    val marketStatus: String,
+    /** Null while unresolved; the winning side once it has settled. */
+    val marketResult: String?,
+    val marketTitle: String,
+    val eventTitle: String,
+    /** The venue the market is on — Polymarket, Kalshi — which is not the execution provider. */
+    val venue: String,
+    /** When the provider last saw the position change, in epoch seconds. */
+    val updatedAt: Long,
+)
+
+/** What an order came to, as far as the provider can say (SEE-172). */
+enum class OrderFill {
+    /** Placed and waiting for the keeper. Nothing has filled yet. */
+    Pending,
+    /** Some contracts filled and the order is still open. */
+    PartiallyFilled,
+    /** Every contract it asked for filled. */
+    Filled,
+    /** Finished with some contracts filled and the rest returned. */
+    PartiallyFilledClosed,
+    /** Finished with nothing filled. */
+    Failed,
+    /** An answer this build does not know the meaning of. Never read as any of the others. */
+    Unknown,
+}
+
+/** One order's status, and the numbers the provider attaches to its fill. */
+data class PredictionOrderStatus(
+    val orderPubkey: String,
+    val fill: OrderFill,
+    /** The provider's own words for the state, kept for the record and never parsed again. */
+    val rawStatus: String,
+    val finished: Boolean,
+    val contractsMicro: ULong?,
+    val filledContractsMicro: ULong?,
+    val avgFillPriceUsd: ULong?,
+    /** What a sale actually paid out after fees, when the provider states it. */
+    val netProceedsUsd: ULong?,
+    val feeUsd: ULong?,
+    /** The chain signature of the provider's latest event about the order. */
+    val latestSignature: String?,
+)
+
+/**
+ * The order that would sell a whole position, and what the provider said about building it.
+ *
+ * Only [transaction] is evidence. Everything else is the provider's claim and is compared with what
+ * the bytes say before anything is put in front of the owner ([inspectPredictionSale]).
+ */
+data class PredictionClose(
+    val transaction: ByteString,
+    val orderPubkey: String,
+    val positionPubkey: String,
+    val externalOrderId: String,
+    val marketId: String,
+    val marketIdHash: String,
+    val isYes: Boolean,
+    val isBuy: Boolean,
+    val contractsMicro: ULong,
+    /** What the position holds once the order has executed. A whole sale leaves zero. */
+    val newContractsMicro: ULong,
+    /** The floor: the program fills no contract for less than this. The one enforceable bound. */
+    val minSellPriceUsd: ULong,
+    val totalFeeUsd: ULong,
+    val requiredSigners: List<String>,
+    /** `null` for a keeper-filled order, `atomic_swap` for one that executes through `/execute`. */
+    val executionModel: String?,
+    /** The `type` inside the provider's opaque execution context: `create_order` for a keeper. */
+    val executionType: String?,
+    /** Whether the provider pays the network fee with its own pre-signed account. */
+    val gasless: Boolean,
+)
+
 /** Why the provider produced nothing usable. */
 enum class PredictionProblem(val code: String) {
     Unreachable("provider_unreachable"),
@@ -121,6 +244,11 @@ enum class PredictionProblem(val code: String) {
     InsufficientFunds("insufficient_funds"),
     /** The answer arrived and could not be used. */
     Unusable("provider_unusable"),
+    /**
+     * The provider has no record of the position or order asked about. Not a sale and not a loss:
+     * a fill the indexer has not caught up with looks exactly like this.
+     */
+    NotFound("not_found"),
 }
 
 class PredictionException(val problem: PredictionProblem, val detail: String? = null) :
@@ -161,8 +289,8 @@ class HttpJupiterPrediction(
                 put("ownerPubkey", wallet)
                 put("marketId", terms.marketId)
                 put("isYes", choice.yes)
-                // Buying, always. Selling a position is managing one, and this app stops at
-                // submission (docs/wiki/jupiter-prediction.md#where-this-stops).
+                // Buying, always. Selling is a different request with a different review: the
+                // whole position is closed through [closePosition] (SEE-172).
                 put("isBuy", true)
                 put("depositAmount", choice.deposit.toString())
                 put("depositMint", terms.depositMint)
@@ -175,7 +303,30 @@ class HttpJupiterPrediction(
         return readOrder(parse(fetch(call, terms.marketId)), terms, choice)
     }
 
-    private suspend fun fetch(request: Request, marketId: String): String =
+    override suspend fun position(positionPubkey: String): PredictionPosition {
+        val url = "${endpoint.trimEnd('/')}/prediction/v1/positions/${account(positionPubkey)}"
+        return readPosition(parse(fetch(Request.Builder().url(url).get().build(), null)))
+    }
+
+    override suspend fun orderStatus(orderPubkey: String): PredictionOrderStatus {
+        val url = "${endpoint.trimEnd('/')}/prediction/v1/orders/status/${account(orderPubkey)}"
+        return readStatus(parse(fetch(Request.Builder().url(url).get().build(), null)))
+    }
+
+    override suspend fun closePosition(positionPubkey: String, owner: String): PredictionClose {
+        // The whole position, and only the owner's key: the endpoint takes nothing else, so there
+        // is no quantity, price or slippage here for anybody to have got wrong. What bounds the
+        // sale is the floor in the bytes, which the review reads.
+        val body = JSONObject().put("ownerPubkey", owner)
+        val call =
+            Request.Builder()
+                .url("${endpoint.trimEnd('/')}/prediction/v1/positions/${account(positionPubkey)}")
+                .delete(body.toString().toRequestBody(JSON))
+                .build()
+        return readClose(parse(fetch(call, null)), positionPubkey, owner)
+    }
+
+    private suspend fun fetch(request: Request, marketId: String?): String =
         withContext(io) {
             val response =
                 try {
@@ -193,8 +344,9 @@ class HttpJupiterPrediction(
                 when {
                     it.isSuccessful -> text
                     it.code == 429 -> throw PredictionException(PredictionProblem.RateLimited)
-                    it.code == 404 ->
+                    it.code == 404 && marketId != null ->
                         throw PredictionException(PredictionProblem.NoSuchMarket, marketId)
+                    it.code == 404 -> throw PredictionException(PredictionProblem.NotFound)
                     // The provider names its own refusals, and two of them are worth telling the
                     // owner apart from a general failure: no funds, and a market that has closed.
                     it.code == 400 -> throw PredictionException(refusal(text), problemDetail(text))
@@ -259,6 +411,160 @@ class HttpJupiterPrediction(
         )
     }
 
+    private fun readPosition(answer: JSONObject): PredictionPosition {
+        val market = answer.optJSONObject("marketMetadata") ?: JSONObject()
+        val event = answer.optJSONObject("eventMetadata") ?: JSONObject()
+        return PredictionPosition(
+            positionPubkey = answer.text("pubkey"),
+            owner = answer.optText("ownerPubkey") ?: answer.text("owner"),
+            marketId = answer.text("marketId"),
+            eventId = answer.optText("eventId").orEmpty(),
+            isYes = answer.flag("isYes"),
+            contractsMicro = answer.baseUnits("contractsMicro"),
+            totalCostUsd = answer.baseUnits("totalCostUsd"),
+            valueUsd = answer.optBaseUnits("valueUsd"),
+            markPriceUsd = answer.optBaseUnits("markPriceUsd"),
+            sellPriceUsd = answer.optBaseUnits("sellPriceUsd"),
+            avgPriceUsd = answer.optBaseUnits("avgPriceUsd"),
+            pnlUsd = answer.optSigned("pnlUsd"),
+            pnlUsdAfterFees = answer.optSigned("pnlUsdAfterFees"),
+            feesPaidUsd = answer.optBaseUnits("feesPaidUsd") ?: 0UL,
+            openOrders = answer.optInt("openOrders", 0),
+            claimable = answer.optBoolean("claimable", false),
+            claimed = answer.optBoolean("claimed", false),
+            payoutUsd = answer.optBaseUnits("payoutUsd") ?: 0UL,
+            marketStatus = market.optText("status").orEmpty(),
+            marketResult = market.optText("result"),
+            marketTitle = market.optText("title").orEmpty(),
+            eventTitle = event.optText("title").orEmpty(),
+            venue = market.optText("provider").orEmpty(),
+            updatedAt = answer.optLong("updatedAt", 0L),
+        )
+    }
+
+    private fun readStatus(answer: JSONObject): PredictionOrderStatus {
+        val raw = answer.text("status")
+        val latest = answer.optText("latestEventType").orEmpty()
+        // The numbers ride on the latest event that carries any; an order that has only been
+        // created carries none, and then there are none.
+        val history = answer.optJSONArray("history")
+        val fill =
+            history?.let { events ->
+                (events.length() - 1 downTo 0)
+                    .asSequence()
+                    .mapNotNull { events.optJSONObject(it)?.optJSONObject("fillInfo") }
+                    .firstOrNull()
+            }
+        val finished = latest == "order_closed" || latest == "order_failed"
+        return PredictionOrderStatus(
+            orderPubkey = answer.text("orderPubkey"),
+            fill = fillOf(raw.lowercase(), finished),
+            rawStatus = raw,
+            finished = finished || raw.lowercase() in FINAL,
+            contractsMicro = fill?.optBaseUnits("contractsMicro"),
+            filledContractsMicro = fill?.optBaseUnits("filledContractsMicro"),
+            avgFillPriceUsd = fill?.optBaseUnits("avgFillPriceUsd"),
+            netProceedsUsd = fill?.optBaseUnits("netProceedsUsd"),
+            feeUsd = fill?.optBaseUnits("feeUsd"),
+            latestSignature = answer.optText("latestSignature"),
+        )
+    }
+
+    private fun readClose(answer: JSONObject, positionPubkey: String, owner: String): PredictionClose {
+        val order =
+            answer.optJSONObject("order")
+                ?: throw PredictionException(PredictionProblem.Unusable, "no order")
+        val encoded = answer.optText("transaction")
+            ?: throw PredictionException(PredictionProblem.Unusable, "no transaction")
+        val bytes =
+            try {
+                ByteString.copyFrom(Base64.getDecoder().decode(encoded))
+            } catch (_: IllegalArgumentException) {
+                throw PredictionException(
+                    PredictionProblem.Unusable,
+                    "the transaction is not base64",
+                )
+            }
+        // As for a buy: the answer is about the question that was asked, or it is refused before
+        // the bytes are read at all.
+        if (order.optString("positionPubkey") != positionPubkey) {
+            throw PredictionException(PredictionProblem.Unusable, "an order for another position")
+        }
+        if (order.optString("userPubkey").let { it.isNotEmpty() && it != owner }) {
+            throw PredictionException(PredictionProblem.Unusable, "an order for another owner")
+        }
+        if (order.flag("isBuy")) {
+            throw PredictionException(PredictionProblem.Unusable, "a close that buys")
+        }
+        val signers =
+            answer.optJSONArray("requiredSigners")?.let { array ->
+                (0 until array.length()).map(array::getString)
+            } ?: emptyList()
+        val context = answer.optJSONObject("execution")?.optJSONObject("context")
+        return PredictionClose(
+            transaction = bytes,
+            orderPubkey = order.text("orderPubkey"),
+            positionPubkey = positionPubkey,
+            externalOrderId = order.text("externalOrderId"),
+            marketId = order.text("marketId"),
+            marketIdHash = order.text("marketIdHash"),
+            isYes = order.flag("isYes"),
+            isBuy = false,
+            contractsMicro = order.baseUnits("contractsMicro"),
+            newContractsMicro = order.optBaseUnits("newContractsMicro") ?: 0UL,
+            minSellPriceUsd = order.baseUnits("minSellPriceUsd"),
+            totalFeeUsd = order.optBaseUnits("estimatedTotalFeeUsd") ?: 0UL,
+            requiredSigners = signers,
+            executionModel = answer.optText("executionModel"),
+            executionType = context?.optText("type"),
+            gasless = answer.optBoolean("isGasless", false),
+        )
+    }
+
+    private fun fillOf(raw: String, finished: Boolean): OrderFill =
+        when (raw) {
+            "filled" -> OrderFill.Filled
+            "partiallyfilled",
+            "partially_filled" ->
+                if (finished) OrderFill.PartiallyFilledClosed else OrderFill.PartiallyFilled
+            "created",
+            "pending",
+            "open" -> OrderFill.Pending
+            "failed",
+            "cancelled",
+            "canceled",
+            "expired",
+            "rejected" -> OrderFill.Failed
+            else -> OrderFill.Unknown
+        }
+
+    /** An address this adapter puts in a path: base58 and of an address's length, or refused. */
+    private fun account(address: String): String {
+        if (address.length !in 32..44 || !address.all { it in BASE58 }) {
+            throw PredictionException(PredictionProblem.Unusable, "not an address")
+        }
+        return address
+    }
+
+    private fun JSONObject.flag(name: String): Boolean {
+        if (!has(name) || isNull(name)) {
+            throw PredictionException(PredictionProblem.Unusable, "no $name")
+        }
+        return optBoolean(name)
+    }
+
+    private fun JSONObject.optBaseUnits(name: String): ULong? =
+        if (!has(name) || isNull(name)) null
+        else
+            optString(name).toULongOrNull()
+                ?: throw PredictionException(PredictionProblem.Unusable, "$name is not base units")
+
+    private fun JSONObject.optSigned(name: String): Long? =
+        if (!has(name) || isNull(name)) null
+        else
+            optString(name).toLongOrNull()
+                ?: throw PredictionException(PredictionProblem.Unusable, "$name is not an amount")
+
     private fun refusal(body: String): PredictionProblem =
         when (code(body)) {
             "INSUFFICIENT_FUNDS" -> PredictionProblem.InsufficientFunds
@@ -310,5 +616,7 @@ class HttpJupiterPrediction(
 
     private companion object {
         val JSON = "application/json".toMediaType()
+        const val BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+        val FINAL = setOf("filled", "failed", "cancelled", "canceled", "expired", "rejected")
     }
 }

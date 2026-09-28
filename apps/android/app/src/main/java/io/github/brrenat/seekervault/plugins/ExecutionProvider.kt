@@ -142,18 +142,23 @@ interface ExecutionProvider {
      * What the provider says has become of an operation this phone already submitted, when the
      * provider can answer that truthfully ([ProviderCapabilities.statusQueries]).
      *
-     * Contract 1 defines the question and answers it honestly for the one provider that exists:
-     * Jupiter declares no status queries and returns [ActionStatus.Unsupported], because it has no
-     * read that would let this app turn "submitted" into "filled" without guessing. **Nothing in
-     * this app polls it.** There is no fill monitoring, no positions screen and no settlement here,
-     * and SEE-145 deliberately did not add any: the method exists so that a provider that genuinely
-     * can answer has somewhere to say so, and so that the shape of that answer is decided in the
-     * open rather than in whichever screen first wanted it.
+     * Since SEE-172 Jupiter answers it: its prediction API reports an order's fills by the order's
+     * own account, which the record keeps, so "submitted" can become "filled" on the provider's
+     * evidence rather than by guessing. A sent or chain-confirmed transaction is still never
+     * reported as a fill on its own. The position a purchase went into is read through [positions].
      */
     suspend fun status(
         operation: ActionOperation,
         reference: PluginReference,
     ): ActionStatus = ActionStatus.Unsupported
+
+    /**
+     * What this provider can read and do about a position the owner already holds, or null when
+     * it manages none (SEE-172). A sale is never a publisher's proposal: it is reached from the
+     * owner's own History item, through this and nothing else.
+     */
+    val positions: PositionManagement?
+        get() = null
 }
 
 /**
@@ -239,7 +244,10 @@ data class ProviderCapabilities(
      * separately and always.
      */
     val environments: Set<PluginEnvironment>,
-    /** Whether [ExecutionProvider.status] answers anything. Nothing in this app polls it. */
+    /**
+     * Whether [ExecutionProvider.status] answers anything. The app asks only about orders it
+     * submitted itself, and only while one is unresolved (SEE-172).
+     */
     val statusQueries: Boolean = false,
     /**
      * The bundled-plugin names this provider answers to, for servers and documents written before

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Prediction positions and selling them (SEE-172). -->
+    <string name="position_refused_unknown">This phone no longer tracks this position.</string>
+    <string name="position_refused_busy">Another sale of this position is still being settled. Wait for it before selling again.</string>
+    <string name="position_refused_unsupported">This build cannot manage positions for this provider. Continue in the provider\'s app.</string>
+</resources>

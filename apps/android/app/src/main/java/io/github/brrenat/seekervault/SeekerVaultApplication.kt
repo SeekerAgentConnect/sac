@@ -77,13 +77,18 @@ import io.github.brrenat.seekervault.wallet.WalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletIntentSender
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
+import io.github.brrenat.seekervault.positions.PositionTracker
+import io.github.brrenat.seekervault.positions.purchasesOf
+import io.github.brrenat.seekervault.positions.storage.PositionStore
 import java.io.File
 import javax.crypto.SecretKey
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -289,6 +294,15 @@ class SeekerVaultApplication : Application() {
             context = this,
             tracker = confirmations,
             scope = CoroutineScope(SupervisorJob() + connectionIo),
+            // A sale or order still unresolved keeps the background check coming back, bounded by
+            // how long either can stay unresolved (SEE-172).
+            alsoDue = {
+                if (positionTracker.unresolved()) {
+                    java.time.Instant.now().plus(POSITIONS_BACKGROUND_PAUSE)
+                } else {
+                    null
+                }
+            },
         )
     }
 
@@ -318,6 +332,55 @@ class SeekerVaultApplication : Application() {
     /** The app was hidden: what is unfinished is handed to background work. */
     fun onConfirmationsBackground() {
         confirmationScheduler.onBackground()
+    }
+
+    /**
+     * The owner's prediction positions and sale attempts (SEE-172, docs/wiki/prediction-positions.md):
+     * one coordinator for the process, so every screen, the foreground and background work see one
+     * read of each position and one record of each sale. Clearing History clears it too.
+     */
+    val positionTracker: PositionTracker by lazy {
+        PositionTracker(
+                store = PositionStore(File(filesDir, "positions")),
+                providers = { providerRegistry },
+                tracking = confirmations,
+                chainChecks = { confirmations.checks.value },
+                io = connectionIo,
+            )
+            .also { tracker -> activityLog.onClear(tracker::clear) }
+    }
+
+    private val positionScope by lazy { CoroutineScope(SupervisorJob() + connectionIo) }
+
+    @Volatile private var positionLinking: Job? = null
+
+    /**
+     * The app became visible: read the stored positions, link every purchase the owner's records
+     * name as they change, and reconcile whatever sale or order is still unresolved. Reading only —
+     * nothing here prepares, signs or sends.
+     */
+    fun onPositionsForeground() {
+        positionScope.launch {
+            if (!positionTracker.state.value.loaded) positionTracker.load()
+            if (positionLinking?.isActive != true) {
+                positionLinking =
+                    positionScope.launch {
+                        combine(proposalRepository.proposals, activityLog.records) {
+                                proposals,
+                                records ->
+                                purchasesOf(proposals, records)
+                            }
+                            .collect { positionTracker.link(it) }
+                    }
+            }
+            positionTracker.reconcile()
+        }
+    }
+
+    /** Background work's half: the same reconciliation, when something is still unresolved. */
+    suspend fun reconcilePositions() {
+        if (!positionTracker.state.value.loaded) positionTracker.load()
+        if (positionTracker.unresolved()) positionTracker.reconcile()
     }
 
     /** One registry for the process, so every screen resolves an operation the same way. */
@@ -747,3 +810,6 @@ class SeekerVaultApplication : Application() {
         val SENDER_WAIT = 5.seconds
     }
 }
+
+/** How long background work waits between reconciling an unresolved sale or order (SEE-172). */
+private val POSITIONS_BACKGROUND_PAUSE: java.time.Duration = java.time.Duration.ofMinutes(2)

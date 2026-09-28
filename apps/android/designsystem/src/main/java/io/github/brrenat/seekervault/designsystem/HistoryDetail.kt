@@ -244,6 +244,64 @@ data class HistoryDetailModel(
     val timeline: List<HistoryDetailTimelineEntry> = emptyList(),
     val identifiers: List<HistoryDetailRow> = emptyList(),
     val footnote: String,
+    /**
+     * The position a prediction purchase went into, read live from the provider (SEE-172). It is
+     * never part of the stored record: the purchase above stays what it was, and this says what the
+     * wallet holds now.
+     */
+    val position: HistoryDetailPosition? = null)
+
+/** Where the live position stands (SEE-172). */
+enum class HistoryDetailPositionState {
+    /** Not read yet. */
+    Loading,
+    /** Read just now. */
+    Live,
+    /** The last good read is shown; the latest attempt failed or is old. */
+    Stale,
+    /** Nothing can be said: no reference, not indexed yet, or no provider for it. */
+    Unavailable,
+    /** Sold, or nothing is held any more. */
+    Closed,
+    /** The market settled. Claimed on the provider, never sold here. */
+    Settled,
+}
+
+/** How a sale attempt stands. */
+enum class HistoryDetailSaleState {
+    Pending,
+    Done,
+    Failed,
+}
+
+/** One sale attempt, its own operation beside the purchase. */
+data class HistoryDetailSale(
+    val title: String,
+    val state: HistoryDetailSaleState,
+    val stateText: String,
+    val rows: List<HistoryDetailRow> = emptyList(),
+)
+
+/** Selling, when it is offered at all: enabled, or disabled with the precise reason. */
+data class HistoryDetailSell(val enabled: Boolean, val reason: String? = null)
+
+/** A place on the provider's own platform. */
+data class HistoryDetailLink(val label: String, val url: String)
+
+data class HistoryDetailPosition(
+    val state: HistoryDetailPositionState,
+    /** The chip: "Live", "Last known · 9:01 PM", "Not indexed yet". */
+    val stateText: String,
+    /** That this is the wallet's whole holding of the outcome, not only this signal's stake. */
+    val scope: String? = null,
+    /** The purchase's own order as the provider reports it, apart from the chain result. */
+    val orderRows: List<HistoryDetailRow> = emptyList(),
+    val rows: List<HistoryDetailRow> = emptyList(),
+    val note: String? = null,
+    val refreshing: Boolean = false,
+    val sell: HistoryDetailSell? = null,
+    val links: List<HistoryDetailLink> = emptyList(),
+    val sales: List<HistoryDetailSale> = emptyList(),
 )
 
 data class HistoryDetailCallbacks(
@@ -254,6 +312,12 @@ data class HistoryDetailCallbacks(
     val onOpenExplorer: (String) -> Unit = {},
     /** Asks the network about the transaction again; it never signs or sends (SEE-165). */
     val onCheckStatus: () -> Unit = {},
+    /** Reads the position again. It never prepares, signs or sends (SEE-172). */
+    val onRefreshPosition: () -> Unit = {},
+    /** Opens the sale review. Nothing is built until the review asks for it. */
+    val onSellPosition: () -> Unit = {},
+    /** Opens a provider link, app first. */
+    val onOpenProvider: (String) -> Unit = {},
 )
 
 object HistoryDetailTags {
@@ -270,6 +334,15 @@ object HistoryDetailTags {
     const val Timeline = "historyDetailTimeline"
     const val Identifiers = "historyDetailIdentifiers"
     const val Footnote = "historyDetailFootnote"
+    const val Position = "historyDetailPosition"
+    const val PositionState = "historyDetailPositionState"
+    const val PositionRefresh = "historyDetailPositionRefresh"
+    const val PositionSell = "historyDetailPositionSell"
+    const val PositionSellReason = "historyDetailPositionSellReason"
+
+    fun positionLink(index: Int) = "historyDetailPositionLink:$index"
+
+    fun positionSale(index: Int) = "historyDetailPositionSale:$index"
 
     fun copy(index: Int) = "historyDetailCopy:$index"
 
@@ -321,6 +394,7 @@ fun HistoryDetailBody(
         HistoryDetailResponseCard(model.response)
         model.delivery?.let { HistoryDetailDeliveryCard(it, callbacks.onSendAgain) }
         model.execution?.let { HistoryDetailExecutionCard(it, callbacks.onCheckStatus) }
+        model.position?.let { HistoryDetailPositionCard(it, callbacks) }
         HistoryDetailOriginalCard(
             origin = model.header.origin,
             description = model.originalDescription,
@@ -845,6 +919,167 @@ private fun HistoryDetailIdentifiers(identifiers: List<HistoryDetailRow>) {
 }
 
 // Shared pieces --------------------------------------------------------------------------------
+
+// Position (SEE-172) ---------------------------------------------------------------------------
+
+@Composable
+private fun HistoryDetailPositionCard(
+    model: HistoryDetailPosition,
+    callbacks: HistoryDetailCallbacks,
+) {
+    HistoryDetailCard(Modifier.testTag(HistoryDetailTags.Position)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Position now",
+                modifier = Modifier.weight(1f).semantics { heading() },
+                color = SeekerTheme.colors.lime,
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Box(Modifier.testTag(HistoryDetailTags.PositionState)) {
+                when (model.state) {
+                    HistoryDetailPositionState.Live ->
+                        HistoryDetailChip(text = model.stateText, icon = Icons.Outlined.CheckCircle)
+                    HistoryDetailPositionState.Loading,
+                    HistoryDetailPositionState.Stale ->
+                        HistoryDetailChip(
+                            text = model.stateText,
+                            icon = Icons.Outlined.HourglassTop,
+                            tone = HistoryDetailChipTone.Tertiary,
+                        )
+                    HistoryDetailPositionState.Unavailable ->
+                        HistoryDetailChip(
+                            text = model.stateText,
+                            icon = Icons.Outlined.SyncProblem,
+                            tone = HistoryDetailChipTone.Tertiary,
+                        )
+                    HistoryDetailPositionState.Closed,
+                    HistoryDetailPositionState.Settled ->
+                        HistoryDetailChip(text = model.stateText, icon = Icons.Outlined.Verified)
+                }
+            }
+        }
+        model.scope?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        if (model.orderRows.isNotEmpty()) {
+            HistoryDetailRowsBox(label = "Your order", rows = model.orderRows)
+        }
+        model.rows.forEach { HistoryDetailRowView(it) }
+        model.note?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        model.sales.forEachIndexed { index, sale ->
+            Column(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(SeekerTheme.radii.md))
+                    .background(SeekerTheme.colors.surface3)
+                    .padding(SeekerTheme.spacing.lg)
+                    .testTag(HistoryDetailTags.positionSale(index)),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xs),
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = sale.title,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    when (sale.state) {
+                        HistoryDetailSaleState.Pending ->
+                            HistoryDetailChip(
+                                text = sale.stateText,
+                                icon = Icons.Outlined.HourglassTop,
+                                tone = HistoryDetailChipTone.Tertiary,
+                            )
+                        HistoryDetailSaleState.Done ->
+                            HistoryDetailChip(
+                                text = sale.stateText,
+                                icon = Icons.Outlined.CheckCircle,
+                            )
+                        HistoryDetailSaleState.Failed ->
+                            HistoryDetailChip(
+                                text = sale.stateText,
+                                icon = Icons.Outlined.ErrorOutline,
+                                tone = HistoryDetailChipTone.Error,
+                            )
+                    }
+                }
+                sale.rows.forEach { HistoryDetailRowView(it) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md)) {
+            SeekerButton(
+                label = if (model.refreshing) "Refreshing…" else "Refresh",
+                onClick = callbacks.onRefreshPosition,
+                variant = SeekerButtonVariant.Tertiary,
+                size = SeekerButtonSize.Md,
+                enabled = !model.refreshing,
+                modifier = Modifier.testTag(HistoryDetailTags.PositionRefresh),
+            )
+            model.sell?.let {
+                SeekerButton(
+                    label = "Sell position",
+                    onClick = callbacks.onSellPosition,
+                    variant = SeekerButtonVariant.Filled,
+                    size = SeekerButtonSize.Md,
+                    enabled = it.enabled,
+                    modifier = Modifier.testTag(HistoryDetailTags.PositionSell),
+                )
+            }
+        }
+        model.sell?.reason?.let {
+            Text(
+                text = it,
+                modifier = Modifier.testTag(HistoryDetailTags.PositionSellReason),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        model.links.forEachIndexed { index, link ->
+            SeekerButton(
+                label = link.label,
+                onClick = { callbacks.onOpenProvider(link.url) },
+                variant = SeekerButtonVariant.Tertiary,
+                size = SeekerButtonSize.Sm,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(SeekerTheme.spacing.xxl),
+                    )
+                },
+                modifier = Modifier.testTag(HistoryDetailTags.positionLink(index)),
+            )
+        }
+    }
+}
+
+@Composable
+private fun HistoryDetailRowsBox(label: String, rows: List<HistoryDetailRow>) {
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(SeekerTheme.radii.md))
+            .background(SeekerTheme.colors.surface3)
+            .padding(SeekerTheme.spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xs),
+    ) {
+        HistoryDetailSmallLabel(label)
+        rows.forEach { HistoryDetailRowView(it) }
+    }
+}
 
 @Composable
 private fun HistoryDetailCard(

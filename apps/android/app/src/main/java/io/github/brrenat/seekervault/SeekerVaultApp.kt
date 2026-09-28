@@ -63,6 +63,10 @@ import io.github.brrenat.seekervault.notifications.InAppNotifications
 import io.github.brrenat.seekervault.notifications.LocalInAppNotices
 import io.github.brrenat.seekervault.notifications.RequestNotificationPermission
 import io.github.brrenat.seekervault.operations.OperationViewModel
+import io.github.brrenat.seekervault.positions.PositionsState
+import io.github.brrenat.seekervault.positions.PositionsViewModel
+import io.github.brrenat.seekervault.history.PositionSaleRoute
+import io.github.brrenat.seekervault.designsystem.HistoryDetailLink
 import io.github.brrenat.seekervault.operations.OperationsUiState
 import io.github.brrenat.seekervault.operations.PredictionParametersSheet
 import io.github.brrenat.seekervault.operations.PredictionReviewScreen
@@ -116,6 +120,7 @@ fun SeekerVaultApp(
     connectionLinkTaps: StateFlow<MainActivity.ConnectionLinkTap?> = MutableStateFlow(null),
     operations: OperationViewModel? = null,
     startInLiveTest: Boolean = false,
+    positions: PositionsViewModel? = null,
 ) {
     val navigator =
         rememberAppNavigator(
@@ -195,6 +200,11 @@ fun SeekerVaultApp(
         (operations?.state ?: MutableStateFlow(OperationsUiState())).collectAsStateWithLifecycle()
     val openOperation by
         (operations?.review ?: MutableStateFlow(null)).collectAsStateWithLifecycle()
+    val positionsState by
+        (positions?.state ?: MutableStateFlow(PositionsState())).collectAsStateWithLifecycle()
+    val positionWallet by
+        (positions?.selected ?: MutableStateFlow(null)).collectAsStateWithLifecycle()
+    val historyContext = LocalContext.current
 
     RequestNotificationPermission(
         enabled =
@@ -422,6 +432,18 @@ fun SeekerVaultApp(
                         chainChecks = chainChecks,
                         checkingChain = historyState.checking,
                         onCheckChain = history::checkChain,
+                        positions = positionsState,
+                        wallet = positionWallet,
+                        positionLinks = { held ->
+                            positions?.destinations(held).orEmpty().map {
+                                HistoryDetailLink(historyContext.getString(it.label), it.url)
+                            }
+                        },
+                        onRefreshPosition = { account -> positions?.refresh(account) },
+                        onSellPosition = { _ ->
+                            navigator.openPositionSale(navigation.screen.identity)
+                        },
+                        onOpenProvider = { url -> openDestination(historyContext, url, url) },
                     )
                 AppScreen.AddConnection ->
                     AddConnectionRoute(
@@ -647,6 +669,17 @@ fun SeekerVaultApp(
                                         openHistoryDetail(identity)
                                     },
                                 )
+                            is AppSheet.PositionSale ->
+                                if (positions == null) {
+                                    RequestGoneScreen(onBack = pop)
+                                } else {
+                                    PositionSaleRoute(
+                                        identity = activeRoute.identity,
+                                        feedRecords = operationsState.records,
+                                        positions = positions,
+                                        onClose = pop,
+                                    )
+                                }
                             is AppSheet.WalletHandoff ->
                                 WalletHandoffRoute(
                                     route = activeRoute,

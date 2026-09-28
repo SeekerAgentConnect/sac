@@ -36,10 +36,10 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * A publisher names a market and is believed about nothing else. The owner picks a side and a
  * stake, Jupiter builds the order, the phone resolves the transaction's accounts from the chain and
- * reads the order back out of the bytes, and the wallet signs once — after which the app **stops**.
- * There is no fill monitoring, no position screen, no settlement, no payout claim and no profit or
- * loss anywhere in it; the owner continues on Jupiter, which is what [destinations] is for
- * (docs/wiki/jupiter-prediction.md).
+ * reads the order back out of the bytes, and the wallet signs once. This class stops there: what
+ * the order came to, the position it opened and selling that position are read and done from the
+ * owner's History item through [JupiterPositions] (SEE-172), and a settled position's payout is
+ * claimed on Jupiter, which is what [destinations] is for (docs/wiki/jupiter-prediction.md).
  *
  * ## Why this one reads the chain and the swap does not
  *
@@ -349,7 +349,7 @@ const val JUPITER_ORDERS: String = "$JUPITER_PLATFORM/prediction/portfolio"
  */
 val ORDER_LIFETIME: Duration = Duration.ofSeconds(60)
 
-private val LookupProblem.message: Int
+internal val LookupProblem.message: Int
     get() =
         when (this) {
             LookupProblem.Unread -> R.string.jupiter_finding_tables_unread
@@ -361,7 +361,7 @@ private val LookupProblem.message: Int
             LookupProblem.AccountOutOfRange -> R.string.jupiter_finding_tables_inconsistent
         }
 
-private val SolanaProblem.message: Int
+internal val SolanaProblem.message: Int
     get() =
         when (this) {
             SolanaProblem.NoEndpoint -> R.string.jupiter_failure_no_rpc
@@ -380,6 +380,7 @@ internal fun PredictionException.asFailure(): PluginFailure =
                 PredictionProblem.Unreachable -> R.string.jupiter_failure_unreachable
                 PredictionProblem.RateLimited -> R.string.jupiter_failure_rate_limited
                 PredictionProblem.NoSuchMarket -> R.string.jupiter_failure_no_such_market
+                PredictionProblem.NotFound -> R.string.jupiter_failure_no_position
                 PredictionProblem.MarketClosed -> R.string.jupiter_failure_market_closed
                 PredictionProblem.Refused -> R.string.jupiter_failure_refused
                 PredictionProblem.InsufficientFunds -> R.string.jupiter_failure_insufficient_funds

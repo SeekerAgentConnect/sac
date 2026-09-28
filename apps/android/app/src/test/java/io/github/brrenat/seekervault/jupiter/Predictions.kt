@@ -264,7 +264,7 @@ fun orderData(
     byteArrayOf(-115, 54, 37, -49, -19, -46, -6, -41) +
         borshString(externalOrderId) +
         borshString(marketHash) +
-        byteArrayOf(if (buying) 1 else 0, if (yes) 1 else 0) +
+        byteArrayOf(if (yes) 1 else 0, if (buying) 1 else 0) +
         u64(contractsMicro) +
         u64(maxPrice) +
         u64(cost) +

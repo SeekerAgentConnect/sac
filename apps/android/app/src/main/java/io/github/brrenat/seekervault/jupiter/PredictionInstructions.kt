@@ -18,7 +18,8 @@ import io.github.brrenat.seekervault.transactions.TOKEN_PROGRAM
  * ## What the order instruction carries
  *
  * All of it, and this is the part worth knowing: the provider's request identifier, the market's
- * hash, which side, how many contracts, the most a contract may cost, what the order will cost, and
+ * hash, which side, whether it buys or sells, how many contracts, the price bound — the most a
+ * contract may cost for a buy, the least it may fetch for a sale — what the order will cost, and
  * the slippage — each as its own field in the instruction's own Borsh data. So the review does not
  * have to take the provider's word for what it built: it reads the order out of the bytes and
  * compares it with what the owner chose and with what the provider said
@@ -70,7 +71,10 @@ sealed interface OrderStep {
         val yes: Boolean,
         /** Contracts in millionths: 1000000 is one contract. */
         val contractsMicro: ULong,
-        /** The most one contract may cost, in the mint's base units. */
+        /**
+         * The price bound, in the mint's base units: for a buy the most one contract may cost, for
+         * a sale the least one may be sold for — the floor the program enforces.
+         */
         val maxPrice: ULong,
         /** What the order will cost, in the same units. */
         val cost: ULong,
@@ -128,8 +132,9 @@ fun ResolvedTransaction.readOrderStep(instruction: DecodedInstruction): OrderSte
 // walk is exact rather than positional, and the arguments must end exactly where the data does.
 private fun order(data: ByteArray, accounts: List<String>): OrderStep {
     if (!data.startsWith(PLACE_ORDER)) {
-        // Another instruction of the prediction program — selling a position, claiming a payout, a
-        // version of ordering this plugin was not written for. Named by its first byte so the log
+        // Another instruction of the prediction program — claiming a payout, a version of ordering
+        // this plugin was not written for. (Selling is not one: a sale is this same instruction
+        // with its direction flag clear, SEE-172.) Named by its first byte so the log
         // says something, and covered by nothing.
         return OrderStep.Unread(PREDICTION_PROGRAM, data.firstOrNull()?.toInt()?.and(0xff))
     }
@@ -140,8 +145,11 @@ private fun order(data: ByteArray, accounts: List<String>): OrderStep {
     val marketHash = text(data, at) ?: return unread(data)
     at += 4 + marketHash.length
     if (data.size < at + ORDER_TAIL) return unread(data)
-    val buying = data[at].toInt() == 1
-    val yes = data[at + 1].toInt() == 1
+    // The side first, then the direction. A YES buy writes 1, 1 and cannot tell the two apart,
+    // which is how they were once read the other way round; a NO buy (0, 1) and a YES sale (1, 0),
+    // both captured from the live API, can (SEE-172, fixtures/jupiter/positions.json).
+    val yes = data[at].toInt() == 1
+    val buying = data[at + 1].toInt() == 1
     // A byte that is neither 0 nor 1 is not a boolean, and a side this plugin guessed at would be
     // the worst possible thing to guess at.
     if (data[at].toInt() !in 0..1 || data[at + 1].toInt() !in 0..1) return unread(data)

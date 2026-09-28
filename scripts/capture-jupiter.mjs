@@ -2,6 +2,7 @@
 //
 //   node scripts/capture-jupiter.mjs            # rewrite fixtures/jupiter/swaps.json
 //   node scripts/capture-jupiter.mjs --orders   # rewrite fixtures/jupiter/orders.json
+//   node scripts/capture-jupiter.mjs --positions # rewrite fixtures/jupiter/positions.json
 //   node scripts/capture-jupiter.mjs --events   # rewrite examples/demo-prediction/internal/jupiter/testdata
 //   node scripts/capture-jupiter.mjs --check    # decode what is committed and print it
 //
@@ -574,6 +575,123 @@ async function captureOrder() {
     tables: await lookupTables(tables.map((one) => one.table)),
     lookups: tables,
   };
+}
+
+// --- Positions and closing them (SEE-172) -----------------------------------
+//
+// What the phone reads about a position it bought, and what Jupiter builds when the owner sells it.
+// Nobody here owns a position, so the owner is a public trader taken from Jupiter's own public trade
+// feed: every field below is already public — on chain and on that feed — and nothing is signed.
+// A close build is unsigned bytes for somebody else's wallet, which nobody here can sign. The NO buy
+// is captured beside it because the order instruction's two flags are `isYes, isBuy` on the wire,
+// and a YES buy (both 1) cannot tell that order from the other one; a NO buy (0, 1) and a YES sell
+// (1, 0) can.
+const POSITIONS = fileURLToPath(
+  new URL("../fixtures/jupiter/positions.json", import.meta.url),
+);
+
+const pause = () => new Promise((resume) => setTimeout(resume, 2500));
+
+async function read(path, init) {
+  await pause();
+  const answer = await fetch(`${endpoint}/prediction/v1${path}`, init);
+  return { status: answer.status, body: await answer.json() };
+}
+
+async function withTables(built) {
+  const { tables } = tablesOf(built.transaction);
+  return {
+    tables: await lookupTables(tables.map((one) => one.table)),
+    lookups: tables,
+  };
+}
+
+async function capturePositions() {
+  const trades = await read("/trades?start=0&end=40");
+  const owners = [
+    ...new Set(
+      (trades.body.data ?? [])
+        .filter((one) => one.action === "buy")
+        .map((one) => one.ownerPubkey),
+    ),
+  ];
+  let found = null;
+  for (const owner of owners.slice(0, 10)) {
+    const listed = await read(`/positions?ownerPubkey=${owner}&start=0&end=20`);
+    const open = (listed.body.data ?? []).find(
+      (one) =>
+        one.marketMetadata?.status === "open" &&
+        !one.claimable &&
+        one.openOrders === 0 &&
+        BigInt(one.contractsMicro ?? "0") > 0n,
+    );
+    if (open) {
+      found = { owner, listed: listed.body, position: open };
+      break;
+    }
+  }
+  if (!found) throw new Error("no open position was found among recent traders");
+  const { owner, position } = found;
+  const one = await read(`/positions/${position.pubkey}`);
+  const missing = await read("/positions/11111111111111111111111111111111");
+  const history = await read(
+    `/history?ownerPubkey=${owner}&positionPubkey=${position.pubkey}&start=0&end=10`,
+  );
+  const orderPubkey = (history.body.data ?? []).find((one) => one.orderPubkey)?.orderPubkey;
+  const status = orderPubkey ? await read(`/orders/status/${orderPubkey}`) : null;
+  const close = await read(`/positions/${position.pubkey}`, {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ownerPubkey: owner }),
+  });
+  if (close.status !== 200) throw new Error(`close HTTP ${close.status}`);
+  const buyer = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+  const buyNo = await read("/orders", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ownerPubkey: buyer,
+      marketId: position.marketId,
+      isYes: false,
+      isBuy: true,
+      depositAmount: "5000000",
+      depositMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    }),
+  });
+  if (buyNo.status !== 200) throw new Error(`buy HTTP ${buyNo.status}`);
+  return {
+    owner,
+    position: one.body,
+    positions: found.listed,
+    missing: missing,
+    orderStatus: status?.body ?? null,
+    close: { ...close.body, ...(await withTables(close.body)) },
+    buyNo: { owner: buyer, ...buyNo.body, ...(await withTables(buyNo.body)) },
+  };
+}
+
+if (process.argv.includes("--positions")) {
+  const captured = await capturePositions();
+  writeFileSync(
+    POSITIONS,
+    `${JSON.stringify(
+      {
+        note:
+          "Real answers from Jupiter's keyless prediction API about a public trader's open " +
+          "position, with the lookup tables the close and buy builds name, captured by " +
+          "scripts/capture-jupiter.mjs --positions and read by the phone's " +
+          "PositionFixturesTest. Nothing here is signed and nothing was sent.",
+        endpoint,
+        rpc,
+        capturedAt: new Date().toISOString(),
+        ...captured,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  console.log(`wrote the position fixtures to ${POSITIONS}`);
+  process.exit(0);
 }
 
 if (process.argv.includes("--orders")) {

@@ -20,12 +20,19 @@ import io.github.brrenat.seekervault.designsystem.DetailScreenScaffold
 import io.github.brrenat.seekervault.designsystem.EmptyState
 import io.github.brrenat.seekervault.designsystem.EmptyStateScreen
 import io.github.brrenat.seekervault.designsystem.HistoryDetailCallbacks
+import io.github.brrenat.seekervault.designsystem.HistoryDetailLink
 import io.github.brrenat.seekervault.designsystem.HistoryDetailRow
 import io.github.brrenat.seekervault.designsystem.HistoryDetailScreen
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.InboxUiState
+import io.github.brrenat.seekervault.plugins.HeldPosition
+import io.github.brrenat.seekervault.positions.HoldingRecord
+import io.github.brrenat.seekervault.positions.PositionsState
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
+import io.github.brrenat.seekervault.wallet.SelectedWallet
+import java.time.Instant
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -57,6 +64,19 @@ fun HistoryDetailRoute(
     clock: HistoryDetailClock = HistoryDetailClock(),
     /** How often a transaction still waiting on the network is asked about while open. */
     pollMillis: Long = HISTORY_POLL_MILLIS,
+    /** The positions this phone follows and its sale attempts (SEE-172). */
+    positions: PositionsState = PositionsState(),
+    /** The wallet selected now, which decides only whether Sell is offered. */
+    wallet: SelectedWallet? = null,
+    /** Where the owner continues on the provider, for a position. */
+    positionLinks: (HeldPosition) -> List<HistoryDetailLink> = { emptyList() },
+    /** Reads a position again; never prepares, signs or sends. */
+    onRefreshPosition: (String) -> Unit = {},
+    /** Opens the sale review of a position. */
+    onSellPosition: (String) -> Unit = {},
+    /** Opens a provider link, app first. */
+    onOpenProvider: (String) -> Unit = {},
+    now: () -> Instant = Instant::now,
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
@@ -95,14 +115,47 @@ fun HistoryDetailRoute(
                     }
                     ?.let { record ->
                         val key = RequestKey(record.connectionId, record.key.proposalId)
-                        signalHistoryDetail(
-                            record = record,
-                            standing = feedStanding(record),
-                            connection = connection,
-                            choice = signalChoice(record),
-                            clock = clock,
-                            chain = chainChecks[key],
-                            checkingChain = key in checkingChain,
+                        val holding = positions.holdingOf(record)
+                        holding?.let { PositionPolling(it, positions, onRefreshPosition) }
+                        val base =
+                            signalHistoryDetail(
+                                record = record,
+                                standing = feedStanding(record),
+                                connection = connection,
+                                choice = signalChoice(record),
+                                clock = clock,
+                                chain = chainChecks[key],
+                                checkingChain = key in checkingChain,
+                            )
+                        val links =
+                            holding?.held?.let(positionLinks)
+                                ?: record.execution
+                                    ?.binding
+                                    ?.let { binding ->
+                                        positionLinks(
+                                            HeldPosition(
+                                                provider = binding.provider,
+                                                owner = binding.wallet,
+                                                network = binding.network,
+                                                account = "",
+                                                marketId = binding.instrument.id,
+                                                yes = true,
+                                            )
+                                        )
+                                    }
+                                    .orEmpty()
+                        base.copy(
+                            position =
+                                positionDetail(
+                                    record = record,
+                                    positions = positions,
+                                    wallet = wallet,
+                                    links = links,
+                                    now = now(),
+                                    clock = clock,
+                                ),
+                            transactions =
+                                base.transactions + saleTransactions(record, positions, chainChecks),
                         )
                     }
         }
@@ -142,6 +195,9 @@ fun HistoryDetailRoute(
                     }
                 },
                 onOpenExplorer = { url -> openLink(context, url) },
+                onRefreshPosition = { positionOf(identity, feedRecords, positions)?.let(onRefreshPosition) },
+                onSellPosition = { positionOf(identity, feedRecords, positions)?.let(onSellPosition) },
+                onOpenProvider = onOpenProvider,
                 onCheckStatus = {
                     val key = RequestKey(identity.connectionId, identity.requestId)
                     // The phone's own check first; for a direct request the server is asked too,
@@ -153,6 +209,61 @@ fun HistoryDetailRoute(
         modifier = modifier,
     )
 }
+
+/** The position account [identity]'s purchase went into, when this phone follows one. */
+private fun positionOf(
+    identity: ReviewIdentity,
+    records: List<ProposalRecord>,
+    positions: PositionsState,
+): String? =
+    records
+        .firstOrNull {
+            it.connectionId == identity.connectionId && it.key.proposalId == identity.requestId
+        }
+        ?.let(positions::holdingOf)
+        ?.held
+        ?.account
+
+/**
+ * Reads the position when the page opens, and — only while one of its orders or sales is still
+ * unresolved — again with a growing pause, for a bounded time. A stable open position is not
+ * polled: nobody is promised a live price the phone cannot keep up.
+ */
+@Composable
+private fun PositionPolling(
+    holding: HoldingRecord,
+    positions: PositionsState,
+    onRefresh: (String) -> Unit,
+) {
+    val account = holding.held.account
+    val unresolved =
+        holding.ordersUnresolved || positions.salesOf(account).any { it.inFlight }
+    // On opening, and on every return to the app — from the wallet or from Jupiter, where the
+    // position may have been changed by hand.
+    LifecycleResumeEffect(account) {
+        onRefresh(account)
+        onPauseOrDispose {}
+    }
+    if (!unresolved) return
+    LaunchedEffect(account, unresolved) {
+        var pause = POSITION_POLL_FIRST_MILLIS
+        var waited = 0L
+        while (waited < POSITION_POLL_MOST_MILLIS) {
+            delay(pause)
+            waited += pause
+            onRefresh(account)
+            pause = (pause * 2).coerceAtMost(POSITION_POLL_LONGEST_MILLIS)
+        }
+    }
+}
+
+/** The first pause while an order or sale is unresolved; it doubles up to the longest. */
+const val POSITION_POLL_FIRST_MILLIS = 5_000L
+
+const val POSITION_POLL_LONGEST_MILLIS = 60_000L
+
+/** How long a page keeps polling one unresolved position before it leaves it to Refresh. */
+const val POSITION_POLL_MOST_MILLIS = 15 * 60_000L
 
 object HistoryDetailRouteCopy {
     const val GoneTitle = "This record is no longer on this phone"

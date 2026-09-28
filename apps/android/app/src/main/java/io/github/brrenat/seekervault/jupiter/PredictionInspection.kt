@@ -82,8 +82,20 @@ enum class PredictionFinding(val code: String) {
     ExtraOrder("extra_order"),
     /** The order is not the owner's own. */
     NotTheOwnersOrder("not_the_owners_order"),
-    /** It sells rather than buys. This app opens a position and does not manage one. */
+    /** It sells rather than buys, where a buy was asked for. */
     NotBuying("not_buying"),
+    /** It buys rather than sells, where a sale was asked for (SEE-172). */
+    NotSelling("not_selling"),
+    /** The order is about another position than the one the owner opened the sale from. */
+    PositionMismatch("position_mismatch"),
+    /** It sells other than exactly the contracts the position holds. */
+    QuantityMismatch("quantity_mismatch"),
+    /** The sale's floor is missing, or lets the contracts go for far less than the market bids. */
+    WeakFloor("weak_floor"),
+    /** The proceeds would land in an account that is not the owner's. */
+    ProceedsNotOwners("proceeds_not_owners"),
+    /** The fees would take a share nobody should approve. */
+    ExcessiveFee("excessive_fee"),
     /** It buys the other side from the one the owner picked. */
     OutcomeMismatch("outcome_mismatch"),
     /** The market in the bytes is not the market the provider said it built for. */
@@ -163,16 +175,7 @@ suspend fun inspectPrediction(
     val owner = wallet?.address
     if (wallet == null) findings += PredictionFinding.NoWallet
     else if (wallet.network.network != SWAP_NETWORK) findings += PredictionFinding.OtherNetwork
-    // The provider signs one of the two slots itself, so the rule is not "nothing else signs" but
-    // "the only signature still missing is the owner's".
-    val missing = decoded.emptySignatures
-    if (missing.size != 1) findings += PredictionFinding.ExtraSigner
-    if (owner == null || missing.singleOrNull() != 0 || decoded.feePayer != owner) {
-        findings += PredictionFinding.NotTheOwnersToSign
-    }
-    if (owner == null || decoded.feePayer != owner) {
-        findings += PredictionFinding.FeePayerNotTheWallet
-    }
+    val sponsor = checkSigners(decoded, owner, findings)
 
     val read = decoded.instructions.map { resolved.readOrderStep(it) }
     if (read.any { it == null }) {
@@ -195,8 +198,8 @@ suspend fun inspectPrediction(
         findings += PredictionFinding.NoOrder
         return nothing(findings, version)
     }
-    check(placed, terms, choice, order, owner, findings)
-    checkFunding(steps, terms, choice, placed, owner, findings)
+    check(placed, terms, choice, order, owner, sponsor, findings)
+    checkFunding(steps, terms, choice, placed, owner, sponsor, findings)
 
     val verdict =
         when {
@@ -243,6 +246,41 @@ const val POSITION_ACCOUNT: String = "position_account"
 
 const val MARKET: String = "market_id"
 
+/**
+ * Who signs, and who pays the network fee — the same rule for a buy and a sale (SEE-172).
+ *
+ * The provider fills some slots itself, so the rule is not "nothing else signs" but **"the only
+ * signature still missing is the owner's"**. Since 2026-09 Jupiter also builds *gasless*
+ * transactions: the fee payer is an account of its own that has already signed, and pays the fee
+ * and any rent. That is accepted exactly when the payer's signature is already there — a payer
+ * still waiting to sign would be somebody signing alongside the owner — and the payer is returned
+ * as the [sponsor] so the instructions can be checked against it: it may pay for the order's
+ * accounts and nothing else.
+ *
+ * Returns the sponsor, or null when the owner pays their own fee.
+ */
+internal fun checkSigners(
+    decoded: io.github.brrenat.seekervault.transactions.DecodedTransaction,
+    owner: String?,
+    findings: MutableList<PredictionFinding>,
+): String? {
+    val missing = decoded.emptySignatures
+    if (missing.size != 1) findings += PredictionFinding.ExtraSigner
+    val ownerSlot = owner?.let { decoded.accounts.indexOf(it) }?.takeIf { it >= 0 }
+    if (owner == null || ownerSlot == null || missing.singleOrNull() != ownerSlot) {
+        findings += PredictionFinding.NotTheOwnersToSign
+    }
+    val payer = decoded.feePayer
+    return when {
+        owner == null -> null.also { findings += PredictionFinding.FeePayerNotTheWallet }
+        payer == owner -> null
+        // Slot 0 is the fee payer's. Filled means the provider's account has already signed and
+        // pays; empty means somebody other than the owner still has to sign, and that is refused.
+        0 !in missing -> payer
+        else -> null.also { findings += PredictionFinding.FeePayerNotTheWallet }
+    }
+}
+
 /** The order instruction against what the owner chose and what the provider said. */
 private fun check(
     placed: OrderStep.Order,
@@ -250,9 +288,11 @@ private fun check(
     choice: PredictionChoice,
     order: PredictionOrder,
     owner: String?,
+    sponsor: String?,
     findings: MutableList<PredictionFinding>,
 ) {
-    if (owner == null || placed.payer != owner || placed.owner != owner) {
+    // The order is the owner's, and whoever funds its accounts is the owner or the gasless sponsor.
+    if (owner == null || placed.payer !in setOfNotNull(owner, sponsor) || placed.owner != owner) {
         findings += PredictionFinding.NotTheOwnersOrder
     }
     if (!placed.buying) findings += PredictionFinding.NotBuying
@@ -297,6 +337,7 @@ private fun checkFunding(
     choice: PredictionChoice,
     placed: OrderStep.Order,
     owner: String?,
+    sponsor: String?,
     findings: MutableList<PredictionFinding>,
 ) {
     val routes = steps.mapNotNull { (it as? OrderStep.Funding)?.step as? SwapStep.Route }
@@ -338,7 +379,7 @@ private fun checkFunding(
                         if (
                             owner == null ||
                                 funding.owner != owner ||
-                                funding.payer != owner ||
+                                funding.payer !in setOfNotNull(owner, sponsor) ||
                                 expected == null ||
                                 funding.account != expected ||
                                 funding.mint !in setOf(terms.depositMint, placed.mint)
@@ -439,6 +480,12 @@ private val PredictionFinding.message: Int
             PredictionFinding.ExtraOrder -> R.string.jupiter_finding_extra_order
             PredictionFinding.NotTheOwnersOrder -> R.string.jupiter_finding_not_the_owners_order
             PredictionFinding.NotBuying -> R.string.jupiter_finding_not_buying
+            PredictionFinding.NotSelling -> R.string.jupiter_finding_not_selling
+            PredictionFinding.PositionMismatch -> R.string.jupiter_finding_position
+            PredictionFinding.QuantityMismatch -> R.string.jupiter_finding_quantity
+            PredictionFinding.WeakFloor -> R.string.jupiter_finding_weak_floor
+            PredictionFinding.ProceedsNotOwners -> R.string.jupiter_finding_proceeds
+            PredictionFinding.ExcessiveFee -> R.string.jupiter_finding_excessive_fee
             PredictionFinding.OutcomeMismatch -> R.string.jupiter_finding_outcome
             PredictionFinding.MarketMismatch -> R.string.jupiter_finding_market
             PredictionFinding.OrderMismatch -> R.string.jupiter_finding_order
