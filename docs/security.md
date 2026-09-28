@@ -891,11 +891,20 @@ signature is the owner's and a non-owner fee payer has already signed; exactly o
 the provider stated; exactly the contracts the position held when it was read a moment before, all
 of them; cost zero; a non-zero floor equal to the one stated and no more than 25 % under the current
 best bid; the proceeds in the owner's own JupUSD account; no route, transfer, wrap or unread
-instruction; an owner-paid priority fee of at most 0.005 SOL; and a fee estimate below the least the
-sale can gross. Any failure makes the review unapprovable. Before the wallet opens the position is
-read once more and the reviewed quantity compared; the attempt is written down first, handed to the
-wallet once under its lock, and an unknown answer is reconciled by reading, never by sending again.
-A wallet switch never retargets a position: only its owner, on its network, is offered the sale.
+instruction; an owner-paid priority fee of at most 0.005 SOL — counted over the runtime's default
+compute-unit limit (200 000 units per other instruction, at most 1 400 000) when the bytes set no
+limit, with each budget setting at most once and the product checked for overflow; and a fee
+estimate below the least the sale can gross. Any failure makes the review unapprovable. Before the
+wallet opens the position is read once more and the reviewed quantity compared; the attempt is
+written down first and handed to the wallet once under its lock. Waiting for that lock can take any
+time, so once it is held the review's identity and expiry are checked again, the position is read
+again if the earlier read is more than a few seconds old, and the attempt is written only if the
+review is still the current one — the check and the write share one lock. An unknown answer is
+reconciled by reading, never by sending again, and it stays unresolved — blocking another sale —
+until an order appears or the chain proves it never landed: its blockhash expired on the finalized
+chain *and* no transaction names the sale's own order account over a period the endpoint's ledger
+covers. Neither time passing nor a provider 404 is that proof. A wallet switch never retargets a
+position: only its owner, on its network, is offered the sale.
 
 ## Verification versus advisory rules
 

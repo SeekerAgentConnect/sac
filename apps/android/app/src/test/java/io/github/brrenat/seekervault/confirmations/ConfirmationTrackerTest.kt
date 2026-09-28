@@ -676,6 +676,8 @@ class ConfirmationTrackerTest {
         }
 
         override suspend fun retainedSince(): Instant? = retainedSince
+
+        override suspend fun signaturesFor(address: String, limit: Int): List<String> = emptyList()
     }
 
     private companion object {

@@ -204,6 +204,7 @@ class PositionStore(private val dir: File) {
                 .putOpt("order", record.order?.let(::encodeOrder))
                 .put("result", record.result.code)
                 .putOpt("resolvedAt", record.resolvedAt?.toString())
+                .putOpt("blockhash", record.blockhash)
                 .toString()
 
         fun decodeSale(text: String): SaleRecord? = decoding {
@@ -232,6 +233,7 @@ class PositionStore(private val dir: File) {
                 order = json.optJSONObject("order")?.let(::decodeOrder),
                 result = SaleResult.of(json.getString("result")) ?: return@decoding null,
                 resolvedAt = json.text("resolvedAt")?.let(Instant::parse),
+                blockhash = json.text("blockhash"),
             )
         }
 

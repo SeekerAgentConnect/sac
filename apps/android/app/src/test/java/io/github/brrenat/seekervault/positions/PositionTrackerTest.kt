@@ -3,7 +3,10 @@ package io.github.brrenat.seekervault.positions
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.confirmations.ChainCheck
+import io.github.brrenat.seekervault.confirmations.ChainReader
 import io.github.brrenat.seekervault.confirmations.ChainState
+import io.github.brrenat.seekervault.confirmations.ChainTransaction
+import io.github.brrenat.seekervault.confirmations.SignatureStatus
 import io.github.brrenat.seekervault.confirmations.Submission
 import io.github.brrenat.seekervault.confirmations.SubmissionTracking
 import io.github.brrenat.seekervault.connections.RequestKey
@@ -27,6 +30,9 @@ import io.github.brrenat.seekervault.jupiter.wallet
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import io.github.brrenat.seekervault.positions.storage.PositionStore
+import io.github.brrenat.seekervault.solana.SolanaException
+import io.github.brrenat.seekervault.solana.SolanaProblem
+import io.github.brrenat.seekervault.transactions.recentBlockhashOf
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SendResult
 import io.github.brrenat.seekervault.wallet.WalletSession
@@ -69,6 +75,7 @@ class PositionTrackerTest {
     private var chainChecks: Map<RequestKey, ChainCheck> = emptyMap()
     private var selected: SelectedWallet? = wallet()
     private val session = ScriptedSession()
+    private var ledger: Ledger? = null
     private val directory
         get() = File(folder.root, "positions")
 
@@ -81,6 +88,7 @@ class PositionTrackerTest {
             now = { now },
             io = Dispatchers.Unconfined,
             gate = ReadGate(Duration.ZERO, Duration.ZERO, { now }, {}),
+            chain = ledger?.let { reader -> { _ -> reader } },
         )
 
     private fun candidate(proposal: String = "p1", at: Instant = now.minusSeconds(60)) =
@@ -113,6 +121,34 @@ class PositionTrackerTest {
 
     private fun PositionTracker.sellNow(draft: SaleDraft): SellOutcome = runBlocking {
         sell(draft, { selected }, { block -> block(session) })
+    }
+
+    /**
+     * Sells [draft] with the wallet's lock held by something else until [meanwhile] has run: the
+     * sale is past every check made before the lock and waiting for it.
+     */
+    private fun PositionTracker.sellAfterWaiting(
+        draft: SaleDraft,
+        meanwhile: () -> Unit,
+    ): SellOutcome = runBlocking {
+        val held = CompletableDeferred<Unit>()
+        val waiting = CompletableDeferred<Unit>()
+        val selling =
+            async(Dispatchers.Unconfined) {
+                sell(
+                    draft,
+                    { selected },
+                    { block ->
+                        waiting.complete(Unit)
+                        held.await()
+                        block(session)
+                    },
+                )
+            }
+        waiting.await()
+        meanwhile()
+        held.complete(Unit)
+        selling.await()
     }
 
     @Test
@@ -392,14 +428,167 @@ class PositionTrackerTest {
             runBlocking { restarted.prepareSale(account, selected) } is SaleReviewState.Refused
         )
 
-        // No order ever appears; once the transaction can no longer land, the attempt lapses.
+        // No order appears, however long: the provider's silence and the clock prove nothing, and
+        // with no chain to ask it stays unresolved and blocks a second sale.
         api.answersStatus = { throw PredictionException(PredictionProblem.NotFound) }
         api.answersPosition = { predictionPosition() }
+        now = now.plus(Duration.ofHours(2))
         runBlocking { restarted.reconcile() }
         assertEquals(SaleResult.Pending, restarted.state.value.sales.single().result)
-        now = now.plus(SALE_LAPSE).plusSeconds(1)
-        runBlocking { restarted.reconcile() }
-        assertEquals(SaleResult.Lapsed, restarted.state.value.sales.single().result)
+        assertTrue(restarted.state.value.sales.single().inFlight)
+        assertEquals(1, session.sent.size)
+    }
+
+    @Test
+    fun anUnknownSaleLapsesOnlyOnTheChainsProofThatItNeverLanded() {
+        val ledger = Ledger().also { this.ledger = it }
+        val first = tracker().apply { load() }
+        first.link(listOf(candidate()))
+        session.answer = { SendResult.Unknown("the wallet went away") }
+        first.sellNow(ready(first))
+        val attempt = first.state.value.sales.single()
+        // The approved bytes' blockhash is kept with the attempt, and survives a restart.
+        assertEquals(recentBlockhashOf(sale.transaction.toByteArray()), attempt.blockhash)
+        val restarted = tracker().apply { load() }
+        assertEquals(attempt.blockhash, restarted.state.value.sales.single().blockhash)
+        api.answersStatus = { throw PredictionException(PredictionProblem.NotFound) }
+        now = now.plus(Duration.ofMinutes(10))
+
+        fun settledAs(expected: SaleResult) {
+            runBlocking { restarted.reconcile() }
+            assertEquals(expected, restarted.state.value.sales.single().result)
+        }
+
+        // The blockhash still counts: it can still land.
+        ledger.blockhashValid = true
+        settledAs(SaleResult.Pending)
+        // Expired, but the chain has a transaction naming the sale's order: it may have landed.
+        ledger.blockhashValid = false
+        ledger.signatures = listOf("5".repeat(88))
+        settledAs(SaleResult.Pending)
+        // Expired and nothing found, but the endpoint's ledger does not reach back far enough.
+        ledger.signatures = emptyList()
+        ledger.retainedSince = attempt.createdAt.plusSeconds(1)
+        settledAs(SaleResult.Pending)
+        ledger.retainedSince = null
+        settledAs(SaleResult.Pending)
+        // The endpoint could not be asked.
+        ledger.retainedSince = attempt.createdAt.minus(Duration.ofDays(2))
+        ledger.failing = true
+        settledAs(SaleResult.Pending)
+        // Expired, a ledger that covers it, and no transaction naming the order: proof.
+        ledger.failing = false
+        settledAs(SaleResult.Lapsed)
+        assertEquals(SALE_ORDER, ledger.searched.last())
+        assertFalse(restarted.state.value.sales.single().inFlight)
+        assertEquals(1, session.sent.size)
+    }
+
+    @Test
+    fun anOrderFirstSeenLongAfterTheWalletWentQuietStillReconciles() {
+        val tracker = tracker().apply { load() }
+        tracker.link(listOf(candidate()))
+        session.answer = { SendResult.Unknown("the wallet went away") }
+        tracker.sellNow(ready(tracker))
+        api.answersStatus = { throw PredictionException(PredictionProblem.NotFound) }
+        api.answersPosition = { predictionPosition() }
+        now = now.plus(Duration.ofMinutes(4))
+        runBlocking { tracker.reconcile() }
+        now = now.plus(Duration.ofMinutes(20))
+        runBlocking { tracker.reconcile() }
+        assertEquals(SaleResult.Pending, tracker.state.value.sales.single().result)
+
+        // The provider indexes the order well past any fixed window: it is still this sale's.
+        api.answersStatus = { status(it, OrderFill.Filled, net = 21_000_000UL) }
+        api.answersPosition = { predictionPosition(contracts = 0UL) }
+        runBlocking { tracker.reconcile() }
+        val settled = tracker.state.value.sales.single()
+        assertEquals(SaleResult.Closed, settled.result)
+        assertEquals(21_000_000UL, settled.order?.reading?.netProceedsMicroUsd)
+        assertEquals(1, session.sent.size)
+    }
+
+    @Test
+    fun aFillSeenAfterAnOlderPositionReadIsMeasuredAgainstAFreshOne() {
+        val tracker = tracker().apply { load() }
+        tracker.link(listOf(candidate()))
+        session.answer = { SendResult.Sent(ByteString.copyFrom(ByteArray(64) { 2 })) }
+        tracker.sellNow(ready(tracker))
+        // The refresh reads the position while the sale is still open, then the order has filled:
+        // the position is read again, after, and it is empty.
+        val reads = ArrayDeque(listOf(HELD_CONTRACTS, 0UL))
+        api.answersPosition = { predictionPosition(contracts = reads.removeFirstOrNull() ?: 0UL) }
+        api.answersStatus = { status(it, OrderFill.Filled, net = 21_000_000UL) }
+        runBlocking { tracker.reconcile() }
+        assertEquals(SaleResult.Closed, tracker.state.value.sales.single().result)
+        assertEquals(0UL, tracker.state.value.holdings.getValue(account).snapshot?.contractsMicro)
+    }
+
+    @Test
+    fun aResidueFromAnIndexStillCatchingUpIsRevisedWhenThePositionEmpties() {
+        val tracker = tracker().apply { load() }
+        tracker.link(listOf(candidate()))
+        session.answer = { SendResult.Sent(ByteString.copyFrom(ByteArray(64) { 2 })) }
+        tracker.sellNow(ready(tracker))
+        // Even the read after the fill still shows the pre-sale balance: the index lags.
+        api.answersPosition = { predictionPosition() }
+        api.answersStatus = { status(it, OrderFill.Filled, net = 21_000_000UL) }
+        runBlocking { tracker.reconcile() }
+        val residual = tracker.state.value.sales.single()
+        assertEquals(SaleResult.Residual, residual.result)
+        assertTrue(residual.revisable)
+        // It does not stand in the way of selling what is really left, if anything is.
+        assertFalse(residual.inFlight)
+
+        // A 404 is not an empty position; a read that finds it empty is.
+        api.answersPosition = { throw PredictionException(PredictionProblem.NotFound) }
+        runBlocking { tracker.refresh(account, force = true) }
+        assertEquals(SaleResult.Residual, tracker.state.value.sales.single().result)
+        api.answersPosition = { predictionPosition(contracts = 0UL) }
+        runBlocking { tracker.refresh(account, force = true) }
+        assertEquals(SaleResult.Closed, tracker.state.value.sales.single().result)
+        // Nothing was sent again.
+        assertEquals(1, session.sent.size)
+    }
+
+    @Test
+    fun aSaleThatWaitedForTheWalletsLockIsCheckedAgainOnceItHasIt() {
+        val tracker = tracker().apply { load() }
+        tracker.link(listOf(candidate()))
+        session.answer = { SendResult.Sent(ByteString.copyFrom(ByteArray(64) { 2 })) }
+
+        // The review ran out while the lock was held elsewhere.
+        var draft = ready(tracker)
+        assertEquals(
+            SellOutcome.Stale,
+            tracker.sellAfterWaiting(draft) { now = now.plusSeconds(61) },
+        )
+        // The review was closed while the lock was held elsewhere.
+        draft = ready(tracker)
+        assertEquals(
+            SellOutcome.Stale,
+            tracker.sellAfterWaiting(draft) { tracker.discard(account) },
+        )
+        // The position changed while the lock was held elsewhere, long enough to matter.
+        draft = ready(tracker)
+        assertEquals(
+            SellOutcome.Changed,
+            tracker.sellAfterWaiting(draft) {
+                now = now.plusSeconds(20)
+                api.answersPosition = { predictionPosition(contracts = HELD_CONTRACTS / 2UL) }
+            },
+        )
+        // Nothing was written down, and the wallet was never asked.
+        assertTrue(session.sent.isEmpty())
+        assertTrue(tracker.state.value.sales.isEmpty())
+        assertTrue(PositionStore(directory).sales().isEmpty())
+
+        // A short, harmless wait still sells, once.
+        draft = ready(tracker)
+        assertEquals(
+            SellOutcome.Handed,
+            tracker.sellAfterWaiting(draft) { now = now.plusSeconds(2) },
+        )
         assertEquals(1, session.sent.size)
     }
 
@@ -462,6 +651,44 @@ class PositionTrackerTest {
             sent += transaction
             suspendUntil?.await()
             return answer()
+        }
+    }
+
+    /**
+     * A chain endpoint that answers what a test sets, and remembers which addresses it searched.
+     */
+    private class Ledger : ChainReader {
+        var blockhashValid = true
+        var retainedSince: Instant? = Instant.EPOCH
+        var signatures: List<String> = emptyList()
+        var failing = false
+        val searched = mutableListOf<String>()
+
+        override val host = "rpc.example.com"
+
+        private fun answer() {
+            if (failing) throw SolanaException(SolanaProblem.Unreachable)
+        }
+
+        override suspend fun genesisHash(): String = "genesis"
+
+        override suspend fun statuses(
+            signatures: List<String>,
+            searchHistory: Boolean,
+        ): List<SignatureStatus?> = signatures.map { null }
+
+        override suspend fun transaction(signature: String): ChainTransaction? = null
+
+        override suspend fun blockhashValid(blockhash: String): Boolean = blockhashValid.also {
+            answer()
+        }
+
+        override suspend fun retainedSince(): Instant? = retainedSince.also { answer() }
+
+        override suspend fun signaturesFor(address: String, limit: Int): List<String> {
+            answer()
+            searched += address
+            return signatures
         }
     }
 

@@ -495,7 +495,10 @@ class StageBoundaryTest {
         // SEE-165 lets the phone follow its own sent transactions to the chain. That is a handful
         // of reads and nothing else: which cluster an endpoint serves, a signature's status, the
         // transaction under it, whether its blockhash still counts, and how far back the
-        // endpoint's ledger reaches (minimumLedgerSlot and that slot's block time). The tracker is
+        // endpoint's ledger reaches (minimumLedgerSlot and that slot's block time) — and, for a
+        // sale
+        // whose wallet never answered (SEE-172), which transactions named its order account. The
+        // tracker is
         // told what the wallet
         // was handed and what it answered; it never asks the wallet anything, and it can't sign,
         // build, simulate or send (docs/wiki/chain-confirmation.md).
@@ -508,6 +511,7 @@ class StageBoundaryTest {
                 "\"getBlockTime\"",
                 "\"getGenesisHash\"",
                 "\"getSignatureStatuses\"",
+                "\"getSignaturesForAddress\"",
                 "\"getTransaction\"",
                 "\"isBlockhashValid\"",
             ),

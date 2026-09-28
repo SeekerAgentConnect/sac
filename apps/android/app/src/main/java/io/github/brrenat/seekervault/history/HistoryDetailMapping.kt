@@ -769,6 +769,127 @@ private fun actionLabel(action: String): String =
         else -> action.replaceFirstChar { it.uppercase() }
     }
 
+// A retained purchase -------------------------------------------------------------------------
+
+/**
+ * The page for a prediction purchase whose signal's feed record is gone (SEE-172): its connection
+ * was removed, and removing it removed the proposals it read. The purchase is rebuilt from what
+ * this phone kept of its own accord — the holding's link to it and the owner's Activity record — so
+ * the item can still be reopened, and its position followed and sold. The publisher's own text went
+ * with the feed and is not reconstructed.
+ */
+fun retainedHistoryDetail(
+    retained: RetainedPurchase,
+    clock: HistoryDetailClock = HistoryDetailClock(),
+    /** What this phone itself found on chain; the Activity record's copy when none is given. */
+    chain: ChainCheck? = retained.activity?.chain,
+    checkingChain: Boolean = false,
+): HistoryDetailModel {
+    val held = retained.holding.held
+    val purchase = retained.purchase
+    val network = held.network.takeIf { it != Network.NETWORK_UNSPECIFIED }
+    val signature = purchase.signature ?: retained.activity?.signature
+    val view = chainView(local = chain)
+    val title =
+        retained.holding.snapshot
+            ?.let { listOf(it.eventTitle, it.marketTitle).filter(String::isNotEmpty) }
+            ?.joinToString(" · ")
+            ?.ifEmpty { null } ?: RetainedCopy.Title
+    val status =
+        HistoryDetailStatusModel(
+            status = HistoryDetailStatus.Approved,
+            explanation =
+                when {
+                    signature == null ->
+                        "You approved on this phone. This phone never learned whether the " +
+                            "wallet sent it. $NO_SIGNATURE_GUIDANCE"
+                    view.standing == ChainStanding.Failed ->
+                        "You approved on this phone. The network rejected the transaction."
+                    view.standing == ChainStanding.Expired ->
+                        "You approved on this phone. The transaction never landed, and now can't."
+                    else -> "You approved on this phone. Your wallet sent it to the network."
+                },
+        )
+    val execution = signature?.let {
+        chainExecution(
+            view = view,
+            network = network,
+            clock = clock,
+            caveat = signalCaveat(RETAINED_ACTION),
+            checking = checkingChain,
+        )
+    }
+    val timeline = buildList {
+        add(entry(HistoryDetailEvent.Approved, "You approved", purchase.boughtAt, clock))
+        if (signature != null) {
+            add(entry(HistoryDetailEvent.Sent, "Sent to the network", purchase.boughtAt, clock))
+            chainEntry(view, clock)?.let(::add)
+        }
+    }
+        .sortedBy { it.first }
+        .map { it.second }
+    val transactions =
+        if (signature != null) {
+            listOf(
+                HistoryDetailTransaction(
+                    label = actionLabel(RETAINED_ACTION),
+                    signature = signature,
+                    status = view.transactionStatus(),
+                    explorerLabel = "View on explorer" + (network.word()?.let { " · $it" } ?: ""),
+                    explorerUrl = explorerUrl(signature, network),
+                )
+            )
+        } else {
+            emptyList()
+        }
+    return HistoryDetailModel(
+        header =
+            HistoryDetailHeader(
+                origin = HistoryDetailOrigin.Signal,
+                sourceName = retained.activity?.source ?: RetainedCopy.Source,
+                sourceColour = null,
+                title = title,
+                environment = HistoryDetailEnvironment.Production,
+                networkText = network.word(),
+            ),
+        status = status,
+        response =
+            HistoryDetailResponse.Sent(
+                timestampText = clock.stamp(purchase.boughtAt),
+                rows =
+                    listOf(
+                        HistoryDetailRow("Decision", "Approved"),
+                        HistoryDetailRow("Outcome", if (held.yes) "Yes" else "No"),
+                    ),
+                note = RetainedCopy.Note,
+            ),
+        execution = execution,
+        transactions = transactions,
+        timeline = timeline,
+        identifiers =
+            buildList {
+                add(HistoryDetailRow("Signal ID", retained.key.requestId))
+                add(HistoryDetailRow("Market ID", held.marketId))
+                signature?.let { add(HistoryDetailRow("Signature", it)) }
+                if (view.standing == ChainStanding.Failed) {
+                    view.chainError?.let { add(HistoryDetailRow("Chain error", it)) }
+                }
+            },
+        footnote = HistoryDetailCopy.ProductionFootnote,
+    )
+}
+
+/** Only a production `prediction.buy` is ever tracked, so it is the only action retained. */
+private const val RETAINED_ACTION = "prediction.buy"
+
+object RetainedCopy {
+    const val Title = "Prediction purchase"
+    const val Source = "Removed connection"
+    const val Note =
+        "The feed this signal came from is no longer connected, so its original text is gone. " +
+            "This page is kept from your own record of the purchase."
+}
+
 // Shared --------------------------------------------------------------------------------------
 
 private fun entry(

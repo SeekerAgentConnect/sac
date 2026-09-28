@@ -65,7 +65,8 @@ import java.util.concurrent.atomic.AtomicInteger
  *    now is weakened protection and is refused.
  * 6. The proceeds go to the owner's own account for the provider's token.
  * 7. Every other instruction is a compute-budget setting or the creation of that very account; no
- *    route, no transfer, no wrap, nothing unread. A priority fee the owner pays is bounded.
+ *    route, no transfer, no wrap, nothing unread. A priority fee the owner pays is bounded, and
+ *    counted over the runtime's default limit when the bytes set none.
  * 8. The provider's estimate of its fee is less than the least the sale can gross.
  *
  * Anything failing means the review is not approvable. Nothing here signs, stores or sends.
@@ -124,8 +125,8 @@ suspend fun inspectPredictionSale(
             contractsMicro = contracts,
             heldContractsMicro = position.contractsMicro,
             floorPriceMicroUsd = floor,
-            leastGrossMicroUsd = contracts * floor / MICRO,
-            estimatedGrossMicroUsd = position.sellPriceUsd?.let { contracts * it / MICRO },
+            leastGrossMicroUsd = grossMicroUsd(contracts, floor) ?: 0UL,
+            estimatedGrossMicroUsd = position.sellPriceUsd?.let { grossMicroUsd(contracts, it) },
             estimatedFeeMicroUsd = close.totalFeeUsd,
             proceedsMint = JUP_USD_MINT,
             proceedsSymbol = PROCEEDS_SYMBOL,
@@ -235,17 +236,27 @@ suspend fun inspectPredictionSale(
     if (placed.funding != proceeds) findings += PredictionFinding.ProceedsNotOwners
 
     // Everything else: fee settings and the proceeds account, and nothing that moves value.
-    var networkFee: ULong? = null
-    val limit = steps.mapNotNull {
-        ((it as? OrderStep.Funding)?.step as? SwapStep.Budget)?.unitLimit
-    }
-    val price = steps.mapNotNull {
-        ((it as? OrderStep.Funding)?.step as? SwapStep.Budget)?.microLamportsPerUnit
-    }
-    if (sponsor == null && limit.isNotEmpty() && price.isNotEmpty()) {
-        networkFee = limit.first().toULong() * price.first() / MICRO
-        if (networkFee > MOST_SALE_PRIORITY_LAMPORTS) findings += PredictionFinding.ExcessiveFee
-    }
+    val budgets = steps.mapNotNull { (it as? OrderStep.Funding)?.step as? SwapStep.Budget }
+    val limit = budgets.mapNotNull { it.unitLimit }
+    val price = budgets.mapNotNull { it.microLamportsPerUnit }
+    // The same setting twice is not a fee anyone can state: the runtime refuses it, and so does
+    // this.
+    if (limit.size > 1 || price.size > 1) findings += PredictionFinding.ExcessiveFee
+    val networkFee =
+        if (sponsor != null || price.isEmpty()) {
+            null
+        } else {
+            // Without a limit instruction the runtime still charges the price, over its default
+            // limit — so the cap applies to that default too, never only to an explicit one.
+            val units =
+                limit.firstOrNull()?.toULong()?.coerceAtMost(MOST_COMPUTE_UNITS)
+                    ?: defaultComputeUnits(steps.size - budgets.size)
+            priorityFeeLamports(units, price.first()).also {
+                if (it == null || it > MOST_SALE_PRIORITY_LAMPORTS) {
+                    findings += PredictionFinding.ExcessiveFee
+                }
+            }
+        }
     for (step in steps) {
         val funding = (step as? OrderStep.Funding)?.step ?: continue
         when (funding) {
@@ -267,8 +278,9 @@ suspend fun inspectPredictionSale(
             is SwapStep.Unread -> findings += PredictionFinding.UnreadableValueInstruction
         }
     }
-    val least = placed.contractsMicro * placed.maxPrice / MICRO
-    if (close.totalFeeUsd >= least) findings += PredictionFinding.ExcessiveFee
+    val least = grossMicroUsd(placed.contractsMicro, placed.maxPrice)
+    if (least == null) findings += PredictionFinding.QuoteMismatch
+    else if (close.totalFeeUsd >= least) findings += PredictionFinding.ExcessiveFee
 
     val verdict =
         when {
@@ -312,6 +324,41 @@ suspend fun inspectPredictionSale(
         terms,
     )
 }
+
+/** The most compute units one transaction may use, and what a larger explicit limit is cut to. */
+internal const val MOST_COMPUTE_UNITS: ULong = 1_400_000UL
+
+/** The units a transaction with no limit instruction is given for each other instruction. */
+internal const val DEFAULT_UNITS_PER_INSTRUCTION: ULong = 200_000UL
+
+/**
+ * The limit Solana applies when the bytes set none: [DEFAULT_UNITS_PER_INSTRUCTION] for each
+ * instruction that is not a compute-budget setting, up to [MOST_COMPUTE_UNITS]
+ * (https://solana.com/docs/core/fees). Newer runtimes give built-in programs less, so this is the
+ * most a missing limit can come to, which is what a cap has to be checked against.
+ */
+internal fun defaultComputeUnits(instructions: Int): ULong =
+    (instructions.coerceAtLeast(0).toULong() * DEFAULT_UNITS_PER_INSTRUCTION).coerceAtMost(
+        MOST_COMPUTE_UNITS
+    )
+
+/**
+ * The priority fee, in lamports, of [units] at [microLamportsPerUnit]: the product in millionths,
+ * rounded up as the runtime rounds it. Null when it does not fit in 64 bits — no fee anyone should
+ * approve.
+ */
+internal fun priorityFeeLamports(units: ULong, microLamportsPerUnit: ULong): ULong? {
+    if (units != 0UL && microLamportsPerUnit > ULong.MAX_VALUE / units) return null
+    val micro = units * microLamportsPerUnit
+    return micro / MICRO + if (micro % MICRO == 0UL) 0UL else 1UL
+}
+
+/**
+ * [contractsMicro] at [priceMicroUsd] each, in the dollar token's millionths; null past 64 bits.
+ */
+private fun grossMicroUsd(contractsMicro: ULong, priceMicroUsd: ULong): ULong? =
+    if (priceMicroUsd != 0UL && contractsMicro > ULong.MAX_VALUE / priceMicroUsd) null
+    else contractsMicro * priceMicroUsd / MICRO
 
 /** The labelled values a sale's review lists under its terms. Every one from the bytes. */
 private fun saleDetails(terms: SaleTerms, instructions: Int, fromTables: Int): List<PluginFact> =
