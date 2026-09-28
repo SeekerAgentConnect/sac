@@ -92,6 +92,12 @@ sealed interface AppSheet {
      */
     data class OwnerInput(val identity: ReviewIdentity) : AppSheet
 
+    /**
+     * Reviewing the sale of the position a History item's purchase went into (SEE-172), over that
+     * item's own page and nowhere else.
+     */
+    data class PositionSale(val identity: ReviewIdentity) : AppSheet
+
     data class ConnectionDetail(val connectionId: String) : AppSheet {
         init {
             requireRouteId("connectionId", connectionId)
@@ -183,6 +189,9 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
     fun openConnectionRules(connectionId: String): Boolean =
         push(AppSheet.ConnectionRules(connectionId))
 
+    /** Sell the position a History item's purchase went into, over that item's page. */
+    fun openPositionSale(identity: ReviewIdentity): Boolean = push(AppSheet.PositionSale(identity))
+
     /** Choose or change the owner's part of a signal, over its own review. */
     fun openOwnerInput(identity: ReviewIdentity): Boolean = push(AppSheet.OwnerInput(identity))
 
@@ -264,6 +273,8 @@ private fun NavigationState.canPush(sheet: AppSheet): Boolean =
         is AppSheet.OwnerInput ->
             sheets.size == 1 &&
                 (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity
+        is AppSheet.PositionSale ->
+            sheets.isEmpty() && (screen as? AppScreen.HistoryDetail)?.identity == sheet.identity
         // Usually `[connection, rules]`; `[review, rules]` from a review verdict's Rules action,
         // for the connection the request came from (design/navigation.md).
         is AppSheet.ConnectionRules ->
@@ -316,6 +327,10 @@ internal fun encodeNavigationState(state: NavigationState): List<String> = build
                 add(SHEET_OWNER_INPUT)
                 addIdentity(sheet.identity)
             }
+            is AppSheet.PositionSale -> {
+                add(SHEET_POSITION_SALE)
+                addIdentity(sheet.identity)
+            }
             is AppSheet.ConnectionDetail -> {
                 add(SHEET_DETAIL)
                 add(sheet.connectionId)
@@ -360,6 +375,7 @@ internal fun decodeNavigationState(saved: List<String>): NavigationState? = runC
                         kind = enumValueOf(cursor.next()),
                     )
                 SHEET_OWNER_INPUT -> AppSheet.OwnerInput(cursor.nextIdentity())
+                SHEET_POSITION_SALE -> AppSheet.PositionSale(cursor.nextIdentity())
                 SHEET_DETAIL -> AppSheet.ConnectionDetail(cursor.next())
                 SHEET_RULES -> AppSheet.ConnectionRules(cursor.next())
                 SHEET_GLOBAL_RULES -> AppSheet.GlobalRules
@@ -447,6 +463,7 @@ private const val SCREEN_HISTORY_DETAIL = "history_detail"
 private const val SHEET_REVIEW = "review"
 private const val SHEET_HANDOFF = "wallet_handoff"
 private const val SHEET_OWNER_INPUT = "owner_input"
+private const val SHEET_POSITION_SALE = "position_sale"
 private const val SHEET_DETAIL = "connection_detail"
 private const val SHEET_RULES = "connection_rules"
 private const val SHEET_GLOBAL_RULES = "global_rules"

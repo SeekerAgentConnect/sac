@@ -6,6 +6,9 @@ import io.github.brrenat.seekervault.plugins.ActionOperation
 import io.github.brrenat.seekervault.plugins.ActionResolution
 import io.github.brrenat.seekervault.plugins.ActionStatus
 import io.github.brrenat.seekervault.plugins.ExecutionProvider
+import io.github.brrenat.seekervault.plugins.HeldPosition
+import io.github.brrenat.seekervault.plugins.OrderRead
+import io.github.brrenat.seekervault.plugins.PositionManagement
 import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
 import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
 import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
@@ -57,6 +60,9 @@ class JupiterExecutionProvider(
     private val prediction =
         JupiterPredictionAction(predictionApi, chain, PREDICTION_BUY_CAPABILITY, now)
 
+    /** Reading a held position and selling it (SEE-172). */
+    override val positions: PositionManagement = JupiterPositions(predictionApi, chain, now)
+
     override fun inputs(operation: ActionOperation): ParameterForm =
         when (val payload = operation.payload) {
             is ActionPayload.Swap -> swap.inputs(payload.payload)
@@ -104,16 +110,35 @@ class JupiterExecutionProvider(
         }
 
     /**
-     * Jupiter answers no status queries, and says so rather than guessing.
+     * What Jupiter says has become of an order this phone submitted (SEE-172).
      *
-     * It has no read this app could turn into a fill without inventing one, and "submitted" must
-     * never quietly become "filled" (docs/wiki/jupiter-prediction.md#what-is-out-of-reach). The
-     * owner's honest next step is the platform link [destinations] gives them.
+     * A prediction order's own account is in its record, and Jupiter reports that order's fills by
+     * it. The answer is the provider's evidence and is reported as such: pending, partly filled,
+     * filled, failed. A swap has no order to ask about — it ends on chain — and stays unsupported.
      */
     override suspend fun status(
         operation: ActionOperation,
         reference: PluginReference,
-    ): ActionStatus = ActionStatus.Unsupported
+    ): ActionStatus {
+        if (operation.payload !is ActionPayload.PredictionBuy || reference.key != ORDER_ACCOUNT) {
+            return ActionStatus.Unsupported
+        }
+        val wallet = operation.wallet?.address ?: return ActionStatus.Unknown
+        val held =
+            HeldPosition(
+                provider = JUPITER_PROVIDER,
+                owner = wallet,
+                network = operation.network,
+                account = "",
+                marketId = operation.payload.payload.marketId,
+                yes = true,
+            )
+        return when (val read = positions.order(held, reference.value)) {
+            is OrderRead.Found -> ActionStatus.Reported(read.order.fill.code, read.order.raw)
+            OrderRead.NotFound -> ActionStatus.Unknown
+            is OrderRead.Failed -> ActionStatus.Unknown
+        }
+    }
 }
 
 /**
@@ -178,6 +203,6 @@ val JUPITER_CAPABILITIES: ProviderCapabilities =
         contract = PROVIDER_CONTRACT,
         actions = listOf(SWAP_CAPABILITY, PREDICTION_BUY_CAPABILITY),
         environments = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
-        statusQueries = false,
+        statusQueries = true,
         legacyPlugins = setOf(JUPITER_SWAP, JUPITER_PREDICTION),
     )

@@ -49,6 +49,8 @@ class ConfirmationScheduler(
     private val scope: CoroutineScope,
     private val connectivity: ConnectivityManager? = null,
     private val now: () -> Instant = Instant::now,
+    /** Other read-only reconciliation that wants the same background check (SEE-172). */
+    private val alsoDue: () -> Instant? = { null },
 ) {
     private val lock = Any()
     private var loop: Job? = null
@@ -137,7 +139,7 @@ class ConfirmationScheduler(
      * successor, which REPLACE would cancel mid-run.
      */
     fun schedule(policy: ExistingWorkPolicy) {
-        val next = tracker.nextDue() ?: return
+        val next = listOfNotNull(tracker.nextDue(), alsoDue()).minOrNull() ?: return
         val delay = Duration.between(now(), next).toMillis().coerceAtLeast(0)
         workManager.enqueueUniqueWork(UNIQUE_WORK_NAME, policy, request(delay))
     }
@@ -153,6 +155,7 @@ class ConfirmationScheduler(
             context: Context,
             tracker: ConfirmationTracker,
             scope: CoroutineScope,
+            alsoDue: () -> Instant? = { null },
         ): ConfirmationScheduler {
             val manager =
                 try {
@@ -166,6 +169,7 @@ class ConfirmationScheduler(
                 tracker,
                 scope,
                 context.getSystemService(ConnectivityManager::class.java),
+                alsoDue = alsoDue,
             )
         }
 
@@ -219,6 +223,9 @@ class ConfirmationWorker : CoroutineWorker {
         val application = context.applicationContext as? SeekerVaultApplication ?: return false
         val tracker = application.confirmations
         tracker.checkDue()
+        // Unresolved sales and orders are reconciled in the same pass, by reading only: a sale
+        // whose outcome is unknown is never built, signed or sent again from here (SEE-172).
+        application.reconcilePositions()
         application.confirmationScheduler.schedule(ExistingWorkPolicy.APPEND_OR_REPLACE)
         return true
     }

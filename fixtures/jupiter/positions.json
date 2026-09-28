@@ -1,0 +1,422 @@
+{
+  "note": "Real answers from Jupiter's keyless prediction API about a public trader's open position, with the lookup tables the close and buy builds name, captured by scripts/capture-jupiter.mjs --positions and read by the phone's PositionFixturesTest. Nothing here is signed and nothing was sent.",
+  "endpoint": "https://lite-api.jup.ag",
+  "rpc": "https://api.mainnet-beta.solana.com",
+  "capturedAt": "2026-09-28T08:03:43.049Z",
+  "owner": "4NboL3fNkq6KFPmTKtTVL8Ww9YzkVJ9n8aKRo27X8vs3",
+  "position": {
+    "pubkey": "AW7upnw3hJ8KEpFuEjw279ZwEf5uKZYSw8y8PShHCrKf",
+    "owner": "4NboL3fNkq6KFPmTKtTVL8Ww9YzkVJ9n8aKRo27X8vs3",
+    "market": "FJqJTn8EBPutNRLvNh7NhMnN2Lr3vKs2yEofMUw4jhqm",
+    "marketId": "POLY-4797513",
+    "marketIdHash": "a8bc4552330b5600d1634b0db26351f2",
+    "isYes": false,
+    "contracts": "471",
+    "contractsMicro": "471360000",
+    "contractsDecimal": "471.36",
+    "totalCostUsd": "465013310",
+    "openOrders": 0,
+    "feesPaidUsd": "438270",
+    "realizedPnlUsd": 0,
+    "claimed": false,
+    "claimedUsd": "0",
+    "openedAt": 1790582377,
+    "updatedAt": 1790582377,
+    "bump": 255,
+    "ownerPubkey": "4NboL3fNkq6KFPmTKtTVL8Ww9YzkVJ9n8aKRo27X8vs3",
+    "eventId": "POLY-1059303",
+    "sizeUsd": "465013310",
+    "valueUsd": "464289600",
+    "avgPriceUsd": "986535",
+    "markPriceUsd": "985000",
+    "maxSlippageBps": 2500,
+    "pnlUsd": "-723710",
+    "pnlUsdPercent": -0.15,
+    "pnlUsdAfterFees": "-1161980",
+    "pnlUsdAfterFeesPercent": -0.24,
+    "eventMetadata": {
+      "eventId": "POLY-1059303",
+      "title": "Bitcoin above ___ on September 28?",
+      "subtitle": "",
+      "isActive": true,
+      "beginAt": null,
+      "category": "crypto",
+      "subcategory": "btc",
+      "imageUrl": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+      "isLive": false,
+      "closeCondition": "",
+      "tags": [
+        "crypto",
+        "bitcoin",
+        "weekly",
+        "multi-strikes",
+        "crypto-prices",
+        "recurring",
+        "hide-from-new"
+      ],
+      "closeTime": 1790611200
+    },
+    "marketMetadata": {
+      "marketId": "POLY-4797513",
+      "eventId": "POLY-1059303",
+      "provider": "polymarket",
+      "title": "86,000",
+      "subtitle": "86,000",
+      "description": "86,000",
+      "status": "open",
+      "result": null,
+      "closeTime": 1790611200,
+      "openTime": 1790006419,
+      "isTeamMarket": false,
+      "team": null,
+      "sportsLine": null,
+      "providerSportsLine": null,
+      "sportsMarketType": null,
+      "periodType": null,
+      "periodNumber": null,
+      "gameNumber": null,
+      "marketOptions": [
+        {
+          "label": "Yes",
+          "buyYes": true
+        },
+        {
+          "label": "No",
+          "buyYes": false
+        }
+      ]
+    },
+    "claimable": false,
+    "claimableAt": null,
+    "payoutUsd": "471360000",
+    "settlementDate": 1790611200,
+    "sellPriceUsd": "985000",
+    "integratorFeeUsd": "0",
+    "source": "program"
+  },
+  "positions": {
+    "data": [
+      {
+        "pubkey": "AW7upnw3hJ8KEpFuEjw279ZwEf5uKZYSw8y8PShHCrKf",
+        "owner": "4NboL3fNkq6KFPmTKtTVL8Ww9YzkVJ9n8aKRo27X8vs3",
+        "market": "FJqJTn8EBPutNRLvNh7NhMnN2Lr3vKs2yEofMUw4jhqm",
+        "marketId": "POLY-4797513",
+        "marketIdHash": "a8bc4552330b5600d1634b0db26351f2",
+        "isYes": false,
+        "contracts": "471",
+        "contractsMicro": "471360000",
+        "contractsDecimal": "471.36",
+        "totalCostUsd": "465013310",
+        "openOrders": 0,
+        "feesPaidUsd": "438270",
+        "realizedPnlUsd": 0,
+        "claimed": false,
+        "claimedUsd": "0",
+        "openedAt": 1790582377,
+        "updatedAt": 1790582377,
+        "bump": 255,
+        "ownerPubkey": "4NboL3fNkq6KFPmTKtTVL8Ww9YzkVJ9n8aKRo27X8vs3",
+        "eventId": "POLY-1059303",
+        "sizeUsd": "465013310",
+        "valueUsd": "464289600",
+        "avgPriceUsd": "986535",
+        "markPriceUsd": "985000",
+        "maxSlippageBps": 2500,
+        "pnlUsd": "-723710",
+        "pnlUsdPercent": -0.15,
+        "pnlUsdAfterFees": "-1161980",
+        "pnlUsdAfterFeesPercent": -0.24,
+        "eventMetadata": {
+          "eventId": "POLY-1059303",
+          "title": "Bitcoin above ___ on September 28?",
+          "subtitle": "",
+          "isActive": true,
+          "beginAt": null,
+          "category": "crypto",
+          "subcategory": "btc",
+          "imageUrl": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+          "isLive": false,
+          "closeCondition": "",
+          "tags": [
+            "crypto",
+            "bitcoin",
+            "weekly",
+            "multi-strikes",
+            "crypto-prices",
+            "recurring",
+            "hide-from-new"
+          ],
+          "closeTime": 1790611200
+        },
+        "marketMetadata": {
+          "marketId": "POLY-4797513",
+          "eventId": "POLY-1059303",
+          "provider": "polymarket",
+          "title": "86,000",
+          "subtitle": "86,000",
+          "description": "86,000",
+          "status": "open",
+          "result": null,
+          "closeTime": 1790611200,
+          "openTime": 1790006419,
+          "isTeamMarket": false,
+          "team": null,
+          "sportsLine": null,
+          "providerSportsLine": null,
+          "sportsMarketType": null,
+          "periodType": null,
+          "periodNumber": null,
+          "gameNumber": null,
+          "marketOptions": [
+            {
+              "label": "Yes",
+              "buyYes": true
+            },
+            {
+              "label": "No",
+              "buyYes": false
+            }
+          ]
+        },
+        "claimable": false,
+        "claimableAt": null,
+        "payoutUsd": "471360000",
+        "settlementDate": 1790611200,
+        "sellPriceUsd": "985000",
+        "integratorFeeUsd": "0",
+        "source": "program"
+      }
+    ],
+    "pagination": {
+      "start": 0,
+      "end": 1,
+      "total": 1,
+      "hasNext": false
+    }
+  },
+  "missing": {
+    "status": 404,
+    "body": {
+      "type": "invalid_request_error",
+      "message": "Position not found",
+      "code": "position_not_found",
+      "param": "positionPubkey",
+      "request_id": "89a7ef07-c391-45bb-a626-3250f487d740"
+    }
+  },
+  "orderStatus": {
+    "orderPubkey": "i5vhUwjN1vp2P2Y9JgDH67SRBYhxwv2bM3R8WMhJquP",
+    "status": "partiallyfilled",
+    "latestEventType": "order_closed",
+    "latestSignature": "KbYozhEVioGdCAwyJmnZKDYPLcNk7mpptuU1NeZnooLzD283cckbn4ocvG8voV8KjiYgMsRd3CCj4h8KowVeD7q",
+    "externalOrderId": "b263425da5464be0a225352426c3ea02",
+    "orderId": "0xcc8ef5f95571d737e8108d329352b11098d94a2d910332a85fa181ca55e18ab3",
+    "history": [
+      {
+        "eventType": "order_created",
+        "status": "created",
+        "rawStatus": "",
+        "timestamp": 1790582172,
+        "signature": "2PNPs5W2iw9D3GBbsKTwBEjhWHAkZ3w7y13VLAjfxDdVn8BWj7mPk2GSpA2ksqALyJNtgQzyFBxHEcSdmNiVjmas",
+        "externalOrderId": "b263425da5464be0a225352426c3ea02",
+        "orderId": ""
+      },
+      {
+        "eventType": "order_filled",
+        "status": "filled",
+        "rawStatus": "PartiallyFilled",
+        "timestamp": 1790582181,
+        "signature": "3cewq6CbssLaModA3czc3NtxN8UGq4zVQVuvSfTPCVfuvDEzZKXcrgLh791EofMZMiteZpWdsJPPmsNYyr5JUvCK",
+        "externalOrderId": "b263425da5464be0a225352426c3ea02",
+        "orderId": "0xcc8ef5f95571d737e8108d329352b11098d94a2d910332a85fa181ca55e18ab3",
+        "fillInfo": {
+          "isBuy": true,
+          "isYes": true,
+          "contracts": "65",
+          "contractsMicro": "65660000",
+          "contractsDecimal": "65.66",
+          "filledContracts": "63",
+          "filledContractsMicro": "63550000",
+          "filledContractsDecimal": "63.55",
+          "contractsSettled": "0",
+          "contractsSettledMicro": "0",
+          "contractsSettledDecimal": "0",
+          "maxFillPriceUsd": "360000",
+          "avgFillPriceUsd": "360000",
+          "maxBuyPriceUsd": "360000",
+          "minSellPriceUsd": null,
+          "depositAmountUsd": "0",
+          "totalCostUsd": "22878000",
+          "feeUsd": "732160",
+          "integratorFeeUsd": null,
+          "grossProceedsUsd": "0",
+          "netProceedsUsd": "0",
+          "realizedPnl": null,
+          "realizedPnlBeforeFees": null
+        }
+      },
+      {
+        "eventType": "order_closed",
+        "status": "partiallyfilled",
+        "rawStatus": "PartiallyFilled",
+        "timestamp": 1790582183,
+        "signature": "KbYozhEVioGdCAwyJmnZKDYPLcNk7mpptuU1NeZnooLzD283cckbn4ocvG8voV8KjiYgMsRd3CCj4h8KowVeD7q",
+        "externalOrderId": "b263425da5464be0a225352426c3ea02",
+        "orderId": "0xcc8ef5f95571d737e8108d329352b11098d94a2d910332a85fa181ca55e18ab3"
+      }
+    ]
+  },
+  "close": {
+    "transaction": "A4ggZawC8wXz7gNlWecWWJ6TURFLRUiGyfx2giN83ziPgFDC2XFV4mEkhduFvMl/8We7BvwEBj+c4UZD7bH6iw0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY0o342mXXSdo32uCPcUvK41xGeQ/bDwBHfF+gKTSxvy5RCjvYC1x/Agi3kTBWVlRTn0FX8r/7MAzn4hNbBfwBoADAgUMWfNgws4bG0dCaWWHXDBkwF7cV6zokD4DSjfhHr9dpRAyG5rYBsyc77xp2Dmwo+cLIluUgdArAFIyyumug5nlwopI+E5Qg1NtOawuU241JvUbkDGLCMTmdMsZd8yesS2gAGaJBSPUtEIU+VocJbAEGuWmEznyV0x9AwdxuTFbG8Jzzv6X1mwta+fLo7iy5W7VU3TueGPTyNn+CBL5U5j3aI0u1v5xqhyUUZczg6mKDmf3EX7OU4L5K+0GNSgaA9AWt/Kg6gwqf08oSGQbpyXQkyXkob3GUdr070Y6G0qgGSsmDyo5Ib7v0YpssyPyQPaDsYXYzpxmnPmExGNVoy9tIYyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZAwZGb+UhFzL/7K26csOb57yM5bvF9xJrLEObOkAAAAAElppzNttpSMHlFsM/lHv3K+Y01Ga9QOd6fuIpEDUwAgbd9uHXZaGT2cvhRs7reawctIXtX1s3kTqM9YV+/wCp38H6THNgXZSzPBQZlosNglZPMNCVCsl/aa3fskjypu0ECQAJA1DDAAAAAAAACQAFAvBJAgAIBgADAQoMCwEBBwwAAQINBQYDCgQLCAxtjTYlz+3S+tcgAAAANWZmNjlhOTZiZWIxNGEwOTg4OGU1MjcxMWVjODdmNmUgAAAAYThiYzQ1NTIzMzBiNTYwMGQxNjM0YjBkYjI2MzUxZjIAAABiGBwAAAAAuEYLAAAAAAAAAAAAAAAAAAAAAAFS/LtlOFIqbeHphq+FUwEIanitliMNofwBm1bdlcuougACBQE=",
+    "txMeta": {
+      "blockhash": "G4TUM5uMsZt18Ke48sDNEushfojJxPTJ3toCcG1BBUtc",
+      "lastValidBlockHeight": 429299474
+    },
+    "externalOrderId": "5ff69a96beb14a09888e52711ec87f6e",
+    "requiredSigners": [
+      "4NboL3fNkq6KFPmTKtTVL8Ww9YzkVJ9n8aKRo27X8vs3"
+    ],
+    "isGasless": true,
+    "order": {
+      "orderPubkey": "DP4C4GxDmscLnvyfCDyMYBnwjGEPgccENxfsnHAUbo7x",
+      "orderAtaPubkey": "8o4xEJoKGftFkdFn6Vg9yqBERiDUdAtcWSQHp1Nke44w",
+      "userPubkey": "4NboL3fNkq6KFPmTKtTVL8Ww9YzkVJ9n8aKRo27X8vs3",
+      "marketId": "POLY-4797513",
+      "marketIdHash": "a8bc4552330b5600d1634b0db26351f2",
+      "positionPubkey": "AW7upnw3hJ8KEpFuEjw279ZwEf5uKZYSw8y8PShHCrKf",
+      "isBuy": false,
+      "isYes": false,
+      "contracts": "471",
+      "contractsMicro": "471360000",
+      "contractsDecimal": "471.36",
+      "newContracts": "0",
+      "newContractsMicro": "0",
+      "newContractsDecimal": "0",
+      "maxBuyPriceUsd": null,
+      "minSellPriceUsd": "739000",
+      "slippageBps": 50,
+      "maxSlippageBps": 2500,
+      "externalOrderId": "5ff69a96beb14a09888e52711ec87f6e",
+      "orderCostUsd": "0",
+      "newAvgPriceUsd": "0",
+      "newSizeUsd": "0",
+      "newPayoutUsd": "0",
+      "payoutUsd": "471360000",
+      "estimatedProtocolFeeUsd": "0",
+      "estimatedVenueFeeUsd": "1392860",
+      "estimatedIntegratorFeeUsd": "0",
+      "estimatedTotalFeeUsd": "1392860"
+    },
+    "execution": {
+      "endpoint": "/api/v1/execute",
+      "context": {
+        "type": "create_order"
+      }
+    },
+    "tables": [
+      {
+        "address": "6awx2Pq4uxeHsBcmutEqErz79C4TUg4EQEiBX5T5BVfX",
+        "owner": "AddressLookupTab1e1111111111111111111111111",
+        "data": "AQAAAP//////////9DmEGQAAAAAAARV3rg35KmvSzwjZ0iIr83lpWPICoeozQKN7318gr4+OAAAmDyo5Ib7v0YpssyPyQPaDsYXYzpxmnPmExGNVoy9tIR09cgdfSt4I6VALmFR8EPHv4eN23/Xh31+CG1iGDOUpAwZGb+UhFzL/7K26csOb57yM5bvF9xJrLEObOkAAAAAEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTj7Q/+if11/ZKdMCbHylYed5LCas238ndUUsyGqezjOXoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+      }
+    ],
+    "lookups": [
+      {
+        "table": "6awx2Pq4uxeHsBcmutEqErz79C4TUg4EQEiBX5T5BVfX",
+        "writable": [],
+        "readonly": [
+          5,
+          1
+        ]
+      }
+    ]
+  },
+  "buyNo": {
+    "owner": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    "transaction": "A6vct5m2eYK2M4n8a/fkUbs2Hv+QBXg8kE0H7eo8dL2RBEhKJhxLIvSip9w9xdDzor3FNruXrymDmCEe0TIVNgcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAApKqPLo6uYjBN4brLVacn4qosVfCFxmyavMAQuqbyAUObRlAFJ3qmcsj2WOY2HUSbl671aGnwEJ9yeToF7hDTBIADAgQMWfNgws4bG0dCaWWHXDBkwF7cV6zokD4DSjfhHr9dpRB+jAiHYL/eHd3PMsF/IJuCQu5SqvEx+s2I0OosbQsG8opI+E5Qg1NtOawuU241JvUbkDGLCMTmdMsZd8yesS2gMkYi6G8PKjmYa+/53a/E5dNaiQvReWthmMnmxy8R689tMsgZmBEd0AKxFbvVZqgB33823kbsLKFrEEVqbV+3CJ9vD0uC0cl7wyG/2CE6UCbZEqJrATEnMpQaB/IdNZkF0+qM9aysqM0FIHUSF1xDzvVKXdme3iCha1UlNzjzl9z/rgnv7XJYY9vQAkmeqt+jBy7OqNGDsZp0f7AzC95hfSYPKjkhvu/RimyzI/JA9oOxhdjOnGac+YTEY1WjL20hjJclj04kifG7PRApFI4NgwtaE5na/xCEBI572Nvp+FkDBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAAR51VvyMcBu7nTFbs5oFQf9sbLeo/SOUQKxzaJWvBOP0Oh3Y2kT0PAu8OXICrYezSjG02qlaEI196V5Ll9RT/MFCgAJA1DDAAAAAAAACgAFArBxCwAJBgADARQPFgEBCxcWAQYDCxQLEQsTARIOAwYMDQwNDRYVCyTlF8uXeuOtKgEAAABoAGQAAUBLTAAAAAAAkVBMAAAAAAAKAAAIDAABAhAFBwMUBBYJD22NNiXP7dL61yAAAAAyOTM2NGEzMTk0OGQ0NWU4OWNlMjk4YjA5MGRiYmM1MyAAAABhOGJjNDU1MjMzMGI1NjAwZDE2MzRiMGRiMjYzNTFmMgABAD5JAAAAAACQCw8AAAAAAAg9TAAAAAAAAAAAAlL8u2U4Uipt4emGr4VTAQhqeK2WIw2h/AGbVt2Vy6i6AAMFAQTjFBNhUscoTRJYR1He3DL4FCY+65DkM4yclpFuItlgxwMiHSAFIx8hJQI=",
+    "txMeta": {
+      "blockhash": "F4VPwfvRLm2hbEKUMsyoZB9DnQ6cS2rerDz6ABuvT7vz",
+      "lastValidBlockHeight": 429299485
+    },
+    "externalOrderId": "29364a31948d45e89ce298b090dbbc53",
+    "requiredSigners": [
+      "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+    ],
+    "isGasless": true,
+    "order": {
+      "orderPubkey": "JD4tFuYdraTwuurxTUtWqG8AC1MPTo9ZSAW925bz6rix",
+      "orderAtaPubkey": "8MGMLQYaLF6s9zszYN9Rz3ebPka5i38KhaR6j4V6UQEK",
+      "userPubkey": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      "marketId": "POLY-4797513",
+      "marketIdHash": "a8bc4552330b5600d1634b0db26351f2",
+      "positionPubkey": "BjN3etfaJHpDheLhumvZt4g5HBec3ymeQ91U1J8SSb64",
+      "isBuy": true,
+      "isYes": false,
+      "contracts": "4",
+      "contractsMicro": "4800000",
+      "contractsDecimal": "4.8",
+      "newContracts": "4",
+      "newContractsMicro": "4800000",
+      "newContractsDecimal": "4.8",
+      "maxBuyPriceUsd": "986000",
+      "minSellPriceUsd": null,
+      "slippageBps": 0,
+      "maxSlippageBps": null,
+      "externalOrderId": "29364a31948d45e89ce298b090dbbc53",
+      "orderCostUsd": "4996360",
+      "newAvgPriceUsd": "986000",
+      "newSizeUsd": "4732800",
+      "newPayoutUsd": "4800000",
+      "payoutUsd": "4800000",
+      "estimatedProtocolFeeUsd": "0",
+      "estimatedVenueFeeUsd": "6630",
+      "estimatedIntegratorFeeUsd": "0",
+      "estimatedTotalFeeUsd": "6630"
+    },
+    "execution": {
+      "endpoint": "/api/v1/execute",
+      "context": {
+        "type": "create_order"
+      }
+    },
+    "tables": [
+      {
+        "address": "6awx2Pq4uxeHsBcmutEqErz79C4TUg4EQEiBX5T5BVfX",
+        "owner": "AddressLookupTab1e1111111111111111111111111",
+        "data": "AQAAAP//////////9DmEGQAAAAAAARV3rg35KmvSzwjZ0iIr83lpWPICoeozQKN7318gr4+OAAAmDyo5Ib7v0YpssyPyQPaDsYXYzpxmnPmExGNVoy9tIR09cgdfSt4I6VALmFR8EPHv4eN23/Xh31+CG1iGDOUpAwZGb+UhFzL/7K26csOb57yM5bvF9xJrLEObOkAAAAAEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTj7Q/+if11/ZKdMCbHylYed5LCas238ndUUsyGqezjOXoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+      },
+      {
+        "address": "GHRJYRqzM15WzpooLAdR4DX6rfK1MLjj6GRXMdbLDtwG",
+        "owner": "AddressLookupTab1e1111111111111111111111111",
+        "data": "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"
+      }
+    ],
+    "lookups": [
+      {
+        "table": "6awx2Pq4uxeHsBcmutEqErz79C4TUg4EQEiBX5T5BVfX",
+        "writable": [],
+        "readonly": [
+          5,
+          1,
+          4
+        ]
+      },
+      {
+        "table": "GHRJYRqzM15WzpooLAdR4DX6rfK1MLjj6GRXMdbLDtwG",
+        "writable": [
+          34,
+          29,
+          32
+        ],
+        "readonly": [
+          35,
+          31,
+          33,
+          37,
+          2
+        ]
+      }
+    ]
+  },
+  "orderStatusNote": "Captured minutes earlier in the same session, by the same keyless read, for another public trader's partially filled buy (requested 65.66 contracts, 63.55 filled, then closed): the history of this fixture's own position named no order."
+}

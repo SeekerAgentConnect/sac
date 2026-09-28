@@ -55,6 +55,7 @@
     <!-- jupiter.prediction (SEE-94). -->
     <string name="jupiter_destination_market">This market on Jupiter</string>
     <string name="jupiter_destination_order">Open order on Jupiter</string>
+    <string name="jupiter_destination_portfolio">Your positions on Jupiter</string>
 
     <!-- What the phone read out of the order, for the owner to see. -->
     <string name="jupiter_fact_side_yes">Contracts bought on Yes</string>
@@ -97,6 +98,21 @@
     <string name="jupiter_finding_extra_order">This transaction places more than one order.</string>
     <string name="jupiter_finding_not_the_owners_order">This order is not yours.</string>
     <string name="jupiter_finding_not_buying">This transaction sells a position rather than opening one.</string>
+    <!-- Selling a position (SEE-172). -->
+    <string name="jupiter_finding_not_selling">This transaction buys contracts rather than selling your position.</string>
+    <string name="jupiter_finding_position">This sale is for a different position than the one you are selling.</string>
+    <string name="jupiter_finding_quantity">This sale does not sell exactly the contracts your position holds.</string>
+    <string name="jupiter_finding_weak_floor">The lowest price this sale accepts is missing, or far below what the market pays now.</string>
+    <string name="jupiter_finding_proceeds">The proceeds would go to an account that is not yours.</string>
+    <string name="jupiter_finding_excessive_fee">The fees on this sale are more than it can be expected to pay out.</string>
+    <string name="jupiter_fact_fee_sponsor">Network fee paid by Jupiter\'s account</string>
+    <string name="jupiter_failure_other_owner">This position belongs to another wallet. Connect the wallet that bought it to sell it.</string>
+    <string name="jupiter_failure_no_position">Jupiter has no record of this position right now. It may have been sold or settled, or not be indexed yet.</string>
+    <string name="jupiter_failure_other_execution">Jupiter sells this position through its own execution service, which this app does not submit to. Sell it in Jupiter.</string>
+    <string name="jupiter_failure_position_settled">This market has settled. A settled position is claimed in Jupiter, not sold.</string>
+    <string name="jupiter_failure_nothing_held">This position holds no contracts.</string>
+    <string name="jupiter_failure_open_orders">An order on this position is still open. Wait for it to finish before selling.</string>
+    <string name="jupiter_failure_no_bid">Nobody is buying this side right now, so there is no price to sell at.</string>
     <string name="jupiter_finding_outcome">This order buys the other side from the one you chose.</string>
     <string name="jupiter_finding_market">This order is for a different market than the provider said it built for.</string>
     <string name="jupiter_finding_order">This transaction\'s order is not the one the provider described.</string>
