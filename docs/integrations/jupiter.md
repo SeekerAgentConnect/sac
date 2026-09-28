@@ -41,6 +41,19 @@ Three calls, on the same keyless host, all verified on 2026-09-17:
 
 One more endpoint, and it is not Jupiter's: a Solana RPC, `getMultipleAccounts`, used only to read the address lookup tables a prediction order's transaction names. It is the **application's** endpoint, configured at build time (`-Pseekervault.solanaRpc=…`) and empty by default, so a checkout reaches no cluster; no publisher, manifest or provider answer can set it. What it is asked is a list of table addresses — public accounts, and asking about one says nothing about who asked.
 
+
+### Positions and selling (SEE-172)
+
+Three more calls on the same keyless host, verified on 2026-09-28 ([research note](../research/2026-09-28-prediction-positions.md)):
+
+| Call | Sent | Read |
+| --- | --- | --- |
+| `GET /prediction/v1/positions/{positionPubkey}` | The position account the purchase's bytes named | Contracts, cost, value, mark and best bid, P&L, open orders, claimable, the market's status and result. Nulls stay nulls. 404 is *not found yet* |
+| `GET /prediction/v1/orders/status/{orderPubkey}` | An order account the phone submitted | Status, latest event, and the last `fillInfo` (contracts, filled, average price, net proceeds, fee) |
+| `DELETE /prediction/v1/positions/{positionPubkey}` | `{"ownerPubkey"}` and nothing else | An unsigned close of the whole position, the order it places (`minSellPriceUsd`, `contractsMicro`, `newContractsMicro`), `requiredSigners`, `executionModel`, `execution.context.type`, `isGasless` |
+
+The close is reviewed on its bytes before anything is shown, submitted by the owner's wallet for keeper-filled orders, and never sent to `/execute`; an `atomic_swap` build is refused with a link to Jupiter. All three are reads or unsigned builds: nothing here can move funds on its own.
+
 ## Prediction discovery (SEE-96)
 
 The publisher template in [`examples/demo-prediction/`](../../examples/demo-prediction) reads two of these endpoints from a server, to find markets worth publishing. It is the only part of this repository that calls Jupiter from anything but a phone, and what it asks for is public: which markets exist, and what one market currently is. The provider's endpoints for orders, positions, history and profiles are not compiled into that module at all — the phone places the order, and the template never learns that one was placed.
@@ -95,7 +108,7 @@ Jupiter's documented figures, in a 60-second sliding window, and they cover both
 | Keyless | 0.5 | 30 | No |
 | Free | 1 | 60 | Yes |
 
-That is ample for a person deciding about one signal — two calls to prepare a swap, three to prepare an order — and it is not ample for polling, so **nothing in the adapter polls** — including the boundary's own status query, which this provider answers `Unsupported` and which nothing in the app calls. `lite-api.jup.ag` returns no rate-limit headers, so the adapter treats HTTP 429 as the signal and reports it as itself: the owner is told to wait a moment and prepare again, and nothing retries in a loop.
+That is ample for a person deciding about one signal — two calls to prepare a swap, three to prepare an order — and it is not ample for polling, so the app does not poll for prices. What it does repeat is bounded: while one of the owner's own orders or sales is unresolved, its status and position are read with a doubling pause for at most fifteen minutes on screen, and in background work while unresolved — every call through one shared gate, 2.1 s apart, with a 30 s pause after a 429 (SEE-172). `lite-api.jup.ag` returns no rate-limit headers, so the adapter treats HTTP 429 as the signal and reports it as itself: the owner is told to wait a moment and prepare again, and nothing retries in a loop.
 
 The publisher template does poll, and the allowance is the reason its defaults look the way they do: at most one call every 2.1 seconds, at most 24 calls in a cycle, one cycle every five minutes — about five calls a minute at the busiest. The gap is enforced inside its provider client rather than in its callers, because the way to exceed an allowance is to have two places that each think they are the only one calling. A 429 there stops the walk and makes the cycle partial; nothing retries in a loop on this side either (SEE-96).
 

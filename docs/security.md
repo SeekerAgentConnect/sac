@@ -877,10 +877,25 @@ market is cross-checked between the answer and the bytes rather than proved from
 What narrows that gap is that the market was read from the provider first, and its identity, event
 and source all had to agree with the signal before an order was requested.
 
-**And the app stops at submission.** No fill, no position, no settlement, no payout, no profit or
-loss: "order submitted" means the wallet reported that it signed and sent a transaction, and the
-screen says as much beneath the links. An answer the phone never received is recorded as unresolved,
-never as a failure, and a possibly dispatched order is never repeated.
+**Submission is not a fill.** "Order submitted" means the wallet reported that it signed and sent a
+transaction. What the order came to is the provider's report, read by the order's own account and
+shown apart from the chain result (SEE-172). An answer the phone never received is recorded as
+unresolved, never as a failure, and a possibly dispatched order is never repeated.
+
+### Inspecting a sale
+
+Selling a position (SEE-172) is a new transaction with its own review, never a replay of the
+purchase. `inspectPredictionSale` resolves the lookup tables and then requires: the only empty
+signature is the owner's and a non-owner fee payer has already signed; exactly one order instruction,
+**selling**, the held side, the held position account, owned by the owner; the order and market as
+the provider stated; exactly the contracts the position held when it was read a moment before, all
+of them; cost zero; a non-zero floor equal to the one stated and no more than 25 % under the current
+best bid; the proceeds in the owner's own JupUSD account; no route, transfer, wrap or unread
+instruction; an owner-paid priority fee of at most 0.005 SOL; and a fee estimate below the least the
+sale can gross. Any failure makes the review unapprovable. Before the wallet opens the position is
+read once more and the reviewed quantity compared; the attempt is written down first, handed to the
+wallet once under its lock, and an unknown answer is reconciled by reading, never by sending again.
+A wallet switch never retargets a position: only its owner, on its network, is offered the sale.
 
 ## Verification versus advisory rules
 
