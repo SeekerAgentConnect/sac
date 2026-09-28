@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.jupiter
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.transactions.COMPUTE_BUDGET_PROGRAM
 import io.github.brrenat.seekervault.transactions.SYSTEM_PROGRAM
 import io.github.brrenat.seekervault.transactions.TOKEN_PROGRAM
 import io.github.brrenat.seekervault.transactions.Verdict
@@ -83,6 +84,64 @@ class PredictionSaleInspectionTest {
                 priorityMicroLamports = 1_000_000_000UL,
             )
         assertRefused(read(greedy), PredictionFinding.ExcessiveFee)
+    }
+
+    @Test
+    fun aMissingLimitIsChargedAtTheDefaultAndStillCapped() {
+        // No limit instruction: the runtime charges the price over 200 000 units for each of the
+        // two other instructions. 20 000 000 micro-lamports a unit is 0.003 SOL over an explicit
+        // 150 000 units, under the cap, and 0.008 SOL over the default 400 000, over it.
+        val price = 20_000_000UL
+        val limited =
+            saleTransaction(payer = OWNER, createPayer = OWNER, priorityMicroLamports = price)
+        assertTrue(read(limited).codes().toString(), read(limited).inspection.approvable)
+        assertEquals(3_000_000UL, read(limited).terms.networkFeeLamports)
+
+        val unlimited =
+            saleTransaction(
+                payer = OWNER,
+                createPayer = OWNER,
+                priorityMicroLamports = price,
+                unitLimit = null,
+            )
+        assertRefused(read(unlimited), PredictionFinding.ExcessiveFee)
+        assertEquals(8_000_000UL, read(unlimited).terms.networkFeeLamports)
+
+        // A modest price with no limit is still counted, over the default, and shown.
+        val modest = saleTransaction(payer = OWNER, createPayer = OWNER, unitLimit = null)
+        assertTrue(read(modest).codes().toString(), read(modest).inspection.approvable)
+        assertEquals(20_000UL, read(modest).terms.networkFeeLamports)
+    }
+
+    @Test
+    fun aFeeThatOverflowsOrASettingGivenTwiceIsRefused() {
+        val overflowing =
+            saleTransaction(
+                payer = OWNER,
+                createPayer = OWNER,
+                priorityMicroLamports = ULong.MAX_VALUE,
+            )
+        assertRefused(read(overflowing), PredictionFinding.ExcessiveFee)
+        assertNull(read(overflowing).terms.networkFeeLamports)
+
+        val twice =
+            saleTransaction(
+                payer = OWNER,
+                createPayer = OWNER,
+                extra = listOf(Step(COMPUTE_BUDGET_PROGRAM, emptyList(), byteArrayOf(2) + u32(1U))),
+            )
+        assertRefused(read(twice), PredictionFinding.ExcessiveFee)
+    }
+
+    @Test
+    fun defaultUnitsAndPriorityFeesFollowTheRuntime() {
+        assertEquals(0UL, defaultComputeUnits(0))
+        assertEquals(400_000UL, defaultComputeUnits(2))
+        assertEquals(MOST_COMPUTE_UNITS, defaultComputeUnits(64))
+        // Rounded up, as the runtime rounds it.
+        assertEquals(1UL, priorityFeeLamports(1UL, 1UL))
+        assertEquals(7_500UL, priorityFeeLamports(150_000UL, 50_000UL))
+        assertNull(priorityFeeLamports(2UL, ULong.MAX_VALUE))
     }
 
     @Test

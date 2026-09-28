@@ -4,11 +4,13 @@ import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.activity.ActivityRecord
 import io.github.brrenat.seekervault.confirmations.ChainCheck
+import io.github.brrenat.seekervault.confirmations.ChainReader
 import io.github.brrenat.seekervault.confirmations.Submission
 import io.github.brrenat.seekervault.confirmations.SubmissionTracking
 import io.github.brrenat.seekervault.confirmations.TrackingOrigin
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.plugins.HeldPosition
+import io.github.brrenat.seekervault.plugins.OrderFillState
 import io.github.brrenat.seekervault.plugins.OrderRead
 import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.ParameterValue
@@ -25,6 +27,9 @@ import io.github.brrenat.seekervault.plugins.saleBlockOf
 import io.github.brrenat.seekervault.positions.storage.PositionStore
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalRecord
+import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.solana.SolanaException
+import io.github.brrenat.seekervault.transactions.recentBlockhashOf
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SendResult
 import io.github.brrenat.seekervault.wallet.WalletSession
@@ -184,9 +189,10 @@ data class PositionsState(
  * [prepareSale] reads the position again, has the provider build the sale and read its bytes, and
  * holds the result for the review. [sell] checks that the review is still current, re-reads the
  * position to catch a change made elsewhere since, writes the attempt down, and only then asks the
- * wallet — under the wallet's own lock — to sign and send exactly the reviewed bytes. It is the
- * only path to the wallet here, and nothing it does is ever repeated automatically: an attempt
- * whose outcome is unknown is reconciled by reading ([reconcile]), never by sending again.
+ * wallet — under the wallet's own lock — to sign and send exactly the reviewed bytes. Waiting for
+ * that lock can take any time, so every check is made again once it is held. It is the only path to
+ * the wallet here, and nothing it does is ever repeated automatically: an attempt whose outcome is
+ * unknown is reconciled by reading ([reconcile]), never by sending again.
  */
 class PositionTracker(
     private val store: PositionStore,
@@ -196,6 +202,12 @@ class PositionTracker(
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val gate: ReadGate = ReadGate(now = now),
+    /**
+     * A reader of [Network]'s chain, for the one question the provider cannot answer: whether a
+     * sale whose wallet never reported back could have landed. Null asks nothing, and such a sale
+     * then stays unresolved.
+     */
+    private val chain: (suspend (Network) -> ChainReader)? = null,
 ) {
     private val _state = MutableStateFlow(PositionsState())
     val state: StateFlow<PositionsState> = _state.asStateFlow()
@@ -322,7 +334,27 @@ class PositionTracker(
             return
         }
         val position = gate.read { manager.position(holding.held) }
-        record(holding.held.account) { stored ->
+        observe(holding.held.account, position)
+        // Each purchase's order, until the provider has finished with it.
+        for (purchase in holding.purchases) {
+            val order = purchase.orderAccount ?: continue
+            if (holding.orders[order]?.reading?.fill?.finished == true) continue
+            val read = gate.read { manager.order(holding.held, order) }
+            if (read is OrderRead.Found) {
+                record(holding.held.account) {
+                    it.copy(orders = it.orders + (order to OrderSnapshot(read.order, now())))
+                }
+            }
+        }
+        // And any sale of it still unresolved or revisable, against what was just read.
+        for (sale in
+            _state.value.salesOf(holding.held.account).filter { it.inFlight || it.revisable }) {
+            settle(sale, manager, position)
+        }
+    }
+
+    private fun observe(account: String, position: PositionRead) {
+        record(account) { stored ->
             when (position) {
                 is PositionRead.Found ->
                     stored.copy(
@@ -336,21 +368,6 @@ class PositionTracker(
                 is PositionRead.Failed ->
                     stored.copy(attemptedAt = now(), problem = position.problem.refresh)
             }
-        }
-        // Each purchase's order, until the provider has finished with it.
-        for (purchase in holding.purchases) {
-            val order = purchase.orderAccount ?: continue
-            if (holding.orders[order]?.reading?.fill?.finished == true) continue
-            val read = gate.read { manager.order(holding.held, order) }
-            if (read is OrderRead.Found) {
-                record(holding.held.account) {
-                    it.copy(orders = it.orders + (order to OrderSnapshot(read.order, now())))
-                }
-            }
-        }
-        // And any sale of it still unresolved, against what was just read.
-        for (sale in _state.value.salesOf(holding.held.account).filter { it.inFlight }) {
-            settle(sale, manager, position)
         }
     }
 
@@ -390,12 +407,50 @@ class PositionTracker(
         manager: PositionManagement,
         position: PositionRead,
     ) {
-        val order = gate.read { manager.order(sale.held, sale.orderAccount) }
-        val chain = chainChecks()[saleKey(sale.id)]
+        // A residue beside a full fill needs no order read: only a later position can correct it.
+        val order =
+            if (sale.inFlight) gate.read { manager.order(sale.held, sale.orderAccount) } else null
+        // The position was read before the order. If the order has since finished, that read may
+        // predate the fill, so what remains is read again, after it.
+        val finished =
+            (order as? OrderRead.Found)?.order?.fill.let {
+                it == OrderFillState.Filled || it == OrderFillState.PartiallyFilledClosed
+            }
+        val after =
+            if (finished) {
+                gate.read { manager.position(sale.held) }.also { observe(sale.held.account, it) }
+            } else {
+                position
+            }
+        val checked = chainChecks()[saleKey(sale.id)]
+        val neverLanded = order is OrderRead.NotFound && provenNeverLanded(sale)
         synchronized(writes) {
             val stored = _state.value.sales.firstOrNull { it.id == sale.id } ?: return
-            val settled = settleSale(stored, chain, order, position, now())
+            val settled = settleSale(stored, checked, order, after, now(), neverLanded)
             if (settled != stored) putSale(settled)
+        }
+    }
+
+    /**
+     * Whether the chain proves [sale] never landed and never can: an attempt whose wallet never
+     * named a signature, so the confirmation tracker has nothing to look up. Its blockhash must be
+     * expired on the finalized chain first — nothing can land after that — and then the chain must
+     * have no transaction naming the sale's own order account, over a period the endpoint's ledger
+     * covers. Anything less, including any failure to ask, is not proof and leaves it unresolved.
+     */
+    private suspend fun provenNeverLanded(sale: SaleRecord): Boolean {
+        if (sale.stage != SaleStage.Unresolved || sale.signature != null) return false
+        val blockhash = sale.blockhash ?: return false
+        val readerFor = chain ?: return false
+        return try {
+            withContext(io) {
+                val reader = readerFor(sale.held.network)
+                !reader.blockhashValid(blockhash) &&
+                    reader.retainedSince()?.isAfter(sale.createdAt) == false &&
+                    reader.signaturesFor(sale.orderAccount, 1).isEmpty()
+            }
+        } catch (_: SolanaException) {
+            false
         }
     }
 
@@ -464,40 +519,42 @@ class PositionTracker(
         val lock = synchronized(selling) { selling.getOrPut(account) { Mutex() } }
         if (!lock.tryLock()) return SellOutcome.Busy
         try {
-            val current = (_state.value.reviews[account] as? SaleReviewState.Ready)?.draft
-            if (current != draft || draft.expired(now())) return stale(account)
+            if (current(account) != draft || draft.expired(now())) return stale(account)
             if (!draft.prepared.inspection.approvable) return SellOutcome.NotApprovable
             if (_state.value.salesOf(account).any { it.inFlight }) return SellOutcome.Busy
             if (!sameWallet(selected(), draft)) return SellOutcome.WrongWallet
             // The race between reviewing and signing: the position is read once more, and a sale
             // of anything but exactly the reviewed contracts goes back to review.
             val manager = managerOf(draft.held) ?: return SellOutcome.NotApprovable
-            when (val fresh = gate.read { manager.position(draft.held) }) {
-                is PositionRead.Found -> {
-                    record(account) {
-                        it.copy(
-                            snapshot = fresh.position,
-                            observedAt = now(),
-                            attemptedAt = now(),
-                            problem = null,
-                        )
-                    }
-                    if (
-                        fresh.position.contractsMicro != draft.prepared.terms.contractsMicro ||
-                            saleBlockOf(fresh.position) != null
-                    ) {
-                        return changed(account)
-                    }
-                }
-                else -> return changed(account)
-            }
+            if (!unchanged(draft, manager)) return changed(account)
+            val checkedAt = now()
             if (draft.expired(now())) return stale(account)
             var outcome = SellOutcome.Handed
             withWallet { session ->
+                // The lock may have been held by anything for any time: everything that decides
+                // whether these bytes may be signed is decided again, now that it is ours.
                 val wallet = selected()
                 if (!sameWallet(wallet, draft) || wallet == null) {
                     outcome = SellOutcome.WrongWallet
                     return@withWallet
+                }
+                if (current(account) != draft || draft.expired(now())) {
+                    outcome = stale(account)
+                    return@withWallet
+                }
+                if (_state.value.salesOf(account).any { it.inFlight }) {
+                    outcome = SellOutcome.Busy
+                    return@withWallet
+                }
+                if (Duration.between(checkedAt, now()) > RECHECK_AFTER) {
+                    if (!unchanged(draft, manager)) {
+                        outcome = changed(account)
+                        return@withWallet
+                    }
+                    if (draft.expired(now())) {
+                        outcome = stale(account)
+                        return@withWallet
+                    }
                 }
                 val sale =
                     begin(draft)
@@ -525,13 +582,27 @@ class PositionTracker(
         }
     }
 
+    private fun current(account: String): SaleDraft? =
+        (_state.value.reviews[account] as? SaleReviewState.Ready)?.draft
+
+    // Reads the position again and records it; whether it still holds exactly what was reviewed.
+    private suspend fun unchanged(draft: SaleDraft, manager: PositionManagement): Boolean {
+        val fresh = gate.read { manager.position(draft.held) }
+        if (fresh is PositionRead.Found) observe(draft.held.account, fresh)
+        return fresh is PositionRead.Found &&
+            fresh.position.contractsMicro == draft.prepared.terms.contractsMicro &&
+            saleBlockOf(fresh.position) == null
+    }
+
     // Writes the attempt down before the wallet is opened, and arms the chain tracking for its
-    // exact bytes. Null when History was cleared since the review began.
+    // exact bytes. Null when History was cleared since the review began, or the review is no
+    // longer the current, unexpired one — checked under the same lock as the write.
     private fun begin(draft: SaleDraft): SaleRecord? =
         synchronized(writes) {
             val cleared = store.clearedAt()
             if (cleared != null && !draft.preparedAt.isAfter(cleared)) return null
             if (_state.value.holdings[draft.held.account] == null) return null
+            if (current(draft.held.account) != draft || draft.expired(now())) return null
             val terms = draft.prepared.terms
             val sale =
                 SaleRecord(
@@ -549,6 +620,7 @@ class PositionTracker(
                     orderAccount = terms.orderAccount,
                     contentHash = hash(draft.prepared.transaction),
                     stage = SaleStage.Signing,
+                    blockhash = recentBlockhashOf(draft.prepared.transaction.toByteArray()),
                 )
             try {
                 store.put(sale)
@@ -705,6 +777,12 @@ class PositionTracker(
 
         /** A position read this recently is not read again unless asked. */
         val FRESH: Duration = Duration.ofSeconds(15)
+
+        /**
+         * How old the pre-signing position check may be once the wallet's lock is held. Older, and
+         * it is read again inside the lock before anything is written or signed.
+         */
+        val RECHECK_AFTER: Duration = Duration.ofSeconds(5)
 
         /**
          * The namespace a sale's chain-tracking key lives under. Sales belong to no connection, and

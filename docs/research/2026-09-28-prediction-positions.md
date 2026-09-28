@@ -76,7 +76,8 @@ to what the stated close sells **and** to what the position held when read a mom
 `newContracts` 0; cost 0; floor equal to the stated floor, non-zero, and no more than 25 % under the
 current best bid; byte-level slippage no more than 25 %; the mint is JupUSD and the proceeds land in
 the owner's JupUSD associated account; the only other instructions are compute-budget settings and
-the creation of that very account; an owner-paid priority fee at most 0.005 SOL; the provider's fee
+the creation of that very account; an owner-paid priority fee at most 0.005 SOL, over the runtime's
+default compute-unit limit when the bytes set none (PR #91 review); the provider's fee
 estimate below the least the sale can gross. Adversarial fixtures for each rule are in
 `PredictionSaleInspectionTest`.
 

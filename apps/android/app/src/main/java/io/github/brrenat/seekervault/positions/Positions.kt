@@ -110,13 +110,18 @@ enum class SaleResult(val code: String) {
     Pending("pending"),
     /** The order filled and the position holds nothing more. */
     Closed("closed"),
-    /** The order finished and contracts remain in the position. */
+    /**
+     * The order finished and contracts remain in the position. When the order filled in full, a
+     * later read that finds the position empty revises it to [Closed]: the remainder was the
+     * provider's index catching up, not contracts the sale left behind ([revisable]).
+     */
     Residual("residual"),
     /** Nothing was sold: declined, refused, failed on chain, or the order failed. */
     NotExecuted("not_executed"),
     /**
-     * No order from it ever reached the provider, and its transaction can no longer land. Only
-     * reached for an attempt whose outcome the wallet never reported.
+     * Its transaction never landed and never can: the chain says its blockhash has expired and has
+     * no transaction naming its order account. Only reached for an attempt whose outcome the wallet
+     * never reported, and only on that chain evidence — never on time or a provider's silence.
      */
     Lapsed("lapsed");
 
@@ -158,23 +163,31 @@ data class SaleRecord(
     val order: OrderSnapshot? = null,
     val result: SaleResult = SaleResult.Pending,
     val resolvedAt: Instant? = null,
+    /**
+     * The approved bytes' recent blockhash: how long they could land. Null for a record written
+     * before it was kept, which then stays unresolved rather than lapse without it.
+     */
+    val blockhash: String? = null,
 ) {
     /** Whether this attempt still stands in the way of another. */
     val inFlight: Boolean
         get() = !result.final
-}
 
-/** How long an attempt whose wallet answer never came waits for evidence before it is lapsed. */
-val SALE_LAPSE: Duration = Duration.ofMinutes(5)
+    /** A residue from an order that filled in full, which a later empty position read corrects. */
+    val revisable: Boolean
+        get() = result == SaleResult.Residual && order?.reading?.fill == OrderFillState.Filled
+}
 
 /**
  * What [sale] has come to, given what was just read — or [sale] unchanged when nothing new is
  * established. Pure: it reads, it never builds, signs or sends anything.
  *
- * - A filled order is a sale; the position read beside it says whether anything remains.
+ * - A filled order is a sale; [position], read after the fill was seen, says whether anything
+ *   remains. A remainder beside a full fill stays [SaleRecord.revisable] until a read finds none.
  * - A sale is never called closed on a chain confirmation alone, nor on a position that 404s.
  * - An attempt the wallet never reported on stays pending until an order appears, the chain says it
- *   failed, or — with no order ever recorded — [SALE_LAPSE] has passed.
+ *   failed, or [neverLanded]: the chain's own proof that its transaction did not and cannot land.
+ *   Time passing and a provider with no record of the order are not that proof.
  */
 fun settleSale(
     sale: SaleRecord,
@@ -182,7 +195,16 @@ fun settleSale(
     order: OrderRead?,
     position: PositionRead?,
     now: Instant,
+    neverLanded: Boolean = false,
 ): SaleRecord {
+    if (sale.revisable) {
+        val found = (position as? PositionRead.Found)?.position ?: return sale
+        return if (found.contractsMicro == 0UL) {
+            sale.copy(result = SaleResult.Closed, resolvedAt = now)
+        } else {
+            sale
+        }
+    }
     if (sale.result.final) return sale
     val observed = (order as? OrderRead.Found)?.order?.let { OrderSnapshot(it, now) }
     val withOrder = if (observed != null) sale.copy(order = observed) else sale
@@ -205,11 +227,10 @@ fun settleSale(
                 fill != null -> withOrder
                 chain?.state == ChainState.Failed -> done(SaleResult.NotExecuted, FAILED_ON_CHAIN)
                 chain?.state == ChainState.Expired -> done(SaleResult.NotExecuted, EXPIRED)
-                sale.stage == SaleStage.Unresolved &&
+                neverLanded &&
+                    sale.stage == SaleStage.Unresolved &&
                     sale.signature == null &&
-                    order is OrderRead.NotFound &&
-                    !now.isBefore(sale.createdAt.plus(SALE_LAPSE)) ->
-                    done(SaleResult.Lapsed, LAPSED)
+                    order is OrderRead.NotFound -> done(SaleResult.Lapsed, LAPSED)
                 else -> withOrder
             }
         }
@@ -220,7 +241,7 @@ internal const val FAILED_ORDER = "The provider reported the sale order as faile
 internal const val FAILED_ON_CHAIN = "The sale's transaction failed on chain."
 internal const val EXPIRED = "The sale's transaction expired before it landed."
 internal const val LAPSED =
-    "No order from this sale reached the provider, and its transaction can no longer land."
+    "Its transaction expired, and the chain has no transaction for its order: nothing was sold."
 
 /** Whether a holding's snapshot is too old to present as current. */
 fun HoldingRecord.stale(now: Instant): Boolean =

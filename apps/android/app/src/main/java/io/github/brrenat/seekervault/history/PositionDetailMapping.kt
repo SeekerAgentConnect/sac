@@ -1,7 +1,9 @@
 package io.github.brrenat.seekervault.history
 
+import io.github.brrenat.seekervault.ReviewIdentity
 import io.github.brrenat.seekervault.activity.explorerUrl
 import io.github.brrenat.seekervault.confirmations.ChainCheck
+import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.designsystem.HistoryDetailLink
 import io.github.brrenat.seekervault.designsystem.HistoryDetailPosition
 import io.github.brrenat.seekervault.designsystem.HistoryDetailPositionState
@@ -23,6 +25,7 @@ import io.github.brrenat.seekervault.plugins.SaleBlock
 import io.github.brrenat.seekervault.plugins.saleBlockOf
 import io.github.brrenat.seekervault.positions.HoldingRecord
 import io.github.brrenat.seekervault.positions.OrderSnapshot
+import io.github.brrenat.seekervault.positions.PositionPurchase
 import io.github.brrenat.seekervault.positions.PositionTracker
 import io.github.brrenat.seekervault.positions.PositionsState
 import io.github.brrenat.seekervault.positions.RefreshProblem
@@ -58,11 +61,26 @@ val ProposalRecord.purchasedPrediction: Boolean
 
 /** The tracked position [record]'s purchase went into, if this phone links one. */
 fun PositionsState.holdingOf(record: ProposalRecord): HoldingRecord? =
-    holdings.values.firstOrNull { holding ->
-        holding.purchases.any {
-            it.connectionId == record.connectionId && it.proposalId == record.key.proposalId
-        }
+    holdingFor(RequestKey(record.connectionId, record.key.proposalId))
+
+/**
+ * The tracked position the purchase [key] names went into, by the identity the holding itself
+ * stored. It needs no feed record: a holding outlives the connection its signal came from.
+ */
+fun PositionsState.holdingFor(key: RequestKey): HoldingRecord? =
+    holdings.values.firstOrNull { holding -> holding.purchases.any { it.key == key } }
+
+/**
+ * The holding a History item or its sale sheet opened as [identity] is about. Only a signal's
+ * purchase goes into a position, and it is found by its link alone, never through the feed.
+ */
+fun PositionsState.holdingFor(identity: ReviewIdentity): HoldingRecord? =
+    (identity as? ReviewIdentity.Signal)?.let {
+        holdingFor(RequestKey(it.connectionId, it.requestId))
     }
+
+private val PositionPurchase.key: RequestKey
+    get() = RequestKey(connectionId, proposalId)
 
 fun positionDetail(
     record: ProposalRecord,
@@ -73,7 +91,26 @@ fun positionDetail(
     clock: HistoryDetailClock = HistoryDetailClock(),
 ): HistoryDetailPosition? {
     if (!record.purchasedPrediction) return null
-    val holding = positions.holdingOf(record)
+    return positionDetail(
+        key = RequestKey(record.connectionId, record.key.proposalId),
+        positions = positions,
+        wallet = wallet,
+        links = links,
+        now = now,
+        clock = clock,
+    )
+}
+
+/** The position block for the purchase [key], whether or not its feed record is still here. */
+fun positionDetail(
+    key: RequestKey,
+    positions: PositionsState,
+    wallet: SelectedWallet?,
+    links: List<HistoryDetailLink>,
+    now: Instant,
+    clock: HistoryDetailClock = HistoryDetailClock(),
+): HistoryDetailPosition {
+    val holding = positions.holdingFor(key)
     if (holding == null) {
         return HistoryDetailPosition(
             state =
@@ -84,10 +121,7 @@ fun positionDetail(
             links = links,
         )
     }
-    val purchase =
-        holding.purchases.firstOrNull {
-            it.connectionId == record.connectionId && it.proposalId == record.key.proposalId
-        }
+    val purchase = holding.purchases.firstOrNull { it.key == key }
     val snapshot = holding.snapshot
     val sales = positions.salesOf(holding.held.account)
     val refreshing = holding.held.account in positions.refreshing
@@ -147,9 +181,17 @@ fun positionDetail(
 fun saleTransactions(
     record: ProposalRecord,
     positions: PositionsState,
-    chainChecks: Map<io.github.brrenat.seekervault.connections.RequestKey, ChainCheck>,
+    chainChecks: Map<RequestKey, ChainCheck>,
+): List<HistoryDetailTransaction> =
+    saleTransactions(RequestKey(record.connectionId, record.key.proposalId), positions, chainChecks)
+
+/** The same, for the purchase [key], with or without its feed record. */
+fun saleTransactions(
+    key: RequestKey,
+    positions: PositionsState,
+    chainChecks: Map<RequestKey, ChainCheck>,
 ): List<HistoryDetailTransaction> {
-    val holding = positions.holdingOf(record) ?: return emptyList()
+    val holding = positions.holdingFor(key) ?: return emptyList()
     return positions.salesOf(holding.held.account).mapNotNull { sale ->
         val signature = sale.signature ?: return@mapNotNull null
         val view = chainView(local = chainChecks[PositionTracker.saleKey(sale.id)])

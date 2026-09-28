@@ -16,9 +16,11 @@ import io.github.brrenat.seekervault.plugins.OrderReading
 import io.github.brrenat.seekervault.plugins.PositionRead
 import io.github.brrenat.seekervault.positions.storage.PositionStore
 import java.io.File
+import java.time.Duration
 import java.time.Instant
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -84,6 +86,7 @@ class PositionStoreTest {
             stage = stage,
             signature = "5".repeat(88).takeIf { stage == SaleStage.Submitted },
             settledAt = at,
+            blockhash = "4".repeat(44),
         )
 
     @Test
@@ -108,6 +111,11 @@ class PositionStoreTest {
         // An additive field a newer build wrote is simply ignored.
         val extended = JSONObject(PositionStore.encodeSale(sale())).put("proceedsUsd", "123")
         assertEquals(sale(), PositionStore.decodeSale(extended.toString()))
+        // A sale written before its blockhash was kept still reads, with none: it can then only
+        // stay
+        // unresolved, never lapse.
+        val older = JSONObject(PositionStore.encodeSale(sale())).apply { remove("blockhash") }
+        assertEquals(sale().copy(blockhash = null), PositionStore.decodeSale(older.toString()))
         // A market state this build does not know reads as Unknown, never as open.
         val holding = JSONObject(PositionStore.encodeHolding(holding()))
         holding.getJSONObject("snapshot").put("market", "halted")
@@ -200,26 +208,84 @@ class PositionStoreTest {
                 later,
             ),
         )
-        // A signed, submitted sale never lapses on silence: only an unknown answer can.
+        // A signed, submitted sale never lapses on silence, however long it lasts.
+        val muchLater = at.plus(Duration.ofHours(6))
         assertEquals(
             SaleResult.Pending,
-            settleSale(
-                    submitted,
-                    null,
-                    OrderRead.NotFound,
-                    null,
-                    at.plus(SALE_LAPSE).plusSeconds(60),
-                )
+            settleSale(submitted, null, OrderRead.NotFound, null, muchLater).result,
+        )
+        assertEquals(
+            SaleResult.Pending,
+            settleSale(submitted, null, OrderRead.NotFound, null, muchLater, neverLanded = true)
                 .result,
         )
+        // An unknown answer lapses only on the chain's proof, never on time or a provider 404.
         val unknown = sale(SaleStage.Unresolved)
         assertEquals(
             SaleResult.Pending,
-            settleSale(unknown, null, OrderRead.NotFound, null, at.plusSeconds(60)).result,
+            settleSale(unknown, null, OrderRead.NotFound, null, muchLater).result,
         )
         assertEquals(
             SaleResult.Lapsed,
-            settleSale(unknown, null, OrderRead.NotFound, null, at.plus(SALE_LAPSE)).result,
+            settleSale(unknown, null, OrderRead.NotFound, null, later, neverLanded = true).result,
+        )
+        // An order the provider knows about outranks any claim that nothing landed.
+        assertEquals(
+            SaleResult.Pending,
+            settleSale(
+                    unknown,
+                    null,
+                    OrderRead.Found(order(OrderFillState.Pending)),
+                    null,
+                    later,
+                    neverLanded = true,
+                )
+                .result,
+        )
+        // A residue beside a full fill is revised by a later read that finds the position empty,
+        // and only by that: a failed read or a 404 changes nothing, and a residue a partial fill
+        // left is the order's own account and stays.
+        val residual =
+            settleSale(
+                submitted,
+                null,
+                filled,
+                PositionRead.Found(predictionPosition(contracts = HELD_CONTRACTS).reading()),
+                later,
+            )
+        assertEquals(SaleResult.Residual, residual.result)
+        assertTrue(residual.revisable)
+        assertFalse(residual.inFlight)
+        assertEquals(residual, settleSale(residual, null, null, PositionRead.NotFound, muchLater))
+        assertEquals(
+            SaleResult.Closed,
+            settleSale(
+                    residual,
+                    null,
+                    null,
+                    PositionRead.Found(predictionPosition(contracts = 0UL).reading()),
+                    muchLater,
+                )
+                .result,
+        )
+        val partial =
+            settleSale(
+                submitted,
+                null,
+                OrderRead.Found(order(OrderFillState.PartiallyFilledClosed)),
+                null,
+                later,
+            )
+        assertFalse(partial.revisable)
+        assertEquals(
+            partial,
+            settleSale(
+                partial,
+                null,
+                null,
+                PositionRead.Found(predictionPosition(contracts = 0UL).reading()),
+                muchLater,
+            ),
         )
         // Once final, nothing moves it.
         val closed = settleSale(submitted, null, filled, PositionRead.NotFound, later)

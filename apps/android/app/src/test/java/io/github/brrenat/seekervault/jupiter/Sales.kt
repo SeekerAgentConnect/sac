@@ -142,14 +142,17 @@ fun saleTransaction(
     createFor: String? = owner,
     createPayer: String = payer,
     priorityMicroLamports: ULong = 50_000UL,
-    unitLimit: UInt = 150_000U,
+    /** Null leaves the limit instruction out, as a build that relies on the default would. */
+    unitLimit: UInt? = 150_000U,
     orders: Int = 1,
     extra: List<Step> = emptyList(),
 ): OrderBytes {
     val proceedsAccount = proceeds ?: checkNotNull(associatedTokenAddress(owner, mint))
     val steps = mutableListOf<Step>()
     steps += Step(COMPUTE_BUDGET_PROGRAM, emptyList(), byteArrayOf(3) + u64(priorityMicroLamports))
-    steps += Step(COMPUTE_BUDGET_PROGRAM, emptyList(), byteArrayOf(2) + u32(unitLimit))
+    if (unitLimit != null) {
+        steps += Step(COMPUTE_BUDGET_PROGRAM, emptyList(), byteArrayOf(2) + u32(unitLimit))
+    }
     if (createFor != null) {
         steps +=
             Step(

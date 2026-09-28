@@ -22,7 +22,7 @@ import org.json.JSONObject
 /**
  * Asking the chain what became of a signature, and nothing else (SEE-165).
  *
- * Five reads. There is no send, no simulate, no subscribe and no wallet: this is how the phone
+ * Six reads. There is no send, no simulate, no subscribe and no wallet: this is how the phone
  * learns whether a transaction its wallet already sent landed, and it has no way to send one
  * (`StageBoundaryTest.theConfirmationReaderOnlyReads`).
  *
@@ -54,6 +54,13 @@ interface ChainReader {
      * and a miss there is not evidence that a transaction never landed.
      */
     suspend fun retainedSince(): Instant?
+
+    /**
+     * Up to [limit] signatures of transactions that named [address], newest first, from the
+     * finalized chain (SEE-172). An empty list is only evidence of absence for a period the
+     * endpoint's own ledger covers — see [retainedSince].
+     */
+    suspend fun signaturesFor(address: String, limit: Int): List<String>
 }
 
 data class SignatureStatus(val slot: Long, val level: ChainLevel, val chainError: String?)
@@ -240,6 +247,22 @@ class HttpChainReader(
         val value = (result as? JSONObject)?.opt("value")
         return value as? Boolean
             ?: throw SolanaException(SolanaProblem.Unusable, "no blockhash verdict")
+    }
+
+    override suspend fun signaturesFor(address: String, limit: Int): List<String> {
+        val result =
+            call(
+                "getSignaturesForAddress",
+                JSONArray()
+                    .put(address)
+                    .put(JSONObject().put("limit", limit).put("commitment", "finalized")),
+            )
+        val values =
+            result as? JSONArray ?: throw SolanaException(SolanaProblem.Unusable, "no signatures")
+        return (0 until values.length()).map { index ->
+            values.optJSONObject(index)?.optString("signature")?.takeIf { it.isNotEmpty() }
+                ?: throw SolanaException(SolanaProblem.Unusable, "a signature that isn't one")
+        }
     }
 
     /** One JSON-RPC call: its `result`, which may be JSON null. */

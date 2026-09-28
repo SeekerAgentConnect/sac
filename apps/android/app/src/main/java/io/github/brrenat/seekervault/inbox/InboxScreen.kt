@@ -53,6 +53,8 @@ import io.github.brrenat.seekervault.designsystem.ScreenScaffold
 import io.github.brrenat.seekervault.designsystem.ScreenScrollBody
 import io.github.brrenat.seekervault.designsystem.SeekerTabBar
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.history.RetainedCopy
+import io.github.brrenat.seekervault.history.RetainedPurchase
 import io.github.brrenat.seekervault.history.chainView
 import io.github.brrenat.seekervault.history.rowStatus
 import io.github.brrenat.seekervault.history.rowText
@@ -300,12 +302,15 @@ fun InboxRoute(
     view: InboxViewState = rememberInboxViewState(),
     /** What the phone itself last found on chain, by request (SEE-165). */
     chainChecks: Map<RequestKey, ChainCheck> = emptyMap(),
+    /** Tracked purchases whose feed record is gone, still listed under History (SEE-172). */
+    retained: List<RetainedPurchase> = emptyList(),
 ) {
     val initial =
         inboxInitialTab(
             state = state,
             feedRecords = feedRecords,
             feedStanding = feedStanding,
+            retained = retained,
         )
     // The opening tab is chosen once per visit, from what is there when the Inbox opens.
     SideEffect { if (view.tab == null) view.tab = initial }
@@ -319,8 +324,10 @@ fun InboxRoute(
             now = now,
             sourceFilter = view.sourceFilter,
             chainChecks = chainChecks,
+            retained = retained,
         )
     val recordById = feedRecords.associateBy(::signalId)
+    val retainedById = retained.associateBy { signalId(it.key) }
 
     LaunchedEffect(Unit) { callbacks.onRefresh() }
     InboxScreen(
@@ -340,6 +347,9 @@ fun InboxRoute(
                             ?: recordById[id]?.let {
                                 ReviewIdentity.Signal(it.connectionId, it.key.proposalId)
                             }
+                            ?: retainedById[id]?.let {
+                                ReviewIdentity.Signal(it.key.connectionId, it.key.requestId)
+                            }
                     identity?.let(callbacks.onOpenHistory)
                 },
                 navigation = callbacks.navigation,
@@ -354,12 +364,14 @@ fun inboxInitialTab(
     state: InboxUiState,
     feedRecords: List<ProposalRecord>,
     feedStanding: (ProposalRecord) -> ProposalStanding,
+    retained: List<RetainedPurchase> = emptyList(),
 ): InboxTab {
     val privateItems = inboxItems(state.inbox, null)
     val hasPending = pendingItems(state.inbox, feedRecords, feedStanding).isNotEmpty()
     val hasHistory =
         privateItems.toSend.isNotEmpty() ||
             privateItems.answered.isNotEmpty() ||
+            retained.isNotEmpty() ||
             feedRecords.any { feedStanding(it) !is ProposalStanding.Open }
     return if (!hasPending && hasHistory) InboxTab.History else InboxTab.Pending
 }
@@ -374,6 +386,8 @@ fun inboxScreenState(
     sourceFilter: String? = null,
     /** What the phone itself last found on chain, by request (SEE-165). */
     chainChecks: Map<RequestKey, ChainCheck> = emptyMap(),
+    /** Tracked purchases whose feed record is gone (SEE-172). */
+    retained: List<RetainedPurchase> = emptyList(),
 ): InboxScreenState {
     val connections = state.connections.associateBy(Connection::id)
     // A filter for a connection that is gone narrows to nothing, so it is dropped instead.
@@ -389,6 +403,7 @@ fun inboxScreenState(
                 now,
                 formatTime,
                 chainChecks = chainChecks,
+                retained = retained,
             )
     val privateItems = inboxItems(state.inbox, filter)
     val shownRecords = feedRecords.filter { filter == null || it.connectionId == filter }
@@ -432,7 +447,15 @@ fun inboxScreenState(
             )
         }
     }
-    val history = (privateHistory + signalHistory).sortedByDescending { it.at }.map { it.row }
+    // A purchase whose feed is gone is still the owner's, and its position still theirs to manage.
+    val retainedHistory =
+        retained
+            .filter { filter == null || it.key.connectionId == filter }
+            .map { it.toInboxHistoryRow(formatTime, chainChecks[it.key] ?: it.activity?.chain) }
+    val history =
+        (privateHistory + signalHistory + retainedHistory)
+            .sortedByDescending { it.at }
+            .map { it.row }
     return InboxScreenState(
         selectedTab = selectedTab,
         pending = pending,
@@ -650,6 +673,34 @@ private fun ProposalRecord.toInboxHistoryRow(
     )
 }
 
+private fun RetainedPurchase.toInboxHistoryRow(
+    formatTime: (Instant) -> String,
+    chain: ChainCheck?,
+): TimedHistoryRow {
+    val view = chainView(local = chain)
+    val sent = (purchase.signature ?: activity?.signature) != null
+    return TimedHistoryRow(
+        row =
+            InboxHistoryRowState(
+                id = signalId(key),
+                model =
+                    HistoryRowModel(
+                        title =
+                            holding.snapshot?.marketTitle?.takeIf(String::isNotEmpty)
+                                ?: RetainedCopy.Title,
+                        sourceName = activity?.source ?: RetainedCopy.Source,
+                        outcomeText = if (sent) view.rowText() else "Outcome unknown",
+                        timestampText = formatTime(purchase.boughtAt),
+                        isSignal = true,
+                    ),
+                rowState = if (sent) HistoryRowState.Sent else HistoryRowState.Unknown,
+                kind = InboxRowKind.Prediction,
+                status = if (sent) view.rowStatus() else HistoryRowStatus.Unknown,
+            ),
+        at = purchase.boughtAt,
+    )
+}
+
 private data class TimedHistoryRow(val row: InboxHistoryRowState, val at: Instant)
 
 internal fun Request.inboxTitle(capability: String): String =
@@ -746,7 +797,9 @@ private fun inboxShortTime(instant: Instant): String =
 private fun privateId(key: RequestKey): String = "private/${key.connectionId}/${key.requestId}"
 
 private fun signalId(record: ProposalRecord): String =
-    "feed/${record.connectionId}/${record.key.proposalId}"
+    signalId(RequestKey(record.connectionId, record.key.proposalId))
+
+private fun signalId(key: RequestKey): String = "feed/${key.connectionId}/${key.requestId}"
 
 private fun privateKey(id: String): RequestKey? {
     if (!id.startsWith(PrivatePrefix)) return null

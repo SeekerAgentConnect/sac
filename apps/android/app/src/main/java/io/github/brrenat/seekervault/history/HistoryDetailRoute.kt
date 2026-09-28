@@ -22,6 +22,7 @@ import io.github.brrenat.seekervault.designsystem.EmptyState
 import io.github.brrenat.seekervault.designsystem.EmptyStateScreen
 import io.github.brrenat.seekervault.designsystem.HistoryDetailCallbacks
 import io.github.brrenat.seekervault.designsystem.HistoryDetailLink
+import io.github.brrenat.seekervault.designsystem.HistoryDetailModel
 import io.github.brrenat.seekervault.designsystem.HistoryDetailRow
 import io.github.brrenat.seekervault.designsystem.HistoryDetailScreen
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
@@ -77,6 +78,11 @@ fun HistoryDetailRoute(
     /** Opens a provider link, app first. */
     onOpenProvider: (String) -> Unit = {},
     now: () -> Instant = Instant::now,
+    /**
+     * Tracked purchases whose feed record is gone (SEE-172). A signal found here and not in
+     * [feedRecords] is rebuilt from the owner's own records, so its position stays reachable.
+     */
+    retained: List<RetainedPurchase> = emptyList(),
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
@@ -159,6 +165,18 @@ fun HistoryDetailRoute(
                                     saleTransactions(record, positions, chainChecks),
                         )
                     }
+                    ?: retainedDetail(
+                        key = RequestKey(identity.connectionId, identity.requestId),
+                        retained = retained,
+                        positions = positions,
+                        wallet = wallet,
+                        positionLinks = positionLinks,
+                        onRefreshPosition = onRefreshPosition,
+                        chainChecks = chainChecks,
+                        checkingChain = checkingChain,
+                        clock = clock,
+                        now = now(),
+                    )
         }
 
     if (model == null) {
@@ -196,12 +214,8 @@ fun HistoryDetailRoute(
                     }
                 },
                 onOpenExplorer = { url -> openLink(context, url) },
-                onRefreshPosition = {
-                    positionOf(identity, feedRecords, positions)?.let(onRefreshPosition)
-                },
-                onSellPosition = {
-                    positionOf(identity, feedRecords, positions)?.let(onSellPosition)
-                },
+                onRefreshPosition = { positionOf(identity, positions)?.let(onRefreshPosition) },
+                onSellPosition = { positionOf(identity, positions)?.let(onSellPosition) },
                 onOpenProvider = onOpenProvider,
                 onCheckStatus = {
                     val key = RequestKey(identity.connectionId, identity.requestId)
@@ -215,19 +229,51 @@ fun HistoryDetailRoute(
     )
 }
 
-/** The position account [identity]'s purchase went into, when this phone follows one. */
-private fun positionOf(
-    identity: ReviewIdentity,
-    records: List<ProposalRecord>,
+/**
+ * The position account [identity]'s purchase went into, when this phone follows one. Read from the
+ * holding's own link to the purchase, so it needs no feed record (SEE-172).
+ */
+private fun positionOf(identity: ReviewIdentity, positions: PositionsState): String? =
+    positions.holdingFor(identity)?.held?.account
+
+/** The page for a tracked purchase whose feed record is gone, with its live position. */
+@Composable
+private fun retainedDetail(
+    key: RequestKey,
+    retained: List<RetainedPurchase>,
     positions: PositionsState,
-): String? =
-    records
-        .firstOrNull {
-            it.connectionId == identity.connectionId && it.key.proposalId == identity.requestId
-        }
-        ?.let(positions::holdingOf)
-        ?.held
-        ?.account
+    wallet: SelectedWallet?,
+    positionLinks: (HeldPosition) -> List<HistoryDetailLink>,
+    onRefreshPosition: (String) -> Unit,
+    chainChecks: Map<RequestKey, ChainCheck>,
+    checkingChain: Set<RequestKey>,
+    clock: HistoryDetailClock,
+    now: Instant,
+): HistoryDetailModel? {
+    val purchase = retained.firstOrNull { it.key == key } ?: return null
+    // The holding as it is now, not as it was when the list was built.
+    val holding = positions.holdingFor(key) ?: return null
+    PositionPolling(holding, positions, onRefreshPosition)
+    val base =
+        retainedHistoryDetail(
+            retained = purchase.copy(holding = holding),
+            clock = clock,
+            chain = chainChecks[key] ?: purchase.activity?.chain,
+            checkingChain = key in checkingChain,
+        )
+    return base.copy(
+        position =
+            positionDetail(
+                key = key,
+                positions = positions,
+                wallet = wallet,
+                links = positionLinks(holding.held),
+                now = now,
+                clock = clock,
+            ),
+        transactions = base.transactions + saleTransactions(key, positions, chainChecks),
+    )
+}
 
 /**
  * Reads the position when the page opens, and — only while one of its orders or sales is still

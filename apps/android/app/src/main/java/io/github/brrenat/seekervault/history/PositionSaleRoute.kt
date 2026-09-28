@@ -14,7 +14,6 @@ import io.github.brrenat.seekervault.designsystem.PositionSaleSheet
 import io.github.brrenat.seekervault.positions.PositionsViewModel
 import io.github.brrenat.seekervault.positions.SaleReviewState
 import io.github.brrenat.seekervault.positions.notice
-import io.github.brrenat.seekervault.proposals.ProposalRecord
 import java.time.Instant
 import kotlinx.coroutines.delay
 
@@ -28,7 +27,6 @@ import kotlinx.coroutines.delay
 @Composable
 fun PositionSaleRoute(
     identity: ReviewIdentity,
-    feedRecords: List<ProposalRecord>,
     positions: PositionsViewModel,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -37,10 +35,10 @@ fun PositionSaleRoute(
     val resources = LocalResources.current
     val state by positions.state.collectAsState()
     val notices by positions.notices.collectAsState()
-    val record = feedRecords.firstOrNull {
-        it.connectionId == identity.connectionId && it.key.proposalId == identity.requestId
-    }
-    val holding = record?.let(state::holdingOf)
+    // Resolved from the holding's own link to the purchase, never through the feed's record: the
+    // position outlives the connection its signal came from (SEE-172).
+    if (!state.loaded) return
+    val holding = state.holdingFor(identity)
     val account = holding?.held?.account
     if (account == null) {
         LaunchedEffect(Unit) { onClose() }

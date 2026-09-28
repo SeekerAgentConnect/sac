@@ -44,6 +44,7 @@ import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.SheetMotion
 import io.github.brrenat.seekervault.history.HistoryDetailRoute
 import io.github.brrenat.seekervault.history.PositionSaleRoute
+import io.github.brrenat.seekervault.history.retainedPurchases
 import io.github.brrenat.seekervault.inbox.InboxRoute
 import io.github.brrenat.seekervault.inbox.InboxRouteCallbacks
 import io.github.brrenat.seekervault.inbox.InboxViewModel
@@ -205,6 +206,13 @@ fun SeekerVaultApp(
         (positions?.state ?: MutableStateFlow(PositionsState())).collectAsStateWithLifecycle()
     val positionWallet by
         (positions?.selected ?: MutableStateFlow(null)).collectAsStateWithLifecycle()
+    // Tracked purchases whose feed record is gone: removing a connection removes its proposals,
+    // not the owner's positions (SEE-172). Only an answer once both have been read.
+    val retained =
+        remember(positionsState, operationsState, historyState.records) {
+            if (!operationsState.loaded || !positionsState.loaded) emptyList()
+            else retainedPurchases(positionsState, operationsState.records, historyState.records)
+        }
     val historyContext = LocalContext.current
     val historyResources = LocalResources.current
 
@@ -380,6 +388,7 @@ fun SeekerVaultApp(
                                 ?: io.github.brrenat.seekervault.proposals.ProposalStanding.Expired
                         },
                         now = Instant.now(),
+                        retained = retained,
                         callbacks =
                             InboxRouteCallbacks(
                                 onRefresh = {
@@ -435,6 +444,7 @@ fun SeekerVaultApp(
                         checkingChain = historyState.checking,
                         onCheckChain = history::checkChain,
                         positions = positionsState,
+                        retained = retained,
                         wallet = positionWallet,
                         positionLinks = { held ->
                             positions?.destinations(held).orEmpty().map {
@@ -677,7 +687,6 @@ fun SeekerVaultApp(
                                 } else {
                                     PositionSaleRoute(
                                         identity = activeRoute.identity,
-                                        feedRecords = operationsState.records,
                                         positions = positions,
                                         onClose = pop,
                                     )

@@ -347,6 +347,10 @@ class SeekerVaultApplication : Application() {
                 tracking = confirmations,
                 chainChecks = { confirmations.checks.value },
                 io = connectionIo,
+                chain =
+                    chainEndpoints().let { endpoints ->
+                        { network -> endpoints.readerFor(network) }
+                    },
             )
             .also { tracker -> activityLog.onClear(tracker::clear) }
     }
