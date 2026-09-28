@@ -896,7 +896,8 @@ class StageBoundaryTest {
                 // The words for each of the six reasons nothing serves an action here.
                 "OperationText.kt",
                 "OperationViewModel.kt",
-                // Positions (SEE-172): the provider-neutral readings and the sale the provider built
+                // Positions (SEE-172): the provider-neutral readings and the sale the provider
+                // built
                 // and read, mapped for History, stored, and handed to the wallet under its lock by
                 // the one coordinator — which resolves the provider by the ID the purchase was
                 // bound to, and never by anything else.

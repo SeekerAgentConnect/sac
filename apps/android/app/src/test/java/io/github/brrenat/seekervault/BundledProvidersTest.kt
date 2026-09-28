@@ -5,14 +5,15 @@ import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
 import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
 import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
 import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
+import io.github.brrenat.seekervault.plugins.PREDICTION_SELL_ACTION
 import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.SWAP_ACTION
 import io.github.brrenat.seekervault.request.v1.Network
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RuntimeEnvironment
@@ -64,9 +65,15 @@ class BundledProvidersTest {
             setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
             jupiter.environments,
         )
-        // Nothing in this app polls a provider for an outcome, and Jupiter would have nothing
-        // truthful to answer: "submitted" must never quietly become "filled".
-        assertFalse(jupiter.statusQueries)
+        // Since SEE-172 Jupiter reports a prediction order's fills by the order's own account; a
+        // chain confirmation alone still never becomes "filled".
+        assertTrue(jupiter.statusQueries)
+        // Selling a held position is not a publishable action: it is reached only through the
+        // provider's position management, never from a signal.
+        assertEquals(
+            PREDICTION_SELL_ACTION,
+            checkNotNull(registry.byId(JUPITER_PROVIDER)?.positions).sale.action,
+        )
     }
 
     @Test

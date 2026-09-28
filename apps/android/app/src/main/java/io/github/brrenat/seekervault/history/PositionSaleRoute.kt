@@ -8,7 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import io.github.brrenat.seekervault.ReviewIdentity
 import io.github.brrenat.seekervault.designsystem.PositionSaleSheet
 import io.github.brrenat.seekervault.positions.PositionsViewModel
@@ -34,13 +34,12 @@ fun PositionSaleRoute(
     modifier: Modifier = Modifier,
     clock: HistoryDetailClock = HistoryDetailClock(),
 ) {
-    val context = LocalContext.current
+    val resources = LocalResources.current
     val state by positions.state.collectAsState()
     val notices by positions.notices.collectAsState()
-    val record =
-        feedRecords.firstOrNull {
-            it.connectionId == identity.connectionId && it.key.proposalId == identity.requestId
-        }
+    val record = feedRecords.firstOrNull {
+        it.connectionId == identity.connectionId && it.key.proposalId == identity.requestId
+    }
     val holding = record?.let(state::holdingOf)
     val account = holding?.held?.account
     if (account == null) {
@@ -70,7 +69,7 @@ fun PositionSaleRoute(
                 holding = holding,
                 notice = notices[account]?.notice(),
                 now = now,
-                text = context::getString,
+                text = resources::getString,
                 clock = clock,
             ),
         onSell = { positions.sell(account) },

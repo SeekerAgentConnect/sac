@@ -48,8 +48,8 @@ interface JupiterPrediction {
     ): PredictionOrder
 
     /**
-     * One position as the provider holds it now (SEE-172). A position the provider has no record
-     * of throws [PredictionProblem.NotFound], which is **not** a sale, a loss or a zero: it is also
+     * One position as the provider holds it now (SEE-172). A position the provider has no record of
+     * throws [PredictionProblem.NotFound], which is **not** a sale, a loss or a zero: it is also
      * what a position looks like before the indexer has caught up with a fill.
      */
     suspend fun position(positionPubkey: String): PredictionPosition
@@ -58,8 +58,8 @@ interface JupiterPrediction {
     suspend fun orderStatus(orderPubkey: String): PredictionOrderStatus
 
     /**
-     * The order that would sell the whole of [positionPubkey], built for [owner] to sign. An
-     * answer is unsigned bytes and the provider's account of them — never a sale.
+     * The order that would sell the whole of [positionPubkey], built for [owner] to sign. An answer
+     * is unsigned bytes and the provider's account of them — never a sale.
      */
     suspend fun closePosition(positionPubkey: String, owner: String): PredictionClose
 }
@@ -245,8 +245,8 @@ enum class PredictionProblem(val code: String) {
     /** The answer arrived and could not be used. */
     Unusable("provider_unusable"),
     /**
-     * The provider has no record of the position or order asked about. Not a sale and not a loss:
-     * a fill the indexer has not caught up with looks exactly like this.
+     * The provider has no record of the position or order asked about. Not a sale and not a loss: a
+     * fill the indexer has not caught up with looks exactly like this.
      */
     NotFound("not_found"),
 }
@@ -448,13 +448,12 @@ class HttpJupiterPrediction(
         // The numbers ride on the latest event that carries any; an order that has only been
         // created carries none, and then there are none.
         val history = answer.optJSONArray("history")
-        val fill =
-            history?.let { events ->
-                (events.length() - 1 downTo 0)
-                    .asSequence()
-                    .mapNotNull { events.optJSONObject(it)?.optJSONObject("fillInfo") }
-                    .firstOrNull()
-            }
+        val fill = history?.let { events ->
+            (events.length() - 1 downTo 0)
+                .asSequence()
+                .mapNotNull { events.optJSONObject(it)?.optJSONObject("fillInfo") }
+                .firstOrNull()
+        }
         val finished = latest == "order_closed" || latest == "order_failed"
         return PredictionOrderStatus(
             orderPubkey = answer.text("orderPubkey"),
@@ -470,12 +469,17 @@ class HttpJupiterPrediction(
         )
     }
 
-    private fun readClose(answer: JSONObject, positionPubkey: String, owner: String): PredictionClose {
+    private fun readClose(
+        answer: JSONObject,
+        positionPubkey: String,
+        owner: String,
+    ): PredictionClose {
         val order =
             answer.optJSONObject("order")
                 ?: throw PredictionException(PredictionProblem.Unusable, "no order")
-        val encoded = answer.optText("transaction")
-            ?: throw PredictionException(PredictionProblem.Unusable, "no transaction")
+        val encoded =
+            answer.optText("transaction")
+                ?: throw PredictionException(PredictionProblem.Unusable, "no transaction")
         val bytes =
             try {
                 ByteString.copyFrom(Base64.getDecoder().decode(encoded))

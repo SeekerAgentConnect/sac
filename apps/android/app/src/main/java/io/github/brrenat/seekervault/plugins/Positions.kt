@@ -1,8 +1,8 @@
 package io.github.brrenat.seekervault.plugins
 
 import com.google.protobuf.ByteString
-import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.wallet.SelectedWallet
 
 /**
  * What a provider can say and do about a position the owner already holds (SEE-172).
@@ -13,8 +13,9 @@ import io.github.brrenat.seekervault.request.v1.Network
  * this is a separate, optional part of a provider rather than another payload: a publisher cannot
  * name `prediction.sell`, and a signal can never become a sale.
  *
- * Everything here is data and pure types. The provider reads its own API and the chain; core decides
- * whether a sale is eligible, stores what happened, drives the wallet and follows the chain.
+ * Everything here is data and pure types. The provider reads its own API and the chain; core
+ * decides whether a sale is eligible, stores what happened, drives the wallet and follows the
+ * chain.
  */
 interface PositionManagement {
     /** The action a sale is, and where the provider serves it. */
@@ -29,9 +30,9 @@ interface PositionManagement {
     /**
      * Builds and reads the transaction that would sell the **whole** of [held] for [wallet].
      *
-     * Throws [PluginFailure] with the reason when nothing can be offered — a wallet that is not
-     * the position's owner, a market that no longer trades, a transaction that could not be
-     * resolved. A returned sale has always been read; whether it is approvable is its verdict.
+     * Throws [PluginFailure] with the reason when nothing can be offered — a wallet that is not the
+     * position's owner, a market that no longer trades, a transaction that could not be resolved. A
+     * returned sale has always been read; whether it is approvable is its verdict.
      */
     suspend fun prepareSale(held: HeldPosition, wallet: SelectedWallet?): PreparedSale
 
@@ -56,7 +57,9 @@ data class HeldPosition(
     val yes: Boolean,
 )
 
-/** Where a market stands, in the provider's words mapped onto the few that change what is offered. */
+/**
+ * Where a market stands, in the provider's words mapped onto the few that change what is offered.
+ */
 enum class MarketStanding(val code: String) {
     Open("open"),
     /** No longer trading and not yet settled. */
@@ -76,8 +79,8 @@ enum class MarketStanding(val code: String) {
  * A position as the provider reported it, with the time it was observed.
  *
  * Amounts are in millionths — of a contract, or of a dollar — as the provider sends them. A value
- * the provider does not quote (a closed market has no mark) stays null: a value nobody quoted is not
- * a value of nothing.
+ * the provider does not quote (a closed market has no mark) stays null: a value nobody quoted is
+ * not a value of nothing.
  */
 data class PositionReading(
     val account: String,
@@ -177,8 +180,8 @@ sealed interface OrderRead {
  * A sale, built and read.
  *
  * [inspection] is the reading of [transaction]'s own bytes — its verdict decides whether it can be
- * approved. [terms] are the numbers the review shows, every one of them out of the bytes or labelled
- * as the provider's estimate.
+ * approved. [terms] are the numbers the review shows, every one of them out of the bytes or
+ * labelled as the provider's estimate.
  */
 data class PreparedSale(
     val transaction: ByteString,
@@ -237,7 +240,9 @@ enum class SaleBlock(val code: String) {
     NoBid("no_bid"),
 }
 
-/** The one eligibility rule, over what the provider reported. Null when the position can be sold. */
+/**
+ * The one eligibility rule, over what the provider reported. Null when the position can be sold.
+ */
 fun saleBlockOf(position: PositionReading): SaleBlock? =
     when {
         position.claimable || position.market == MarketStanding.Settled -> SaleBlock.Settled

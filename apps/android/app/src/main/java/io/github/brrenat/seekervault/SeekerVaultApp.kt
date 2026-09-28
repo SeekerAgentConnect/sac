@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,10 +38,12 @@ import io.github.brrenat.seekervault.connections.InboxSummary
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.connections.sourceColour
+import io.github.brrenat.seekervault.designsystem.HistoryDetailLink
 import io.github.brrenat.seekervault.designsystem.InboxTab
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.SheetMotion
 import io.github.brrenat.seekervault.history.HistoryDetailRoute
+import io.github.brrenat.seekervault.history.PositionSaleRoute
 import io.github.brrenat.seekervault.inbox.InboxRoute
 import io.github.brrenat.seekervault.inbox.InboxRouteCallbacks
 import io.github.brrenat.seekervault.inbox.InboxViewModel
@@ -63,10 +66,6 @@ import io.github.brrenat.seekervault.notifications.InAppNotifications
 import io.github.brrenat.seekervault.notifications.LocalInAppNotices
 import io.github.brrenat.seekervault.notifications.RequestNotificationPermission
 import io.github.brrenat.seekervault.operations.OperationViewModel
-import io.github.brrenat.seekervault.positions.PositionsState
-import io.github.brrenat.seekervault.positions.PositionsViewModel
-import io.github.brrenat.seekervault.history.PositionSaleRoute
-import io.github.brrenat.seekervault.designsystem.HistoryDetailLink
 import io.github.brrenat.seekervault.operations.OperationsUiState
 import io.github.brrenat.seekervault.operations.PredictionParametersSheet
 import io.github.brrenat.seekervault.operations.PredictionReviewScreen
@@ -83,6 +82,8 @@ import io.github.brrenat.seekervault.policy.PolicyAssetLibraryScreen
 import io.github.brrenat.seekervault.policy.PolicyEditorDraft
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyLibrarySheetScreen
+import io.github.brrenat.seekervault.positions.PositionsState
+import io.github.brrenat.seekervault.positions.PositionsViewModel
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedAccess
 import io.github.brrenat.seekervault.servers.executable
@@ -205,6 +206,7 @@ fun SeekerVaultApp(
     val positionWallet by
         (positions?.selected ?: MutableStateFlow(null)).collectAsStateWithLifecycle()
     val historyContext = LocalContext.current
+    val historyResources = LocalResources.current
 
     RequestNotificationPermission(
         enabled =
@@ -436,7 +438,7 @@ fun SeekerVaultApp(
                         wallet = positionWallet,
                         positionLinks = { held ->
                             positions?.destinations(held).orEmpty().map {
-                                HistoryDetailLink(historyContext.getString(it.label), it.url)
+                                HistoryDetailLink(historyResources.getString(it.label), it.url)
                             }
                         },
                         onRefreshPosition = { account -> positions?.refresh(account) },

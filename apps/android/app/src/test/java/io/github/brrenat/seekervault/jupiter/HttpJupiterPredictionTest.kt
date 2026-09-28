@@ -241,4 +241,167 @@ class HttpJupiterPredictionTest {
 
         assertEquals(PredictionProblem.Unreachable, failed.problem)
     }
+
+    // --- Positions and selling them (SEE-172) ------------------------------------------------
+
+    private fun positionBody(owner: String = OWNER, account: String = POSITION_PUBKEY): String =
+        JSONObject()
+            .put("pubkey", account)
+            .put("owner", owner)
+            .put("ownerPubkey", owner)
+            .put("marketId", MARKET_ID)
+            .put("isYes", true)
+            .put("contractsMicro", "63550000")
+            .put("totalCostUsd", "22878000")
+            // Explicit nulls, as the wire sends them once a market has closed.
+            .put("valueUsd", JSONObject.NULL)
+            .put("markPriceUsd", JSONObject.NULL)
+            .put("sellPriceUsd", JSONObject.NULL)
+            .put("pnlUsd", JSONObject.NULL)
+            .put("openOrders", 0)
+            .put("claimable", true)
+            .put("marketMetadata", JSONObject().put("status", "closed").put("result", "yes"))
+            .toString()
+
+    @Test
+    fun aClosedMarketsNullValuesStayNullRatherThanBecomingZero() {
+        answer(positionBody())
+        val position = runBlocking { provider().position(POSITION_PUBKEY) }
+        val asked = server.takeRequest()
+        assertEquals("GET", asked.method)
+        assertEquals(
+            "/prediction/v1/positions/$POSITION_PUBKEY",
+            checkNotNull(asked.url).encodedPath,
+        )
+        assertEquals(null, position.valueUsd)
+        assertEquals(null, position.sellPriceUsd)
+        assertEquals(null, position.pnlUsd)
+        assertEquals("yes", position.marketResult)
+        assertTrue(position.claimable)
+    }
+
+    @Test
+    fun readsFailHonestly() {
+        answer("""{"code":"position_not_found"}""", status = 404)
+        assertEquals(PredictionProblem.NotFound, failure { position(POSITION_PUBKEY) }.problem)
+        answer("{}", status = 429)
+        assertEquals(PredictionProblem.RateLimited, failure { position(POSITION_PUBKEY) }.problem)
+        answer("<html>", status = 200)
+        assertEquals(PredictionProblem.Unusable, failure { position(POSITION_PUBKEY) }.problem)
+        answer("""{"pubkey":"$POSITION_PUBKEY"}""")
+        assertEquals(PredictionProblem.Unusable, failure { position(POSITION_PUBKEY) }.problem)
+        // An address is checked before it is put in a path.
+        assertEquals(PredictionProblem.Unusable, failure { position("../orders") }.problem)
+    }
+
+    @Test
+    fun aCloseAsksForTheWholePositionWithTheOwnersKeyAndNothingElse() {
+        val bytes = saleTransaction()
+        answer(
+            JSONObject()
+                .put(
+                    "transaction",
+                    Base64.getEncoder().encodeToString(bytes.transaction.toByteArray()),
+                )
+                .put("requiredSigners", org.json.JSONArray().put(OWNER))
+                .put("isGasless", true)
+                .put("executionModel", JSONObject.NULL)
+                .put(
+                    "execution",
+                    JSONObject().put("context", JSONObject().put("type", "create_order")),
+                )
+                .put(
+                    "order",
+                    JSONObject()
+                        .put("orderPubkey", SALE_ORDER)
+                        .put("userPubkey", OWNER)
+                        .put("positionPubkey", POSITION_PUBKEY)
+                        .put("marketId", MARKET_ID)
+                        .put("marketIdHash", MARKET_HASH)
+                        .put("externalOrderId", SALE_EXTERNAL)
+                        .put("isBuy", false)
+                        .put("isYes", true)
+                        .put("contractsMicro", "63550000")
+                        .put("newContractsMicro", "0")
+                        .put("minSellPriceUsd", "270000")
+                        .put("estimatedTotalFeeUsd", "2891520"),
+                )
+                .toString()
+        )
+        val close = runBlocking { provider().closePosition(POSITION_PUBKEY, OWNER) }
+        val asked = server.takeRequest()
+        assertEquals("DELETE", asked.method)
+        assertEquals(
+            "/prediction/v1/positions/$POSITION_PUBKEY",
+            checkNotNull(asked.url).encodedPath,
+        )
+        // Only the owner's key: no quantity, no price, no slippage for anybody to get wrong. What
+        // bounds the sale is the floor in the bytes.
+        assertEquals(
+            setOf("ownerPubkey"),
+            JSONObject(asked.body!!.utf8()).keys().asSequence().toSet(),
+        )
+        assertEquals(270_000UL, close.minSellPriceUsd)
+        assertEquals("create_order", close.executionType)
+        assertEquals(null, close.executionModel)
+        assertTrue(close.gasless)
+    }
+
+    @Test
+    fun aCloseForAnotherPositionOwnerOrDirectionIsRefused() {
+        fun closeBody(
+            position: String = POSITION_PUBKEY,
+            user: String = OWNER,
+            buy: Boolean = false,
+        ) =
+            JSONObject()
+                .put("transaction", Base64.getEncoder().encodeToString(ByteArray(8)))
+                .put(
+                    "order",
+                    JSONObject()
+                        .put("positionPubkey", position)
+                        .put("userPubkey", user)
+                        .put("isBuy", buy)
+                        .put("isYes", true),
+                )
+                .toString()
+        answer(closeBody(position = ORDER_PUBKEY))
+        assertEquals(
+            PredictionProblem.Unusable,
+            failure { closePosition(POSITION_PUBKEY, OWNER) }.problem,
+        )
+        answer(closeBody(user = PROTOCOL_SIGNER))
+        assertEquals(
+            PredictionProblem.Unusable,
+            failure { closePosition(POSITION_PUBKEY, OWNER) }.problem,
+        )
+        answer(closeBody(buy = true))
+        assertEquals(
+            PredictionProblem.Unusable,
+            failure { closePosition(POSITION_PUBKEY, OWNER) }.problem,
+        )
+    }
+
+    @Test
+    fun anOrderStillOpenIsPendingOrPartlyFilledAndNeverFilled() {
+        answer(
+            """{"orderPubkey":"$ORDER_PUBKEY","status":"created","latestEventType":"order_created",""" +
+                """"history":[{"eventType":"order_created","status":"created"}]}"""
+        )
+        val created = runBlocking { provider().orderStatus(ORDER_PUBKEY) }
+        assertEquals(OrderFill.Pending, created.fill)
+        assertFalse(created.finished)
+        assertEquals(
+            "/prediction/v1/orders/status/$ORDER_PUBKEY",
+            checkNotNull(server.takeRequest().url).encodedPath,
+        )
+        answer(
+            """{"orderPubkey":"$ORDER_PUBKEY","status":"partiallyfilled","latestEventType":"order_filled"}"""
+        )
+        val partial = runBlocking { provider().orderStatus(ORDER_PUBKEY) }
+        assertEquals(OrderFill.PartiallyFilled, partial.fill)
+        assertFalse(partial.finished)
+        answer("""{"orderPubkey":"$ORDER_PUBKEY","status":"teleported","latestEventType":"x"}""")
+        assertEquals(OrderFill.Unknown, runBlocking { provider().orderStatus(ORDER_PUBKEY) }.fill)
+    }
 }

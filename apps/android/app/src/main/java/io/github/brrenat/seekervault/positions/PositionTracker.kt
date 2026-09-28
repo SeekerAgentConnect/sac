@@ -53,11 +53,12 @@ data class PurchaseCandidate(val held: HeldPosition, val purchase: PositionPurch
 /**
  * The purchases worth tracking, out of the owner's own records (SEE-172).
  *
- * A production `prediction.buy` that reached the wallet and whose record names the position its bytes
- * placed the order into. The references come from the Activity record, where the inspection's reading
- * of the bytes was kept; the side, the wallet and the network come from the binding the owner
- * approved. A record without a position reference — one made before SEE-94 kept them, or one whose
- * History was cleared — is not guessed at: it stays readable and says tracking is unavailable.
+ * A production `prediction.buy` that reached the wallet and whose record names the position its
+ * bytes placed the order into. The references come from the Activity record, where the inspection's
+ * reading of the bytes was kept; the side, the wallet and the network come from the binding the
+ * owner approved. A record without a position reference — one made before SEE-94 kept them, or one
+ * whose History was cleared — is not guessed at: it stays readable and says tracking is
+ * unavailable.
  */
 fun purchasesOf(
     proposals: List<ProposalRecord>,
@@ -100,8 +101,7 @@ fun purchasesOf(
                     signature = signature,
                     boughtAt = execution.startedAt,
                     depositBaseUnits =
-                        (binding.choice[PredictionParameterNames.DEPOSIT]
-                                as? ParameterValue.Amount)
+                        (binding.choice[PredictionParameterNames.DEPOSIT] as? ParameterValue.Amount)
                             ?.baseUnits,
                 ),
         )
@@ -184,9 +184,9 @@ data class PositionsState(
  * [prepareSale] reads the position again, has the provider build the sale and read its bytes, and
  * holds the result for the review. [sell] checks that the review is still current, re-reads the
  * position to catch a change made elsewhere since, writes the attempt down, and only then asks the
- * wallet — under the wallet's own lock — to sign and send exactly the reviewed bytes. It is the only
- * path to the wallet here, and nothing it does is ever repeated automatically: an attempt whose
- * outcome is unknown is reconciled by reading ([reconcile]), never by sending again.
+ * wallet — under the wallet's own lock — to sign and send exactly the reviewed bytes. It is the
+ * only path to the wallet here, and nothing it does is ever repeated automatically: an attempt
+ * whose outcome is unknown is reconciled by reading ([reconcile]), never by sending again.
  */
 class PositionTracker(
     private val store: PositionStore,
@@ -204,7 +204,9 @@ class PositionTracker(
     private val inFlight = mutableMapOf<String, CompletableDeferred<Unit>>()
     private val selling = mutableMapOf<String, Mutex>()
 
-    /** Reads what is stored. An attempt left at [SaleStage.Signing] by a stopped app is unresolved. */
+    /**
+     * Reads what is stored. An attempt left at [SaleStage.Signing] by a stopped app is unresolved.
+     */
     fun load() {
         synchronized(writes) {
             val (holdings, sales) =
@@ -214,17 +216,18 @@ class PositionTracker(
                     _state.update { it.copy(loaded = true, unreadable = true) }
                     return
                 }
-            val recovered =
-                sales.map { sale ->
-                    if (sale.stage != SaleStage.Signing) return@map sale
-                    // The app stopped with the wallet open. It may have signed and sent; nothing
-                    // here knows, so the attempt is unresolved and is reconciled by reading.
-                    sale.copy(
+            val recovered = sales.map { sale ->
+                if (sale.stage != SaleStage.Signing) return@map sale
+                // The app stopped with the wallet open. It may have signed and sent; nothing
+                // here knows, so the attempt is unresolved and is reconciled by reading.
+                sale
+                    .copy(
                         stage = SaleStage.Unresolved,
                         settledAt = now(),
                         detail = "The app stopped before the wallet answered.",
-                    ).also { store.put(it) }
-                }
+                    )
+                    .also { store.put(it) }
+            }
             recovered.forEach { sale ->
                 val signature = sale.signature ?: return@forEach
                 decodeSignature(signature)?.let {
@@ -313,7 +316,9 @@ class PositionTracker(
     private suspend fun read(holding: HoldingRecord) {
         val manager = managerOf(holding.held)
         if (manager == null) {
-            record(holding.held.account) { it.copy(attemptedAt = now(), problem = RefreshProblem.Unsupported) }
+            record(holding.held.account) {
+                it.copy(attemptedAt = now(), problem = RefreshProblem.Unsupported)
+            }
             return
         }
         val position = gate.read { manager.position(holding.held) }
@@ -380,7 +385,11 @@ class PositionTracker(
         }
     }
 
-    private suspend fun settle(sale: SaleRecord, manager: PositionManagement, position: PositionRead) {
+    private suspend fun settle(
+        sale: SaleRecord,
+        manager: PositionManagement,
+        position: PositionRead,
+    ) {
         val order = gate.read { manager.order(sale.held, sale.orderAccount) }
         val chain = chainChecks()[saleKey(sale.id)]
         synchronized(writes) {
@@ -419,7 +428,9 @@ class PositionTracker(
                         problem = null,
                     )
                 }
-                SaleReviewState.Ready(SaleDraft(holding.held, prepared, checkNotNull(wallet), now()))
+                SaleReviewState.Ready(
+                    SaleDraft(holding.held, prepared, checkNotNull(wallet), now())
+                )
             } catch (e: CancellationException) {
                 discard(account)
                 throw e
@@ -488,10 +499,12 @@ class PositionTracker(
                     outcome = SellOutcome.WrongWallet
                     return@withWallet
                 }
-                val sale = begin(draft) ?: run {
-                    outcome = SellOutcome.Stale
-                    return@withWallet
-                }
+                val sale =
+                    begin(draft)
+                        ?: run {
+                            outcome = SellOutcome.Stale
+                            return@withWallet
+                        }
                 val answer =
                     try {
                         session.signAndSend(draft.prepared.transaction, wallet)
@@ -587,7 +600,8 @@ class PositionTracker(
                         stored.copy(
                             stage = SaleStage.Unresolved,
                             settledAt = at,
-                            detail = answer.message?.take(MOST_DETAIL) ?: "The wallet gave no answer.",
+                            detail =
+                                answer.message?.take(MOST_DETAIL) ?: "The wallet gave no answer.",
                         )
                     else ->
                         stored.copy(
@@ -600,7 +614,8 @@ class PositionTracker(
                 }
             putSale(settled)
             when (answer) {
-                is SendResult.Sent -> tracking?.submitted(saleKey(sale.id), answer.signature.toByteArray())
+                is SendResult.Sent ->
+                    tracking?.submitted(saleKey(sale.id), answer.signature.toByteArray())
                 // Unknown keeps the capture: it may have been sent, and the chain may yet say so.
                 is SendResult.Unknown -> Unit
                 else -> tracking?.abandoned(saleKey(sale.id))
@@ -738,8 +753,8 @@ private val ReadProblem.refresh: RefreshProblem
         }
 
 /**
- * One queue for every call to the provider (SEE-172): at most one call per [spacing], and a pause of
- * [backoff] after the provider says it is rate-limited. Jupiter's keyless allowance is about one
+ * One queue for every call to the provider (SEE-172): at most one call per [spacing], and a pause
+ * of [backoff] after the provider says it is rate-limited. Jupiter's keyless allowance is about one
  * request every two seconds, shared by every position this phone follows.
  */
 class ReadGate(
@@ -751,19 +766,18 @@ class ReadGate(
     private val lock = Mutex()
     private var next: Instant = Instant.EPOCH
 
-    suspend fun <T> pass(block: suspend () -> T): T =
-        lock.withLock {
-            val pause = Duration.between(now(), next).toMillis()
-            if (pause > 0) wait(pause)
-            val result =
-                try {
-                    block()
-                } finally {
-                    next = now().plus(spacing)
-                }
-            if (result.limited()) next = now().plus(backoff)
-            result
-        }
+    suspend fun <T> pass(block: suspend () -> T): T = lock.withLock {
+        val pause = Duration.between(now(), next).toMillis()
+        if (pause > 0) wait(pause)
+        val result =
+            try {
+                block()
+            } finally {
+                next = now().plus(spacing)
+            }
+        if (result.limited()) next = now().plus(backoff)
+        result
+    }
 
     private fun Any?.limited(): Boolean =
         (this is PositionRead.Failed && problem == ReadProblem.RateLimited) ||

@@ -137,10 +137,14 @@ class PositionStoreTest {
         // A chain confirmation alone is not a sale.
         assertEquals(
             SaleResult.Pending,
-            settleSale(submitted, ChainCheck(ChainState.Confirmed), OrderRead.NotFound, null, later).result,
+            settleSale(submitted, ChainCheck(ChainState.Confirmed), OrderRead.NotFound, null, later)
+                .result,
         )
         // Filled, and the position holds nothing: closed — a 404 afterwards is expected.
-        assertEquals(SaleResult.Closed, settleSale(submitted, null, filled, PositionRead.NotFound, later).result)
+        assertEquals(
+            SaleResult.Closed,
+            settleSale(submitted, null, filled, PositionRead.NotFound, later).result,
+        )
         // Filled, and contracts remain (bought again, or bought elsewhere): residual.
         assertEquals(
             SaleResult.Residual,
@@ -155,19 +159,35 @@ class PositionStoreTest {
         )
         assertEquals(
             SaleResult.Residual,
-            settleSale(submitted, null, OrderRead.Found(order(OrderFillState.PartiallyFilledClosed)), null, later).result,
+            settleSale(
+                    submitted,
+                    null,
+                    OrderRead.Found(order(OrderFillState.PartiallyFilledClosed)),
+                    null,
+                    later,
+                )
+                .result,
         )
         assertEquals(
             SaleResult.NotExecuted,
-            settleSale(submitted, null, OrderRead.Found(order(OrderFillState.Failed)), null, later).result,
+            settleSale(submitted, null, OrderRead.Found(order(OrderFillState.Failed)), null, later)
+                .result,
         )
         assertEquals(
             SaleResult.Pending,
-            settleSale(submitted, null, OrderRead.Found(order(OrderFillState.PartiallyFilled)), null, later).result,
+            settleSale(
+                    submitted,
+                    null,
+                    OrderRead.Found(order(OrderFillState.PartiallyFilled)),
+                    null,
+                    later,
+                )
+                .result,
         )
         assertEquals(
             SaleResult.NotExecuted,
-            settleSale(submitted, ChainCheck(ChainState.Expired), OrderRead.NotFound, null, later).result,
+            settleSale(submitted, ChainCheck(ChainState.Expired), OrderRead.NotFound, null, later)
+                .result,
         )
         // A read that failed establishes nothing.
         assertEquals(
@@ -183,7 +203,14 @@ class PositionStoreTest {
         // A signed, submitted sale never lapses on silence: only an unknown answer can.
         assertEquals(
             SaleResult.Pending,
-            settleSale(submitted, null, OrderRead.NotFound, null, at.plus(SALE_LAPSE).plusSeconds(60)).result,
+            settleSale(
+                    submitted,
+                    null,
+                    OrderRead.NotFound,
+                    null,
+                    at.plus(SALE_LAPSE).plusSeconds(60),
+                )
+                .result,
         )
         val unknown = sale(SaleStage.Unresolved)
         assertEquals(
@@ -196,11 +223,24 @@ class PositionStoreTest {
         )
         // Once final, nothing moves it.
         val closed = settleSale(submitted, null, filled, PositionRead.NotFound, later)
-        assertEquals(closed, settleSale(closed, ChainCheck(ChainState.Failed), OrderRead.NotFound, null, later))
+        assertEquals(
+            closed,
+            settleSale(closed, ChainCheck(ChainState.Failed), OrderRead.NotFound, null, later),
+        )
     }
 
     private fun order(fill: OrderFillState) =
-        OrderReading(SALE_ORDER, fill, fill.code, HELD_CONTRACTS, HELD_CONTRACTS, 340_000UL, 20_000_000UL, 900_000UL, null)
+        OrderReading(
+            SALE_ORDER,
+            fill,
+            fill.code,
+            HELD_CONTRACTS,
+            HELD_CONTRACTS,
+            340_000UL,
+            20_000_000UL,
+            900_000UL,
+            null,
+        )
 
     private companion object {
         const val CONNECTION = "5b1f4b3a-6a5f-4f5c-9d6c-0f2f1e2d3c4b"

@@ -150,7 +150,8 @@ class JupiterSwapActionTest {
             setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
             capabilities.environments,
         )
-        // It answers status queries since SEE-172 — about a prediction order's fills, by the order's
+        // It answers status queries since SEE-172 — about a prediction order's fills, by the
+        // order's
         // own account — and a swap, which has no order, still gets Unsupported.
         assertTrue(capabilities.statusQueries)
     }

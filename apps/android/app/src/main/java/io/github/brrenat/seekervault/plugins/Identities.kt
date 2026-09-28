@@ -78,8 +78,8 @@ const val SWAP_SCHEMA_VERSION: Int = 1
  *
  * It is `prediction.buy` rather than `prediction` because buying a side is one thing that can be
  * done to a market and not the only one: selling out of a position ([PREDICTION_SELL_ACTION]) and
- * claiming a settled payout are others. Naming the action for what it does leaves room for them
- * to be separate actions with separate rules rather than a mode flag inside this one. Documents
+ * claiming a settled payout are others. Naming the action for what it does leaves room for them to
+ * be separate actions with separate rules rather than a mode flag inside this one. Documents
  * written before SEE-145 say `prediction`, and that maps here ([LEGACY_CAPABILITIES]).
  */
 val PREDICTION_BUY_ACTION: ActionId = ActionId("prediction.buy")
@@ -91,9 +91,9 @@ const val PREDICTION_BUY_SCHEMA_VERSION: Int = 1
  * Selling the whole of a prediction position the owner holds (SEE-172).
  *
  * Its own action with its own review, never a mode of [PREDICTION_BUY_ACTION], and never something
- * a publisher proposes: it has no payload a signal could carry, and is reached only from the owner's
- * own record of a purchase ([PositionManagement]). It spends nothing of the owner's, so no spending
- * rule counts it, and the purchase it closes is not counted again.
+ * a publisher proposes: it has no payload a signal could carry, and is reached only from the
+ * owner's own record of a purchase ([PositionManagement]). It spends nothing of the owner's, so no
+ * spending rule counts it, and the purchase it closes is not counted again.
  */
 val PREDICTION_SELL_ACTION: ActionId = ActionId("prediction.sell")
 

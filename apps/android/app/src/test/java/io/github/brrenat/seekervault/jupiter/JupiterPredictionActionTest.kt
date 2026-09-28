@@ -2,9 +2,9 @@ package io.github.brrenat.seekervault.jupiter
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.plugins.ActionOperation
+import io.github.brrenat.seekervault.plugins.ActionStatus
 import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
 import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
-import io.github.brrenat.seekervault.plugins.ActionStatus
 import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.ParameterChoice

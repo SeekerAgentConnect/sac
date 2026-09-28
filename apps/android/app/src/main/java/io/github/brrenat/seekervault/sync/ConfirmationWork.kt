@@ -48,9 +48,9 @@ class ConfirmationScheduler(
     private val tracker: ConfirmationTracker,
     private val scope: CoroutineScope,
     private val connectivity: ConnectivityManager? = null,
-    private val now: () -> Instant = Instant::now,
     /** Other read-only reconciliation that wants the same background check (SEE-172). */
     private val alsoDue: () -> Instant? = { null },
+    private val now: () -> Instant = Instant::now,
 ) {
     private val lock = Any()
     private var loop: Job? = null

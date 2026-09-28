@@ -69,7 +69,8 @@ class PositionTrackerTest {
     private var chainChecks: Map<RequestKey, ChainCheck> = emptyMap()
     private var selected: SelectedWallet? = wallet()
     private val session = ScriptedSession()
-    private val directory get() = File(folder.root, "positions")
+    private val directory
+        get() = File(folder.root, "positions")
 
     private fun tracker(store: PositionStore = PositionStore(directory)) =
         PositionTracker(
@@ -103,7 +104,10 @@ class PositionTrackerTest {
         api.answersClose = { _, _ -> predictionClose(sale) }
         val review = runBlocking { tracker.prepareSale(account, selected) }
         return (review as SaleReviewState.Ready).draft.also {
-            assertTrue(it.prepared.inspection.findings.toString(), it.prepared.inspection.approvable)
+            assertTrue(
+                it.prepared.inspection.findings.toString(),
+                it.prepared.inspection.approvable,
+            )
         }
     }
 
@@ -121,7 +125,8 @@ class PositionTrackerTest {
 
         // Another owner naming the same account is ignored rather than merged.
         val stranger =
-            candidate("p3").copy(held = held(owner = "7ToYommiXbxMdd7KaT8wgFYGzuWeHmGBvscGrgFTEWL2"))
+            candidate("p3")
+                .copy(held = held(owner = "7ToYommiXbxMdd7KaT8wgFYGzuWeHmGBvscGrgFTEWL2"))
         tracker.link(listOf(stranger))
         assertEquals(OWNER, tracker.state.value.holdings.getValue(account).held.owner)
         assertEquals(2, tracker.state.value.holdings.getValue(account).purchases.size)
@@ -143,7 +148,10 @@ class PositionTrackerTest {
         api.answersPosition = { predictionPosition() }
         runBlocking { tracker.refresh(account, force = true) }
         assertEquals(1, api.asked.count { it.startsWith("position") })
-        assertEquals(HELD_CONTRACTS, tracker.state.value.holdings.getValue(account).snapshot?.contractsMicro)
+        assertEquals(
+            HELD_CONTRACTS,
+            tracker.state.value.holdings.getValue(account).snapshot?.contractsMicro,
+        )
     }
 
     @Test
@@ -168,7 +176,13 @@ class PositionTrackerTest {
         runBlocking { tracker.refresh(account, force = true) }
         val good = checkNotNull(tracker.state.value.holdings[account]).snapshot
 
-        for (problem in listOf(PredictionProblem.RateLimited, PredictionProblem.Unreachable, PredictionProblem.Unusable, PredictionProblem.NotFound)) {
+        for (problem in
+            listOf(
+                PredictionProblem.RateLimited,
+                PredictionProblem.Unreachable,
+                PredictionProblem.Unusable,
+                PredictionProblem.NotFound,
+            )) {
             now = now.plusSeconds(60)
             api.answersPosition = { throw PredictionException(problem) }
             runBlocking { tracker.refresh(account, force = true) }
@@ -177,7 +191,10 @@ class PositionTrackerTest {
             assertEquals(good, holding.snapshot)
             assertNotNull(holding.problem)
         }
-        assertEquals(RefreshProblem.NotFound, tracker.state.value.holdings.getValue(account).problem)
+        assertEquals(
+            RefreshProblem.NotFound,
+            tracker.state.value.holdings.getValue(account).problem,
+        )
     }
 
     @Test
@@ -235,14 +252,17 @@ class PositionTrackerTest {
         val release = CompletableDeferred<Unit>()
         session.suspendUntil = release
         session.answer = { SendResult.Sent(ByteString.copyFrom(ByteArray(64) { 1 })) }
-        val outcomes = runBlocking(Dispatchers.Default) {
-            val first = async { tracker.sell(draft, { selected }, { block -> block(session) }) }
-            while (session.sent.isEmpty()) Thread.sleep(10)
-            val second = async { tracker.sell(draft, { selected }, { block -> block(session) }) }
-            val secondOutcome = second.await()
-            release.complete(Unit)
-            listOf(first.await(), secondOutcome)
-        }
+        val outcomes =
+            runBlocking(Dispatchers.Default) {
+                val first = async { tracker.sell(draft, { selected }, { block -> block(session) }) }
+                while (session.sent.isEmpty()) Thread.sleep(10)
+                val second = async {
+                    tracker.sell(draft, { selected }, { block -> block(session) })
+                }
+                val secondOutcome = second.await()
+                release.complete(Unit)
+                listOf(first.await(), secondOutcome)
+            }
         assertEquals(listOf(SellOutcome.Handed, SellOutcome.Busy), outcomes)
         assertEquals(1, session.sent.size)
         assertEquals(1, tracker.state.value.sales.size)
@@ -310,7 +330,9 @@ class PositionTrackerTest {
         api.answersStatus = { throw PredictionException(PredictionProblem.NotFound) }
         runBlocking { tracker.reconcile() }
         assertEquals(SaleResult.Pending, tracker.state.value.sales.single().result)
-        assertTrue(runBlocking { tracker.prepareSale(account, selected) } is SaleReviewState.Refused)
+        assertTrue(
+            runBlocking { tracker.prepareSale(account, selected) } is SaleReviewState.Refused
+        )
 
         // Then the provider reports the order filled, and the position is gone.
         api.answersStatus = { status(it, OrderFill.Filled, net = 21_000_000UL) }
@@ -332,7 +354,10 @@ class PositionTrackerTest {
         api.answersPosition = { predictionPosition(contracts = 10_000_000UL) }
         runBlocking { tracker.reconcile() }
         assertEquals(SaleResult.Residual, tracker.state.value.sales.single().result)
-        assertEquals(10_000_000UL, tracker.state.value.holdings.getValue(account).snapshot?.contractsMicro)
+        assertEquals(
+            10_000_000UL,
+            tracker.state.value.holdings.getValue(account).snapshot?.contractsMicro,
+        )
     }
 
     @Test
@@ -363,7 +388,9 @@ class PositionTrackerTest {
         val recovered = restarted.state.value.sales.single()
         assertEquals(SaleStage.Unresolved, recovered.stage)
         assertTrue(restarted.unresolved())
-        assertTrue(runBlocking { restarted.prepareSale(account, selected) } is SaleReviewState.Refused)
+        assertTrue(
+            runBlocking { restarted.prepareSale(account, selected) } is SaleReviewState.Refused
+        )
 
         // No order ever appears; once the transaction can no longer land, the attempt lapses.
         api.answersStatus = { throw PredictionException(PredictionProblem.NotFound) }
@@ -428,7 +455,10 @@ class PositionTrackerTest {
         var answer: () -> SendResult = { SendResult.Declined }
         var suspendUntil: CompletableDeferred<Unit>? = null
 
-        override suspend fun signAndSend(transaction: ByteString, reviewed: SelectedWallet): SendResult {
+        override suspend fun signAndSend(
+            transaction: ByteString,
+            reviewed: SelectedWallet,
+        ): SendResult {
             sent += transaction
             suspendUntil?.await()
             return answer()
@@ -436,8 +466,11 @@ class PositionTrackerTest {
     }
 
     private object NoSwaps : JupiterProvider {
-        override suspend fun quote(terms: SwapPayload, amount: ULong, slippageBps: Int): JupiterQuote =
-            throw AssertionError("a position asked for a swap")
+        override suspend fun quote(
+            terms: SwapPayload,
+            amount: ULong,
+            slippageBps: Int,
+        ): JupiterQuote = throw AssertionError("a position asked for a swap")
 
         override suspend fun build(quote: JupiterQuote, wallet: String) =
             throw AssertionError("a position asked for a swap")

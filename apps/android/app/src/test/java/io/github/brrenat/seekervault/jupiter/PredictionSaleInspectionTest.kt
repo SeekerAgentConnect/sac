@@ -19,7 +19,8 @@ import org.junit.runner.RunWith
  *
  * Each case changes exactly one thing about a well-formed sale — whose it is, which position, how
  * much, the floor, where the proceeds go, what else it does — and asserts the review refuses it
- * **before** anything could reach a wallet: the verdict is not approvable and the finding names why.
+ * **before** anything could reach a wallet: the verdict is not approvable and the finding names
+ * why.
  */
 @RunWith(AndroidJUnit4::class)
 class PredictionSaleInspectionTest {
@@ -103,7 +104,10 @@ class PredictionSaleInspectionTest {
     @Test
     fun anOrderForSomebodyElseIsRefused() {
         val someone = "4NboL3fNkq6KFPmTKtTVL8Ww9YzkVJ9n8aKRo27X8vs3"
-        assertRefused(read(saleTransaction(orderOwner = someone)), PredictionFinding.NotTheOwnersOrder)
+        assertRefused(
+            read(saleTransaction(orderOwner = someone)),
+            PredictionFinding.NotTheOwnersOrder,
+        )
     }
 
     @Test
@@ -142,11 +146,17 @@ class PredictionSaleInspectionTest {
     fun aFloorFarBelowTheBidOrMissingIsWeakenedProtection() {
         // A quarter under the bid is the provider's own bound; a third under is not.
         val low = saleTransaction(floor = 200_000UL)
-        assertRefused(read(low, predictionClose(low, floor = 200_000UL)), PredictionFinding.WeakFloor)
+        assertRefused(
+            read(low, predictionClose(low, floor = 200_000UL)),
+            PredictionFinding.WeakFloor,
+        )
         val none = saleTransaction(floor = 0UL)
         assertRefused(read(none, predictionClose(none, floor = 0UL)), PredictionFinding.WeakFloor)
         // A floor the bytes carry that is not the one the provider stated.
-        assertRefused(read(close = predictionClose(saleTransaction(), floor = 300_000UL)), PredictionFinding.QuoteMismatch)
+        assertRefused(
+            read(close = predictionClose(saleTransaction(), floor = 300_000UL)),
+            PredictionFinding.QuoteMismatch,
+        )
         // Slippage the program would honour past the provider's bound.
         assertRefused(read(saleTransaction(maxSlippageBps = 5_000)), PredictionFinding.WeakFloor)
     }
@@ -159,7 +169,10 @@ class PredictionSaleInspectionTest {
     @Test
     fun proceedsToSomebodyElsesAccountAreRefused() {
         val elsewhere = checkNotNull(associatedTokenAddress(RELAYER, JUP_USD_MINT))
-        assertRefused(read(saleTransaction(proceeds = elsewhere)), PredictionFinding.ProceedsNotOwners)
+        assertRefused(
+            read(saleTransaction(proceeds = elsewhere)),
+            PredictionFinding.ProceedsNotOwners,
+        )
     }
 
     @Test
@@ -183,7 +196,10 @@ class PredictionSaleInspectionTest {
                 listOf(OWNER, RELAYER),
                 byteArrayOf(2, 0, 0, 0) + u64(1_000_000_000UL),
             )
-        assertRefused(read(saleTransaction(extra = listOf(transfer))), PredictionFinding.ExtraTransfer)
+        assertRefused(
+            read(saleTransaction(extra = listOf(transfer))),
+            PredictionFinding.ExtraTransfer,
+        )
         val tokenMove =
             Step(
                 TOKEN_PROGRAM,
@@ -233,24 +249,34 @@ class PredictionSaleInspectionTest {
 
     @Test
     fun anAlreadySignedOwnerSlotIsRefused() {
-        assertRefused(read(saleTransaction(ownerSigned = true)), PredictionFinding.NotTheOwnersToSign)
+        assertRefused(
+            read(saleTransaction(ownerSigned = true)),
+            PredictionFinding.NotTheOwnersToSign,
+        )
     }
 
     @Test
     fun feesAtLeastTheLeastProceedsAreRefused() {
         val bytes = saleTransaction()
-        assertRefused(read(bytes, predictionClose(bytes, fee = 17_158_500UL)), PredictionFinding.ExcessiveFee)
+        assertRefused(
+            read(bytes, predictionClose(bytes, fee = 17_158_500UL)),
+            PredictionFinding.ExcessiveFee,
+        )
     }
 
     @Test
     fun anotherOrderThanTheProviderDescribedIsRefused() {
-        assertRefused(read(saleTransaction(externalOrderId = "ffff")), PredictionFinding.OrderMismatch)
+        assertRefused(
+            read(saleTransaction(externalOrderId = "ffff")),
+            PredictionFinding.OrderMismatch,
+        )
         assertRefused(read(saleTransaction(marketHash = "abcd")), PredictionFinding.MarketMismatch)
     }
 
     @Test
     fun bytesThatAreNotATransactionEstablishNothing() {
-        val garbage = OrderBytes(com.google.protobuf.ByteString.copyFrom(ByteArray(12) { 1 }), emptyMap())
+        val garbage =
+            OrderBytes(com.google.protobuf.ByteString.copyFrom(ByteArray(12) { 1 }), emptyMap())
         val read = read(garbage, predictionClose(garbage))
         assertFalse(read.inspection.approvable)
         assertNull(read.inspection.facts)

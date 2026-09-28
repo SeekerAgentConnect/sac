@@ -227,6 +227,18 @@ internal val componentGallerySpecimens =
         GallerySpecimen(component = "history-detail", variant = "body=cancelled") {
             HistoryDetailBodyCancelledPreview()
         },
+        GallerySpecimen(component = "history-detail", variant = "body=position-live") {
+            HistoryDetailPositionLivePreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "body=position-pending-sale") {
+            HistoryDetailPositionPendingSalePreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "body=position-sold") {
+            HistoryDetailPositionSoldPreview()
+        },
+        GallerySpecimen(component = "history-detail", variant = "body=position-unavailable") {
+            HistoryDetailPositionUnavailablePreview()
+        },
         GallerySpecimen(component = "history-row", variant = "tappable=confirmed") {
             HistoryRowTappableConfirmedPreview()
         },
@@ -354,6 +366,12 @@ internal val componentGallerySpecimens =
         },
         GallerySpecimen(component = "screens", variant = "sheet-prediction") {
             ReviewSheetPredictionPreview()
+        },
+        GallerySpecimen(component = "screens", variant = "sheet-position-sale") {
+            PositionSaleVerifiedPreview()
+        },
+        GallerySpecimen(component = "screens", variant = "sheet-position-sale-refused") {
+            PositionSaleRefusedPreview()
         },
         GallerySpecimen(component = "screens", variant = "sheet-signature") {
             ReviewSheetSignaturePreview()
