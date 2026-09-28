@@ -452,3 +452,12 @@
   dump read the row's initials or the first matching row instead of the live one, and reported
   minutes of nothing. Key the read on the row's own label and check it once by hand before timing
   anything with it.
+
+- **A fixture where two fields hold the same value proves nothing about their order** (SEE-172). The
+  prediction order's `isYes, isBuy` flags were read swapped since SEE-94, and the one fixture — a YES
+  buy, `1, 1` — could not tell. Every NO buy was refused in production. When a layout test compares
+  fields against a capture, make sure the capture has distinct values in every field it pins; capture
+  a second case (here a NO buy and a sale) when it does not.
+- **Re-probe a provider's live shape before building on an old fixture** (SEE-172). Jupiter moved to
+  gasless builds (a pre-signed relayer fee payer) after the SEE-94 capture, and the buy review refused
+  every current order. A new capture found it in minutes; the old fixture never would.

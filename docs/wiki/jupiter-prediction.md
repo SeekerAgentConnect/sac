@@ -1,8 +1,8 @@
 # Jupiter's `prediction.buy` action (SEE-94, SEE-145)
 
-`prediction.buy` is a provider-neutral, versioned action, and `jupiter` is the bundled execution provider that serves it — the second of the two actions that one provider carries out. A publisher broadcasts a market; each owner picks a side and a stake on their own phone; the order is prepared through Jupiter's own API, resolved and read by the phone itself, and signed once by the owner's wallet. Then the app **stops** and hands the owner a link.
+`prediction.buy` is a provider-neutral, versioned action, and `jupiter` is the bundled execution provider that serves it — the second of the two actions that one provider carries out. A publisher broadcasts a market; each owner picks a side and a stake on their own phone; the order is prepared through Jupiter's own API, resolved and read by the phone itself, and signed once by the owner's wallet. What the order then came to, the position it opened and selling that position are followed from the purchase's own History item ([prediction positions](prediction-positions.md), SEE-172).
 
-It was `jupiter.prediction`, one bundled plugin, until SEE-145 separated the action from whoever executes it. Nothing about what happens to the owner changed. A manifest that requires `jupiter.prediction` at contract `1..1` still resolves as it did, a publisher may spell the action `prediction` or `prediction.buy` and gets the same order from either, and the action is `prediction.buy` rather than `prediction` because buying a side is one thing that can be done to a market and not the only one — selling out and claiming a settled payout are others, and neither is in this app ([execution providers](execution-providers.md)).
+It was `jupiter.prediction`, one bundled plugin, until SEE-145 separated the action from whoever executes it. Nothing about what happens to the owner changed. A manifest that requires `jupiter.prediction` at contract `1..1` still resolves as it did, a publisher may spell the action `prediction` or `prediction.buy` and gets the same order from either, and the action is `prediction.buy` rather than `prediction` because buying a side is one thing that can be done to a market and not the only one — selling out (`prediction.sell`, SEE-172) and claiming a settled payout are others ([execution providers](execution-providers.md)).
 
 It is written against the same boundary as the swap ([client plugins](client-plugins.md)) and reaches the same API, plus one thing the swap needs and does not use: a read-only account reader for the chain.
 
@@ -84,18 +84,18 @@ An order staked directly in the venue's own token has no route at all, and then 
 
 The order instruction carries all of it, as its own Borsh fields, and the review reads each out of the bytes and compares it with what the owner chose and what the provider said: the market's hash, the request's identifier, **which side**, how many contracts, the most a contract may cost, what the order costs, the slippage, and the order and position accounts. Plus, from the message: the owner pays, the order is the owner's, and **the only signature still missing is theirs**.
 
-That last one deserves a note. The venue **co-signs**: an order arrives with two signature slots and the protocol's own already filled. So "nothing else signs" would be the wrong rule here; the right one is "one signature is missing, it is the owner's, and the owner is the fee payer". Both ways of breaking it are refused.
+That last one deserves a note. The venue **co-signs**: an order arrives with the protocol's own slot already filled, and since 2026-09 usually a third, Jupiter's relayer, which pays the fee and has already signed (a *gasless* build). So "nothing else signs" would be the wrong rule here; the right one is "one signature is missing, it is the owner's, and a fee payer that is not the owner has already signed" — and that sponsor may fund only the order's own accounts. A payer still waiting to sign is refused.
 
 ## What is out of reach
 
 - **The market hash is not a plain digest of the market ID.** md5, sha1, sha256 and blake2s were all checked against a real pair and none matches. So the market is *cross-checked* — the hash in the bytes is the hash the provider stated for the market it answered about — and not proved from the identifier. A provider that claimed market X and built for market Y could not be caught by this check alone; what does catch it is that the market was read first, and its identity, event and market provider all had to agree.
 - **The review depends on the configured endpoint** being honest about a table's contents.
 - **A closed or settled market** is the execution provider's word. The phone has no other source for it.
-- **What became of a submitted order.** The boundary has a `status` query and Jupiter answers `Unsupported`, because it has no read that would let this app turn "submitted" into "filled" without guessing. **Nothing in the app polls it**, and SEE-145 deliberately added no fill monitoring to go with it.
+- **What became of a submitted order** is now the provider's report, by the order's own account (`/orders/status`, SEE-172): pending, partly filled, filled, partly filled with the rest returned, or failed. A chain-confirmed transaction is still never called filled on its own.
 
 ## Where the owner continues
 
-The app submits and stops. There is no fill monitoring, no positions screen, no settlement, no payout claim and no profit or loss anywhere in it — all of that is explicitly out of scope, and none of it is implied by anything on screen.
+Since SEE-172 the purchase's History item follows the order's fill and the position it went into, and can sell that position in the app ([prediction positions](prediction-positions.md)). Settlement and payout claims stay on Jupiter.
 
 What is offered instead: the transaction on the block explorer, built from the signature the wallet returned, **the market on Jupiter**, and — once an order has actually been placed — **the order**.
 
@@ -129,7 +129,8 @@ It appears only when the record holds an order account, which means only after a
 - **Sandbox gets the same work**, and stops before the wallet: the market is read, the order is built and reviewed, and nothing is signed or sent (SEE-97, [`docs/wiki/environments.md`](environments.md)). The provider never reads the environment — whether bytes are signed is core's.
 - **One minute of freshness**, as for a swap: a market's price moves and the transaction carries a recent blockhash.
 - **The keyless allowance is 0.5 requests a second, 30 a minute** — four calls per order at most (the market when the review opens, the market again, the order, the tables), which is ample for a person and not for polling. Nothing polls.
-- **Buying only.** Selling a position is managing one, and this app does not.
+- **Buying here; selling from History.** This action only buys. Selling the whole position is `prediction.sell`, reached from the purchase's History item and reviewed on its own bytes ([prediction positions](prediction-positions.md)).
+- **The order instruction's flags are `isYes, isBuy`.** Until SEE-172 they were read the other way round, which only a YES buy (`1, 1`) survives: every NO buy was refused. Builds are also gasless since 2026-09 — Jupiter's relayer pays and pre-signs — and the review accepts that under one rule for buys and sales: the only missing signature is the owner's.
 
 ## Where the code is
 

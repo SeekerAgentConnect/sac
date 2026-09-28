@@ -56,9 +56,16 @@ The order is fixed. An optional section with nothing to show is left out, with n
 10. **Footnote**: the record doesn't change with today's rules or prices. For a sandbox, it notes
     that nothing was signed or sent.
 
-The only actions on the page are Back, copy, the explorer link, Send again, and Check status (which
+The actions on the page are Back, copy, the explorer link, Send again, and Check status (which
 asks the network and, for a direct request, the server — never the wallet). Nothing on it can
-approve, decline, edit or simulate.
+approve, decline, edit or simulate the item itself.
+
+**A prediction purchase's position (SEE-172).** A sent `prediction.buy` also shows a **Position
+now** card after the chain result: the order's fill as the provider reports it, the wallet's whole
+position in that outcome as read live, each sale attempt, and Refresh, Sell position and the Jupiter
+links. It is the one part of the page not built from the stored record, and it says so with its own
+state and read time; it never rewrites the purchase above it. Sell position opens a separate sale
+review over the item ([prediction positions](prediction-positions.md)).
 
 ## Built from stored records only
 
@@ -110,9 +117,8 @@ the explorer. It doesn't claim a check that will never come.
   page supports the expired and cancelled variants for anything that does have a record, which
   today means feed signals and answers the server superseded. Keeping a record of unanswered private
   requests is a data change of its own.
-- The record offers no provider destination, so SEE-157's **Open order** for a placed prediction
-  is not reachable from History: the brief allows no action beyond Back, copy, the explorer link and
-  Send again. The explorer link and the identifiers, including the market ID, remain.
+- Since SEE-172 a prediction purchase's Position card carries the Jupiter links (the portfolio and
+  the market) that SEE-161's brief left out; no other item gains a provider destination.
 - Answers are pruned a week after they settle (`ConnectionRepository`), and removing a connection
   removes its records. A record that has gone shows a short "no longer on this phone" state.
 

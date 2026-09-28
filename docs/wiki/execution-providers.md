@@ -215,17 +215,17 @@ chosen about the terms that were replaced is not carried onto terms they never s
 approving both check the revision they were opened under, so the latest revision can never be
 prepared against the previous one's limits or instrument.
 
-## The status query nothing polls
+## Status queries and positions
 
-`ExecutionProvider.status` exists, defaults to `ActionStatus.Unsupported`, and **is called by
-nothing in this app**. Jupiter declares `statusQueries = false` and answers `Unsupported`, because
-it has no read that would let this app turn "submitted" into "filled" without guessing.
+`ExecutionProvider.status` defaults to `ActionStatus.Unsupported`. Since SEE-172 Jupiter declares
+`statusQueries = true` and answers a prediction order's fills by the order's own account — the
+provider's evidence, reported as `Reported(code)`; a swap, which has no order, stays `Unsupported`.
+"Submitted" still never becomes "filled" on a chain confirmation alone.
 
-There is no fill monitoring here, no positions screen, no settlement and no profit or loss, and
-SEE-145 deliberately did not add any. The method exists so that a provider that genuinely can
-answer has somewhere to say so, and so that the shape of that answer is decided in the open rather
-than in whichever screen first wants it. "Submitted" does not become "filled"
-([jupiter-prediction.md](jupiter-prediction.md)).
+A provider may also expose `positions: PositionManagement` — reading a held position, reading an
+order, and building and reading a whole-position sale (`prediction.sell`). It is not a publishable
+action: nothing a signal carries can reach it, and core decides eligibility, stores what happened and
+drives the wallet ([prediction positions](prediction-positions.md)).
 
 ## Adding a bundled provider
 

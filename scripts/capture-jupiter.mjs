@@ -630,15 +630,20 @@ async function capturePositions() {
       break;
     }
   }
-  if (!found) throw new Error("no open position was found among recent traders");
+  if (!found)
+    throw new Error("no open position was found among recent traders");
   const { owner, position } = found;
   const one = await read(`/positions/${position.pubkey}`);
   const missing = await read("/positions/11111111111111111111111111111111");
   const history = await read(
     `/history?ownerPubkey=${owner}&positionPubkey=${position.pubkey}&start=0&end=10`,
   );
-  const orderPubkey = (history.body.data ?? []).find((one) => one.orderPubkey)?.orderPubkey;
-  const status = orderPubkey ? await read(`/orders/status/${orderPubkey}`) : null;
+  const orderPubkey = (history.body.data ?? []).find(
+    (one) => one.orderPubkey,
+  )?.orderPubkey;
+  const status = orderPubkey
+    ? await read(`/orders/status/${orderPubkey}`)
+    : null;
   const close = await read(`/positions/${position.pubkey}`, {
     method: "DELETE",
     headers: { "content-type": "application/json" },

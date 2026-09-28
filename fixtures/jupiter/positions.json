@@ -273,9 +273,7 @@
       "lastValidBlockHeight": 429299474
     },
     "externalOrderId": "5ff69a96beb14a09888e52711ec87f6e",
-    "requiredSigners": [
-      "4NboL3fNkq6KFPmTKtTVL8Ww9YzkVJ9n8aKRo27X8vs3"
-    ],
+    "requiredSigners": ["4NboL3fNkq6KFPmTKtTVL8Ww9YzkVJ9n8aKRo27X8vs3"],
     "isGasless": true,
     "order": {
       "orderPubkey": "DP4C4GxDmscLnvyfCDyMYBnwjGEPgccENxfsnHAUbo7x",
@@ -324,10 +322,7 @@
       {
         "table": "6awx2Pq4uxeHsBcmutEqErz79C4TUg4EQEiBX5T5BVfX",
         "writable": [],
-        "readonly": [
-          5,
-          1
-        ]
+        "readonly": [5, 1]
       }
     ]
   },
@@ -339,9 +334,7 @@
       "lastValidBlockHeight": 429299485
     },
     "externalOrderId": "29364a31948d45e89ce298b090dbbc53",
-    "requiredSigners": [
-      "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
-    ],
+    "requiredSigners": ["9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"],
     "isGasless": true,
     "order": {
       "orderPubkey": "JD4tFuYdraTwuurxTUtWqG8AC1MPTo9ZSAW925bz6rix",
@@ -395,26 +388,12 @@
       {
         "table": "6awx2Pq4uxeHsBcmutEqErz79C4TUg4EQEiBX5T5BVfX",
         "writable": [],
-        "readonly": [
-          5,
-          1,
-          4
-        ]
+        "readonly": [5, 1, 4]
       },
       {
         "table": "GHRJYRqzM15WzpooLAdR4DX6rfK1MLjj6GRXMdbLDtwG",
-        "writable": [
-          34,
-          29,
-          32
-        ],
-        "readonly": [
-          35,
-          31,
-          33,
-          37,
-          2
-        ]
+        "writable": [34, 29, 32],
+        "readonly": [35, 31, 33, 37, 2]
       }
     ]
   },
