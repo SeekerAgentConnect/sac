@@ -222,6 +222,10 @@ class StageBoundaryTest {
                 // the approved message, a signature, the cluster it was bound to, and what an
                 // endpoint's host said — never an endpoint URL, which can carry a key.
                 File(main, "java/io/github/brrenat/seekervault/confirmations/storage"),
+                // The owner's prediction positions and sale attempts (SEE-172). Public facts only:
+                // addresses, amounts, the provider's words for a state, a sale's signature and a
+                // hash of the bytes approved — never a URL and never a transaction.
+                File(main, "java/io/github/brrenat/seekervault/positions/storage"),
             )
         val syncPackage = File(main, "java/io/github/brrenat/seekervault/sync")
         val storagePackages =
@@ -473,6 +477,8 @@ class StageBoundaryTest {
                     // What the confirmation tracker keeps (SEE-165): an endpoint's host, never its
                     // URL.
                     "confirmations/storage",
+                    // Positions and sales (SEE-172): the provider's links are built where shown.
+                    "positions/storage",
                 )
                 .map { File(main, "java/io/github/brrenat/seekervault/$it") }
         assertEquals(
@@ -883,10 +889,22 @@ class StageBoundaryTest {
                 // so matching the constant is the only way the copy cannot drift from what
                 // `actionOf` produces (SEE-145).
                 "FeedNotifications.kt",
+                // The History item's live position (SEE-172): it names the position a purchase went
+                // into so the provider's own links can be built for it, and prepares nothing.
+                "HistoryDetailRoute.kt",
                 "InboxViewModel.kt",
                 // The words for each of the six reasons nothing serves an action here.
                 "OperationText.kt",
                 "OperationViewModel.kt",
+                // Positions (SEE-172): the provider-neutral readings and the sale the provider built
+                // and read, mapped for History, stored, and handed to the wallet under its lock by
+                // the one coordinator — which resolves the provider by the ID the purchase was
+                // bound to, and never by anything else.
+                "PositionDetailMapping.kt",
+                "PositionStore.kt",
+                "PositionTracker.kt",
+                "Positions.kt",
+                "PositionsViewModel.kt",
                 // The design's prediction review (SEE-158): it reads the owner's side and stake off
                 // the form the provider declared, and the terms off the parsed payload, to show
                 // them — it prepares nothing and resolves no provider.

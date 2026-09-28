@@ -403,6 +403,31 @@ class FakePrediction : JupiterPrediction {
         asked += "order ${terms.marketId} yes=${choice.yes} ${choice.deposit} $wallet"
         return answersOrder(terms, choice, wallet)
     }
+
+    var answersPosition: (String) -> PredictionPosition = {
+        throw PredictionException(PredictionProblem.NotFound)
+    }
+    var answersStatus: (String) -> PredictionOrderStatus = {
+        throw PredictionException(PredictionProblem.NotFound)
+    }
+    var answersClose: (String, String) -> PredictionClose = { _, _ ->
+        throw PredictionException(PredictionProblem.Refused)
+    }
+
+    override suspend fun position(positionPubkey: String): PredictionPosition {
+        asked += "position $positionPubkey"
+        return answersPosition(positionPubkey)
+    }
+
+    override suspend fun orderStatus(orderPubkey: String): PredictionOrderStatus {
+        asked += "status $orderPubkey"
+        return answersStatus(orderPubkey)
+    }
+
+    override suspend fun closePosition(positionPubkey: String, owner: String): PredictionClose {
+        asked += "close $positionPubkey $owner"
+        return answersClose(positionPubkey, owner)
+    }
 }
 
 /** What a market detail looks like on the wire, for the adapter's own tests. */

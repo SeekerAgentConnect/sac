@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.plugins.ActionOperation
 import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
 import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.ActionStatus
 import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
 import io.github.brrenat.seekervault.plugins.ParameterChoice
@@ -303,18 +304,43 @@ class JupiterPredictionActionTest {
     }
 
     @Test
-    fun itAnswersNoStatusQueryRatherThanGuessingAtOne() {
-        // There is no read here that could turn "submitted" into "filled", and nothing in this app
-        // polls for one. Saying so is the honest answer (SEE-145).
-        val answer = runBlocking {
-            plugin()
-                .status(
-                    subject(),
-                    io.github.brrenat.seekervault.plugins.PluginReference(ORDER_ACCOUNT, "x"),
-                )
+    fun anOrdersStatusIsTheProvidersReportAndNothingElse() {
+        // SEE-172: the provider reports an order's fills by the order's own account, which the
+        // record keeps. That report is what is returned — never a guess from the chain.
+        provider.answersStatus = { order ->
+            PredictionOrderStatus(
+                orderPubkey = order,
+                fill = OrderFill.PartiallyFilled,
+                rawStatus = "partiallyfilled",
+                finished = false,
+                contractsMicro = 20_000_000UL,
+                filledContractsMicro = 5_000_000UL,
+                avgFillPriceUsd = 200_000UL,
+                netProceedsUsd = null,
+                feeUsd = null,
+                latestSignature = null,
+            )
         }
+        val answer = runBlocking {
+            plugin().status(subject(), PluginReference(ORDER_ACCOUNT, ORDER_PUBKEY))
+        }
+        assertEquals(ActionStatus.Reported("partially_filled", "partiallyfilled"), answer)
+        assertEquals(listOf("status $ORDER_PUBKEY"), provider.asked)
 
-        assertEquals(io.github.brrenat.seekervault.plugins.ActionStatus.Unsupported, answer)
+        // No record yet is not an answer about the order.
+        provider.asked.clear()
+        provider.answersStatus = { throw PredictionException(PredictionProblem.NotFound) }
+        val unknown = runBlocking {
+            plugin().status(subject(), PluginReference(ORDER_ACCOUNT, ORDER_PUBKEY))
+        }
+        assertEquals(ActionStatus.Unknown, unknown)
+
+        // And a reference that is not an order is not asked about at all.
+        provider.asked.clear()
+        val other = runBlocking {
+            plugin().status(subject(), PluginReference(POSITION_ACCOUNT, POSITION_PUBKEY))
+        }
+        assertEquals(ActionStatus.Unsupported, other)
         assertEquals(emptyList<String>(), provider.asked)
     }
 

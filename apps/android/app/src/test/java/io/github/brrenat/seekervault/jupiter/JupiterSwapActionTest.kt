@@ -150,8 +150,9 @@ class JupiterSwapActionTest {
             setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
             capabilities.environments,
         )
-        // It answers no status query, and does not pretend to: "submitted" never becomes "filled".
-        assertFalse(capabilities.statusQueries)
+        // It answers status queries since SEE-172 — about a prediction order's fills, by the order's
+        // own account — and a swap, which has no order, still gets Unsupported.
+        assertTrue(capabilities.statusQueries)
     }
 
     @Test
