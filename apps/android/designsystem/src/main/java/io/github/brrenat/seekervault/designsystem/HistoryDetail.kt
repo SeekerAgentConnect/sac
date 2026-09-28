@@ -249,7 +249,8 @@ data class HistoryDetailModel(
      * never part of the stored record: the purchase above stays what it was, and this says what the
      * wallet holds now.
      */
-    val position: HistoryDetailPosition? = null)
+    val position: HistoryDetailPosition? = null,
+)
 
 /** Where the live position stands (SEE-172). */
 enum class HistoryDetailPositionState {

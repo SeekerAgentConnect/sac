@@ -12,8 +12,8 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * The owner's prediction positions, and what they did with them, as this phone records it
- * (SEE-172, docs/wiki/prediction-positions.md).
+ * The owner's prediction positions, and what they did with them, as this phone records it (SEE-172,
+ * docs/wiki/prediction-positions.md).
  *
  * Four things are kept apart on purpose, because they are four different facts:
  *
@@ -80,11 +80,10 @@ data class HoldingRecord(
 ) {
     /** Whether any purchase's order is still waiting on the provider. */
     val ordersUnresolved: Boolean
-        get() =
-            purchases.any { purchase ->
-                val order = purchase.orderAccount ?: return@any false
-                orders[order]?.reading?.fill?.finished != true
-            }
+        get() = purchases.any { purchase ->
+            val order = purchase.orderAccount ?: return@any false
+            orders[order]?.reading?.fill?.finished != true
+        }
 }
 
 /** Where a sale attempt got to with the wallet. */
@@ -174,8 +173,8 @@ val SALE_LAPSE: Duration = Duration.ofMinutes(5)
  *
  * - A filled order is a sale; the position read beside it says whether anything remains.
  * - A sale is never called closed on a chain confirmation alone, nor on a position that 404s.
- * - An attempt the wallet never reported on stays pending until an order appears, the chain says
- *   it failed, or — with no order ever recorded — [SALE_LAPSE] has passed.
+ * - An attempt the wallet never reported on stays pending until an order appears, the chain says it
+ *   failed, or — with no order ever recorded — [SALE_LAPSE] has passed.
  */
 fun settleSale(
     sale: SaleRecord,

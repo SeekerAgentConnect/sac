@@ -17,9 +17,9 @@ import io.github.brrenat.seekervault.notifications.ProposalNotificationIntent
 import io.github.brrenat.seekervault.notifications.ProposalRef
 import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
 import io.github.brrenat.seekervault.operations.OperationViewModel
-import io.github.brrenat.seekervault.positions.PositionsViewModel
 import io.github.brrenat.seekervault.policy.GlobalPolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
+import io.github.brrenat.seekervault.positions.PositionsViewModel
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow

@@ -23,8 +23,8 @@ import io.github.brrenat.seekervault.plugins.SaleBlock
 import io.github.brrenat.seekervault.plugins.saleBlockOf
 import io.github.brrenat.seekervault.positions.HoldingRecord
 import io.github.brrenat.seekervault.positions.OrderSnapshot
-import io.github.brrenat.seekervault.positions.PositionsState
 import io.github.brrenat.seekervault.positions.PositionTracker
+import io.github.brrenat.seekervault.positions.PositionsState
 import io.github.brrenat.seekervault.positions.RefreshProblem
 import io.github.brrenat.seekervault.positions.SaleRecord
 import io.github.brrenat.seekervault.positions.SaleResult
@@ -96,7 +96,8 @@ fun positionDetail(
             (snapshot == null ||
                 snapshot.contractsMicro == 0UL ||
                 holding.problem == RefreshProblem.NotFound)
-    val settled = snapshot != null && (snapshot.market == MarketStanding.Settled || snapshot.claimable)
+    val settled =
+        snapshot != null && (snapshot.market == MarketStanding.Settled || snapshot.claimable)
     val (state, stateText) =
         when {
             sold -> HistoryDetailPositionState.Closed to PositionCopy.Sold
@@ -129,7 +130,8 @@ fun positionDetail(
         state = state,
         stateText = stateText,
         scope = if (snapshot != null && !sold) scopeText(holding) else null,
-        orderRows = orderRows(purchase?.orderAccount?.let(holding.orders::get), purchase != null, clock),
+        orderRows =
+            orderRows(purchase?.orderAccount?.let(holding.orders::get), purchase != null, clock),
         rows = snapshot?.takeUnless { sold }?.let { positionRows(it, holding, clock) }.orEmpty(),
         note = note,
         refreshing = refreshing,
@@ -184,7 +186,8 @@ private fun orderRows(
         when (reading.fill) {
             OrderFillState.Pending -> "Waiting to fill"
             OrderFillState.PartiallyFilled ->
-                "Partly filled" + if (filled != null && asked != null) " · $filled of $asked" else ""
+                "Partly filled" +
+                    if (filled != null && asked != null) " · $filled of $asked" else ""
             OrderFillState.Filled -> "Filled" + (filled?.let { " · $it contracts" } ?: "")
             OrderFillState.PartiallyFilledClosed ->
                 "Partly filled, rest returned" +
@@ -210,7 +213,12 @@ private fun positionRows(
     if (title.isNotEmpty()) add(HistoryDetailRow("Market", title.joinToString(" · ")))
     add(HistoryDetailRow("Outcome", if (position.yes) "Yes" else "No"))
     add(HistoryDetailRow("Contracts held", contracts(position.contractsMicro)))
-    add(HistoryDetailRow("Value now", position.valueMicroUsd?.let(::dollars) ?: PositionCopy.NotQuoted))
+    add(
+        HistoryDetailRow(
+            "Value now",
+            position.valueMicroUsd?.let(::dollars) ?: PositionCopy.NotQuoted,
+        )
+    )
     add(
         HistoryDetailRow(
             "Best bid",
@@ -221,12 +229,20 @@ private fun positionRows(
     position.averagePriceMicroUsd?.let {
         add(HistoryDetailRow("Average entry", "${dollars(it)} a contract"))
     }
-    add(HistoryDetailRow("P&L", position.pnlMicroUsd?.let(::signedDollars) ?: PositionCopy.NotQuoted))
-    position.pnlAfterFeesMicroUsd?.let { add(HistoryDetailRow("P&L after fees", signedDollars(it))) }
     add(
         HistoryDetailRow(
-            "Market",
-            position.marketResult?.let { "Settled · $it" } ?: position.marketStatus.ifEmpty { "Unknown" },
+            "P&L",
+            position.pnlMicroUsd?.let(::signedDollars) ?: PositionCopy.NotQuoted,
+        )
+    )
+    position.pnlAfterFeesMicroUsd?.let {
+        add(HistoryDetailRow("P&L after fees", signedDollars(it)))
+    }
+    add(
+        HistoryDetailRow(
+            "Market status",
+            position.marketResult?.let { "Settled · $it" }
+                ?: position.marketStatus.ifEmpty { "Unknown" },
         )
     )
     holding.observedAt?.let { add(HistoryDetailRow("Last read", clock.stamp(it))) }
@@ -286,7 +302,12 @@ private fun saleOf(sale: SaleRecord, clock: HistoryDetailClock): HistoryDetailSa
         rows =
             buildList {
                 add(HistoryDetailRow("Contracts", contracts(sale.contractsMicro)))
-                add(HistoryDetailRow("Lowest price accepted", "${dollars(sale.floorPriceMicroUsd)} a contract"))
+                add(
+                    HistoryDetailRow(
+                        "Lowest price accepted",
+                        "${dollars(sale.floorPriceMicroUsd)} a contract",
+                    )
+                )
                 val filled = order?.filledContractsMicro
                 if (filled != null && order.fill != OrderFillState.Pending) {
                     add(HistoryDetailRow("Sold", "${contracts(filled)} contracts"))
@@ -296,13 +317,17 @@ private fun saleOf(sale: SaleRecord, clock: HistoryDetailClock): HistoryDetailSa
                 add(
                     HistoryDetailRow(
                         "Proceeds",
-                        proceeds?.let(::money) ?: if (sale.result.final) PositionCopy.NotReported
-                        else PositionCopy.KnownAfterFill,
+                        proceeds?.let(::money)
+                            ?: if (sale.result.final) PositionCopy.NotReported
+                            else PositionCopy.KnownAfterFill,
                     )
                 )
-                order?.feeMicroUsd?.takeIf { sale.result.final && it > 0UL }?.let {
-                    add(HistoryDetailRow("Fees", money(it)))
-                }
+                order
+                    ?.feeMicroUsd
+                    ?.takeIf { sale.result.final && it > 0UL }
+                    ?.let {
+                        add(HistoryDetailRow("Fees", money(it)))
+                    }
                 sale.detail?.let { add(HistoryDetailRow("Detail", it)) }
             },
     )
@@ -324,7 +349,10 @@ fun positionSaleSheet(
     val side = if (holding?.held?.yes != false) "Yes" else "No"
     val headline = "Sell your $side position"
     val subline =
-        snapshot?.let { listOf(it.eventTitle, it.marketTitle).filter(String::isNotEmpty).joinToString(" · ") }
+        snapshot
+            ?.let {
+                listOf(it.eventTitle, it.marketTitle).filter(String::isNotEmpty).joinToString(" · ")
+            }
             ?.ifEmpty { null } ?: holding?.held?.marketId.orEmpty()
     val scope =
         "This sells your wallet's entire current position in this outcome — every contract, " +
@@ -408,31 +436,49 @@ fun positionSaleSheet(
                             PositionSaleFact(
                                 "Estimated proceeds",
                                 terms.estimatedGrossMicroUsd?.let {
-                                    "≈ ${money(it)} at today's bid, not guaranteed"
+                                    "≈ ${money(it)}"
                                 } ?: "No current bid",
                             )
                         )
                         add(
                             PositionSaleFact(
                                 "Estimated fees",
-                                "${money(terms.estimatedFeeMicroUsd)} · the provider's estimate",
+                                "≈ ${money(terms.estimatedFeeMicroUsd)}",
                             )
                         )
                         add(PositionSaleFact("Paid out in", terms.proceedsSymbol))
-                        add(PositionSaleFact("Proceeds go to", terms.proceedsAccount.shortAddress(), mono = true))
+                        add(
+                            PositionSaleFact(
+                                "Proceeds go to",
+                                terms.proceedsAccount.shortAddress(),
+                                mono = true,
+                            )
+                        )
                         add(PositionSaleFact("Wallet", terms.owner.shortAddress(), mono = true))
                         add(PositionSaleFact("Network", draft.held.network.word() ?: "Unknown"))
                         inspection.details.forEach {
-                            add(PositionSaleFact(text(it.label), it.value, mono = it.value.length > 32))
+                            add(
+                                PositionSaleFact(
+                                    text(it.label),
+                                    it.value,
+                                    mono = it.value.length > 32,
+                                )
+                            )
                         }
                     },
                 findings = inspection.findings.map { text(it.message) },
                 staleNotice =
-                    notice ?: if (expired) "This review ran out. Prepare it again for current terms." else null,
+                    notice
+                        ?: if (expired) "This review ran out. Prepare it again for current terms."
+                        else null,
                 expiry =
                     "This review stands until " +
-                        clock.preciseTime(Instant.ofEpochSecond(draft.prepared.expiresAtEpochSeconds)) +
-                        ". Selling signs a new transaction in your wallet.",
+                        clock.preciseTime(
+                            Instant.ofEpochSecond(draft.prepared.expiresAtEpochSeconds)
+                        ) +
+                        ". Estimates are the provider's and not guaranteed; the lowest price " +
+                        "accepted is what the transaction enforces. Selling signs a new " +
+                        "transaction in your wallet.",
                 primaryEnabled = inspection.approvable && !expired && notice == null,
             )
         }
@@ -461,8 +507,7 @@ internal fun dollars(micro: ULong): String {
 internal fun signedDollars(micro: Long): String =
     if (micro < 0) "−" + dollars((-micro).toULong()) else "+" + dollars(micro.toULong())
 
-private fun String.shortAddress(): String =
-    if (length <= 16) this else "${take(8)}…${takeLast(8)}"
+private fun String.shortAddress(): String = if (length <= 16) this else "${take(8)}…${takeLast(8)}"
 
 object PositionCopy {
     const val Live = "Live"

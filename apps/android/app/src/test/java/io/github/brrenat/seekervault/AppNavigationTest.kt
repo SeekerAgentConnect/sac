@@ -237,6 +237,23 @@ class AppNavigationTest {
         assertEquals(state, decodeNavigationState(encodeNavigationState(state)))
     }
 
+    @Test
+    fun aSaleReviewOpensOnlyOverItsOwnHistoryItemAndSurvivesARestart() {
+        val identity = ReviewIdentity.Signal(CONNECTION, REQUEST)
+        val navigator = AppNavigator(NavigationState(AppScreen.Inbox))
+        // Not from the Inbox, and not over another item's page (SEE-172).
+        assertFalse(navigator.openPositionSale(identity))
+        assertTrue(navigator.openHistoryDetail(identity))
+        assertFalse(navigator.openPositionSale(ReviewIdentity.Signal(CONNECTION, OTHER_REQUEST)))
+        assertTrue(navigator.openPositionSale(identity))
+        // One at a time.
+        assertFalse(navigator.openPositionSale(identity))
+        val restored = decodeNavigationState(encodeNavigationState(navigator.state))
+        assertEquals(navigator.state, restored)
+        assertTrue(navigator.back())
+        assertEquals(NavigationState(AppScreen.HistoryDetail(identity)), navigator.state)
+    }
+
     private companion object {
         const val CONNECTION = "connection-a"
         const val OTHER_CONNECTION = "connection-b"

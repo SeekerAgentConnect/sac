@@ -49,6 +49,9 @@ import io.github.brrenat.seekervault.notifications.RequestNotificationManager
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
+import io.github.brrenat.seekervault.positions.PositionTracker
+import io.github.brrenat.seekervault.positions.purchasesOf
+import io.github.brrenat.seekervault.positions.storage.PositionStore
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.push.FcmRegistrationClient
 import io.github.brrenat.seekervault.push.FcmRegistrationManager
@@ -77,9 +80,6 @@ import io.github.brrenat.seekervault.wallet.WalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletIntentSender
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
-import io.github.brrenat.seekervault.positions.PositionTracker
-import io.github.brrenat.seekervault.positions.purchasesOf
-import io.github.brrenat.seekervault.positions.storage.PositionStore
 import java.io.File
 import javax.crypto.SecretKey
 import kotlin.time.Duration.Companion.seconds
@@ -88,8 +88,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -335,9 +335,10 @@ class SeekerVaultApplication : Application() {
     }
 
     /**
-     * The owner's prediction positions and sale attempts (SEE-172, docs/wiki/prediction-positions.md):
-     * one coordinator for the process, so every screen, the foreground and background work see one
-     * read of each position and one record of each sale. Clearing History clears it too.
+     * The owner's prediction positions and sale attempts (SEE-172,
+     * docs/wiki/prediction-positions.md): one coordinator for the process, so every screen, the
+     * foreground and background work see one read of each position and one record of each sale.
+     * Clearing History clears it too.
      */
     val positionTracker: PositionTracker by lazy {
         PositionTracker(
@@ -363,15 +364,13 @@ class SeekerVaultApplication : Application() {
         positionScope.launch {
             if (!positionTracker.state.value.loaded) positionTracker.load()
             if (positionLinking?.isActive != true) {
-                positionLinking =
-                    positionScope.launch {
-                        combine(proposalRepository.proposals, activityLog.records) {
-                                proposals,
-                                records ->
-                                purchasesOf(proposals, records)
-                            }
-                            .collect { positionTracker.link(it) }
-                    }
+                positionLinking = positionScope.launch {
+                    combine(proposalRepository.proposals, activityLog.records) { proposals, records
+                            ->
+                            purchasesOf(proposals, records)
+                        }
+                        .collect { positionTracker.link(it) }
+                }
             }
             positionTracker.reconcile()
         }

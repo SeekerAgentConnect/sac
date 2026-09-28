@@ -79,7 +79,9 @@ class PositionStore(private val dir: File) {
         write(File(sales, "${record.id}$SUFFIX"), encodeSale(record))
     }
 
-    /** Forgets every position and sale, and remembers when, so nothing in flight brings one back. */
+    /**
+     * Forgets every position and sale, and remembers when, so nothing in flight brings one back.
+     */
     fun clear(at: Instant) {
         holdings.deleteRecursively()
         sales.deleteRecursively()
@@ -123,8 +125,7 @@ class PositionStore(private val dir: File) {
     // A directory that exists and cannot be listed throws, rather than reading as "nothing held".
     private fun entriesOf(directory: File): List<File> {
         if (!directory.exists()) return emptyList()
-        return directory.listFiles()?.toList()
-            ?: throw IOException("cannot list ${directory.name}")
+        return directory.listFiles()?.toList() ?: throw IOException("cannot list ${directory.name}")
     }
 
     internal companion object {
@@ -154,32 +155,31 @@ class PositionStore(private val dir: File) {
                 .put("linkedAt", record.linkedAt.toString())
                 .toString()
 
-        fun decodeHolding(text: String): HoldingRecord? =
-            decoding {
-                val json = JSONObject(text)
-                if (json.getInt("version") !in OLDEST_VERSION..VERSION) return@decoding null
-                val purchases = json.getJSONArray("purchases")
-                val orders = json.optJSONArray("orders") ?: JSONArray()
-                HoldingRecord(
-                    held = decodeHeld(json.getJSONObject("held")) ?: return@decoding null,
-                    purchases =
-                        (0 until purchases.length()).map {
-                            decodePurchase(purchases.getJSONObject(it)) ?: return@decoding null
-                        },
-                    snapshot =
-                        json.optJSONObject("snapshot")?.let {
-                            decodeReading(it) ?: return@decoding null
-                        },
-                    observedAt = json.text("observedAt")?.let(Instant::parse),
-                    attemptedAt = json.text("attemptedAt")?.let(Instant::parse),
-                    problem = json.text("problem")?.let(RefreshProblem::of),
-                    orders =
-                        (0 until orders.length())
-                            .mapNotNull { decodeOrder(orders.getJSONObject(it)) }
-                            .associateBy { it.reading.orderAccount },
-                    linkedAt = Instant.parse(json.getString("linkedAt")),
-                )
-            }
+        fun decodeHolding(text: String): HoldingRecord? = decoding {
+            val json = JSONObject(text)
+            if (json.getInt("version") !in OLDEST_VERSION..VERSION) return@decoding null
+            val purchases = json.getJSONArray("purchases")
+            val orders = json.optJSONArray("orders") ?: JSONArray()
+            HoldingRecord(
+                held = decodeHeld(json.getJSONObject("held")) ?: return@decoding null,
+                purchases =
+                    (0 until purchases.length()).map {
+                        decodePurchase(purchases.getJSONObject(it)) ?: return@decoding null
+                    },
+                snapshot =
+                    json.optJSONObject("snapshot")?.let {
+                        decodeReading(it) ?: return@decoding null
+                    },
+                observedAt = json.text("observedAt")?.let(Instant::parse),
+                attemptedAt = json.text("attemptedAt")?.let(Instant::parse),
+                problem = json.text("problem")?.let(RefreshProblem::of),
+                orders =
+                    (0 until orders.length())
+                        .mapNotNull { decodeOrder(orders.getJSONObject(it)) }
+                        .associateBy { it.reading.orderAccount },
+                linkedAt = Instant.parse(json.getString("linkedAt")),
+            )
+        }
 
         fun encodeSale(record: SaleRecord): String =
             JSONObject()
@@ -206,35 +206,34 @@ class PositionStore(private val dir: File) {
                 .putOpt("resolvedAt", record.resolvedAt?.toString())
                 .toString()
 
-        fun decodeSale(text: String): SaleRecord? =
-            decoding {
-                val json = JSONObject(text)
-                if (json.getInt("version") !in OLDEST_VERSION..VERSION) return@decoding null
-                SaleRecord(
-                    id = json.getString("id"),
-                    held = decodeHeld(json.getJSONObject("held")) ?: return@decoding null,
-                    createdAt = Instant.parse(json.getString("createdAt")),
-                    contractsMicro = json.getString("contractsMicro").toULong(),
-                    floorPriceMicroUsd = json.getString("floorPriceMicroUsd").toULong(),
-                    leastGrossMicroUsd = json.getString("leastGrossMicroUsd").toULong(),
-                    estimatedGrossMicroUsd = json.text("estimatedGrossMicroUsd")?.toULong(),
-                    estimatedFeeMicroUsd = json.getString("estimatedFeeMicroUsd").toULong(),
-                    proceedsSymbol = json.getString("proceedsSymbol"),
-                    proceedsDecimals = json.getInt("proceedsDecimals"),
-                    proceedsAccount = json.getString("proceedsAccount"),
-                    orderAccount = json.getString("orderAccount"),
-                    contentHash = json.getString("contentHash"),
-                    // A stage or result this build has no name for is not guessed at: the record
-                    // is unreadable here rather than read as something it is not.
-                    stage = SaleStage.of(json.getString("stage")) ?: return@decoding null,
-                    signature = json.text("signature"),
-                    settledAt = json.text("settledAt")?.let(Instant::parse),
-                    detail = json.text("detail"),
-                    order = json.optJSONObject("order")?.let(::decodeOrder),
-                    result = SaleResult.of(json.getString("result")) ?: return@decoding null,
-                    resolvedAt = json.text("resolvedAt")?.let(Instant::parse),
-                )
-            }
+        fun decodeSale(text: String): SaleRecord? = decoding {
+            val json = JSONObject(text)
+            if (json.getInt("version") !in OLDEST_VERSION..VERSION) return@decoding null
+            SaleRecord(
+                id = json.getString("id"),
+                held = decodeHeld(json.getJSONObject("held")) ?: return@decoding null,
+                createdAt = Instant.parse(json.getString("createdAt")),
+                contractsMicro = json.getString("contractsMicro").toULong(),
+                floorPriceMicroUsd = json.getString("floorPriceMicroUsd").toULong(),
+                leastGrossMicroUsd = json.getString("leastGrossMicroUsd").toULong(),
+                estimatedGrossMicroUsd = json.text("estimatedGrossMicroUsd")?.toULong(),
+                estimatedFeeMicroUsd = json.getString("estimatedFeeMicroUsd").toULong(),
+                proceedsSymbol = json.getString("proceedsSymbol"),
+                proceedsDecimals = json.getInt("proceedsDecimals"),
+                proceedsAccount = json.getString("proceedsAccount"),
+                orderAccount = json.getString("orderAccount"),
+                contentHash = json.getString("contentHash"),
+                // A stage or result this build has no name for is not guessed at: the record
+                // is unreadable here rather than read as something it is not.
+                stage = SaleStage.of(json.getString("stage")) ?: return@decoding null,
+                signature = json.text("signature"),
+                settledAt = json.text("settledAt")?.let(Instant::parse),
+                detail = json.text("detail"),
+                order = json.optJSONObject("order")?.let(::decodeOrder),
+                result = SaleResult.of(json.getString("result")) ?: return@decoding null,
+                resolvedAt = json.text("resolvedAt")?.let(Instant::parse),
+            )
+        }
 
         private fun encodeHeld(held: HeldPosition): JSONObject =
             JSONObject()
@@ -361,8 +360,7 @@ class PositionStore(private val dir: File) {
                 OrderSnapshot(
                     OrderReading(
                         orderAccount = json.getString("orderAccount"),
-                        fill =
-                            OrderFillState.of(json.getString("fill")) ?: OrderFillState.Unknown,
+                        fill = OrderFillState.of(json.getString("fill")) ?: OrderFillState.Unknown,
                         raw = json.optString("raw"),
                         contractsMicro = json.text("contractsMicro")?.toULong(),
                         filledContractsMicro = json.text("filledContractsMicro")?.toULong(),

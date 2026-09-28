@@ -47,7 +47,8 @@ class PositionsViewModel(
 
     /** Hands the reviewed sale of [account] to the wallet, if it is still the one reviewed. */
     fun sell(account: String) {
-        val draft = (tracker.state.value.reviews[account] as? SaleReviewState.Ready)?.draft ?: return
+        val draft =
+            (tracker.state.value.reviews[account] as? SaleReviewState.Ready)?.draft ?: return
         viewModelScope.launch {
             val outcome =
                 tracker.sell(

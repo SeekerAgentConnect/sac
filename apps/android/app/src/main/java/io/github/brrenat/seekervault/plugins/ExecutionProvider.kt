@@ -153,8 +153,8 @@ interface ExecutionProvider {
     ): ActionStatus = ActionStatus.Unsupported
 
     /**
-     * What this provider can read and do about a position the owner already holds, or null when
-     * it manages none (SEE-172). A sale is never a publisher's proposal: it is reached from the
+     * What this provider can read and do about a position the owner already holds, or null when it
+     * manages none (SEE-172). A sale is never a publisher's proposal: it is reached from the
      * owner's own History item, through this and nothing else.
      */
     val positions: PositionManagement?

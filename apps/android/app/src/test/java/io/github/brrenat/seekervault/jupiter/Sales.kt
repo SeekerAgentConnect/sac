@@ -13,9 +13,9 @@ import io.github.brrenat.seekervault.transactions.associatedTokenAddress
  * Building sales for the tests (SEE-172).
  *
  * The committed fixture (`fixtures/jupiter/positions.json`) is a real close Jupiter built. This is
- * the builder beside it, shaped like it — gasless, the provider's relayer paying and pre-signed, the
- * protocol pre-signed, the owner's slot the only one empty — so a test can change exactly one thing
- * and show the review refusing it.
+ * the builder beside it, shaped like it — gasless, the provider's relayer paying and pre-signed,
+ * the protocol pre-signed, the owner's slot the only one empty — so a test can change exactly one
+ * thing and show the review refusing it.
  */
 
 /** Jupiter's gasless relayer, as the real close names it. */
@@ -198,12 +198,13 @@ fun saleTransaction(
     }
     steps += extra
     // Three slots when the relayer pays, in Jupiter's order: the payer, the protocol, the owner.
-    val signers = if (payer == owner) listOf(owner, PROTOCOL_SIGNER) else listOf(payer, PROTOCOL_SIGNER, owner)
-    val filled =
-        buildList {
-            if (payer != owner && relayerSigned) add(0)
-            add(1)
-            if (ownerSigned) add(signers.indexOf(owner))
-        }
+    val signers =
+        if (payer == owner) listOf(owner, PROTOCOL_SIGNER)
+        else listOf(payer, PROTOCOL_SIGNER, owner)
+    val filled = buildList {
+        if (payer != owner && relayerSigned) add(0)
+        add(1)
+        if (ownerSigned) add(signers.indexOf(owner))
+    }
     return versioned(payer = payer, signers = signers, filled = filled, steps = steps)
 }

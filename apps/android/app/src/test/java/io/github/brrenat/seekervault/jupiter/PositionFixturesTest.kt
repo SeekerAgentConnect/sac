@@ -30,10 +30,10 @@ import org.junit.runner.RunWith
 /**
  * What Jupiter really answers about a position, and the close and buy it really builds (SEE-172).
  *
- * Captured from the keyless API on 2026-09-28 by `node scripts/capture-jupiter.mjs --positions`
- * for a public trader's open position, with the lookup tables the builds name. Nothing was signed
- * or sent. The tests run offline: the tables are in the fixture, and the adapter is fed the
- * captured bodies over a local server.
+ * Captured from the keyless API on 2026-09-28 by `node scripts/capture-jupiter.mjs --positions` for
+ * a public trader's open position, with the lookup tables the builds name. Nothing was signed or
+ * sent. The tests run offline: the tables are in the fixture, and the adapter is fed the captured
+ * bodies over a local server.
  */
 @RunWith(AndroidJUnit4::class)
 class PositionFixturesTest {
@@ -48,10 +48,17 @@ class PositionFixturesTest {
         JSONObject(text)
     }
 
-    private val owner get() = fixture.getString("owner")
-    private val position get() = fixture.getJSONObject("position")
-    private val close get() = fixture.getJSONObject("close")
-    private val buyNo get() = fixture.getJSONObject("buyNo")
+    private val owner
+        get() = fixture.getString("owner")
+
+    private val position
+        get() = fixture.getJSONObject("position")
+
+    private val close
+        get() = fixture.getJSONObject("close")
+
+    private val buyNo
+        get() = fixture.getJSONObject("buyNo")
 
     private fun tables(build: JSONObject): SolanaAccounts {
         val held =
@@ -76,7 +83,8 @@ class PositionFixturesTest {
 
     private fun orderOf(build: JSONObject): OrderStep.Order = runBlocking {
         val decoded =
-            (decodeTransaction(bytes(build).toByteArray(), resolvable = true) as DecodeResult.Decoded)
+            (decodeTransaction(bytes(build).toByteArray(), resolvable = true)
+                    as DecodeResult.Decoded)
                 .transaction
         val resolved = resolveLookups(decoded, tables(build))
         resolved.transaction.instructions
@@ -86,7 +94,10 @@ class PositionFixturesTest {
     }
 
     /** The adapter, reading the captured bodies exactly as the wire sent them. */
-    private fun <T> adapter(vararg bodies: Pair<Int, String>, block: suspend HttpJupiterPrediction.() -> T): T {
+    private fun <T> adapter(
+        vararg bodies: Pair<Int, String>,
+        block: suspend HttpJupiterPrediction.() -> T,
+    ): T {
         val server = MockWebServer()
         server.start(InetAddress.getByName("127.0.0.1"), 0)
         try {
@@ -114,9 +125,15 @@ class PositionFixturesTest {
         val sale = orderOf(close)
         assertEquals(close.getJSONObject("order").getBoolean("isYes"), sale.yes)
         assertFalse(sale.buying)
-        assertEquals(close.getJSONObject("order").getString("contractsMicro").toULong(), sale.contractsMicro)
+        assertEquals(
+            close.getJSONObject("order").getString("contractsMicro").toULong(),
+            sale.contractsMicro,
+        )
         // A sale's price field is its floor, and it costs nothing.
-        assertEquals(close.getJSONObject("order").getString("minSellPriceUsd").toULong(), sale.maxPrice)
+        assertEquals(
+            close.getJSONObject("order").getString("minSellPriceUsd").toULong(),
+            sale.maxPrice,
+        )
         assertEquals(0UL, sale.cost)
         assertEquals(associatedTokenAddress(owner, JUP_USD_MINT), sale.funding)
 
@@ -164,9 +181,10 @@ class PositionFixturesTest {
 
     @Test
     fun theRealCloseIsVerifiedForItsOwnerAndRefusedForAnyoneElse() {
-        val stated = adapter(200 to close.toString()) {
-            closePosition(position.getString("pubkey"), owner)
-        }
+        val stated =
+            adapter(200 to close.toString()) {
+                closePosition(position.getString("pubkey"), owner)
+            }
         val now = adapter(200 to position.toString()) { position(position.getString("pubkey")) }
         val held =
             HeldPosition(
@@ -215,7 +233,10 @@ class PositionFixturesTest {
         assertEquals("open", read.marketStatus)
         assertNull(read.marketResult)
         assertEquals("polymarket", read.venue)
-        assertEquals(io.github.brrenat.seekervault.plugins.MarketStanding.Open, read.reading().market)
+        assertEquals(
+            io.github.brrenat.seekervault.plugins.MarketStanding.Open,
+            read.reading().market,
+        )
     }
 
     @Test
@@ -237,7 +258,8 @@ class PositionFixturesTest {
     @Test
     fun theRealPartialFillReadsAsPartlyFilledAndFinished() {
         val status = fixture.getJSONObject("orderStatus")
-        val read = adapter(200 to status.toString()) { orderStatus(status.getString("orderPubkey")) }
+        val read =
+            adapter(200 to status.toString()) { orderStatus(status.getString("orderPubkey")) }
         assertEquals(OrderFill.PartiallyFilledClosed, read.fill)
         assertTrue(read.finished)
         assertEquals(65_660_000UL, read.contractsMicro)

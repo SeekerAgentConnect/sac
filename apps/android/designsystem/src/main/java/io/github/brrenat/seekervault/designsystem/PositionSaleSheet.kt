@@ -17,9 +17,9 @@ import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 /**
  * Reviewing the sale of a whole prediction position (SEE-172).
  *
- * Composed only of the guide's own pieces — the sheet scaffold, the terms card, fact rows, the stale
- * notice and the buttons — in the order a buy's review uses: what is being done, its scope, the
- * terms read from the bytes, what the provider only estimates, and then one decision. The sheet
+ * Composed only of the guide's own pieces — the sheet scaffold, the terms card, fact rows, the
+ * stale notice and the buttons — in the order a buy's review uses: what is being done, its scope,
+ * the terms read from the bytes, what the provider only estimates, and then one decision. The sheet
  * never says a sale happened; it hands a reviewed transaction to the wallet and closes.
  */
 enum class PositionSaleVerdict {

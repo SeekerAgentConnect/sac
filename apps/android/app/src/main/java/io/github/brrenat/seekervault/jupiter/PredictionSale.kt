@@ -1,6 +1,5 @@
 package io.github.brrenat.seekervault.jupiter
 
-import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.plugins.ActionCapability
 import io.github.brrenat.seekervault.plugins.ActionInspection
@@ -61,9 +60,9 @@ import java.util.concurrent.atomic.AtomicInteger
  *    owner opened this from, for the owner.
  * 4. It sells exactly the contracts the position held when it was read a moment ago — all of them,
  *    and never more — and leaves nothing behind in the provider's own account of the order.
- * 5. Its floor is the one the provider stated, and no lower than [MOST_FLOOR_DISCOUNT_BPS] under the
- *    best current bid: a floor that would let the sale go for much less than the market pays now is
- *    weakened protection and is refused.
+ * 5. Its floor is the one the provider stated, and no lower than [MOST_FLOOR_DISCOUNT_BPS] under
+ *    the best current bid: a floor that would let the sale go for much less than the market pays
+ *    now is weakened protection and is refused.
  * 6. The proceeds go to the owner's own account for the provider's token.
  * 7. Every other instruction is a compute-budget setting or the creation of that very account; no
  *    route, no transfer, no wrap, nothing unread. A priority fee the owner pays is bounded.
@@ -75,7 +74,9 @@ import java.util.concurrent.atomic.AtomicInteger
 /** How far under the best current bid a sale's floor may sit: Jupiter's own 25 %. */
 const val MOST_FLOOR_DISCOUNT_BPS: Int = 2_500
 
-/** The most priority fee a sale may ask the owner to pay when they pay the network fee: 0.005 SOL. */
+/**
+ * The most priority fee a sale may ask the owner to pay when they pay the network fee: 0.005 SOL.
+ */
 const val MOST_SALE_PRIORITY_LAMPORTS: ULong = 5_000_000UL
 
 private const val BPS: ULong = 10_000UL
@@ -83,7 +84,9 @@ private const val BPS: ULong = 10_000UL
 /** A contract's millionths, and the dollar token's. Both are six decimals. */
 private const val MICRO: ULong = 1_000_000UL
 
-/** `prediction.sell`, as Jupiter serves it: mainnet, and only positions it can close keeper-side. */
+/**
+ * `prediction.sell`, as Jupiter serves it: mainnet, and only positions it can close keeper-side.
+ */
 val PREDICTION_SELL_CAPABILITY: ActionCapability =
     ActionCapability(
         action = PREDICTION_SELL_ACTION,
@@ -233,12 +236,12 @@ suspend fun inspectPredictionSale(
 
     // Everything else: fee settings and the proceeds account, and nothing that moves value.
     var networkFee: ULong? = null
-    val limit =
-        steps.mapNotNull { ((it as? OrderStep.Funding)?.step as? SwapStep.Budget)?.unitLimit }
-    val price =
-        steps.mapNotNull {
-            ((it as? OrderStep.Funding)?.step as? SwapStep.Budget)?.microLamportsPerUnit
-        }
+    val limit = steps.mapNotNull {
+        ((it as? OrderStep.Funding)?.step as? SwapStep.Budget)?.unitLimit
+    }
+    val price = steps.mapNotNull {
+        ((it as? OrderStep.Funding)?.step as? SwapStep.Budget)?.microLamportsPerUnit
+    }
     if (sponsor == null && limit.isNotEmpty() && price.isNotEmpty()) {
         networkFee = limit.first().toULong() * price.first() / MICRO
         if (networkFee > MOST_SALE_PRIORITY_LAMPORTS) findings += PredictionFinding.ExcessiveFee
@@ -293,7 +296,12 @@ suspend fun inspectPredictionSale(
                     recognizedInstructions = steps.count { it !is OrderStep.Unread },
                 ),
             version = version,
-            details = saleDetails(terms, decoded.instructions.size, resolved.accounts.size - resolved.static),
+            details =
+                saleDetails(
+                    terms,
+                    decoded.instructions.size,
+                    resolved.accounts.size - resolved.static,
+                ),
             references =
                 listOf(
                     PluginReference(ORDER_ACCOUNT, placed.order),
@@ -333,8 +341,8 @@ const val PROCEEDS_DECIMALS: Int = 6
  * Jupiter's half of position management: reading a position and its orders, and building and
  * reading a sale of it (SEE-172).
  *
- * Reads and builds only. It holds the last sale it built, keyed by its bytes, for exactly as long as
- * a review needs it — nothing here is stored, and nothing here signs.
+ * Reads and builds only. It holds the last sale it built, keyed by its bytes, for exactly as long
+ * as a review needs it — nothing here is stored, and nothing here signs.
  */
 internal class JupiterPositions(
     private val api: JupiterPrediction,

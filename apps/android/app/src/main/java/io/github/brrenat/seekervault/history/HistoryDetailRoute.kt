@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.brrenat.seekervault.ReviewIdentity
 import io.github.brrenat.seekervault.activity.openLink
 import io.github.brrenat.seekervault.confirmations.ChainCheck
@@ -32,7 +33,6 @@ import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import java.time.Instant
-import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -155,7 +155,8 @@ fun HistoryDetailRoute(
                                     clock = clock,
                                 ),
                             transactions =
-                                base.transactions + saleTransactions(record, positions, chainChecks),
+                                base.transactions +
+                                    saleTransactions(record, positions, chainChecks),
                         )
                     }
         }
@@ -195,8 +196,12 @@ fun HistoryDetailRoute(
                     }
                 },
                 onOpenExplorer = { url -> openLink(context, url) },
-                onRefreshPosition = { positionOf(identity, feedRecords, positions)?.let(onRefreshPosition) },
-                onSellPosition = { positionOf(identity, feedRecords, positions)?.let(onSellPosition) },
+                onRefreshPosition = {
+                    positionOf(identity, feedRecords, positions)?.let(onRefreshPosition)
+                },
+                onSellPosition = {
+                    positionOf(identity, feedRecords, positions)?.let(onSellPosition)
+                },
                 onOpenProvider = onOpenProvider,
                 onCheckStatus = {
                     val key = RequestKey(identity.connectionId, identity.requestId)
@@ -236,8 +241,7 @@ private fun PositionPolling(
     onRefresh: (String) -> Unit,
 ) {
     val account = holding.held.account
-    val unresolved =
-        holding.ordersUnresolved || positions.salesOf(account).any { it.inFlight }
+    val unresolved = holding.ordersUnresolved || positions.salesOf(account).any { it.inFlight }
     // On opening, and on every return to the app — from the wallet or from Jupiter, where the
     // position may have been changed by hand.
     LifecycleResumeEffect(account) {
