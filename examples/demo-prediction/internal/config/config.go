@@ -17,6 +17,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/demo-prediction/internal/jupiter"
 	support "github.com/BrRenat/SeekerAgentWallet/publisher-support/config"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
@@ -66,6 +67,12 @@ const (
 	MostNoteBytes = 400
 )
 
+// Runs is what this template's own code executes on (SEE-174): Jupiter's prediction markets settle
+// on Solana Mainnet and nowhere else, so a deployment declares Mainnet unless its operator says
+// none, and cannot declare a network the provider does not trade on
+// (PUBLISHER_SUPPORTED_NETWORKS, docs/wiki/prediction-template.md).
+var Runs = support.Template{Networks: []network.Network{network.Mainnet}}
+
 // LoadPrediction reads the environment and returns both halves of a Prediction deployment, or every
 // problem it found in either of them.
 //
@@ -73,7 +80,7 @@ const (
 // category the provider does not have should report both, because the alternative is an operator
 // fixing one variable per restart.
 func LoadPrediction(lookup support.Lookup) (*support.Config, *Prediction, []string) {
-	config, problems := support.Load(lookup)
+	config, problems := support.LoadTemplate(lookup, Runs)
 
 	read := support.NewReader(lookup)
 	held := &Prediction{

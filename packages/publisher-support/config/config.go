@@ -27,11 +27,13 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
@@ -65,6 +67,12 @@ type Config struct {
 	// the manifest, it is stamped into the database, and it is in every answer the API gives,
 	// because the way this gets confused is a copied compose file.
 	Environment environment.Environment
+	// The Solana networks this deployment's wallet operations run on (SEE-174), in canonical
+	// order. Empty declares none. It is a different question from the environment — a sandbox
+	// deployment simulates against Mainnet data — and it is published in the manifest, where a
+	// phone offers only wallet profiles on one of these networks and signs nothing for a
+	// connection whose network is not listed.
+	Networks []network.Network
 	// The SQLite file: the signals this template holds, and what the gateway has confirmed about
 	// each of them.
 	DatabasePath string
@@ -100,12 +108,36 @@ const (
 // Lookup is os.LookupEnv, injected so the tests configure a template without touching the process.
 type Lookup func(name string) (string, bool)
 
-// Load reads the environment and returns the configuration, or every problem it found.
+// Template is what a template's own code fixes about every deployment of it, which configuration
+// may narrow but never widen.
+//
+// Today that is one thing: the Solana networks its operations can execute on (SEE-174). A template
+// that swaps through Jupiter runs on Mainnet whatever anybody writes in a compose file, because
+// Jupiter has no other network — so a deployment of it that declared Devnet would have phones sign
+// transactions that cannot land. The template says so here, and the configuration can only choose
+// among what it says.
+type Template struct {
+	// The networks this template's operations can execute on, which is also what a deployment
+	// that sets nothing declares. Nil is a template that does not say: then
+	// PUBLISHER_SUPPORTED_NETWORKS may name any of the three, and a deployment that sets nothing
+	// declares none — never Mainnet by default, because a network nobody chose is the one with
+	// the money on it.
+	Networks []network.Network
+}
+
+// Load reads the environment and returns the configuration, or every problem it found, for a
+// template that fixes nothing about its networks (see [Template]).
 //
 // A caller that gets problems prints all of them and stops. A template that started with half a
 // configuration would either publish as the wrong server or serve an API with no token on it, and
 // both are worse than not starting.
 func Load(lookup Lookup) (*Config, []string) {
+	return LoadTemplate(lookup, Template{})
+}
+
+// LoadTemplate is [Load] for a template that says what its own code runs on. Both demos use it:
+// each of them executes on Solana Mainnet, and each says so rather than leaving it to a setting.
+func LoadTemplate(lookup Lookup, template Template) (*Config, []string) {
 	read := NewReader(lookup)
 	note, text, secret := read.Note, read.Text, read.Secret
 
@@ -162,6 +194,7 @@ func Load(lookup Lookup) (*Config, []string) {
 			"this server promises when its owner approves a signal, and one deployment serves " +
 			"one of them")
 	}
+	config.Networks = supportedNetworks(read, template)
 	// The phone's own rule for a server's name, which is a label on one line rather than prose.
 	if config.DisplayName != "" &&
 		!signals.Printable(config.DisplayName, signals.MaxNameBytes, false) {
@@ -214,6 +247,47 @@ func Load(lookup Lookup) (*Config, []string) {
 		return nil, read.Problems()
 	}
 	return config, nil
+}
+
+// supportedNetworks reads PUBLISHER_SUPPORTED_NETWORKS (SEE-174): a comma-separated list of
+// mainnet, devnet and testnet, or the word none.
+//
+// Unset is the template's own answer — the networks its code runs on, or none for a template that
+// does not say — and never Mainnet by itself. Set, it must name only networks the template runs
+// on: narrowing is the operator's choice (a deployment whose proposals should reach no wallet says
+// none), widening is a claim the code cannot keep, and both are reported at startup rather than by
+// a gateway that refuses the manifest or a phone that signs a transaction that cannot land.
+func supportedNetworks(read *Reader, template Template) []network.Network {
+	raw := read.Text("PUBLISHER_SUPPORTED_NETWORKS", "")
+	if raw == "" {
+		return network.Canonical(template.Networks)
+	}
+	networks, err := network.ParseList(raw)
+	if err != nil {
+		read.Note("PUBLISHER_SUPPORTED_NETWORKS %v: it is a comma-separated list of the Solana "+
+			"networks this deployment's wallet operations run on (mainnet, devnet, testnet), "+
+			"each at most once, or none", err)
+		return nil
+	}
+	if template.Networks != nil {
+		for _, named := range networks {
+			if !slices.Contains(template.Networks, named) {
+				read.Note("PUBLISHER_SUPPORTED_NETWORKS names %s, which this template does not "+
+					"run on: it can declare only %s, or none", named, spelled(template.Networks))
+				return nil
+			}
+		}
+	}
+	return networks
+}
+
+// spelled is a list of networks as a problem names them.
+func spelled(networks []network.Network) string {
+	named := make([]string, 0, len(networks))
+	for _, one := range network.Canonical(networks) {
+		named = append(named, one.String())
+	}
+	return strings.Join(named, ", ")
 }
 
 // Reader is the environment, as every setting is read from it: one variable per setting, a problem

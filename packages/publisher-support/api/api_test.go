@@ -559,6 +559,12 @@ func TestTheManifestAndTheReferenceAreTheDeploymentsOwn(t *testing.T) {
 		environments[0] != "production" {
 		t.Fatalf("environments %v: one deployment serves one of them", environments)
 	}
+	// The Solana networks, from the same document (SEE-174): the test deployment declares
+	// Mainnet, as both demos do.
+	if networks := document["supported_networks"].([]any); len(networks) != 1 ||
+		networks[0] != "mainnet" {
+		t.Fatalf("supported_networks %v", networks)
+	}
 	// And it is the document's own answer rather than the setting beside it (SEE-97): one fact,
 	// one source, and the source is the one a phone will read.
 	for _, one := range []struct {

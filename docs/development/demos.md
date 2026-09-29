@@ -230,6 +230,19 @@ reads its twenty-odd `PREDICTION_*` settings through it, so a Prediction deploym
 validated in one pass and reported in one message — rather than an operator fixing the publisher's
 half, restarting, and only then being told about the provider's.
 
+**What a template runs on is the template's, not the deployment's (SEE-174).** `Load` has a sibling,
+`LoadTemplate(lookup, Template{Networks: …})`, for a template that says which Solana networks its
+own code can execute on. `PUBLISHER_SUPPORTED_NETWORKS` — a comma-separated list of `mainnet`,
+`devnet` and `testnet`, or `none` — may then narrow that list but never widen it, and when it is unset
+the deployment declares what the template runs on. Both demos pass Mainnet, because Jupiter swaps and
+Jupiter's prediction markets execute nowhere else, so both declare `mainnet` by default and refuse
+`devnet` or `testnet` at startup. Plain `Load` is a template that says nothing: there the variable may
+name any of the three, and unset declares **none** — never Mainnet by default, because a network
+nobody chose is the one with the money on it. Whatever order it is written in, the list is
+published in canonical order (Mainnet, Devnet, Testnet), and it is part of the manifest's
+fingerprint, so changing it is a new revision that every phone re-reads. It is a different
+question from `PUBLISHER_ENVIRONMENT`: a sandbox deployment still runs against Mainnet data.
+
 **Both credentials have to be usable rather than compared**, which is why they are configuration at
 all — the gateway keeps a publisher's credential as a SHA-256 and has none in its own environment
 (`services/gateway/`). Neither is ever logged, no refusal quotes one, and a boundary test drives a series
@@ -304,9 +317,10 @@ an absolute one. The answer is JSON on stdout so it can be piped; what a person 
 | `signals/` | What a signal is, as pure data: `signals.go` with the `Kind` seam a demo supplies, `swap.go` and `prediction.go` with the two kinds and their terms, the document a signal becomes, and its fingerprint |
 | `manifest/` | What a publisher says about itself, its fingerprint, and the `seekervault://feed` reference — which carries no secret, because a feed is a broadcast |
 | `environment/` | Which promise a deployment keeps (SEE-97): one type, one pair of words, shared by everything that validates, stamps, publishes or answers with it |
+| `network/` | Which Solana networks a deployment's wallet operations run on (SEE-174): one type, three words, a list parsed as a set and returned in the manifest's canonical order, and a value from nowhere published as unspecified rather than as Mainnet |
 | `ids/` | A lowercase v4 UUID from `crypto/rand`, which is the only identity shape this protocol has, and no dependency to get it |
 | `limit/` | The in-memory sliding window behind the optional rolling-hour create cap and the trader UI's own limits (SEE-126) |
-| `config/` | The base deployment: `Config` and `Load`, the exported `Reader` (`NewReader`/`Note`/`Text`/`Secret`/`Whole`/`List`/`Problems`), and the address rules `Origin`, `Reachable` and `HeaderSafe` |
+| `config/` | The base deployment: `Config`, `Load` and `LoadTemplate` (a template's own networks, SEE-174), the exported `Reader` (`NewReader`/`Note`/`Text`/`Secret`/`Whole`/`List`/`Problems`), and the address rules `Origin`, `Reachable` and `HeaderSafe` |
 | `markets/` | The market records the store persists: `Market`, `Tracked`, `Cycle`, `ErrBusy`, and the `OK`/`Partial`/`Failed` outcomes. It knows no provider |
 | `store/` | The only place that speaks SQL: six tables, one writer, two revisions per row that are the whole of the outbox, the market rows, and schema v3 brought forward rather than refused. Version 3 adds the source-authored request title while old rows retain their operation fallback. |
 | `gateway/` | The authenticated HTTP/Connect `PublisherService` client, and the classification of every refusal into retry or refuse |
@@ -396,12 +410,13 @@ publishing to one gateway.
 
 | File | What it holds |
 | --- | --- |
-| `config/config_test.go` | The settings with no default, every problem at once, the two canonical address forms, a secret as a file, and that a credential must be one word an HTTP header can carry |
+| `config/config_test.go` | The settings with no default, every problem at once, the two canonical address forms, a secret as a file, that a credential must be one word an HTTP header can carry, and the supported networks: none unless set or fixed by the template, and a template's own networks narrowed but never widened (SEE-174) |
 | `signals/signals_test.go` | The expiry rules, the note's bounds, the terms' bounds, that the document lists its terms in key order, and what the fingerprint is and is not |
 | `signals/swap_test.go` | Every way a swap's terms can be wrong with the code a caller is told, that direction is the pair and there is no side field, canonical numbers, absent-is-absent, a label counted the way the phone counts it, and base58 |
 | `signals/prediction_test.go` | Every way a market's terms can be wrong, that no term can carry a side, the provider's floor being published rather than assumed, both deposit mints with their own decimals, and the identifier rule |
 | `signals/contract_test.go` | The bounds are the **gateway's own** and the prediction rules are the **phone's own**, both read out of their source rather than trusted |
-| `manifest/manifest_test.go` | A manifest is always a gateway feed, names one environment, carries the kind's plugin requirement, and a reference that carries no secret. An environment that came from anywhere but the configuration is published as unspecified rather than as production (SEE-97) |
+| `manifest/manifest_test.go` | A manifest is always a gateway feed, names one environment, carries the kind's plugin requirement, and a reference that carries no secret. An environment that came from anywhere but the configuration is published as unspecified rather than as production (SEE-97). The supported networks are published in canonical order, none as none, and every change to them — added, dropped, replaced — moves the fingerprint while a reorder does not (SEE-174) |
+| `network/network_test.go` | Only the three words are a network; a list is a set in canonical order, and a repeated or unknown name is refused; a network from nowhere is unspecified on the wire rather than Mainnet, and the wire form narrows nothing (SEE-174) |
 | `environment/environment_test.go` | Only the two words are an environment, including the ways an operator nearly gets it right; one from nowhere has no wire value at all; and the two words are **the phone's own**, read out of `ActionPlugin.kt` rather than trusted |
 | `ids/ids_test.go` | The shape, the version and variant bits, and that two are not the same |
 | `limit/limit_test.go` | Sliding window, unlimited zero, independent keys, undo freeing a slot |
@@ -431,7 +446,7 @@ publishing to one gateway.
 | `internal/discovery/discovery_test.go` | Every reason a market is not a candidate, the expiry being the market's own close time, what the note says and that a provider's text cannot spoil it, the derived key, and the publishing order |
 | `internal/discovery/reconcile_test.go` | The reconciler over the **real store**: a real listing becoming proposals, a second cycle publishing nothing, a restart publishing nothing, a postponed market moving one revision, **absence not being closure**, every way the source ends a market, an outage ending none, the ceiling, the round robin, and two cycles not running at once |
 | `internal/discovery/feedgateway_test.go` | The **real gateway**, for a *discovered* market. Opt-in; see below |
-| `internal/config/config_test.go` | A deployment that starts on its defaults, every filter read, every way one is refused, **both halves reported at once**, the provider's key as a file, and no refusal quoting it |
+| `internal/config/config_test.go` | A deployment that starts on its defaults, every filter read, every way one is refused, **both halves reported at once**, the provider's key as a file, no refusal quoting it, and Mainnet declared by default with `none` allowed and Devnet or Testnet refused (SEE-174) |
 | `internal/api/discovery_test.go` | Nobody may write a prediction signal, a poll running a cycle and publishing it, what `/v1/discovery` says, that the status says it is not writable, a poll refused while one runs, and **the provider's key in no answer and no log line** |
 | `internal/api/overlay_test.go` | Search lists matching markets, select publishes one through discovery, callers still cannot POST `/v1/requests` |
 | `internal/discovery/search_test.go` | Search uses the query not the deployment filters, select publishes a market the filter would skip, a closed market is refused, and select is busy during a cycle |

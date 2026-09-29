@@ -71,7 +71,8 @@ A worked example, end to end, with nothing left out:
    no network surface at all.
 2. **The template starts** with that credential, the gateway's origin, its own API token and an
    environment (`production` or `sandbox`). It publishes its manifest — `protocol_version` 1, mode
-   `gateway_feed`, `required_plugins: [jupiter.swap 1..1]`, one environment, its channel — and
+   `gateway_feed`, `required_plugins: [jupiter.swap 1..1]`, one environment, its channel with
+   `supported_networks: [mainnet]` — and
    prints the one line a subscriber needs:
    `seekervault://feed?v=1&gateway=…&server=…`. That reference carries no secret, so it can go in a
    README or a QR code.
@@ -201,6 +202,21 @@ gateway refuses a manifest that tries to change the environments a server ID alr
 The shipped `.env.example` is a sandbox, so that copying it and running it demonstrates the whole
 path without anybody's money. Production is a deliberate edit of that line; the code itself still
 has no default, so a deployment that says nothing does not start.
+
+## It runs on Solana Mainnet, whatever the environment
+
+The manifest also says which Solana networks the template's wallet operations run on
+(`feed.supported_networks`, SEE-174, [server-manifests.md](server-manifests.md#supported-networks)), and
+that is a separate question from the environment: sandbox is not Devnet — a sandbox deployment
+publishes the same live Mainnet swaps and each phone simulates the execution — and production is not
+Mainnet by definition. Jupiter swaps execute on Mainnet and nowhere else, so the template says so in
+its own code: `PUBLISHER_SUPPORTED_NETWORKS` defaults to `mainnet`, may be narrowed to `none` (a feed
+no phone signs anything for), and refuses `devnet` or `testnet` at startup, because a deployment that
+declared one would have owners bind a Devnet wallet profile and sign transactions that cannot land.
+The phone offers only wallet profiles on a declared network when the feed is added, and refuses to
+sign for a connection whose network the manifest does not list. The networks, unlike the
+environment, may change between revisions: changing the setting moves the manifest's fingerprint, so
+the next start publishes a new revision that every phone re-reads.
 
 ## The API is the one path in
 

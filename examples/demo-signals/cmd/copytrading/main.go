@@ -43,6 +43,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/gateway"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/manifest"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publish"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/store"
@@ -58,7 +59,11 @@ func main() {
 }
 
 func run(log *slog.Logger) error {
-	settings, problems := config.Load(os.LookupEnv)
+	// Jupiter swaps execute on Solana Mainnet and nowhere else (SEE-174), so that is what this
+	// template declares unless its operator says none, and a deployment cannot declare a network
+	// Jupiter does not trade on (PUBLISHER_SUPPORTED_NETWORKS, docs/wiki/copytrading-template.md).
+	settings, problems := config.LoadTemplate(os.LookupEnv,
+		config.Template{Networks: []network.Network{network.Mainnet}})
 	// This demo's feed is restricted (SEE-156): only devices the operator approved may read it. That
 	// is compiled in, like the kind below, rather than a setting — the Prediction demo is the public
 	// one — so the settings it needs are required rather than optional.
@@ -83,6 +88,7 @@ func run(log *slog.Logger) error {
 		ServerID:    settings.ServerID,
 		GatewayURL:  settings.GatewayURL,
 		Environment: settings.Environment,
+		Networks:    settings.Networks,
 		Requirement: kind.Requirement(),
 		DisplayName: settings.DisplayName,
 		AuthOrigin:  restricted.AuthOrigin,

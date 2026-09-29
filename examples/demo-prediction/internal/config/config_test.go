@@ -3,12 +3,14 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/demo-prediction/internal/jupiter"
 	support "github.com/BrRenat/SeekerAgentWallet/publisher-support/config"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publishertest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
@@ -105,6 +107,27 @@ func TestAPredictionDeploymentStartsWithItsDefaults(t *testing.T) {
 }
 
 // Everything an operator can ask for, read back as the reconciler will apply it.
+// Jupiter's prediction markets settle on Mainnet and nowhere else (SEE-174), so that is what a
+// deployment declares when it sets nothing. Its operator may say none; it may not say Devnet, which
+// would have phones sign transactions the provider cannot settle.
+func TestAPredictionDeploymentDeclaresMainnetAndOnlyMainnet(t *testing.T) {
+	config, _ := loadPredicting(t, predicting(nil))
+	if !slices.Equal(config.Networks, []network.Network{network.Mainnet}) {
+		t.Fatalf("a deployment that set nothing declared %v", config.Networks)
+	}
+	config, _ = loadPredicting(t, predicting(map[string]string{
+		"PUBLISHER_SUPPORTED_NETWORKS": "none",
+	}))
+	if len(config.Networks) != 0 {
+		t.Fatalf("none declared %v", config.Networks)
+	}
+	for _, value := range []string{"devnet", "mainnet,testnet"} {
+		refusedPredicting(t, predicting(map[string]string{
+			"PUBLISHER_SUPPORTED_NETWORKS": value,
+		}), "PUBLISHER_SUPPORTED_NETWORKS")
+	}
+}
+
 func TestEveryFilterIsRead(t *testing.T) {
 	_, held := loadPredicting(t, predicting(map[string]string{
 		"PREDICTION_SOURCE":                   "Kalshi",

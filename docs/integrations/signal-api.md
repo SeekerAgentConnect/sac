@@ -63,7 +63,7 @@ caller learns that it may not publish and never whether what it presented used t
 | --- | --- |
 | `GET /healthz` | Says the process is up, and nothing else. No credential |
 | `GET /v1/status` | Which publisher this is, which gateway it publishes through, what it promises, and how many signals are waiting to be published |
-| `GET /v1/manifest` | The manifest this template publishes about itself, and the `seekervault://feed` reference a phone adds it from |
+| `GET /v1/manifest` | The manifest this template publishes about itself — including `supported_networks`, the Solana networks its feed reference declares (`["mainnet"]` for both demos, `[]` for none; SEE-174) — and the `seekervault://feed` reference a phone adds it from |
 | `POST /v1/requests` | Create and publish a feed request. **Requires `Idempotency-Key`** |
 | `GET /v1/requests` | Every request this template holds, newest first |
 | `GET /v1/requests/{id}` | One common request, and what the gateway has confirmed about it |
@@ -310,6 +310,7 @@ The problem is the gateway's own code. The ones worth knowing:
 | `too_many_proposals` | The channel is at its bound. Withdraw something, then retry |
 | `stale_revision`, `revision_conflict`, `cancelled` | This template's view and the gateway's disagree; look at both before retrying |
 | `other_environment` | `PUBLISHER_ENVIRONMENT` is not the one this server ID already published (SEE-97). A second environment is a second deployment, with its own server ID, credential and database |
+| `bad_network` | The manifest's supported networks name an unknown network or one twice (SEE-174). A template refuses a bad `PUBLISHER_SUPPORTED_NETWORKS` at startup, so this is a template built outside the support library |
 | `unimplemented` (404) | `PUBLISHER_PUBLISH_URL` is not reaching the gateway's publisher API |
 
 Nothing retries a refusal on its own. When the cause is fixed:

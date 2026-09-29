@@ -185,6 +185,7 @@ half is this demo's alone.
 | `PUBLISHER_SERVER_ID` | yes | — | This source's lowercase UUID, as registered with the gateway |
 | `PUBLISHER_GATEWAY_URL` | yes | — | The gateway's own public origin, character for character |
 | `PUBLISHER_ENVIRONMENT` | yes | — | `production` or `sandbox`; stamped into the database on first open |
+| `PUBLISHER_SUPPORTED_NETWORKS` | no | `mainnet` | Solana networks the manifest declares (SEE-174). Jupiter's prediction markets run only on Mainnet, so `mainnet` or `none`; `devnet`/`testnet` are refused. Not the environment: sandbox still uses Mainnet data |
 | `BROADCAST_CREDENTIAL` | yes | — | The credential the gateway issued this source |
 | `PUBLISHER_API_TOKEN` | yes | — | The grant to call this demo's own API; at least 32 characters |
 | `PUBLISHER_PUBLISH_URL` | no | the gateway URL | Where publications are *sent*, when that differs from where phones read |

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/proposal/v1"
@@ -90,6 +91,10 @@ func manifest(serverID string, revision uint64) *serverv1.ServerManifest {
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: "https://feeds.example.com",
 			Channel:    "server/" + serverID,
+			SupportedNetworks: []serverv1.SolanaNetwork{
+				serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+				serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+			},
 		}},
 	}
 }
@@ -379,6 +384,11 @@ func TestAManifestIsReadBackAndMovesTheChannelsSequence(t *testing.T) {
 	}
 	if held.Document.GetSettingsRevision() != 1 {
 		t.Fatalf("the manifest came back at revision %d", held.Document.GetSettingsRevision())
+	}
+	// The whole document, not the one column the table also keeps: the stored bytes are the only
+	// copy of everything else, the supported networks included (SEE-174).
+	if !proto.Equal(held.Document, manifest(publisher, 1)) {
+		t.Fatalf("the manifest came back changed:\n%v", held.Document)
 	}
 	if none, err := documents.Manifest(ctx, stranger); err != nil || none != nil {
 		t.Fatalf("a server that published no manifest has one (%v)", err)

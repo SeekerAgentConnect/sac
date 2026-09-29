@@ -509,12 +509,13 @@ func (s *Server) manifest(writer http.ResponseWriter, request *http.Request) {
 	}
 	send(writer, http.StatusOK, map[string]any{
 		"manifest": map[string]any{
-			"server_id":         document.GetServerId(),
-			"protocol_version":  document.GetProtocolVersion(),
-			"settings_revision": number(revision),
-			"mode":              "gateway_feed",
-			"environments":      environmentsOf(document),
-			"display_name":      document.GetDisplayName(),
+			"server_id":          document.GetServerId(),
+			"protocol_version":   document.GetProtocolVersion(),
+			"settings_revision":  number(revision),
+			"mode":               "gateway_feed",
+			"environments":       environmentsOf(document),
+			"supported_networks": networksOf(document),
+			"display_name":       document.GetDisplayName(),
 			"required_plugins": []map[string]any{{
 				"plugin_id":    s.kind.Requirement().PluginID,
 				"min_contract": s.kind.Requirement().MinContract,
@@ -943,6 +944,19 @@ func environmentsOf(document *serverv1.ServerManifest) []string {
 	for _, environment := range document.GetEnvironments() {
 		named = append(named, strings.ToLower(
 			strings.TrimPrefix(environment.String(), "SERVER_ENVIRONMENT_")))
+	}
+	return named
+}
+
+// networksOf is the Solana networks a manifest answer says a deployment runs on (SEE-174), read
+// out of the document for the same reason as [environmentsOf]. Empty is an answer — the deployment
+// declares none — and it is an empty list rather than nothing, so a client cannot mistake it for a
+// template too old to say.
+func networksOf(document *serverv1.ServerManifest) []string {
+	named := make([]string, 0, len(document.GetFeed().GetSupportedNetworks()))
+	for _, network := range document.GetFeed().GetSupportedNetworks() {
+		named = append(named, strings.ToLower(
+			strings.TrimPrefix(network.String(), "SOLANA_NETWORK_")))
 	}
 	return named
 }

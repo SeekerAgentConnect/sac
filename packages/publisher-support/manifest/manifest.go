@@ -3,7 +3,7 @@
 //
 // A manifest is bounded declarative data: the server's lasting ID, the phone–server contract it
 // speaks, a settings revision, the mode, the bundled plugins its operations need, the environments
-// it serves, and a name that is never believed. There is no field in it that installs code, asks
+// it serves, the Solana networks its operations run on, and a name that is never believed. There is no field in it that installs code, asks
 // for a permission, carries a policy or names a wallet endpoint — what a phone will do with this
 // server is decided by the build it is running and by its owner, never by this document.
 //
@@ -21,6 +21,7 @@ import (
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
@@ -40,6 +41,12 @@ type Settings struct {
 	// the server does not name: the two are different promises about what happens when the owner
 	// approves (SEE-97).
 	Environment environment.Environment
+	// The Solana networks this deployment's wallet operations run on (SEE-174), from the
+	// configuration (PUBLISHER_SUPPORTED_NETWORKS). Empty declares none — a feed whose proposals
+	// never reach a wallet — and never means Mainnet: a phone signs nothing for a connection whose
+	// network is not listed here. Unlike the environment it may change between revisions, and the
+	// fingerprint moves with it, so adding Devnet is a new revision every phone re-reads.
+	Networks []network.Network
 	// The bundled plugin the template's operation needs, from the kind it registered.
 	Requirement signals.Requirement
 	// The name the server calls itself, for the connection's default label. The owner can rename
@@ -84,6 +91,11 @@ func Document(settings Settings, revision uint64) *serverv1.ServerManifest {
 			GatewayUrl: settings.GatewayURL,
 			Channel:    signals.ChannelFor(settings.ServerID),
 			Access:     access,
+			// In the reference rather than beside it, so the reference stays the last thing in a
+			// serialized manifest in every runtime (manifest.proto). In canonical order, whatever
+			// order they were configured in, so the same networks always make the same document,
+			// the same fingerprint and the same revision.
+			SupportedNetworks: network.Wire(settings.Networks),
 		}},
 	}
 }

@@ -66,6 +66,13 @@ func TestTheFixturesAreWhatTheGatewayServes(t *testing.T) {
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: fixtureGateway,
 			Channel:    channel,
+			// Written out of order on purpose (SEE-174): the fixtures hold them ascending,
+			// because that is the canonical order the gateway stores and serves whatever a
+			// publisher sent.
+			SupportedNetworks: []serverv1.SolanaNetwork{
+				serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+				serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+			},
 		}},
 	})
 
