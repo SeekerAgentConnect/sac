@@ -54,7 +54,10 @@ data class CatalogKey(val gatewayUrl: String, val serverId: String)
 data class CatalogPage(val feeds: List<CatalogFeed>, val nextPageToken: String?)
 
 object CatalogFeeds {
-    /** The most characters of a name or description kept; the gateway bounds both lower. */
+    /**
+     * The most characters of a name or description kept; the gateway bounds both lower. Counted in
+     * Unicode code points, as the gateway counts runes, so an emoji is one character, not two.
+     */
     const val MAX_NAME = 120
     const val MAX_DESCRIPTION = 500
     const val MAX_PLUGINS = 16
@@ -83,8 +86,13 @@ object CatalogFeeds {
         if (wire.channel != channelFor(wire.serverId)) return null
         val name = wire.displayName.trim()
         val description = wire.description.trim()
-        if (name.isEmpty() || name.length > MAX_NAME) return null
-        if (description.isEmpty() || description.length > MAX_DESCRIPTION) return null
+        if (name.isEmpty() || name.codePointCount(0, name.length) > MAX_NAME) return null
+        if (
+            description.isEmpty() ||
+                description.codePointCount(0, description.length) > MAX_DESCRIPTION
+        ) {
+            return null
+        }
         if (description.any { it.isISOControl() && it != '\n' }) return null
         if (name.any { it.isISOControl() }) return null
         val restricted =

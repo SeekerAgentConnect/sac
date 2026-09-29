@@ -22,9 +22,10 @@ already shared still add it.
 ## The operator's side
 
 A registration carries `show_in_recommendations` (default **off**) and a bounded plain-text public
-description (at most 500 characters, line breaks allowed, no other control characters). Both are
-stored on the registration, in SQLite (schema v8) and Postgres (schema v4); every registration that
-existed before migrates to unlisted with no description.
+description (at most 500 characters, counted as Unicode code points by the gateway and the app
+alike; line breaks allowed, no other control characters). Both are stored on the registration, in
+SQLite (schema v8) and Postgres (schema v4); every registration that existed before migrates to
+unlisted with no description.
 
 - **Admin page.** *Add server* has a **Show in app recommendations** switch and a description field;
   each server's page has an **App recommendations** form to change either at any time. The page says

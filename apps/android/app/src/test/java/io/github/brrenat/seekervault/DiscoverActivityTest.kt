@@ -231,6 +231,45 @@ class DiscoverActivityTest {
         assertEquals(1, app.connectionRepository.connections.value.size)
     }
 
+    /** The details sheet's own button leaves the sheet and goes where the card's button goes. */
+    @Test
+    fun aCardsDetailsConnectAndOpenLeaveTheSheetForTheirDestination() {
+        launch()
+        openDiscover()
+        val openDetails = {
+            compose
+                .onNodeWithTag(DiscoverTags.card(SERVER_A))
+                .performScrollTo()
+                .performSemanticsAction(SemanticsActions.OnClick)
+            compose.onNodeWithText(app.getString(R.string.discover_detail_stale)).assertExists()
+        }
+
+        openDetails()
+        compose
+            .onNodeWithTag(DiscoverTags.DETAIL_ACTION)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithText(app.getString(R.string.discover_detail_stale)).assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionsTags.CONFIRM_FEED).assertExists()
+        compose
+            .onNodeWithTag(ConnectionsTags.ADD_FEED)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        awaitAdded()
+        compose.onNodeWithTag(ConnectionsTags.DIALOG_DISMISS).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
+        compose.mainClock.advanceTimeBy(400)
+
+        openDetails()
+        compose
+            .onNodeWithTag(DiscoverTags.DETAIL_ACTION)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithText(app.getString(R.string.discover_detail_stale)).assertDoesNotExist()
+        compose.onNodeWithTag(ConnectionsTags.CLOSE).assertExists()
+        assertEquals(1, app.connectionRepository.connections.value.size)
+    }
+
     @Test
     fun aRestrictedFeedIsAddedFromDiscoverAndShownByItsAccessStateNeverAsConnected() {
         launch()

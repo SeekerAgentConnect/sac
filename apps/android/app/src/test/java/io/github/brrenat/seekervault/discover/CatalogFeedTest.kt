@@ -110,6 +110,21 @@ class CatalogFeedTest {
         )
     }
 
+    /** The gateway counts runes; a supplementary character is one of them, not two UTF-16 units. */
+    @Test
+    fun aDescriptionIsBoundedInCodePointsAsTheGatewayCountsIt() {
+        val atLimit = "x".repeat(CatalogFeeds.MAX_DESCRIPTION - 1) + "\uD83D\uDE80"
+        assertEquals(CatalogFeeds.MAX_DESCRIPTION + 1, atLimit.length)
+        assertEquals(
+            atLimit,
+            CatalogFeeds.from(wire { it.description = atLimit }, noCleartext)?.description,
+        )
+        assertNull(CatalogFeeds.from(wire { it.description = atLimit + "x" }, noCleartext))
+
+        val name = "n".repeat(CatalogFeeds.MAX_NAME - 1) + "\uD83D\uDE80"
+        assertEquals(name, CatalogFeeds.from(wire { it.displayName = name }, noCleartext)?.name)
+    }
+
     @Test
     fun aLoopbackGatewayIsAcceptedOnlyWhereTheBuildPermitsCleartext() {
         val loopback = wire(gateway = "http://127.0.0.1:8080")

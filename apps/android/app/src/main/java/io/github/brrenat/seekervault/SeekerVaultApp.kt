@@ -362,17 +362,23 @@ fun SeekerVaultApp(
     // A Discover card's button (SEE-176). Connect and Request access are the normal Add connection
     // flow with the reference prefilled — its confirmation, its manifest check, then the wallet
     // picker on the connection's own sheet — and Open is the connection this phone already holds.
-    // Nothing here adds, signs or requests anything by itself.
+    // Nothing here adds, signs or requests anything by itself. From a card's details, the details
+    // sheet leaves the stack first: both destinations open from the tab itself, never over a sheet.
     val catalogAction: (CatalogAction) -> Unit = { action ->
+        val fromTab: (() -> Unit) -> Unit = { then ->
+            dismissSheetsThen(0) {
+                while (navigator.state.sheets.isNotEmpty()) navigator.back()
+                then()
+            }
+        }
         when (action) {
             is CatalogAction.Onboard ->
-                dismissSheetsThen(0) {
+                fromTab {
                     if (navigator.openCatalogConnect()) {
                         connections.onCode(FeedReferences.format(action.feed.reference))
                     }
                 }
-            is CatalogAction.Open ->
-                dismissSheetsThen(0) { navigator.openConnectionDetail(action.connectionId) }
+            is CatalogAction.Open -> fromTab { navigator.openConnectionDetail(action.connectionId) }
             CatalogAction.None -> Unit
         }
     }
