@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Discover tab (SEE-176, docs/wiki/discover.md). -->
+<resources>
+    <string name="nav_discover">Discover</string>
+    <string name="discover_title">Discover</string>
+    <string name="discover_intro">Feeds this gateway recommends. Browsing adds nothing: a feed is added only when you connect to it, and a restricted one only after its publisher approves you.</string>
+    <string name="discover_not_configured_title">No catalog configured</string>
+    <string name="discover_not_configured">This build names no gateway to read recommendations from. You can still add a feed from its link on Home.</string>
+    <string name="discover_loading">Loading recommended feeds…</string>
+    <string name="discover_empty_title">Nothing recommended yet</string>
+    <string name="discover_empty">This gateway doesn\'t list any feeds right now. You can still add a feed from its link on Home.</string>
+    <string name="discover_failed_title">Couldn\'t load the catalog</string>
+    <string name="discover_failed_unreachable">Couldn\'t reach %1$s. Check the connection and try again.</string>
+    <string name="discover_failed_certificate">The gateway\'s certificate isn\'t trusted, or it\'s for another host name.</string>
+    <string name="discover_failed_cleartext">This build allows a plain-HTTP gateway only at 127.0.0.1 over adb reverse.</string>
+    <string name="discover_failed_unimplemented">This gateway doesn\'t offer a catalog yet.</string>
+    <string name="discover_failed_other">The gateway\'s answer couldn\'t be used.</string>
+    <string name="discover_refresh_failed">Couldn\'t refresh. Showing what was loaded before.</string>
+    <string name="discover_more_failed">Couldn\'t load more feeds.</string>
+    <string name="discover_retry">Retry</string>
+    <string name="discover_refresh">Refresh</string>
+    <string name="discover_refreshing">Refreshing…</string>
+    <string name="discover_loading_more">Loading more…</string>
+    <string name="discover_load_more">Load more</string>
+
+    <string name="discover_access_public">Public</string>
+    <string name="discover_access_restricted">Restricted · approval needed</string>
+    <string name="discover_connect">Connect</string>
+    <string name="discover_request_access">Request access</string>
+    <string name="discover_open">Open</string>
+    <string name="discover_view">View</string>
+    <string name="discover_continue">Continue</string>
+
+    <string name="discover_status_adding">Adding…</string>
+    <string name="discover_status_connected">Connected</string>
+    <string name="discover_status_requesting">Sending the access request…</string>
+    <string name="discover_status_not_requested">Added. Access not requested yet</string>
+    <string name="discover_status_pending">Waiting for the publisher to approve</string>
+    <string name="discover_status_approved">Approved. Finishing the connection…</string>
+    <string name="discover_status_rejected">The publisher didn\'t approve this device</string>
+    <string name="discover_status_revoked">Access revoked</string>
+    <string name="discover_status_expired">Access expired</string>
+
+    <string name="discover_detail_access">Who may read</string>
+    <string name="discover_detail_access_public">Anyone who adds it. Nothing is signed to read it.</string>
+    <string name="discover_detail_access_restricted">Only devices its publisher approves. You prove you control your wallet by signing a message — not a transaction, it moves no funds — and the publisher decides.</string>
+    <string name="discover_detail_networks">Solana networks</string>
+    <string name="discover_detail_networks_none">None declared</string>
+    <string name="discover_detail_plugins">Required client plugins</string>
+    <string name="discover_detail_plugins_none">None</string>
+    <string name="discover_detail_gateway">Gateway</string>
+    <string name="discover_detail_server">Server ID</string>
+    <string name="discover_detail_gone">This feed is no longer in the catalog. Close this and refresh.</string>
+    <string name="discover_detail_stale">Details are checked again when you connect: the app reads the feed\'s own manifest first, and adds nothing unless you confirm.</string>
+    <string name="discover_close">Close</string>
+</resources>

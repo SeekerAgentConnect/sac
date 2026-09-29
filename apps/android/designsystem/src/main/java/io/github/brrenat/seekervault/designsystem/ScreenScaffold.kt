@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Inbox
@@ -35,6 +36,7 @@ import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 enum class ScreenDestination {
     Home,
     Inbox,
+    Discover,
     Wallet,
     Activity,
 }
@@ -44,6 +46,8 @@ data class ScreenNavigationCallbacks(
     val onInbox: () -> Unit,
     val onWallet: () -> Unit,
     val onActivity: () -> Unit,
+    /** The Discover tab (SEE-176), the feed catalog. */
+    val onDiscover: () -> Unit = {},
 )
 
 /** Shared chrome for the five SEE-121 full-screen references. */
@@ -189,6 +193,14 @@ fun ScreenNavigationBar(
             icon = Icons.Outlined.Inbox,
             selected = selected,
             onClick = callbacks.onInbox,
+            modifier = Modifier.weight(1f),
+        )
+        ScreenNavigationItem(
+            destination = ScreenDestination.Discover,
+            label = "Discover",
+            icon = Icons.Outlined.Explore,
+            selected = selected,
+            onClick = callbacks.onDiscover,
             modifier = Modifier.weight(1f),
         )
         ScreenNavigationItem(

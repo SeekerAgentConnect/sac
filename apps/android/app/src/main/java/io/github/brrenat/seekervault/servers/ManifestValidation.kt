@@ -216,7 +216,7 @@ fun manifestFrom(message: WireManifest, expect: ManifestExpectation): ManifestRe
  * the phone shows as such and never signs for
  * ([io.github.brrenat.seekervault.wallet.WalletReadiness]).
  */
-private fun supportedNetworksOf(values: List<Int>): Set<WalletNetwork>? {
+internal fun supportedNetworksOf(values: List<Int>): Set<WalletNetwork>? {
     if (values.size > MAX_SUPPORTED_NETWORKS) return null
     if (values.toSet().size != values.size) return null
     if (WireNetwork.SOLANA_NETWORK_UNSPECIFIED_VALUE in values) return null
