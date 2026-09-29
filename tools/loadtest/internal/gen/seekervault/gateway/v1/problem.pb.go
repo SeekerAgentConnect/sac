@@ -178,6 +178,11 @@ const (
 	GatewayProblem_GATEWAY_PROBLEM_GRANT_REVOKED GatewayProblem = 53
 	// A grant whose identity, references, session digest or lifetime is not well formed.
 	GatewayProblem_GATEWAY_PROBLEM_BAD_GRANT GatewayProblem = 54
+	// --- Supported networks (SEE-174) ------------------------------------------
+	// A manifest's supported_networks names SOLANA_NETWORK_UNSPECIFIED, a value this gateway does
+	// not know, or the same network twice. An empty list is not this: it is a feed whose proposals
+	// never reach a wallet, which is allowed (docs/wiki/server-manifests.md#supported-networks).
+	GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK GatewayProblem = 55
 )
 
 // Enum value maps for GatewayProblem.
@@ -226,6 +231,7 @@ var (
 		52: "GATEWAY_PROBLEM_NO_SUCH_GRANT",
 		53: "GATEWAY_PROBLEM_GRANT_REVOKED",
 		54: "GATEWAY_PROBLEM_BAD_GRANT",
+		55: "GATEWAY_PROBLEM_BAD_NETWORK",
 	}
 	GatewayProblem_value = map[string]int32{
 		"GATEWAY_PROBLEM_UNSPECIFIED":        0,
@@ -271,6 +277,7 @@ var (
 		"GATEWAY_PROBLEM_NO_SUCH_GRANT":      52,
 		"GATEWAY_PROBLEM_GRANT_REVOKED":      53,
 		"GATEWAY_PROBLEM_BAD_GRANT":          54,
+		"GATEWAY_PROBLEM_BAD_NETWORK":        55,
 	}
 )
 
@@ -375,7 +382,7 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x12GatewayErrorDetail\x12@\n" +
 	"\aproblem\x18\x01 \x01(\x0e2&.seekervault.gateway.v1.GatewayProblemR\aproblem\x12\x14\n" +
 	"\x05field\x18\x02 \x01(\tR\x05field\x12#\n" +
-	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\xf3\x0e\n" +
+	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\x94\x0f\n" +
 	"\x0eGatewayProblem\x12\x1f\n" +
 	"\x1bGATEWAY_PROBLEM_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fGATEWAY_PROBLEM_UNAUTHENTICATED\x10\x01\x12 \n" +
@@ -420,7 +427,8 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x1eGATEWAY_PROBLEM_NOT_RESTRICTED\x103\x12!\n" +
 	"\x1dGATEWAY_PROBLEM_NO_SUCH_GRANT\x104\x12!\n" +
 	"\x1dGATEWAY_PROBLEM_GRANT_REVOKED\x105\x12\x1d\n" +
-	"\x19GATEWAY_PROBLEM_BAD_GRANT\x106\"\x04\b#\x10.*\x1cGATEWAY_PROBLEM_BAD_USER_REF*\x1cGATEWAY_PROBLEM_BAD_LIFETIME*\"GATEWAY_PROBLEM_INVALID_INVITATION*\"GATEWAY_PROBLEM_INVITATION_EXPIRED*\x1fGATEWAY_PROBLEM_INVITATION_USED*\x1aGATEWAY_PROBLEM_NO_BINDING*\x1eGATEWAY_PROBLEM_BINDING_EXISTS*\x1fGATEWAY_PROBLEM_WRONG_RECIPIENT*\x1fGATEWAY_PROBLEM_NO_SUCH_REQUEST*\x1fGATEWAY_PROBLEM_RESULT_CONFLICT*\x1fGATEWAY_PROBLEM_REQUEST_SETTLED*\x1bGATEWAY_PROBLEM_NOT_PRIVATEB\x81\x02\n" +
+	"\x19GATEWAY_PROBLEM_BAD_GRANT\x106\x12\x1f\n" +
+	"\x1bGATEWAY_PROBLEM_BAD_NETWORK\x107\"\x04\b#\x10.*\x1cGATEWAY_PROBLEM_BAD_USER_REF*\x1cGATEWAY_PROBLEM_BAD_LIFETIME*\"GATEWAY_PROBLEM_INVALID_INVITATION*\"GATEWAY_PROBLEM_INVITATION_EXPIRED*\x1fGATEWAY_PROBLEM_INVITATION_USED*\x1aGATEWAY_PROBLEM_NO_BINDING*\x1eGATEWAY_PROBLEM_BINDING_EXISTS*\x1fGATEWAY_PROBLEM_WRONG_RECIPIENT*\x1fGATEWAY_PROBLEM_NO_SUCH_REQUEST*\x1fGATEWAY_PROBLEM_RESULT_CONFLICT*\x1fGATEWAY_PROBLEM_REQUEST_SETTLED*\x1bGATEWAY_PROBLEM_NOT_PRIVATEB\x81\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\fProblemProtoP\x01Z[github.com/BrRenat/SeekerAgentWallet/loadtest/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (

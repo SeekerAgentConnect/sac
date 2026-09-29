@@ -33,4 +33,148 @@ public interface DirectServerOrBuilder extends
    */
   com.google.protobuf.ByteString
       getUrlBytes();
+
+  /**
+   * <pre>
+   * The Solana networks this server's wallet operations are configured for (SEE-174,
+   * docs/wiki/server-manifests.md#supported-networks). It is what the server actually runs
+   * against, never every network the protocol can name: a server that trades only on Mainnet says
+   * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
+   * nothing at all rather than claiming a network it doesn't use.
+   *
+   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
+   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
+   * simulate against Mainnet data, and a production server may execute on Devnet.
+   *
+   * The phone offers only wallet profiles on one of these networks when a connection is set up,
+   * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
+   * what every manifest from before SEE-174 reads as — never means Mainnet or "all networks": the
+   * phone shows that the server has declared no networks, and nothing on it is signed until the
+   * server is updated. At most one of each value, and never SOLANA_NETWORK_UNSPECIFIED. Canonical
+   * order is ascending by value, and a server writes it that way so its revision is stable.
+   *
+   * It lives in the reference rather than beside it so that the reference stays the last thing in
+   * a serialized manifest, which is what keeps every runtime's bytes the same (see
+   * ServerManifest.reference); the same field is in DirectServer and GatewayFeed.
+   * </pre>
+   *
+   * <code>repeated .seekervault.server.v1.SolanaNetwork supported_networks = 2 [json_name = "supportedNetworks"];</code>
+   * @return A list containing the supportedNetworks.
+   */
+  java.util.List<io.github.brrenat.seekervault.server.v1.SolanaNetwork> getSupportedNetworksList();
+  /**
+   * <pre>
+   * The Solana networks this server's wallet operations are configured for (SEE-174,
+   * docs/wiki/server-manifests.md#supported-networks). It is what the server actually runs
+   * against, never every network the protocol can name: a server that trades only on Mainnet says
+   * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
+   * nothing at all rather than claiming a network it doesn't use.
+   *
+   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
+   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
+   * simulate against Mainnet data, and a production server may execute on Devnet.
+   *
+   * The phone offers only wallet profiles on one of these networks when a connection is set up,
+   * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
+   * what every manifest from before SEE-174 reads as — never means Mainnet or "all networks": the
+   * phone shows that the server has declared no networks, and nothing on it is signed until the
+   * server is updated. At most one of each value, and never SOLANA_NETWORK_UNSPECIFIED. Canonical
+   * order is ascending by value, and a server writes it that way so its revision is stable.
+   *
+   * It lives in the reference rather than beside it so that the reference stays the last thing in
+   * a serialized manifest, which is what keeps every runtime's bytes the same (see
+   * ServerManifest.reference); the same field is in DirectServer and GatewayFeed.
+   * </pre>
+   *
+   * <code>repeated .seekervault.server.v1.SolanaNetwork supported_networks = 2 [json_name = "supportedNetworks"];</code>
+   * @return The count of supportedNetworks.
+   */
+  int getSupportedNetworksCount();
+  /**
+   * <pre>
+   * The Solana networks this server's wallet operations are configured for (SEE-174,
+   * docs/wiki/server-manifests.md#supported-networks). It is what the server actually runs
+   * against, never every network the protocol can name: a server that trades only on Mainnet says
+   * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
+   * nothing at all rather than claiming a network it doesn't use.
+   *
+   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
+   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
+   * simulate against Mainnet data, and a production server may execute on Devnet.
+   *
+   * The phone offers only wallet profiles on one of these networks when a connection is set up,
+   * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
+   * what every manifest from before SEE-174 reads as — never means Mainnet or "all networks": the
+   * phone shows that the server has declared no networks, and nothing on it is signed until the
+   * server is updated. At most one of each value, and never SOLANA_NETWORK_UNSPECIFIED. Canonical
+   * order is ascending by value, and a server writes it that way so its revision is stable.
+   *
+   * It lives in the reference rather than beside it so that the reference stays the last thing in
+   * a serialized manifest, which is what keeps every runtime's bytes the same (see
+   * ServerManifest.reference); the same field is in DirectServer and GatewayFeed.
+   * </pre>
+   *
+   * <code>repeated .seekervault.server.v1.SolanaNetwork supported_networks = 2 [json_name = "supportedNetworks"];</code>
+   * @param index The index of the element to return.
+   * @return The supportedNetworks at the given index.
+   */
+  io.github.brrenat.seekervault.server.v1.SolanaNetwork getSupportedNetworks(int index);
+  /**
+   * <pre>
+   * The Solana networks this server's wallet operations are configured for (SEE-174,
+   * docs/wiki/server-manifests.md#supported-networks). It is what the server actually runs
+   * against, never every network the protocol can name: a server that trades only on Mainnet says
+   * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
+   * nothing at all rather than claiming a network it doesn't use.
+   *
+   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
+   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
+   * simulate against Mainnet data, and a production server may execute on Devnet.
+   *
+   * The phone offers only wallet profiles on one of these networks when a connection is set up,
+   * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
+   * what every manifest from before SEE-174 reads as — never means Mainnet or "all networks": the
+   * phone shows that the server has declared no networks, and nothing on it is signed until the
+   * server is updated. At most one of each value, and never SOLANA_NETWORK_UNSPECIFIED. Canonical
+   * order is ascending by value, and a server writes it that way so its revision is stable.
+   *
+   * It lives in the reference rather than beside it so that the reference stays the last thing in
+   * a serialized manifest, which is what keeps every runtime's bytes the same (see
+   * ServerManifest.reference); the same field is in DirectServer and GatewayFeed.
+   * </pre>
+   *
+   * <code>repeated .seekervault.server.v1.SolanaNetwork supported_networks = 2 [json_name = "supportedNetworks"];</code>
+   * @return A list containing the enum numeric values on the wire for supportedNetworks.
+   */
+  java.util.List<java.lang.Integer>
+  getSupportedNetworksValueList();
+  /**
+   * <pre>
+   * The Solana networks this server's wallet operations are configured for (SEE-174,
+   * docs/wiki/server-manifests.md#supported-networks). It is what the server actually runs
+   * against, never every network the protocol can name: a server that trades only on Mainnet says
+   * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
+   * nothing at all rather than claiming a network it doesn't use.
+   *
+   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
+   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
+   * simulate against Mainnet data, and a production server may execute on Devnet.
+   *
+   * The phone offers only wallet profiles on one of these networks when a connection is set up,
+   * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
+   * what every manifest from before SEE-174 reads as — never means Mainnet or "all networks": the
+   * phone shows that the server has declared no networks, and nothing on it is signed until the
+   * server is updated. At most one of each value, and never SOLANA_NETWORK_UNSPECIFIED. Canonical
+   * order is ascending by value, and a server writes it that way so its revision is stable.
+   *
+   * It lives in the reference rather than beside it so that the reference stays the last thing in
+   * a serialized manifest, which is what keeps every runtime's bytes the same (see
+   * ServerManifest.reference); the same field is in DirectServer and GatewayFeed.
+   * </pre>
+   *
+   * <code>repeated .seekervault.server.v1.SolanaNetwork supported_networks = 2 [json_name = "supportedNetworks"];</code>
+   * @param index The index of the value to return.
+   * @return The enum numeric value on the wire of supportedNetworks at the given index.
+   */
+  int getSupportedNetworksValue(int index);
 }

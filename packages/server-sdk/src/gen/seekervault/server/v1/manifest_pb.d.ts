@@ -152,6 +152,32 @@ export declare type DirectServer = Message<"seekervault.server.v1.DirectServer">
    * @generated from field: string url = 1;
    */
   url: string;
+
+  /**
+   * The Solana networks this server's wallet operations are configured for (SEE-174,
+   * docs/wiki/server-manifests.md#supported-networks). It is what the server actually runs
+   * against, never every network the protocol can name: a server that trades only on Mainnet says
+   * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
+   * nothing at all rather than claiming a network it doesn't use.
+   *
+   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
+   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
+   * simulate against Mainnet data, and a production server may execute on Devnet.
+   *
+   * The phone offers only wallet profiles on one of these networks when a connection is set up,
+   * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
+   * what every manifest from before SEE-174 reads as — never means Mainnet or "all networks": the
+   * phone shows that the server has declared no networks, and nothing on it is signed until the
+   * server is updated. At most one of each value, and never SOLANA_NETWORK_UNSPECIFIED. Canonical
+   * order is ascending by value, and a server writes it that way so its revision is stable.
+   *
+   * It lives in the reference rather than beside it so that the reference stays the last thing in
+   * a serialized manifest, which is what keeps every runtime's bytes the same (see
+   * ServerManifest.reference); the same field is in DirectServer and GatewayFeed.
+   *
+   * @generated from field: repeated seekervault.server.v1.SolanaNetwork supported_networks = 2;
+   */
+  supportedNetworks: SolanaNetwork[];
 };
 
 /**
@@ -194,6 +220,16 @@ export declare type GatewayFeed = Message<"seekervault.server.v1.GatewayFeed"> &
    * @generated from field: seekervault.server.v1.FeedAccess access = 3;
    */
   access?: FeedAccess | undefined;
+
+  /**
+   * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+   * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+   * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+   * repeated value.
+   *
+   * @generated from field: repeated seekervault.server.v1.SolanaNetwork supported_networks = 4;
+   */
+  supportedNetworks: SolanaNetwork[];
 };
 
 /**
@@ -269,6 +305,49 @@ export declare type PluginRequirement = Message<"seekervault.server.v1.PluginReq
  * Use `create(PluginRequirementSchema)` to create a new message.
  */
 export declare const PluginRequirementSchema: GenMessage<PluginRequirement>;
+
+/**
+ * A Solana cluster, by the value seekervault.request.v1.Network gives it: the numbers are the same
+ * on purpose, and a client may convert between the two by number. It is declared again here rather
+ * than imported because a manifest is read by runtimes — the feed gateway, the publisher templates
+ * — that never compile the private request contract. Solana only: no other blockchain is named.
+ *
+ * @generated from enum seekervault.server.v1.SolanaNetwork
+ */
+export enum SolanaNetwork {
+  /**
+   * Never published. A manifest that lists it is refused.
+   *
+   * @generated from enum value: SOLANA_NETWORK_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Mobile Wallet Adapter chain solana:mainnet.
+   *
+   * @generated from enum value: SOLANA_NETWORK_MAINNET = 1;
+   */
+  MAINNET = 1,
+
+  /**
+   * solana:devnet.
+   *
+   * @generated from enum value: SOLANA_NETWORK_DEVNET = 2;
+   */
+  DEVNET = 2,
+
+  /**
+   * solana:testnet.
+   *
+   * @generated from enum value: SOLANA_NETWORK_TESTNET = 3;
+   */
+  TESTNET = 3,
+}
+
+/**
+ * Describes the enum seekervault.server.v1.SolanaNetwork.
+ */
+export declare const SolanaNetworkSchema: GenEnum<SolanaNetwork>;
 
 /**
  * Which transport a connection uses. It is stored per connection: one phone can hold a direct
