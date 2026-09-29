@@ -69,7 +69,7 @@ import (
 // The lineage is this implementation's own and starts at 1. It is not SQLite's version 5 renamed:
 // nothing has ever migrated between the two, and a Postgres database is created at the shape the
 // current release needs rather than by replaying five years of somebody else's history.
-const Version = 3
+const Version = 4
 
 // Schema is the namespace every statement in this package qualifies. It is deliberately not
 // public: see the package comment.
@@ -235,6 +235,8 @@ func (s *Store) migrate(ctx context.Context) error {
 				migration = schemaV2
 			case 3:
 				migration = schemaV3
+			case 4:
+				migration = schemaV4
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -406,6 +408,14 @@ CREATE INDEX access_grant_by_server ON ` + Schema + `.access_grant(server_id);
 CREATE INDEX access_grant_by_expiry ON ` + Schema + `.access_grant(expires_at_ms);
 
 ALTER TABLE ` + Schema + `.access_grant ENABLE ROW LEVEL SECURITY;
+`
+
+// schemaV4 is the app's Discover catalog (SEE-176), the same two columns the SQLite store adds at
+// its version 8, where the reasoning is written out: every registration that exists migrates to
+// unlisted, with no description. No table is added, so nothing new needs sealing.
+const schemaV4 = `
+ALTER TABLE ` + Schema + `.publisher ADD COLUMN show_in_recommendations BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE ` + Schema + `.publisher ADD COLUMN public_description TEXT NOT NULL DEFAULT '';
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

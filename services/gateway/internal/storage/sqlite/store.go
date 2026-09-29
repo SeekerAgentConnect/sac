@@ -10,7 +10,8 @@
 // Schema version 3 removes the retired gateway-private routing tables; version 4 adds a
 // publisher's developer-supplied host as a column on the registration it belongs to (SEE-141);
 // version 5 adds capabilities to a registration and its credentials, and the two records the push
-// relay needs (SEE-144).
+// relay needs (SEE-144); version 8 adds whether the operator lists a feed in the app's Discover
+// catalog, and its public description (SEE-176).
 //
 // The relay's two tables are the first private state this store has held since version 3 retired
 // the old routing, and they are deliberately not a return of it. What was removed routed requests
@@ -59,7 +60,7 @@ import (
 // Version is the schema this build writes and reads. There is one, and a file from a later version
 // is refused rather than guessed at: an old binary reading a new file could silently ignore a
 // column that a rule depends on.
-const Version = 7
+const Version = 8
 
 // ErrNewerSchema is returned by Open when the file was written by a later version of the gateway.
 var ErrNewerSchema = errors.New("the database was written by a newer gateway")
@@ -200,6 +201,8 @@ func (s *Store) migrate(ctx context.Context) error {
 				migration = schemaV6
 			case 7:
 				migration = schemaV7
+			case 8:
+				migration = schemaV8
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -554,6 +557,22 @@ CREATE TABLE access_grant (
 );
 CREATE INDEX access_grant_by_server ON access_grant(server_id);
 CREATE INDEX access_grant_by_expiry ON access_grant(expires_at_ms);
+`
+
+// Version 8 is the app's Discover catalog (SEE-176): whether the operator lists a feed there, and
+// the public description it is listed with.
+//
+// Two columns on the registration, because a listing is one more fact the operator records about a
+// publisher, beside its access policy and apart from it. Every registration that already exists
+// becomes unlisted with no description, so migrating shows nothing in anyone's catalog until an
+// operator opts a feed in. The description is not the label or the host: those are the operator's
+// notes and are never served, while this is written to be read by anyone browsing the catalog.
+//
+// Nothing a publisher publishes writes either column. A manifest lives in its own table, so a
+// republication cannot reset what the operator chose here.
+const schemaV8 = `
+ALTER TABLE publisher ADD COLUMN show_in_recommendations INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE publisher ADD COLUMN public_description TEXT NOT NULL DEFAULT '';
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

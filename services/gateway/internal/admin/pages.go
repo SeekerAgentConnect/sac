@@ -178,6 +178,13 @@ type PublisherRow struct {
 	// count, never a list of anyone. Set on this page or with feed-gatewayctl access (SEE-162).
 	Access storage.Access
 	Grants int
+
+	// Whether the app's Discover catalog shows this feed and what it says there (SEE-176), and
+	// the sentence that explains whether it is actually shown — a listing can be switched on and
+	// still be left out until its metadata is complete.
+	Listing         storage.Listing
+	Listed          bool
+	ListingSentence string
 }
 
 // AccessSentence says who may read this feed.
@@ -362,6 +369,10 @@ type RegistrationForm struct {
 	// feed-gatewayctl register --access, with the same rules.
 	Access     string
 	AuthOrigin string
+	// Recommended and Description are the feed's Discover listing (SEE-176): the same choice as
+	// feed-gatewayctl register --recommend --description, with the same rules.
+	Recommended bool
+	Description string
 }
 
 // Restricted says whether the form asked for a restricted feed, for the template.
@@ -369,14 +380,16 @@ func (f RegistrationForm) Restricted() bool { return f.Access == string(storage.
 
 func registrationForm(request *http.Request) RegistrationForm {
 	return RegistrationForm{
-		ServerID:   strings.TrimSpace(request.PostFormValue("server")),
-		Label:      request.PostFormValue("label"),
-		Host:       request.PostFormValue("host"),
-		Generate:   request.PostFormValue("generate") != "",
-		Publishing: request.PostFormValue("publishing") != "",
-		Relaying:   request.PostFormValue("relaying") != "",
-		Access:     strings.TrimSpace(request.PostFormValue("access")),
-		AuthOrigin: strings.TrimSpace(request.PostFormValue("auth_origin")),
+		ServerID:    strings.TrimSpace(request.PostFormValue("server")),
+		Label:       request.PostFormValue("label"),
+		Host:        request.PostFormValue("host"),
+		Generate:    request.PostFormValue("generate") != "",
+		Publishing:  request.PostFormValue("publishing") != "",
+		Relaying:    request.PostFormValue("relaying") != "",
+		Access:      strings.TrimSpace(request.PostFormValue("access")),
+		AuthOrigin:  strings.TrimSpace(request.PostFormValue("auth_origin")),
+		Recommended: request.PostFormValue("recommended") != "",
+		Description: request.PostFormValue("description"),
 	}
 }
 
@@ -461,6 +474,18 @@ func (f RegistrationForm) parse() (storage.Registration, bool, string) {
 			"leave the access public."
 	}
 	registration.Access = access
+
+	// The Discover listing is independent of the access policy: a restricted feed may be listed,
+	// and listing it opens nothing. It does need a feed, for the same reason a policy does.
+	description, err := Description(f.Description)
+	if err != nil {
+		return registration, generated, strings.ToUpper(err.Error()[:1]) + err.Error()[1:] + "."
+	}
+	if f.Recommended && !f.Publishing {
+		return registration, generated, "Only a feed can be shown in app recommendations. " +
+			"Enable publishing, or leave it unlisted."
+	}
+	registration.Listing = storage.Listing{Recommended: f.Recommended, Description: description}
 	return registration, generated, ""
 }
 
@@ -577,6 +602,7 @@ func (s *Server) row(ctx context.Context, publisher storage.Publisher) (Publishe
 		Relaying:    publisher.Relaying,
 		Access:      publisher.Access,
 		Grants:      publisher.Grants,
+		Listing:     publisher.Listing,
 	}
 	if row.Relay, err = s.options.Store.RelayStatus(ctx, publisher.ServerID); err != nil {
 		return row, err
@@ -590,6 +616,7 @@ func (s *Server) row(ctx context.Context, publisher storage.Publisher) (Publishe
 		row.DisplayName = manifest.Document.GetDisplayName()
 		row.ManifestAt = manifest.UpdatedAt
 	}
+	row.Listed, row.ListingSentence = ListingState(publisher, row.DisplayName, row.HasManifest)
 	if row.Publications, err = s.options.Store.Publications(ctx, channel); err != nil {
 		return row, err
 	}

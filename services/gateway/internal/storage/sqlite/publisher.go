@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/credential"
+	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
+	"google.golang.org/protobuf/proto"
 )
 
 // Publisher is a registered publisher, as the operator's tool lists one.
@@ -50,6 +52,9 @@ func (s *Store) Register(ctx context.Context, registration Registration, capabil
 		return "", fmt.Errorf("not an access policy: %q with origin %q",
 			registration.Access.Policy, registration.Access.AuthOrigin)
 	}
+	if !registration.Listing.Valid() {
+		return "", fmt.Errorf("not a public description: %q", registration.Listing.Description)
+	}
 	err := s.write(ctx, func(tx *Tx) error {
 		known, err := tx.PublisherExists(ctx, registration.ServerID)
 		if err != nil {
@@ -60,11 +65,13 @@ func (s *Store) Register(ctx context.Context, registration Registration, capabil
 		}
 		if _, err := tx.tx.ExecContext(ctx,
 			`INSERT INTO publisher
-			   (server_id, label, host, created_at_ms, publishing, relaying, access_policy, auth_origin)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			   (server_id, label, host, created_at_ms, publishing, relaying, access_policy, auth_origin,
+			    show_in_recommendations, public_description)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			registration.ServerID, registration.Label, registration.Host, milliseconds(at),
 			flag(registration.Publishing), flag(registration.Relaying),
-			string(policyOf(registration.Access)), registration.Access.AuthOrigin); err != nil {
+			string(policyOf(registration.Access)), registration.Access.AuthOrigin,
+			flag(registration.Listing.Recommended), registration.Listing.Description); err != nil {
 			return fmt.Errorf("register publisher: %w", err)
 		}
 		return tx.addCredential(ctx, registration.ServerID, registration.Label, capability, hash, at)
@@ -96,6 +103,75 @@ func (s *Store) SetCapabilities(ctx context.Context, serverID string, publishing
 		}
 		return nil
 	})
+}
+
+// SetListing is the operator listing or unlisting a feed in the app's Discover catalog, and
+// editing the description it is listed with (SEE-176). It is one statement on the registration and
+// nothing else: the access policy, its epoch, the grants and the credentials are not touched, so
+// listing a restricted feed opens nothing and unlisting a feed revokes nothing.
+func (s *Store) SetListing(ctx context.Context, serverID string, listing storage.Listing) error {
+	if !listing.Valid() {
+		return fmt.Errorf("not a public description: %q", listing.Description)
+	}
+	return s.write(ctx, func(tx *Tx) error {
+		outcome, err := tx.tx.ExecContext(ctx,
+			`UPDATE publisher SET show_in_recommendations = ?, public_description = ?
+			  WHERE server_id = ?`,
+			flag(listing.Recommended), listing.Description, serverID)
+		if err != nil {
+			return fmt.Errorf("set listing: %w", err)
+		}
+		changed, err := outcome.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if changed == 0 {
+			return fmt.Errorf("%w: %s", ErrNoPublisher, serverID)
+		}
+		return nil
+	})
+}
+
+// Listed is the Discover catalog's candidates (SEE-176): every registration the operator listed,
+// that may publish, that has a public description, and whose publisher has published a manifest.
+// A relay-only registration has no feed to list and never qualifies, whatever its flag says.
+//
+// It reads the manifest with the registration in one statement, so a candidate never pairs one
+// publisher's listing with another moment's manifest, and it is read fresh every time: an operator
+// who unlists a feed or edits its description sees the next catalog read say so.
+func (s *Store) Listed(ctx context.Context) ([]storage.ListedFeed, error) {
+	rows, err := s.reader.QueryContext(ctx,
+		`SELECT p.server_id, p.public_description, p.access_policy, p.auth_origin, p.access_epoch,
+		        m.document
+		   FROM publisher p JOIN manifest m ON m.server_id = p.server_id
+		  WHERE p.show_in_recommendations = 1 AND p.publishing = 1 AND p.public_description != ''
+		  ORDER BY p.server_id
+		  LIMIT ?`, storage.MostListed)
+	if err != nil {
+		return nil, fmt.Errorf("list the catalog: %w", err)
+	}
+	defer rows.Close()
+	var listed []storage.ListedFeed
+	for rows.Next() {
+		var (
+			one      storage.ListedFeed
+			policy   string
+			epoch    int64
+			document []byte
+		)
+		if err := rows.Scan(&one.ServerID, &one.Description, &policy, &one.Access.AuthOrigin,
+			&epoch, &document); err != nil {
+			return nil, fmt.Errorf("list the catalog: %w", err)
+		}
+		one.Access.Policy = storage.AccessPolicy(policy)
+		one.Access.Epoch = uint64(epoch)
+		one.Manifest = &serverv1.ServerManifest{}
+		if err := proto.Unmarshal(document, one.Manifest); err != nil {
+			return nil, fmt.Errorf("read manifest %s: %w", one.ServerID, err)
+		}
+		listed = append(listed, one)
+	}
+	return listed, rows.Err()
 }
 
 func flag(set bool) int {
@@ -333,7 +409,8 @@ const publisherColumns = `SELECT p.server_id, p.label, p.host, p.created_at_ms,
 	        p.access_policy, p.auth_origin, p.access_epoch,
 	        (SELECT COUNT(*) FROM access_grant g
 	          WHERE g.server_id = p.server_id AND g.revoked_at_ms IS NULL
-	            AND g.expires_at_ms > CAST(strftime('%s','now') AS INTEGER) * 1000)`
+	            AND g.expires_at_ms > CAST(strftime('%s','now') AS INTEGER) * 1000),
+	        p.show_in_recommendations, p.public_description`
 
 func scanPublisher(from scanner) (Publisher, error) {
 	var (
@@ -342,10 +419,12 @@ func scanPublisher(from scanner) (Publisher, error) {
 		publishing, relaying int
 		policy               string
 		epoch                int64
+		listed               int
 	)
 	if err := from.Scan(&publisher.ServerID, &publisher.Label, &publisher.Host, &created,
 		&publishing, &relaying, &publisher.Active, &publisher.ActiveRelay,
-		&policy, &publisher.Access.AuthOrigin, &epoch, &publisher.Grants); err != nil {
+		&policy, &publisher.Access.AuthOrigin, &epoch, &publisher.Grants,
+		&listed, &publisher.Listing.Description); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return publisher, err
 		}
@@ -355,6 +434,7 @@ func scanPublisher(from scanner) (Publisher, error) {
 	publisher.Publishing, publisher.Relaying = publishing == 1, relaying == 1
 	publisher.Access.Policy = storage.AccessPolicy(policy)
 	publisher.Access.Epoch = uint64(epoch)
+	publisher.Listing.Recommended = listed == 1
 	return publisher, nil
 }
 
