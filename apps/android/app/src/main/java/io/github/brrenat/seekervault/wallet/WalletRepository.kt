@@ -239,9 +239,15 @@ class WalletRepository(
 
     /**
      * Connects [profileId]'s account again, in the wallet app it lives in, offering the
-     * authorization it has while the wallet still honours it. Only that profile is refreshed: a
-     * wallet that no longer authorizes its account leaves it as it was, and the other accounts the
-     * wallet may name are not saved from here.
+     * authorization it has while the wallet still honours it. A wallet that no longer authorizes
+     * its account leaves it as it was, and accounts the wallet names that no profile shares the
+     * grant with are not saved from here.
+     *
+     * When that authorization is shared, reconnecting reauthorizes the grant itself rather than
+     * splitting this profile off it: the one stored authorization takes the wallet's token, and
+     * every profile sharing it stays on it — authorized when the wallet still names its account,
+     * needing a reconnect when it doesn't. So a rotated token reaches them all, and removing this
+     * profile later never revokes a token another profile still signs with (SEE-174).
      */
     suspend fun reconnect(profileId: String): ProfileConnection = lock.withLock {
         val profile =
@@ -260,7 +266,66 @@ class WalletRepository(
                     emptyList(),
                 )
         }
-        ProfileConnection(result, saved(profile.network, result, only = profile))
+        // The grant is reauthorized in place when its token was offered, or when no other profile
+        // still signs with it — it expired for all of them. Otherwise only this profile lost it,
+        // the others still hold a working token, and a fresh one is this profile's alone.
+        val current = held.profile(profileId) ?: profile
+        val grant = authorization?.takeIf { shared ->
+            offered != null ||
+                held.profiles.none {
+                    it.id != current.id && it.authorizationId == shared.id && it.authorized
+                }
+        }
+        val profiles =
+            if (grant == null) saved(profile.network, result, only = current)
+            else reauthorized(current, grant, result)
+        ProfileConnection(result, profiles)
+    }
+
+    // Reconnecting with the lock held when [profile]'s [grant] is reauthorized: the stored
+    // authorization keeps its ID and takes the wallet's token and route, and every profile sharing
+    // it is refreshed to what the wallet now says about its account.
+    private suspend fun reauthorized(
+        profile: WalletProfile,
+        grant: StoredAuthorization,
+        result: WalletResult,
+    ): List<WalletProfile> {
+        if (result !is WalletResult.Connected) return emptyList()
+        val accounts = result.accounts.associateBy { it.address }
+        if (profile.address !in accounts) return emptyList()
+        val at = now()
+        val profiles =
+            held.profiles.map { shared ->
+                if (shared.authorizationId != grant.id) return@map shared
+                val account = accounts[shared.address]
+                when {
+                    account != null ->
+                        shared.copy(
+                            accountLabel = account.label ?: shared.accountLabel,
+                            route = result.route,
+                            connectedAt = if (shared.id == profile.id) at else shared.connectedAt,
+                            networkConfirmed =
+                                account.chains.isEmpty() || shared.network.chain in account.chains,
+                            authorized = true,
+                        )
+                    // The wallet no longer authorizes this account under the grant: it stays on
+                    // it, so nothing revokes a token it may yet sign with, and is reconnected.
+                    else -> shared.copy(route = result.route, authorized = false)
+                }
+            }
+        commit(
+            held.copy(
+                profiles = profiles,
+                authorizations =
+                    held.authorizations.map {
+                        if (it.id == grant.id)
+                            it.copy(token = result.authToken, route = result.route)
+                        else it
+                    },
+            ),
+            strict = true,
+        )
+        return listOfNotNull(held.profile(profile.id))
     }
 
     /**
@@ -374,9 +439,16 @@ class WalletRepository(
             lock.withLock {
                 val profile = held.profile(profileId) ?: return@withLock null
                 val remaining = held.copy(profiles = held.profiles.filterNot { it.id == profileId })
+                // Nor when another stored authorization holds the same token: a wallet may hand
+                // one grant back under two records, and forgetting it would revoke both.
                 val orphan =
                     remaining.authorization(profile.authorizationId)?.takeIf { authorization ->
-                        remaining.profiles.none { it.authorizationId == authorization.id }
+                        remaining.profiles.none { it.authorizationId == authorization.id } &&
+                            remaining.authorizations.none {
+                                it.id != authorization.id &&
+                                    it.token == authorization.token &&
+                                    remaining.profiles.any { p -> p.authorizationId == it.id }
+                            }
                     }
                 commit(remaining, strict = true)
                 // After this phone stopped holding it, so a wallet that fails to answer changes
@@ -482,10 +554,36 @@ class WalletRepository(
         reviewed: SelectedWallet,
         connectionId: String? = null,
     ): SignResult = lock.withLock {
+        signMessage(message, reviewed, connectionId, addressOnly = false)
+    }
+
+    /**
+     * Signs a restricted feed's access proof (SEE-156, SEE-174) with the profile [connectionId]
+     * named when the proof was built — checked here, inside the lock, so a feed rebound while its
+     * challenge was fetched or while another wallet interaction held the lock never opens the old
+     * profile's wallet. The check is the binding and the address alone: the proof is a message over
+     * an address that no network enters, so a feed whose server declares no transaction network may
+     * still prove its reader, as [accessWalletFor] allows.
+     */
+    suspend fun signAccessProof(
+        message: ByteString,
+        reviewed: SelectedWallet,
+        connectionId: String,
+    ): SignResult = lock.withLock {
+        signMessage(message, reviewed, connectionId, addressOnly = true)
+    }
+
+    // The body of sign and signAccessProof, with the lock already held.
+    private suspend fun signMessage(
+        message: ByteString,
+        reviewed: SelectedWallet,
+        connectionId: String?,
+        addressOnly: Boolean,
+    ): SignResult {
         val (profile, authorization) =
-            when (val use = usable(reviewed, connectionId)) {
+            when (val use = usable(reviewed, connectionId, addressOnly)) {
                 is Use.Refused ->
-                    return@withLock when (use.why) {
+                    return when (use.why) {
                         Refusal.NotConnected -> SignResult.NotConnected
                         Refusal.Changed -> SignResult.Changed
                         Refusal.Expired -> SignResult.AuthorizationExpired
@@ -507,7 +605,7 @@ class WalletRepository(
             SignResult.Changed -> expireProfile(profile.id)
             else -> keepRefreshed(authorization, answer.authToken, answer.uriBase)
         }
-        answer.result
+        return answer.result
     }
 
     /**
@@ -596,7 +694,11 @@ class WalletRepository(
      * The profile and authorization a signing for [reviewed] would use, or why there is none.
      * Called under the lock, so what it checks is what the wallet is then asked with.
      */
-    private fun usable(reviewed: SelectedWallet, connectionId: String?): Use {
+    private fun usable(
+        reviewed: SelectedWallet,
+        connectionId: String?,
+        addressOnly: Boolean = false,
+    ): Use {
         val profile =
             when (val id = reviewed.profileId) {
                 // A reviewed profile that is gone was removed while the review was open.
@@ -609,7 +711,14 @@ class WalletRepository(
         if (profile.address != reviewed.address || profile.network != reviewed.network) {
             return Use.Refused(Refusal.Changed)
         }
-        if (connectionId != null) {
+        if (connectionId != null && addressOnly) {
+            // Only that the connection still names this profile: an address proof doesn't wait
+            // for the server's networks, and it is never signed for a feed rebound meanwhile.
+            val bound =
+                connections.connection(connectionId)?.takeIf { it.retirement == null }
+                    ?: return Use.Refused(Refusal.Changed)
+            if (bound.walletProfileId != profile.id) return Use.Refused(Refusal.Changed)
+        } else if (connectionId != null) {
             val readiness = readiness(connectionId)
             if (readiness.profile?.id != profile.id) return Use.Refused(Refusal.Changed)
             if (readiness is WalletReadiness.NeedsReconnect) return Use.Refused(Refusal.Expired)

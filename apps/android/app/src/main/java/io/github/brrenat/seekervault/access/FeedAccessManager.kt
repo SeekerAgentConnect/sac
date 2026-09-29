@@ -76,6 +76,12 @@ sealed interface AccessResult {
     /** The owner declined in the wallet, or the wallet could not sign. Nothing was sent. */
     data class WalletDidNotSign(val result: SignResult) : AccessResult
 
+    /**
+     * The feed was rebound to another wallet profile while access was being asked for (SEE-174).
+     * Nothing was signed with the old one, or what was signed is discarded; the owner asks again.
+     */
+    data object WalletChanged : AccessResult
+
     /** The publisher's challenge was not the text this phone would sign. Nothing was signed. */
     data object BadChallenge : AccessResult
 
@@ -119,7 +125,16 @@ class FeedAccessManager(
     private val api: FeedAccessApi,
     /** The wallet profile [connectionId] is bound to, or null. Never another connection's. */
     private val wallet: (connectionId: String) -> SelectedWallet?,
-    private val sign: suspend (okio.ByteString, SelectedWallet) -> SignResult,
+    /**
+     * Signs the proof with [SelectedWallet] for [connectionId], refusing with [SignResult.Changed]
+     * when that connection no longer names it by the time the wallet is free.
+     */
+    private val sign:
+        suspend (
+            message: okio.ByteString,
+            reviewed: SelectedWallet,
+            connectionId: String,
+        ) -> SignResult,
     private val label: () -> String,
     /** Registers a push target for a connected feed; best effort. */
     private val pushTarget:
@@ -188,6 +203,12 @@ class FeedAccessManager(
      * wallet proved their access are the ones readable now, and only their sessions are presented.
      */
     fun onWalletChanged() = publish()
+
+    /** Whether [connectionId] is still bound to the profile [selected] was captured from. */
+    private fun stillBound(connectionId: String, selected: SelectedWallet): Boolean =
+        wallet(connectionId)?.let {
+            it.address == selected.address && it.profileId == selected.profileId
+        } == true
 
     /** Whether [record] was proven with the wallet its own feed is bound to now. */
     private fun isActive(record: FeedAccessStore.Record): Boolean =
@@ -261,7 +282,13 @@ class FeedAccessManager(
             ) {
                 return@guarded AccessResult.BadChallenge
             }
-            val signed = sign(built.toByteString(), selected)
+            // The challenge was awaited with the profile captured before it: the wallet checks the
+            // feed still names it before it opens anything, and anything signed for a feed that
+            // was rebound meanwhile is dropped before the publisher hears of it.
+            val signed = sign(built.toByteString(), selected, connectionId)
+            if (signed == SignResult.Changed || !stillBound(connectionId, selected)) {
+                return@guarded AccessResult.WalletChanged
+            }
             if (
                 signed !is SignResult.Signed ||
                     signed.message.toByteArray().contentEquals(built).not() ||
@@ -281,7 +308,10 @@ class FeedAccessManager(
                     signed.signature.toByteArray(),
                     deviceSignature,
                 )
-            lock.withLock {
+            val saved = lock.withLock {
+                // Rebound while the request was on its way: it is not this feed's request any
+                // more, and what the phone holds for the feed stays as it was.
+                if (!stillBound(connectionId, selected)) return@withLock false
                 // A new request replaces whatever this phone held for the feed, including access
                 // proven with another wallet: that one does not carry over.
                 held?.let { dropSession(it) }
@@ -296,8 +326,10 @@ class FeedAccessManager(
                         updatedAt = now(),
                     )
                 )
+                true
             }
-            if (stateOf(requested.state) == State.Approved) check(connectionId)
+            if (!saved) AccessResult.WalletChanged
+            else if (stateOf(requested.state) == State.Approved) check(connectionId)
             else AccessResult.Done(checkNotNull(_records.value[connectionId]))
         }
     }

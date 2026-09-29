@@ -96,8 +96,14 @@ many profiles there are, one wallet handoff runs at a time.
   account from the same wallet needs. Every account the wallet returns is saved, deduplicated as
   above. Adding binds the profile to nothing and publishes nothing.
 - **Reconnect** (`reconnect(profileId)`) asks the profile's own wallet app again, offering its
-  authorization while the wallet still honours it. Only that profile is refreshed. A wallet that
-  answers with a different account leaves it as it was.
+  authorization while the wallet still honours it. A wallet that answers with a different account
+  leaves it as it was. When the authorization is shared, reconnecting **reauthorizes that grant in
+  place** rather than splitting the profile off it: the stored authorization keeps its ID and takes
+  the token the wallet hands back — the same one or a rotated one — and every profile sharing it
+  stays on it, authorized when the wallet still names its account and needing reconnect when it
+  doesn't. The grant is reauthorized in place whenever its token was offered, or when no other
+  profile still signs with it; only a profile that alone lost its account while the others still
+  hold a working token gets a fresh authorization of its own.
 - **Rename** changes the owner's label only. A blank name goes back to the wallet's own.
 - **Remove** (`remove(profileId)`) is below, under [Removing a profile](#removing-a-profile).
 
@@ -109,8 +115,9 @@ A wallet that refuses an authorization (`AuthorizationExpired`) marks **every pr
 authorization** as needing reconnect, and nothing else: no other profile, and no connection's
 binding. A wallet that no longer authorizes one account marks only that profile. A token the wallet
 rotates while signing replaces the shared authorization's token, so every profile sharing it keeps
-working. Removing a profile asks the wallet to deauthorize only when no other profile still uses the
-authorization.
+working, and so does one rotated by reconnecting any of them. Removing a profile asks the wallet to
+deauthorize only when no other profile still uses the authorization, and never a token another
+stored authorization still holds.
 
 ## Binding a connection
 

@@ -25,7 +25,9 @@ import java.security.Signature
 import java.security.interfaces.EdECPublicKey
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -107,10 +109,17 @@ class FeedAccessManagerTest {
             keys = keys,
             api = api,
             wallet = { id -> if (id in bound) bound[id] else selected },
-            sign = { message, reviewed ->
-                lastReviewed = reviewed
-                signings += message.toByteArray()
-                walletAnswer(message.toByteArray())
+            sign = { message, reviewed, connectionId ->
+                // What the wallet repository checks under its lock (SEE-174): the feed still names
+                // the profile the proof was built for, or nothing is signed.
+                val now = if (connectionId in bound) bound[connectionId] else selected
+                if (now?.address != reviewed.address || now.profileId != reviewed.profileId) {
+                    SignResult.Changed
+                } else {
+                    lastReviewed = reviewed
+                    signings += message.toByteArray()
+                    walletAnswer(message.toByteArray())
+                }
             },
             label = { "A phone" },
             pushTarget = { _, channel, session, target ->
@@ -398,6 +407,61 @@ class FeedAccessManagerTest {
     }
 
     @Test
+    fun aFeedReboundWhileItsChallengeIsPendingSignsNothingWithTheOldWallet() = runTest {
+        // SEE-174: the profile is captured before the challenge is awaited, and the owner rebinds
+        // the feed from A to B while it is.
+        bound = mapOf(CONNECTION to wallet(address, profileId = "a"))
+        val release = CompletableDeferred<Unit>()
+        api.beforeChallenge = { release.await() }
+        val manager = manager()
+
+        val asking = async { manager.requestAccess(CONNECTION) }
+        runCurrent()
+        bound = mapOf(CONNECTION to wallet(otherAddress, profileId = "b"))
+        release.complete(Unit)
+
+        assertEquals(AccessResult.WalletChanged, asking.await())
+        // A's wallet was never opened, and the publisher heard no request for A.
+        assertEquals(emptyList<ByteArray>(), signings)
+        assertEquals(listOf("challenge"), api.calls)
+        assertNull(store.get(CONNECTION))
+        assertNull(manager.states.value[CONNECTION])
+    }
+
+    @Test
+    fun aProofSignedForAFeedReboundMeanwhileIsDiscarded() = runTest {
+        // Rebound while the owner was in the wallet: what it signed is for a binding that is gone.
+        bound = mapOf(CONNECTION to wallet(address, profileId = "a"))
+        walletAnswer = { built ->
+            bound = mapOf(CONNECTION to wallet(otherAddress, profileId = "b"))
+            signed(walletKey, built)
+        }
+        val manager = manager()
+
+        assertEquals(AccessResult.WalletChanged, manager.requestAccess(CONNECTION))
+        assertEquals(listOf("challenge"), api.calls)
+        assertNull(store.get(CONNECTION))
+    }
+
+    @Test
+    fun aRequestAnsweredAfterTheFeedWasReboundIsNotStoredForIt() = runTest {
+        bound = mapOf(CONNECTION to wallet(address, profileId = "a"))
+        val manager = manager()
+        connect(manager)
+        api.state = "pending"
+        // Asked again with A — rejected before, so a fresh request — and rebound before the
+        // publisher answers it.
+        store.put(checkNotNull(store.get(CONNECTION)).copy(state = State.Rejected))
+        manager.load()
+        api.beforeRequest = { bound = mapOf(CONNECTION to wallet(otherAddress, profileId = "b")) }
+
+        assertEquals(AccessResult.WalletChanged, manager.requestAccess(CONNECTION))
+        // What the phone held for the feed is as it was: no request for A replaced it.
+        assertEquals(State.Rejected, store.get(CONNECTION)?.state)
+        assertEquals(address, store.get(CONNECTION)?.wallet)
+    }
+
+    @Test
     fun removingTheConnectionTakesItsAccessWithIt() = runTest {
         val manager = manager()
         connect(manager)
@@ -539,6 +603,12 @@ class FeedAccessManagerTest {
         }
         val until: Instant = Instant.parse("2026-09-27T12:00:00Z")
 
+        /** Runs before the challenge is answered, so a test can hold the answer back. */
+        var beforeChallenge: suspend () -> Unit = {}
+
+        /** The same hold for the answer to a request. */
+        var beforeRequest: suspend () -> Unit = {}
+
         override suspend fun challenge(
             authOrigin: String,
             channel: String,
@@ -547,6 +617,7 @@ class FeedAccessManagerTest {
             label: String,
         ): ChallengeAnswer {
             calls += "challenge"
+            beforeChallenge()
             if (unreachable) throw FeedAccessException(FeedAccessException.Kind.Unreachable)
             val challenge =
                 forge(
@@ -571,6 +642,7 @@ class FeedAccessManagerTest {
             deviceSignature: ByteArray,
         ): RequestAnswer {
             calls += "request"
+            beforeRequest()
             if (unreachable) throw FeedAccessException(FeedAccessException.Kind.Unreachable)
             return RequestAnswer(requestId, state)
         }
@@ -620,11 +692,12 @@ class FeedAccessManagerTest {
             }
             .sign()
 
-    private fun wallet(address: String) =
+    private fun wallet(address: String, profileId: String? = null) =
         SelectedWallet(
             address = address,
             network = WalletNetwork.Mainnet,
             selectedAt = Instant.parse("2026-09-26T09:00:00Z"),
+            profileId = profileId,
         )
 
     private fun restrictedFeed(

@@ -113,6 +113,7 @@
     <!-- Restricted feeds (SEE-156): asking for access stopped before a decision. -->
     <string name="access_problem_no_wallet">Choose a wallet for this feed first. A restricted feed grants access to a wallet, not to a phone.</string>
     <string name="access_problem_not_signed">The wallet didn\'t sign, so nothing was sent.</string>
+    <string name="access_problem_wallet_changed">This feed\'s wallet changed while asking, so nothing was sent. Ask again with the wallet it uses now.</string>
     <string name="access_problem_bad_challenge">The publisher asked this phone to sign something it didn\'t recognise, so nothing was signed.</string>
     <string name="access_problem_unreachable">Couldn\'t reach the publisher. Nothing changed — try again.</string>
     <string name="access_problem_refused">The publisher refused the request.</string>
