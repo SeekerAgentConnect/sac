@@ -74,6 +74,7 @@ func run(log *slog.Logger) error {
 		ServerID:    settings.ServerID,
 		GatewayURL:  settings.GatewayURL,
 		Environment: settings.Environment,
+		Networks:    settings.Networks,
 		Requirement: kind.Requirement(),
 		DisplayName: settings.DisplayName,
 	}

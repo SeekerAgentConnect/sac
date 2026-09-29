@@ -26,6 +26,7 @@ There is one implementation, and it is here.
 | [`signals`](signals) | What a signal is, as pure data, and the one seam a demo supplies: `Kind` |
 | [`manifest`](manifest) | What a publisher says about itself, and the `seekervault://feed` reference a phone adds it from |
 | [`environment`](environment) | The production/sandbox stamp, and the two words the phone uses for it |
+| [`network`](network) | The Solana networks a deployment's wallet operations run on (SEE-174), as the manifest publishes them: `mainnet`, `devnet`, `testnet`, in canonical order |
 | [`markets`](markets) | The market records the store persists for a publisher that discovers its own signals |
 | [`store`](store) | The only place that speaks SQL: the signals, the market rows, the idempotency keys, the outbox |
 | [`gateway`](gateway) | The one thing that reaches out of a publisher's process: the gateway client and the retry judgment |

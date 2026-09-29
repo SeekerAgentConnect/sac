@@ -166,6 +166,9 @@ func stamped(manifest *serverv1.ServerManifest, access storage.Access) *serverv1
 			GatewayUrl: feed.GetGatewayUrl(),
 			Channel:    feed.GetChannel(),
 			Access:     want,
+			// The publisher's Solana networks (SEE-174): only the access policy is the
+			// registration's to replace.
+			SupportedNetworks: feed.GetSupportedNetworks(),
 		}},
 	}
 	return copied

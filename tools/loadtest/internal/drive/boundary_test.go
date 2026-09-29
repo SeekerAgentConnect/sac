@@ -217,6 +217,20 @@ func TestEveryPublisherItCreatesIsSandbox(t *testing.T) {
 	}
 }
 
+// And it declares no Solana network (SEE-174): nothing a run publishes is meant to reach a wallet,
+// and a phone signs nothing for a feed that names no network.
+func TestEveryPublisherItCreatesDeclaresNoNetwork(t *testing.T) {
+	documents := NewSynthetic(ID("boundary"), "http://127.0.0.1:8090", 512, 1)
+	if networks := documents.Manifest(1, "load test").GetFeed().GetSupportedNetworks(); len(networks) != 0 {
+		t.Fatalf("a synthetic manifest declares %v", networks)
+	}
+	for name, contents := range code(t) {
+		if strings.Contains(contents, "SOLANA_NETWORK_") {
+			t.Errorf("%s names a Solana network", name)
+		}
+	}
+}
+
 // The operation and plugin a synthetic proposal names are the harness's own, and not one of the
 // real ones. A document that said `jupiter.swap` could be shown to a person as a swap.
 func TestItsDocumentsAreObviouslyATests(t *testing.T) {

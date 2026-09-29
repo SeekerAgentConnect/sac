@@ -57,6 +57,12 @@ func (s *Synthetic) Channel() string { return "server/" + s.serverID }
 //
 // Sandbox, always. A load run must never look like a production publisher to a phone that somehow
 // read it, and SEE-97's environment model is what says so out loud in a document.
+//
+// And no Solana network, always (SEE-174). Its proposals name a plugin no phone has and never
+// reach a wallet, which is exactly what an empty feed.supported_networks says: a phone that somehow
+// added one of these feeds would find no wallet profile to bind it to and sign nothing for it. The
+// field is left unset rather than filled in, so the synthetic manifest is byte for byte what it
+// was before the field existed.
 func (s *Synthetic) Manifest(revision uint64, name string) *serverv1.ServerManifest {
 	return &serverv1.ServerManifest{
 		ServerId:         s.serverID,

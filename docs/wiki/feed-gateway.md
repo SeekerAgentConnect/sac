@@ -98,6 +98,22 @@ real money without anybody looking at it. A second environment is a second deplo
 server ID, credential and database, which is the same rule the publisher's own database stamp keeps
 at its end ([environments.md](environments.md)).
 
+**Networks that are named, known and counted once (SEE-174).** `feed.supported_networks` is the
+Solana networks the publisher's wallet operations run on
+([server-manifests.md](server-manifests.md#supported-networks)); it sits inside the feed reference so
+the reference stays the last thing in a serialized manifest in every runtime. The gateway refuses
+`SOLANA_NETWORK_UNSPECIFIED`, a value it does not know and a network named twice (`bad_network`,
+field `feed.supported_networks`). It carries the rest on the feed reference it rebuilds, and on the
+copy a restricted feed is stamped through, in canonical order (ascending by value), so a publisher
+that republishes the same networks in another order at the same revision is retrying, not
+contradicting itself. An empty list is accepted and relayed as empty: it is a feed
+whose proposals never reach a wallet, or a publisher from before the field existed, and it means "no
+networks declared" — never Mainnet and never every network. Unlike an environment, the networks
+**may change on a higher revision**: a publisher that adds Devnet has changed what it can do, not
+what an owner already agreed to, because the phone binds each connection to one wallet profile and
+refuses to sign for one whose network the manifest stops listing. At the same revision, different
+networks are an ordinary `revision_conflict`.
+
 ### What cannot pass through
 
 The gateway **rebuilds every document from the fields it validated** rather than storing what

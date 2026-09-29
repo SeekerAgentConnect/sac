@@ -3,9 +3,11 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publishertest"
 )
 
@@ -124,6 +126,71 @@ func TestTheEnvironmentIsProductionOrSandboxAndHasNoDefault(t *testing.T) {
 				t.Fatalf("environment %q", settings.Environment)
 			}
 		})
+	}
+}
+
+// The Solana networks (SEE-174) have no default of their own: a template that does not say what it
+// runs on declares none when nothing is set — never Mainnet — and may be configured with any of the
+// three, each once, in any order, returned in the manifest's.
+func TestTheNetworksAreExplicitAndHaveNoDefaultOfTheirOwn(t *testing.T) {
+	if networks := load(t, complete()).Networks; networks != nil {
+		t.Fatalf("a deployment that set nothing declared %v", networks)
+	}
+	for value, expected := range map[string][]network.Network{
+		"mainnet":                {network.Mainnet},
+		"Devnet, mainnet":        {network.Mainnet, network.Devnet},
+		"testnet,devnet,mainnet": {network.Mainnet, network.Devnet, network.Testnet},
+		"none":                   nil,
+	} {
+		environment := complete()
+		environment["PUBLISHER_SUPPORTED_NETWORKS"] = value
+		if networks := load(t, environment).Networks; !slices.Equal(networks, expected) {
+			t.Fatalf("%q declared %v, expected %v", value, networks, expected)
+		}
+	}
+	for _, value := range []string{"mainnet,mainnet", "mainnet-beta", "all", "mainnet,,devnet"} {
+		environment := complete()
+		environment["PUBLISHER_SUPPORTED_NETWORKS"] = value
+		if _, problems := Load(from(environment)); !mentions(problems,
+			"PUBLISHER_SUPPORTED_NETWORKS") {
+			t.Fatalf("%q was accepted", value)
+		}
+	}
+}
+
+// A template that says what its code runs on (both demos: Mainnet) declares that when nothing is
+// set, and may be narrowed to none but never widened: a Jupiter template that declared Devnet would
+// have phones sign transactions that cannot land.
+func TestATemplateSaysWhatItRunsOnAndTheConfigurationMayOnlyNarrowIt(t *testing.T) {
+	mainnetOnly := Template{Networks: []network.Network{network.Mainnet}}
+	settings, problems := LoadTemplate(from(complete()), mainnetOnly)
+	if len(problems) > 0 {
+		t.Fatal(problems)
+	}
+	if !slices.Equal(settings.Networks, []network.Network{network.Mainnet}) {
+		t.Fatalf("a Mainnet template that set nothing declared %v", settings.Networks)
+	}
+	for value, expected := range map[string][]network.Network{
+		"mainnet": {network.Mainnet},
+		"none":    nil,
+	} {
+		environment := complete()
+		environment["PUBLISHER_SUPPORTED_NETWORKS"] = value
+		settings, problems := LoadTemplate(from(environment), mainnetOnly)
+		if len(problems) > 0 {
+			t.Fatalf("%q: %v", value, problems)
+		}
+		if !slices.Equal(settings.Networks, expected) {
+			t.Fatalf("%q declared %v", value, settings.Networks)
+		}
+	}
+	for _, value := range []string{"devnet", "mainnet,devnet", "testnet"} {
+		environment := complete()
+		environment["PUBLISHER_SUPPORTED_NETWORKS"] = value
+		_, problems := LoadTemplate(from(environment), mainnetOnly)
+		if !mentions(problems, "PUBLISHER_SUPPORTED_NETWORKS") || !mentions(problems, "mainnet") {
+			t.Fatalf("%q was accepted for a Mainnet template: %v", value, problems)
+		}
 	}
 }
 

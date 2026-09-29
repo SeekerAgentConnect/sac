@@ -32,6 +32,7 @@ import (
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/gateway/v1"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/manifest"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publish"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publishertest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
@@ -100,6 +101,8 @@ func StartWith(
 		ServerID:    publishertest.ServerID,
 		GatewayURL:  "https://feeds.example.com",
 		Environment: "production",
+		// What both demos declare, because both execute on Mainnet (SEE-174).
+		Networks:    []network.Network{network.Mainnet},
 		Requirement: kind.Requirement(),
 		DisplayName: "Copy trading desk",
 	}

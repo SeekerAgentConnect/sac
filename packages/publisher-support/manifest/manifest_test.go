@@ -2,11 +2,13 @@ package manifest
 
 import (
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
@@ -17,6 +19,7 @@ func settings() Settings {
 		ServerID:    server,
 		GatewayURL:  "https://feeds.example.com",
 		Environment: "production",
+		Networks:    []network.Network{network.Mainnet},
 		Requirement: signals.Swap{}.Requirement(),
 		DisplayName: "Copy trading desk",
 	}
@@ -105,6 +108,13 @@ func TestTheFingerprintIsTheSettingsAndNotTheRevision(t *testing.T) {
 		"the gateway":     func(s *Settings) { s.GatewayURL = "https://feeds.example.org" },
 		"the environment": func(s *Settings) { s.Environment = "sandbox" },
 		"the name":        func(s *Settings) { s.DisplayName = "Another desk" },
+		// A network added is a new revision every phone re-reads (SEE-174), and so is one taken
+		// away — including the last one.
+		"a network added": func(s *Settings) {
+			s.Networks = []network.Network{network.Mainnet, network.Devnet}
+		},
+		"no networks":     func(s *Settings) { s.Networks = nil },
+		"another network": func(s *Settings) { s.Networks = []network.Network{network.Devnet} },
 		"the plugin": func(s *Settings) {
 			s.Requirement = signals.Requirement{PluginID: "jupiter.prediction", MinContract: 1,
 				MostContract: 1}
@@ -123,6 +133,36 @@ func TestTheFingerprintIsTheSettingsAndNotTheRevision(t *testing.T) {
 				t.Fatalf("%s did not change the fingerprint", name)
 			}
 		})
+	}
+}
+
+// The networks are published in canonical order whatever order they were configured in, so the
+// same networks make the same document and the same fingerprint — and a reorder is not a revision.
+func TestTheNetworksArePublishedInCanonicalOrder(t *testing.T) {
+	held := settings()
+	held.Networks = []network.Network{network.Testnet, network.Mainnet, network.Devnet}
+	published := Document(held, 1).GetFeed().GetSupportedNetworks()
+	expected := []serverv1.SolanaNetwork{
+		serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+		serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+		serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET,
+	}
+	if !slices.Equal(published, expected) {
+		t.Fatalf("published %v", published)
+	}
+	reordered := settings()
+	reordered.Networks = []network.Network{network.Devnet, network.Testnet, network.Mainnet}
+	if Fingerprint(held) != Fingerprint(reordered) {
+		t.Fatal("the same networks in another order moved the fingerprint")
+	}
+}
+
+// No networks is published as none (SEE-174): never as Mainnet, which is what a phone would sign on.
+func TestNoNetworksIsPublishedAsNone(t *testing.T) {
+	held := settings()
+	held.Networks = nil
+	if published := Document(held, 1).GetFeed().GetSupportedNetworks(); len(published) != 0 {
+		t.Fatalf("a deployment that declared no network published %v", published)
 	}
 }
 

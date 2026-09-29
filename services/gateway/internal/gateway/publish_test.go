@@ -281,6 +281,60 @@ func TestTheGatewayWillNotRelayAPromotionToProduction(t *testing.T) {
 	}
 }
 
+// The Solana networks a server runs on (SEE-174), end to end: a malformed list is refused as a
+// malformed document, a reordered one at the same revision is a retry, and a higher revision may
+// add a network — unlike an environment, which it may never move.
+func TestAPublisherMayAddANetworkAtAHigherRevision(t *testing.T) {
+	gateway := newGateway(t)
+	publisher := gateway.publisher(gateway.register(publisherA))
+	ctx := context.Background()
+	mainnet := serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET
+	devnet := serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET
+	networks := func(named ...serverv1.SolanaNetwork) func(*serverv1.ServerManifest) {
+		return func(m *serverv1.ServerManifest) { m.GetFeed().SupportedNetworks = named }
+	}
+
+	_, err := publisher.PublishManifest(ctx, connect.NewRequest(&gatewayv1.PublishManifestRequest{
+		Manifest: manifestOf(publisherA, 1, networks(mainnet, mainnet)),
+	}))
+	detail := refused(t, err, connect.CodeInvalidArgument,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK)
+	if detail.GetField() != "feed.supported_networks" {
+		t.Fatalf("the refusal named %q", detail.GetField())
+	}
+
+	if answer := gateway.publishManifest(publisher,
+		manifestOf(publisherA, 1, networks(mainnet))); answer.GetStatus() !=
+		gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
+		t.Fatalf("a Mainnet manifest answered %v", answer.GetStatus())
+	}
+	_, err = publisher.PublishManifest(ctx, connect.NewRequest(&gatewayv1.PublishManifestRequest{
+		Manifest: manifestOf(publisherA, 1, networks(mainnet, devnet)),
+	}))
+	refused(t, err, connect.CodeFailedPrecondition,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT)
+
+	if answer := gateway.publishManifest(publisher,
+		manifestOf(publisherA, 2, networks(devnet, mainnet))); answer.GetStatus() !=
+		gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
+		t.Fatalf("adding Devnet at a higher revision answered %v", answer.GetStatus())
+	}
+	if answer := gateway.publishManifest(publisher,
+		manifestOf(publisherA, 2, networks(mainnet, devnet))); answer.GetStatus() !=
+		gatewayv1.PublishStatus_PUBLISH_STATUS_UNCHANGED {
+		t.Fatalf("the same networks in another order answered %v", answer.GetStatus())
+	}
+	answer, err := gateway.feed.GetServerManifest(ctx,
+		connect.NewRequest(&gatewayv1.GetServerManifestRequest{ServerId: publisherA}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held := answer.Msg.GetManifest().GetFeed().GetSupportedNetworks(); len(held) != 2 ||
+		held[0] != mainnet || held[1] != devnet {
+		t.Fatalf("a subscriber would read %v", held)
+	}
+}
+
 // The rule that is the gateway's own: a document read from here can never point a phone somewhere
 // else.
 func TestTheGatewayWillNotRelayARedirection(t *testing.T) {

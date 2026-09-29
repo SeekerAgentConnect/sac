@@ -452,6 +452,9 @@ func manifestOf(serverID string, revision uint64, change ...func(*serverv1.Serve
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: gatewayURL,
 			Channel:    rules.ChannelFor(serverID),
+			SupportedNetworks: []serverv1.SolanaNetwork{
+				serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+			},
 		}},
 	}
 	for _, apply := range change {

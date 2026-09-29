@@ -279,6 +279,19 @@ Publishing markets the provider will not take an order for is a deliberate sandb
 phone reads the market itself and refuses a closed one, whichever environment it is in — and the way
 it reaches production is a copied `.env`.
 
+## Solana Mainnet only
+
+Which Solana networks the template's wallet operations run on is a separate manifest field
+(`feed.supported_networks`, SEE-174, [server-manifests.md](server-manifests.md#supported-networks)), and a
+separate question from the environment: a sandbox deployment reads the same live Mainnet markets, so
+sandbox is not Devnet, and production is not Mainnet by definition. Jupiter's prediction markets
+settle on Mainnet and nowhere else, so the template fixes that in its own code:
+`PUBLISHER_SUPPORTED_NETWORKS` defaults to `mainnet`, may be narrowed to `none`, and refuses `devnet`
+or `testnet` at startup rather than let owners bind a Devnet wallet profile to markets it cannot
+trade. The phone offers only wallet profiles on a declared network when the feed is added, and signs
+nothing for a connection whose network the manifest does not list. A change to the setting moves the
+manifest's fingerprint, so the next start publishes a new revision.
+
 ## A complete example
 
 The gateway's operator registers this publisher and gives its owner a credential. Then, in
@@ -293,6 +306,7 @@ $ $EDITOR .env
 PUBLISHER_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
 PUBLISHER_GATEWAY_URL=https://feeds.example.com
 PUBLISHER_ENVIRONMENT=sandbox
+PUBLISHER_SUPPORTED_NETWORKS=mainnet  # the only network Jupiter's markets settle on
 BROADCAST_CREDENTIAL=…                # what the gateway's operator printed once
 PUBLISHER_API_TOKEN=…                 # openssl rand -base64 32
 PUBLISHER_DISPLAY_NAME=Macro markets

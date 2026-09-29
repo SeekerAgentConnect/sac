@@ -66,6 +66,10 @@ func manifest(serverID string, revision uint64) *serverv1.ServerManifest {
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: "https://feeds.example.com",
 			Channel:    "server/" + serverID,
+			SupportedNetworks: []serverv1.SolanaNetwork{
+				serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+				serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+			},
 		}},
 	}
 }
@@ -560,6 +564,29 @@ func TestRetentionRemovesWhatExpiredLongEnoughAgo(t *testing.T) {
 	// anything, and a reader must not be told the feed moved because of it.
 	if sequence, _ := documents.Sequence(ctx, channelA); sequence != 2 {
 		t.Fatalf("the sweep moved the sequence to %d", sequence)
+	}
+}
+
+// A manifest is stored as its bytes, so what is read back is the whole document the rules built —
+// including the Solana networks it declares (SEE-174), which have no column of their own and need
+// no migration for the same reason.
+func TestAManifestIsReadBackWhole(t *testing.T) {
+	documents := openStore(t)
+	ctx := context.Background()
+	register(t, documents, publisher)
+	err := documents.Write(ctx, func(tx storage.PublicationTx) error {
+		_, err := tx.PutManifest(ctx, manifest(publisher, 1), published)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := documents.Manifest(ctx, publisher)
+	if err != nil || held == nil {
+		t.Fatalf("the manifest was not read back (%v)", err)
+	}
+	if !proto.Equal(held.Document, manifest(publisher, 1)) {
+		t.Fatalf("the manifest came back changed:\n%v", held.Document)
 	}
 }
 

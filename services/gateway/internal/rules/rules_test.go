@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +51,9 @@ func manifest(change ...func(*serverv1.ServerManifest)) *serverv1.ServerManifest
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: gatewayURL,
 			Channel:    ChannelFor(publisher),
+			SupportedNetworks: []serverv1.SolanaNetwork{
+				serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+			},
 		}},
 	}
 	for _, apply := range change {
@@ -179,6 +183,24 @@ func TestEveryManifestRuleHasItsOwnAnswer(t *testing.T) {
 				serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
 			}
 		}), gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ENVIRONMENT},
+		{"an unspecified network", manifest(func(m *serverv1.ServerManifest) {
+			m.GetFeed().SupportedNetworks = []serverv1.SolanaNetwork{
+				serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED,
+			}
+		}), gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK},
+		{"a network from a later version of the format", manifest(func(m *serverv1.ServerManifest) {
+			m.GetFeed().SupportedNetworks = []serverv1.SolanaNetwork{
+				serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+				serverv1.SolanaNetwork(4),
+			}
+		}), gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK},
+		{"the same network twice", manifest(func(m *serverv1.ServerManifest) {
+			m.GetFeed().SupportedNetworks = []serverv1.SolanaNetwork{
+				serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+				serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+				serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+			}
+		}), gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK},
 		{"a name longer than a label", manifest(func(m *serverv1.ServerManifest) {
 			m.DisplayName = strings.Repeat("n", MaxNameBytes+1)
 		}), gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NAME},
@@ -199,6 +221,10 @@ func TestEveryManifestRuleHasItsOwnAnswer(t *testing.T) {
 			}
 			if fault.Field == "" {
 				t.Fatalf("%s named no field", one.name)
+			}
+			if one.problem == gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK &&
+				fault.Field != "feed.supported_networks" {
+				t.Fatalf("%s named %q", one.name, fault.Field)
 			}
 		})
 	}
@@ -554,6 +580,104 @@ func TestReorderingTheEnvironmentsChangesNothing(t *testing.T) {
 	}
 	if decision != Stored {
 		t.Fatalf("a higher revision was %v", decision)
+	}
+}
+
+// The networks a server runs on are a set, stored in one order (SEE-174): ascending by value,
+// whatever order the publisher wrote them in, so that the stored document — and every phone's copy
+// of it — has one form.
+func TestTheNetworksAreStoredInCanonicalOrder(t *testing.T) {
+	stored, fault := Manifest(manifest(func(m *serverv1.ServerManifest) {
+		m.GetFeed().SupportedNetworks = []serverv1.SolanaNetwork{
+			serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET,
+			serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+			serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+		}
+	}), expectation())
+	if fault != nil {
+		t.Fatal(fault.Problem)
+	}
+	want := []serverv1.SolanaNetwork{
+		serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+		serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+		serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET,
+	}
+	if !slices.Equal(stored.GetFeed().GetSupportedNetworks(), want) {
+		t.Fatalf("the networks were stored as %v", stored.GetFeed().GetSupportedNetworks())
+	}
+}
+
+// No networks is a valid answer (SEE-174): a feed whose proposals never reach a wallet, or one from
+// before the field existed. It is stored as nothing — not as Mainnet, and not as every network —
+// because the phone is the one that decides what an empty list means, and it means "none declared".
+func TestAManifestMayDeclareNoNetworks(t *testing.T) {
+	stored, fault := Manifest(manifest(func(m *serverv1.ServerManifest) {
+		m.GetFeed().SupportedNetworks = nil
+	}), expectation())
+	if fault != nil {
+		t.Fatalf("a manifest with no networks was refused: %v", fault.Problem)
+	}
+	if len(stored.GetFeed().GetSupportedNetworks()) != 0 {
+		t.Fatalf("the gateway declared %v for a publisher that declared none",
+			stored.GetFeed().GetSupportedNetworks())
+	}
+}
+
+// Unlike an environment, a network may change on a higher revision (SEE-174): a publisher that adds
+// Devnet has changed what it can do, and the phone refuses to sign for a connection whose network
+// the manifest stops listing. At the same revision the networks are content like any other.
+func TestWhatARevisionMeansForTheNetworks(t *testing.T) {
+	mainnet := serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET
+	devnet := serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET
+	held, fault := Manifest(manifest(func(m *serverv1.ServerManifest) {
+		m.GetFeed().SupportedNetworks = []serverv1.SolanaNetwork{mainnet, devnet}
+	}), expectation())
+	if fault != nil {
+		t.Fatal(fault.Problem)
+	}
+	for _, one := range []struct {
+		name     string
+		revision uint64
+		networks []serverv1.SolanaNetwork
+		decision Decision
+		problem  gatewayv1.GatewayProblem
+	}{
+		{"the same networks in another order", 3, []serverv1.SolanaNetwork{devnet, mainnet},
+			Unchanged, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_UNSPECIFIED},
+		{"a network added at a higher revision", 4, []serverv1.SolanaNetwork{
+			mainnet, devnet, serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET,
+		}, Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_UNSPECIFIED},
+		{"a network dropped at a higher revision", 4, []serverv1.SolanaNetwork{mainnet},
+			Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_UNSPECIFIED},
+		{"every network dropped at a higher revision", 4, nil,
+			Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_UNSPECIFIED},
+		{"other networks at the same revision", 3, []serverv1.SolanaNetwork{mainnet},
+			Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT},
+		{"no networks at the same revision", 3, nil,
+			Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			next, fault := Manifest(manifest(func(m *serverv1.ServerManifest) {
+				m.SettingsRevision = one.revision
+				m.GetFeed().SupportedNetworks = one.networks
+			}), expectation())
+			if fault != nil {
+				t.Fatal(fault.Problem)
+			}
+			decision, fault := AdvanceManifest(held, next)
+			if one.problem == gatewayv1.GatewayProblem_GATEWAY_PROBLEM_UNSPECIFIED {
+				if fault != nil {
+					t.Fatalf("%s was refused: %v", one.name, fault.Problem)
+				}
+				if decision != one.decision {
+					t.Fatalf("%s was %v", one.name, decision)
+				}
+				return
+			}
+			if fault == nil || fault.Problem != one.problem {
+				t.Fatalf("%s answered %v, expected %v", one.name, fault, one.problem)
+			}
+		})
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -565,6 +566,45 @@ func TestTheManifestsAccessIsTheRegistrationsNeverThePublishers(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%s: a feed switched to restricted still read anonymously", read)
 		}
+	}
+}
+
+// A restricted feed's manifest is rewritten on its way in and out — the registration's policy
+// replaces whatever the publisher claimed — and that copy is built field by field. The Solana
+// networks the publisher declared (SEE-174) have to survive it both times: a restricted feed whose
+// networks were dropped would be one no phone signs anything for.
+func TestARestrictedManifestKeepsItsNetworks(t *testing.T) {
+	gateway := newGateway(t)
+	gateway.restricted(publisherA)
+	ctx := context.Background()
+	want := manifestOf(publisherA, 1).GetFeed().GetSupportedNetworks()
+	served, err := gateway.feed.GetServerManifest(ctx, connect.NewRequest(
+		&gatewayv1.GetServerManifestRequest{ServerId: publisherA}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(served.Msg.GetManifest().GetFeed().GetSupportedNetworks(), want) {
+		t.Fatalf("a restricted feed was served with networks %v",
+			served.Msg.GetManifest().GetFeed().GetSupportedNetworks())
+	}
+
+	// And a public feed switched to restricted after publishing, whose stored document is stamped
+	// on every read rather than on the way in.
+	public := gateway.publisher(gateway.register(publisherB))
+	gateway.publishManifest(public, manifestOf(publisherB, 1))
+	if err := gateway.documents.SetAccess(ctx, publisherB, storage.Access{
+		Policy: storage.RestrictedAccess, AuthOrigin: authOrigin,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	served, err = gateway.feed.GetServerManifest(ctx, connect.NewRequest(
+		&gatewayv1.GetServerManifestRequest{ServerId: publisherB}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if served.Msg.GetManifest().GetFeed().GetAccess() == nil ||
+		!slices.Equal(served.Msg.GetManifest().GetFeed().GetSupportedNetworks(), want) {
+		t.Fatalf("a feed switched to restricted was served as %v", served.Msg.GetManifest())
 	}
 }
 

@@ -54,8 +54,17 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 		if feed.GetChannel() != ChannelFor(message.GetServerId()) {
 			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_FOREIGN_CHANNEL, "feed.channel")
 		}
+		// The networks travel inside the reference (SEE-174), so the reference stays the last
+		// thing in a serialized manifest in every runtime (manifest.proto).
+		networks, networkFault := supportedNetworks(feed.GetSupportedNetworks())
+		if networkFault != nil {
+			return nil, networkFault
+		}
 		feedReference = &serverv1.GatewayFeed{
-			GatewayUrl: expect.GatewayURL, Channel: ChannelFor(message.GetServerId())}
+			GatewayUrl:        expect.GatewayURL,
+			Channel:           ChannelFor(message.GetServerId()),
+			SupportedNetworks: networks,
+		}
 	default:
 		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NOT_A_FEED, "mode")
 	}
@@ -139,6 +148,13 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 // by a document nobody looked at. A second environment is a second deployment, with its own server
 // ID, credential and database, which is the same rule the publisher's own database stamp keeps at
 // its end (docs/wiki/environments.md).
+//
+// The Solana networks a server runs on are not that kind of promise, and a higher revision may
+// change them (SEE-174): a publisher that adds Devnet has changed what it can do, not what an owner
+// already agreed to, because the phone binds each connection to one wallet profile and refuses to
+// sign for a connection whose network the manifest no longer lists. At the same revision they are
+// ordinary content — both documents have been through [Manifest], which stores them in canonical
+// order, so a reordered list is a retry and a different one is a conflict.
 func AdvanceManifest(held, next *serverv1.ServerManifest) (Decision, *Fault) {
 	if held == nil {
 		return Stored, nil
@@ -177,6 +193,51 @@ func AdvanceManifest(held, next *serverv1.ServerManifest) (Decision, *Fault) {
 	default:
 		return Stored, nil
 	}
+}
+
+// supportedNetworks checks the Solana networks a publisher says its wallet operations run on
+// (`feed.supported_networks`, SEE-174, docs/wiki/server-manifests.md#supported-networks) and
+// returns them in canonical order, or the rule they broke.
+//
+// Three rules, and one thing that is deliberately not a rule:
+//
+//   - **Only a network this gateway knows.** Unspecified is never published, and a value from a
+//     later version of the format is one the gateway cannot vouch for: a phone that knew it would
+//     be trusting a gateway that did not. Both are refused rather than dropped, because dropping one
+//     would publish a narrower claim than the publisher made without telling it.
+//   - **Each at most once.** A repeated network is a publisher that built its list wrong, and the
+//     gateway does not guess which of its two ideas it meant. With three known values and no
+//     repeats, the list can never be longer than three, so there is no separate length limit.
+//   - **Canonical order.** What is stored is ascending by value, whatever order it arrived in. The
+//     list is a set: a publisher that republishes the same networks in another order at the same
+//     revision is retrying, and [AdvanceManifest] compares stored documents with [proto.Equal],
+//     which would call two orders a conflict if both were kept as written.
+//
+// An empty list is allowed. It is a feed whose proposals never reach a wallet, or a publisher from
+// before SEE-174, and it means "no networks declared" — never Mainnet and never every network. The
+// phone is what acts on that; the gateway only relays it faithfully.
+func supportedNetworks(declared []serverv1.SolanaNetwork) ([]serverv1.SolanaNetwork, *Fault) {
+	if len(declared) == 0 {
+		return nil, nil
+	}
+	networks := make([]serverv1.SolanaNetwork, 0, len(declared))
+	for _, network := range declared {
+		switch network {
+		case serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+			serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+			serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET:
+		default:
+			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK,
+				"feed.supported_networks")
+		}
+		if slices.Contains(networks, network) {
+			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK,
+				"feed.supported_networks")
+		}
+		networks = append(networks, network)
+	}
+	slices.Sort(networks)
+	return networks, nil
 }
 
 // sameEnvironments is whether two manifests promise the same thing, compared as sets: the order a
