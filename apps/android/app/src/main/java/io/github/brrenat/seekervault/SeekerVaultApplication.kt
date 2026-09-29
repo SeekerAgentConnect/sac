@@ -93,7 +93,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -491,9 +490,12 @@ class SeekerVaultApplication : Application() {
                     CredentialVault(File(noBackupFilesDir, "feed-sessions")) { credentialKey() },
                 keys = deviceKeys(),
                 api = feedAccessApi(),
-                wallet = { walletRepository.wallet.value },
+                // The feed's own wallet profile, never another connection's (SEE-174).
+                wallet = { connectionId -> walletRepository.accessWalletFor(connectionId) },
                 // The one wallet signature in the whole flow, over text that says in its own
-                // words that it is not a transaction (FeedAccessProof).
+                // words that it is not a transaction (FeedAccessProof). It is checked against
+                // the profile the proof was built for, which is address-only: no network enters
+                // it, so it is not checked against the feed's networks.
                 sign = { message, reviewed ->
                     walletRepository.sign(ByteString.copyFrom(message.toByteArray()), reviewed)
                 },
@@ -512,21 +514,35 @@ class SeekerVaultApplication : Application() {
                 },
                 io = connectionIo,
             )
+        // The wallet repository is built from inside this initializer — the coroutine below reads
+        // it, and on an unconfined dispatcher it runs right here — so it is handed this repository
+        // rather than reading the lazy that is still being initialized, which would build a second
+        // one over the same files and bind wallets to connections the app never shows (SEE-174).
+        connectionsBeingBuilt = repository
         CoroutineScope(SupervisorJob() + connectionIo).launch {
-            // Access belongs to the wallet it was proven with (SEE-156), so the selection is read
-            // first: a restricted feed is readable only while its wallet is the selected one.
+            // Access belongs to the wallet it was proven with (SEE-156), and each feed has its own
+            // (SEE-174), so the profiles and bindings are read first: a restricted feed is readable
+            // only while the wallet it names is the one its access was proven with.
             walletRepository.load()
             checkNotNull(feedAccess).load()
-            var previous: String? = walletRepository.wallet.value?.address
-            walletRepository.wallet
-                .map { it?.address }
+            var previous: Map<String, String?> = emptyMap()
+            combine(repository.connections, walletRepository.profiles) { connections, _ ->
+                    connections.associate {
+                        it.id to walletRepository.accessWalletFor(it.id)?.address
+                    }
+                }
                 .distinctUntilChanged()
-                .collect { address ->
+                .collect { addresses ->
                     checkNotNull(feedAccess).onWalletChanged()
-                    // An open stream carries the sessions it was ticketed with, so a switch
-                    // reopens it with the sessions of the wallet selected now.
-                    if (address != previous) foregroundFeeds.restart()
-                    previous = address
+                    // An open stream carries the sessions it was ticketed with, so a feed whose
+                    // wallet changed reopens it with the sessions of the wallets bound now. Only
+                    // a change for a feed that was already there counts: adding or removing
+                    // another connection leaves every other feed's access as it was.
+                    val changed = addresses.any { (id, address) ->
+                        id in previous && previous[id] != address
+                    }
+                    if (changed) foregroundFeeds.restart()
+                    previous = addresses
                 }
         }
         repository
@@ -783,6 +799,9 @@ class SeekerVaultApplication : Application() {
      * The wallet the owner selected (docs/guides/wallet-setup.md): the selection in `filesDir`, and
      * the wallet's authorization, encrypted, in `noBackupFilesDir`.
      */
+    /** See [connectionRepository]: set once, before anything it starts can read it. */
+    @Volatile private var connectionsBeingBuilt: ConnectionRepository? = null
+
     val walletRepository: WalletRepository by lazy {
         WalletRepository(
             store =
@@ -792,7 +811,7 @@ class SeekerVaultApplication : Application() {
                     key = { credentialKey() },
                 ),
             adapter = walletAdapter(),
-            connections = connectionRepository,
+            connections = connectionsBeingBuilt ?: connectionRepository,
             io = connectionIo,
         )
     }

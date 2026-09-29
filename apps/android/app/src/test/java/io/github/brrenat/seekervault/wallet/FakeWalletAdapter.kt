@@ -65,6 +65,19 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
         route: WalletRouting = WalletRouting.Untargeted,
     ) = answer(WalletResult.Connected(WalletAccount(address, label, chains), authToken, route))
 
+    /**
+     * Answers with every account in [addresses], authorized at once under one token, as a wallet
+     * that lets the owner pick several does (SEE-174).
+     */
+    fun answerAccounts(
+        vararg addresses: String,
+        authToken: String = "authorization-${addresses.joinToString("+")}",
+        route: WalletRouting = WalletRouting.Untargeted,
+    ) {
+        val accounts = addresses.map { WalletAccount(it, null, emptyList()) }
+        answer(WalletResult.Connected(accounts.first(), authToken, route, accounts))
+    }
+
     override suspend fun installed(): List<InstalledWallet> = installed
 
     override suspend fun connect(

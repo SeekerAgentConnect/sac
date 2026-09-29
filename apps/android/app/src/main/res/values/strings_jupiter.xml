@@ -15,7 +15,7 @@
 
     <!-- Why nothing could be prepared. -->
     <string name="jupiter_failure_terms">This signal cannot be read as a swap, so there is nothing to prepare.</string>
-    <string name="jupiter_failure_no_wallet">Connect a wallet before preparing a swap.</string>
+    <string name="jupiter_failure_no_wallet">Choose a wallet for this feed before preparing a swap.</string>
     <string name="jupiter_failure_other_network">Your wallet is selected for a network this provider does not serve. Swaps happen on Solana mainnet.</string>
     <string name="jupiter_failure_unreachable">The swap provider could not be reached, so there is no quote and nothing was prepared.</string>
     <string name="jupiter_failure_rate_limited">The swap provider is asking for fewer requests. Wait a moment and prepare again.</string>
@@ -29,7 +29,7 @@
     <string name="jupiter_finding_unsupported_version">This transaction uses a message version this phone does not read.</string>
     <string name="jupiter_finding_lookup_table">This transaction loads accounts from a lookup table, so what it touches cannot be checked without reading the chain.</string>
     <string name="jupiter_finding_already_signed">This transaction already carries a signature. The wallet must be handed something unsigned.</string>
-    <string name="jupiter_finding_no_wallet">No wallet is connected, so there is nothing to check this transaction against.</string>
+    <string name="jupiter_finding_no_wallet">This feed has no wallet ready, so there is nothing to check this transaction against.</string>
     <string name="jupiter_finding_other_network">Your wallet is selected for another network than this swap happens on.</string>
     <string name="jupiter_finding_fee_payer">Something other than your wallet would pay for this transaction.</string>
     <string name="jupiter_finding_extra_signer">Something other than your wallet would also have to sign.</string>

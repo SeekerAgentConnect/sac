@@ -111,7 +111,7 @@
     <string name="message_access_rejected">%1$s didn\'t approve this device. Open it to send a new request.</string>
     <string name="message_access_revoked">%1$s revoked this device\'s access to the feed.</string>
     <!-- Restricted feeds (SEE-156): asking for access stopped before a decision. -->
-    <string name="access_problem_no_wallet">Connect a wallet first. A restricted feed grants access to a wallet, not to a phone.</string>
+    <string name="access_problem_no_wallet">Choose a wallet for this feed first. A restricted feed grants access to a wallet, not to a phone.</string>
     <string name="access_problem_not_signed">The wallet didn\'t sign, so nothing was sent.</string>
     <string name="access_problem_bad_challenge">The publisher asked this phone to sign something it didn\'t recognise, so nothing was signed.</string>
     <string name="access_problem_unreachable">Couldn\'t reach the publisher. Nothing changed — try again.</string>

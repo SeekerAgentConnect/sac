@@ -3,15 +3,10 @@ package io.github.brrenat.seekervault.operations
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.Connection
-import io.github.brrenat.seekervault.connections.ConnectionRepository
-import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.FeedSnapshot
 import io.github.brrenat.seekervault.connections.ProposalFeed
 import io.github.brrenat.seekervault.connections.ProposalRepository
-import io.github.brrenat.seekervault.connections.storage.ConnectionStore
-import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
-import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.jupiter.EVENT_ID
 import io.github.brrenat.seekervault.jupiter.FakePrediction
 import io.github.brrenat.seekervault.jupiter.JupiterExecutionProvider
@@ -50,7 +45,10 @@ import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
 import io.github.brrenat.seekervault.servers.manifest
+import io.github.brrenat.seekervault.wallet.FakeConnectionWallets
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
+import io.github.brrenat.seekervault.wallet.WalletNetwork
+import io.github.brrenat.seekervault.wallet.WalletProfile
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
@@ -120,6 +118,9 @@ class Phone(
                                 PluginRequirement(JUPITER_PREDICTION, 1..1),
                             ),
                         environments = setOf(PluginEnvironment.Production),
+                        // Every network, so a test chooses the wallet's network and nothing else
+                        // decides it (SEE-174).
+                        supportedNetworks = WalletNetwork.entries.toSet(),
                     )
                 ),
         )
@@ -144,6 +145,8 @@ class Phone(
             connection.copy(
                 environment = environment,
                 server = ServerRecord.Known(manifest.copy(environments = served)),
+                // The owner's wallet binding is theirs, and moving the environment keeps it.
+                walletProfileId = connections.value.firstOrNull()?.walletProfileId,
             )
         connections.value = listOf(connection)
     }
@@ -159,27 +162,31 @@ class Phone(
             io = Dispatchers.Unconfined,
         )
 
-    // The wallet's own repository, over a fake wallet app. Its connection repository is empty on
-    // purpose: a feed has no `PublishWallet` and nothing here publishes an address anywhere.
-    private val emptyConnections =
-        ConnectionRepository(
-            store = ConnectionStore(File(root, "connections")),
-            vault = CredentialVault(File(root, "credentials")) { key },
-            results = ResultStore(File(root, "results")),
-            gateway = FakeConnectionGateway(),
-            history = history,
-            deviceName = "Seeker",
-            io = Dispatchers.Unconfined,
-        )
+    // The wallet's own repository, over a fake wallet app and this phone's one feed. A feed has no
+    // `PublishWallet`, and nothing here publishes an address anywhere: the feed's binding is only
+    // which profile it signs with (SEE-174).
+    val bindings = FakeConnectionWallets(connections)
 
     val wallet =
         WalletRepository(
             WalletStore(File(root, "wallet"), File(root, "no_backup/wallet")) { key },
             adapter,
-            emptyConnections,
+            bindings,
             now = clock,
             io = Dispatchers.Unconfined,
         )
+
+    /**
+     * Connects a wallet on [network] and binds every feed on this phone to it, the way the owner
+     * does when they add each feed (SEE-174). Returns the profile the feeds now sign with.
+     */
+    suspend fun connectWallet(network: WalletNetwork = WalletNetwork.Mainnet): WalletProfile {
+        wallet.load()
+        val profile = wallet.connectProfiles(network).profiles.single()
+        connections.value.forEach { wallet.bind(it.id, profile.id) }
+        connection = connections.value.first { it.id == connection.id }
+        return profile
+    }
 
     fun viewModel() =
         OperationViewModel(

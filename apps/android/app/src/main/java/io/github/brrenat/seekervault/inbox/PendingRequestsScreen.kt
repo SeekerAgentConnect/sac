@@ -145,7 +145,9 @@ fun PendingRequestsScreen(
                         )
                     }
             }
-            state.wallet?.let { NetworkChip(networkText(it.network)) }
+            // The connection's own wallet network; an inbox of every connection has no one
+            // network to show (SEE-174).
+            state.walletFor(connectionId)?.let { NetworkChip(networkText(it.network)) }
             Box(
                 Modifier.size(SeekerTheme.dimensions.dp48)
                     .clip(CircleShape)

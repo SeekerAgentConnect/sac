@@ -30,12 +30,16 @@ import io.github.brrenat.seekervault.activity.openDestination
 import io.github.brrenat.seekervault.connections.AddConnectionRoute
 import io.github.brrenat.seekervault.connections.Answer
 import io.github.brrenat.seekervault.connections.ConnectionDetailLibraryScreen
+import io.github.brrenat.seekervault.connections.ConnectionWalletPicker
 import io.github.brrenat.seekervault.connections.ConnectionsUiState
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.connections.HomeRoute
 import io.github.brrenat.seekervault.connections.HomeRouteCallbacks
 import io.github.brrenat.seekervault.connections.InboxSummary
 import io.github.brrenat.seekervault.connections.RequestKey
+import io.github.brrenat.seekervault.connections.bindingText
+import io.github.brrenat.seekervault.connections.connectionWalletFacts
+import io.github.brrenat.seekervault.connections.connectionWalletRow
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.connections.sourceColour
 import io.github.brrenat.seekervault.designsystem.HistoryDetailLink
@@ -44,6 +48,7 @@ import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.SheetMotion
 import io.github.brrenat.seekervault.history.HistoryDetailRoute
 import io.github.brrenat.seekervault.history.PositionSaleRoute
+import io.github.brrenat.seekervault.history.holdingFor
 import io.github.brrenat.seekervault.history.retainedPurchases
 import io.github.brrenat.seekervault.inbox.InboxRoute
 import io.github.brrenat.seekervault.inbox.InboxRouteCallbacks
@@ -204,8 +209,14 @@ fun SeekerVaultApp(
         (operations?.review ?: MutableStateFlow(null)).collectAsStateWithLifecycle()
     val positionsState by
         (positions?.state ?: MutableStateFlow(PositionsState())).collectAsStateWithLifecycle()
-    val positionWallet by
-        (positions?.selected ?: MutableStateFlow(null)).collectAsStateWithLifecycle()
+    // The wallet profile that owns the open History item's position — its original owner on its
+    // original network, never the wallet its feed is bound to now (SEE-172, SEE-174).
+    val positionWallet =
+        (navigation.screen as? AppScreen.HistoryDetail)?.identity?.let { identity ->
+            positionsState.holdingFor(identity)?.held?.account?.let { account ->
+                positions?.ownerWallet(account)
+            }
+        }
     // Tracked purchases whose feed record is gone: removing a connection removes its proposals,
     // not the owner's positions (SEE-172). Only an answer once both have been read.
     val retained =
@@ -287,7 +298,7 @@ fun SeekerVaultApp(
             commonPending,
             policyState.stored,
             globalPolicyState.stored,
-            walletState.wallet,
+            walletState.readiness,
             openOperation?.assessment,
         ) {
             commonPending
@@ -329,8 +340,11 @@ fun SeekerVaultApp(
                         connectionsState =
                             if (sheets.isEmpty()) state else state.copy(message = null),
                         inboxSummary = InboxSummary(commonPending.size, toSend),
-                        wallet = walletState.wallet,
-                        walletApp = walletState.walletApp,
+                        // One profile is shown as the wallet; several are counted (SEE-174).
+                        wallet = walletState.profiles.singleOrNull()?.selected(),
+                        walletApp = walletState.profiles.singleOrNull()?.walletApp,
+                        profileCount = walletState.profiles.size,
+                        walletReadiness = walletState.readiness,
                         requestAssessments = inboxState.assessments,
                         signalAssessments = signalAssessments,
                         pendingItems = commonPending,
@@ -461,7 +475,16 @@ fun SeekerVaultApp(
                     AddConnectionRoute(
                         viewModel = connections,
                         onBack = navigator::back,
-                        onAdded = { navigator.selectTab(AppScreen.Home) },
+                        // A new connection chooses its wallet next, on its own detail sheet
+                        // (SEE-174): the pairing code is already spent and the manifest read, so
+                        // the picker knows which networks to offer.
+                        onAdded = { connection ->
+                            navigator.selectTab(AppScreen.Home)
+                            if (connection.retirement == null) {
+                                wallet.beginSetup(connection.id)
+                                navigator.openConnectionDetail(connection.id)
+                            }
+                        },
                         modifier = rootModifier,
                         navigationCallbacks = screenNavigationCallbacks,
                     )
@@ -497,6 +520,8 @@ fun SeekerVaultApp(
                                 ConnectionDetailsRoute(
                                     viewModel = connections,
                                     state = state,
+                                    wallet = wallet,
+                                    walletState = walletState,
                                     id = activeRoute.connectionId,
                                     onBack = pop,
                                     onRules = {
@@ -809,11 +834,11 @@ private fun RequestReviewRoute(
                                 WalletHandoffKind.Signature,
                             )
                         } else {
-                            inbox.approve(key, inboxState.wallet)
+                            inbox.approve(key, inboxState.walletFor(key.connectionId))
                         }
                     },
                     onSendAgain = { inbox.sendAgain(key) },
-                    wallet = inboxState.wallet,
+                    wallet = inboxState.walletFor(key.connectionId),
                     signingProblem = inboxState.problem.takeIf { inboxState.problemKey == key },
                     preparation = inboxState.preparations[key],
                     onPrepareAgain = { inbox.prepare(key, force = true) },
@@ -865,7 +890,7 @@ private fun RequestReviewRoute(
                             name = connection?.label.orEmpty(),
                             colour = connection?.colour?.sourceColour(),
                         ),
-                    wallet = walletState.wallet,
+                    wallet = open.wallet,
                     now = Instant.now(),
                     onOwnerInput = { navigator.openOwnerInput(identity) },
                     onPrepare = operations::prepare,
@@ -873,7 +898,7 @@ private fun RequestReviewRoute(
                         if (open.requiresWalletHandoff) {
                             navigator.openWalletHandoff(identity, WalletHandoffKind.Operation)
                         } else {
-                            operations.approve(walletState.wallet)
+                            operations.approve(open.wallet)
                         }
                     },
                     onDismiss = {
@@ -898,7 +923,7 @@ private fun RequestReviewRoute(
                             .firstOrNull { it.id == identity.connectionId }
                             ?.label
                             .orEmpty(),
-                    wallet = walletState.wallet,
+                    wallet = open.wallet,
                     now = Instant.now(),
                     onChoose = operations::choose,
                     onPrepare = operations::prepare,
@@ -909,7 +934,7 @@ private fun RequestReviewRoute(
                                 WalletHandoffKind.Operation,
                             )
                         } else {
-                            operations.approve(walletState.wallet)
+                            operations.approve(open.wallet)
                         }
                     },
                     onDismiss = { operations.dismiss(identity.connectionId, identity.requestId) },
@@ -966,6 +991,7 @@ private fun WalletHandoffRoute(
             } else {
                 WalletHandoffScreen(
                     summary = walletHandoffSummary(request),
+                    walletApp = inboxState.walletFor(key.connectionId)?.walletApp,
                     onApprove = {
                         approvalStarted = true
                         when (route.kind) {
@@ -974,7 +1000,8 @@ private fun WalletHandoffRoute(
                                     key,
                                     inboxState.preparations[key] as? Preparation.Ready,
                                 )
-                            WalletHandoffKind.Signature -> inbox.approve(key, inboxState.wallet)
+                            WalletHandoffKind.Signature ->
+                                inbox.approve(key, inboxState.walletFor(key.connectionId))
                             WalletHandoffKind.Operation -> Unit
                         }
                     },
@@ -1021,10 +1048,11 @@ private fun WalletHandoffRoute(
                 }
             } else {
                 WalletHandoffScreen(
-                    summary = "$label will continue in Seed Vault Wallet",
+                    summary = "$label will continue in ${open.wallet?.walletApp ?: "your wallet"}",
+                    walletApp = open.wallet?.walletApp,
                     onApprove = {
                         approvalStarted = true
-                        operations.approve(walletState.wallet)
+                        operations.approve(open.wallet)
                     },
                     onDecline = {
                         operations.dismiss(identity.connectionId, identity.requestId)
@@ -1093,6 +1121,8 @@ private fun AddressEditorKind.toPolicyKind(): PolicyAddressKind =
 private fun ConnectionDetailsRoute(
     viewModel: ConnectionsViewModel,
     state: ConnectionsUiState,
+    wallet: io.github.brrenat.seekervault.wallet.WalletViewModel,
+    walletState: io.github.brrenat.seekervault.wallet.WalletUiState,
     id: String,
     onBack: () -> Unit,
     onRules: () -> Unit,
@@ -1109,6 +1139,7 @@ private fun ConnectionDetailsRoute(
     }
     val access = state.access[id]
     val restricted = connection.server.manifest?.feedAccess is FeedAccess.Restricted
+    var picking by rememberSaveable(id) { mutableStateOf(false) }
     // Opening a restricted feed asks the publisher where this phone stands, signed with the
     // device key (SEE-156). It never opens the wallet: only the owner asking does that.
     LaunchedEffect(id) {
@@ -1150,7 +1181,43 @@ private fun ConnectionDetailsRoute(
         feed = state.feeds.gateways[connection.serverUrl],
         availability = state.feedStatus.availabilityOf(id),
         access = access,
+        walletRow = connectionWalletRow(walletState.readiness[id]),
+        walletFacts = connectionWalletFacts(walletState.readiness[id]),
+        onWallet = { picking = true },
     )
+    // What binding came to — how many requests a direct server cancelled, or that it couldn't be
+    // told — said once, on this connection's own sheet.
+    val notice = walletState.binding?.takeIf { it.connectionId == id }
+    val noticeText = notice?.let { bindingText(it.outcome) }
+    val notices = LocalInAppNotices.current
+    LaunchedEffect(notice) {
+        if (notice != null) {
+            noticeText?.let(notices::show)
+            wallet.bindingShown()
+        }
+    }
+    if (picking || walletState.setup == id) {
+        ConnectionWalletPicker(
+            connection = connection,
+            wallet = walletState,
+            onUse = { profileId ->
+                wallet.bind(id, profileId) {
+                    // A restricted feed proves its reader with the wallet it is bound to, so a new
+                    // binding asks for access with it; access proven with another address doesn't
+                    // carry over (SEE-156, SEE-174).
+                    if (restricted) viewModel.afterWalletBound(id)
+                }
+                picking = false
+                wallet.endSetup()
+            },
+            onAdd = { network -> wallet.connect(network) },
+            onChooseWalletApp = wallet::chooseWalletApp,
+            onDismiss = {
+                picking = false
+                wallet.endSetup()
+            },
+        )
+    }
 }
 
 private fun io.github.brrenat.seekervault.policy.PolicyUiState.readyForLibrarySheet(

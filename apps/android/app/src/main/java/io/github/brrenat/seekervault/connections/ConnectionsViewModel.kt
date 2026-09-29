@@ -315,6 +315,25 @@ class ConnectionsViewModel(
     fun requestAccess(id: String) = working(id) { checkNotNull(feedAccess).requestAccess(id) }
 
     /**
+     * Invitations a restricted feed's reference carried, held until the feed has a wallet to ask
+     * for access with (SEE-174). In memory only: a link's invitation is single-use and a process
+     * that dies before the wallet is chosen asks again without it.
+     */
+    private val invitations = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * A restricted feed was bound to a wallet: access is asked for with it, and an invitation its
+     * link carried is redeemed after the request it belongs to (SEE-156, SEE-174). Access proven
+     * with another address stays with that address and is not carried over.
+     */
+    fun afterWalletBound(id: String) {
+        viewModelScope.launch {
+            requestAccess(id)?.join()
+            invitations.remove(id)?.let { redeemAccess(id, it)?.join() }
+        }
+    }
+
+    /**
      * Asks where this phone's request stands, and redeems an invitation if one is waiting. Signed
      * with the device key; the wallet is not opened again.
      */
@@ -517,17 +536,17 @@ class ConnectionsViewModel(
                                     message = ConnectionMessage.FeedAdded(outcome.connection.label)
                                 )
                             }
-                            // A restricted feed is added and then asked for (SEE-156): the feed
-                            // itself is stored either way, and what the wallet signs is the
-                            // request to read it. An invitation the reference carried is redeemed
-                            // straight after the request it belongs to.
+                            // A restricted feed is added and then asked for (SEE-156), with the
+                            // wallet the owner binds it to next (SEE-174): nothing is signed
+                            // before a wallet is chosen for this feed, so the request — and an
+                            // invitation the reference carried, which is redeemed straight after
+                            // it — waits for [afterWalletBound].
                             if (
                                 outcome.connection.server.manifest?.feedAccess
                                     is FeedAccess.Restricted
                             ) {
-                                requestAccess(outcome.connection.id)?.join()
                                 reference.invitation?.let {
-                                    redeemAccess(outcome.connection.id, it)?.join()
+                                    invitations[outcome.connection.id] = it
                                 }
                             }
                             AddConnectionState.FeedAdded(outcome.connection)

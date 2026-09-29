@@ -76,6 +76,15 @@ class FeedAccessManagerTest {
 
     private var connections = listOf(restrictedFeed())
     private var selected: SelectedWallet? = wallet(address)
+
+    /**
+     * Each feed's own wallet, when a test binds them apart (SEE-174); a feed it doesn't name uses
+     * [selected].
+     */
+    private var bound: Map<String, SelectedWallet?> = emptyMap()
+
+    /** The wallet the last signing was asked for. */
+    private var lastReviewed: SelectedWallet? = null
     private var clock = Instant.parse("2026-09-26T12:00:00Z")
 
     /** What the wallet will answer, so a test can decline or answer with the wrong bytes. */
@@ -97,8 +106,9 @@ class FeedAccessManagerTest {
             sessions = sessions,
             keys = keys,
             api = api,
-            wallet = { selected },
-            sign = { message, _ ->
+            wallet = { id -> if (id in bound) bound[id] else selected },
+            sign = { message, reviewed ->
+                lastReviewed = reviewed
                 signings += message.toByteArray()
                 walletAnswer(message.toByteArray())
             },
@@ -347,6 +357,47 @@ class FeedAccessManagerTest {
     }
 
     @Test
+    fun twoFeedsBoundToTwoWalletsAreBothReadableAndEachAnswersForItself() = runTest {
+        // SEE-174: each restricted feed proves its reader with its own wallet profile.
+        connections =
+            listOf(restrictedFeed(), restrictedFeed(id = OTHER_CONNECTION, server = OTHER_SERVER))
+        bound = mapOf(CONNECTION to wallet(address), OTHER_CONNECTION to wallet(otherAddress))
+        walletAnswer = { built ->
+            if (lastReviewed?.address == otherAddress) signed(otherKey, built)
+            else signed(walletKey, built)
+        }
+        val manager = manager()
+        connect(manager)
+        manager.requestAccess(OTHER_CONNECTION)
+        api.state = "approved"
+        api.invitation = "another-invitation"
+        manager.check(OTHER_CONNECTION)
+
+        assertEquals(address, manager.states.value[CONNECTION]?.wallet)
+        assertEquals(otherAddress, manager.states.value[OTHER_CONNECTION]?.wallet)
+        assertEquals(SESSION, manager.sessionFor(CHANNEL))
+        assertEquals(SESSION, manager.sessionFor(channelFor(OTHER_SERVER)))
+
+        // A revocation of one is that one's alone.
+        manager.denied(channelFor(OTHER_SERVER), FeedSessions.Denial.Revoked)
+        runCurrent()
+        assertNull(manager.sessionFor(channelFor(OTHER_SERVER)))
+        assertEquals(SESSION, manager.sessionFor(CHANNEL))
+
+        // The same address on another network keeps its access: the proof names an address, and
+        // no network enters it.
+        bound = bound + (CONNECTION to wallet(address).copy(network = WalletNetwork.Devnet))
+        manager.onWalletChanged()
+        assertEquals(SESSION, manager.sessionFor(CHANNEL))
+
+        // Another address does not inherit it.
+        bound = bound + (CONNECTION to wallet(otherAddress))
+        manager.onWalletChanged()
+        assertNull(manager.sessionFor(CHANNEL))
+        assertNull(manager.states.value[CONNECTION])
+    }
+
+    @Test
     fun removingTheConnectionTakesItsAccessWithIt() = runTest {
         val manager = manager()
         connect(manager)
@@ -576,12 +627,16 @@ class FeedAccessManagerTest {
             selectedAt = Instant.parse("2026-09-26T09:00:00Z"),
         )
 
-    private fun restrictedFeed(access: FeedAccess = FeedAccess.Restricted(ORIGIN)) =
+    private fun restrictedFeed(
+        access: FeedAccess = FeedAccess.Restricted(ORIGIN),
+        id: String = CONNECTION,
+        server: String = SERVER,
+    ) =
         Connection(
-            id = CONNECTION,
+            id = id,
             label = "Copy trading",
             serverUrl = GATEWAY,
-            serverId = SERVER,
+            serverId = server,
             deviceName = "",
             pairedAt = Instant.parse("2026-09-26T09:00:00Z"),
             hasCredential = false,
@@ -589,14 +644,14 @@ class FeedAccessManagerTest {
             server =
                 ServerRecord.Known(
                     ServerManifest(
-                        serverId = SERVER,
+                        serverId = server,
                         protocolVersion = 1,
                         settingsRevision = 1,
                         mode = ConnectionMode.GatewayFeed,
                         reference =
                             ServerReference.Feed(
                                 gatewayUrl = GATEWAY,
-                                channel = channelFor(SERVER),
+                                channel = channelFor(server),
                                 access = access,
                             ),
                         environments = setOf(PluginEnvironment.Production),
@@ -606,6 +661,7 @@ class FeedAccessManagerTest {
 
     private companion object {
         const val CONNECTION = "0b8e2b1c-3f4d-4e5a-9b6c-7d8e9f0a1b2c"
+        const val OTHER_CONNECTION = "1c9f3c2d-4a5e-4f6b-8c7d-8e9f0a1b2c3d"
         const val SERVER = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
         const val OTHER_SERVER = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
         const val GATEWAY = "https://feeds.example.com"

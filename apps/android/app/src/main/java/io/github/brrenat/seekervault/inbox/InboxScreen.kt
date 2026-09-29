@@ -421,7 +421,7 @@ fun inboxScreenState(
                     connection = connections[item.connectionId],
                     assessment =
                         (item as? PendingItem.Private)?.request?.key?.let(state.assessments::get),
-                    walletNetwork = state.wallet?.network,
+                    walletNetwork = state.walletFor(item.connectionId)?.network,
                     now = now,
                     formatTime = formatTime,
                 )

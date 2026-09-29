@@ -5,12 +5,20 @@ import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionRepository
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
-import io.github.brrenat.seekervault.connections.GatewayException
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.servers.ALL_NETWORKS
+import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.SERVER_PROTOCOL
+import io.github.brrenat.seekervault.servers.ServerManifest
+import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.ServerReference
+import io.github.brrenat.seekervault.servers.channelFor
+import io.github.brrenat.seekervault.servers.directManifest
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
 import java.security.GeneralSecurityException
@@ -18,11 +26,13 @@ import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -32,824 +42,732 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 
 /**
- * Connecting, keeping, and disconnecting the owner's wallet, and what every paired sidecar is told
- * about it. The wallet is a [FakeWalletAdapter]: no wallet app and no activity are involved.
+ * Saved wallet profiles and the one each connection signs with (SEE-174). The wallet is a
+ * [FakeWalletAdapter] and the connections a [FakeConnectionWallets], so every test can say exactly
+ * which connection, which profile and which network were used, and which server heard what. The
+ * last tests run the same rules over the real connection repository and fake sidecars.
  */
 @RunWith(AndroidJUnit4::class)
 class WalletRepositoryTest {
     @get:Rule val folder = TemporaryFolder()
 
-    private val gateway = FakeConnectionGateway()
-    private val server = gateway.serve(URL)
     private val key = softwareKey()
     private val adapter = FakeWalletAdapter()
-
-    private val connections by lazy {
-        ConnectionRepository(
-            store = ConnectionStore(File(folder.root, "connections")),
-            vault = CredentialVault(File(folder.root, "credentials")) { key },
-            results = ResultStore(File(folder.root, "results")),
-            gateway = gateway,
-            deviceName = "Seeker",
-            io = Dispatchers.Unconfined,
-        )
-    }
+    private val bindings = FakeConnectionWallets()
 
     /** Set while a test needs this phone's storage to be unavailable, as a locked Keystore is. */
     private var storageFails = false
 
-    private val store by lazy {
+    private fun store() =
         WalletStore(File(folder.root, "wallet"), File(folder.root, "no_backup/wallet")) {
             if (storageFails) throw GeneralSecurityException("the keystore went away") else key
         }
+
+    private val store by lazy { store() }
+
+    private var ids = 0
+
+    private fun repository(
+        connections: io.github.brrenat.seekervault.connections.ConnectionWallets = bindings
+    ) =
+        WalletRepository(
+            store(),
+            adapter,
+            connections,
+            io = Dispatchers.Unconfined,
+            newId = { "id-${++ids}" },
+        )
+
+    private val repository by lazy { repository() }
+
+    /** Adds [address] on [network] and returns the one profile it made. */
+    private suspend fun WalletRepository.add(
+        address: String,
+        network: WalletNetwork,
+        app: String? = null,
+        token: String = "authorization-$address-$network",
+    ): WalletProfile {
+        adapter.answerConnected(
+            address,
+            authToken = token,
+            route =
+                app?.let { WalletRouting(packageName = it, appLabel = it) }
+                    ?: WalletRouting.Untargeted,
+        )
+        return connectProfiles(network, app?.let { InstalledWallet(it, it) }).profiles.single()
     }
 
-    private val repository by lazy {
-        WalletRepository(store, adapter, connections, io = Dispatchers.Unconfined)
-    }
+    // --- Profiles -------------------------------------------------------------------------------
 
-    private fun pair(): Connection = runBlocking {
-        connections.load()
-        connections.pair(server.issue(URL))
+    @Test
+    fun keepsTheSameAddressOnTwoNetworksAndAnotherAddressApartAfterARestart() = runBlocking {
+        repository.load()
+        val aMain = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val aDev = repository.add(WALLET_A, WalletNetwork.Devnet)
+        val bMain = repository.add(WALLET_B, WalletNetwork.Mainnet)
+
+        assertEquals(3, setOf(aMain.id, aDev.id, bMain.id).size)
+
+        val restarted = repository()
+        restarted.load()
+        val profiles = restarted.profiles.value
+        assertEquals(listOf(aMain.id, aDev.id, bMain.id), profiles.map { it.id })
+        assertEquals(
+            listOf(
+                WALLET_A to WalletNetwork.Mainnet,
+                WALLET_A to WalletNetwork.Devnet,
+                WALLET_B to WalletNetwork.Mainnet,
+            ),
+            profiles.map { it.address to it.network },
+        )
+        // Each keeps its own authorization, sealed: the network a token was issued for is its own.
+        val stored = store().profiles()
+        assertEquals(
+            listOf(
+                "authorization-$WALLET_A-Mainnet",
+                "authorization-$WALLET_A-Devnet",
+                "authorization-$WALLET_B-Mainnet",
+            ),
+            profiles.map { stored.authorization(it.authorizationId)?.token },
+        )
     }
 
     @Test
-    fun storesTheSelectedWalletAndTellsEveryConnection() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, label = "Account 1", chains = listOf("solana:devnet"))
-        val result = repository.connect(WalletNetwork.Devnet)
+    fun addingAlwaysAsksTheWalletAfreshSoASecondAccountCanBeChosen() = runBlocking {
+        repository.load()
+        repository.add(WALLET_A, WalletNetwork.Mainnet)
+        repository.add(WALLET_B, WalletNetwork.Mainnet)
 
-        assertTrue(result.toString(), result is WalletResult.Connected)
-        val selected = repository.wallet.value
-        assertEquals(WALLET, selected?.address)
-        assertEquals(WalletNetwork.Devnet, selected?.network)
-        assertEquals("Account 1", selected?.label)
-        assertTrue(selected?.networkConfirmed == true)
-        assertEquals(WALLET, server.wallet?.wallet)
-        assertEquals(Network.NETWORK_DEVNET, server.wallet?.network)
-        // The phone never sets bound_at: the sidecar stamps it.
-        assertFalse(server.wallet!!.hasBoundAt())
+        // No stored token was offered either time, so the wallet asked which account to authorize
+        // rather than handing back the one it authorized before.
+        assertEquals(listOf(null, null), adapter.connects.map { it.second })
+        assertEquals(2, repository.profiles.value.size)
     }
 
     @Test
-    fun keepsTheWalletsAuthorizationOffTheWire() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Mainnet)
-        assertEquals(SECRET, store.authorization())
-        assertTrue(gateway.sent.none { (_, secret) -> secret == SECRET })
-        assertTrue(gateway.published.none { (_, binding) -> binding.toString().contains(SECRET) })
+    fun reconnectingTheSameAccountRefreshesItsProfileInsteadOfDuplicatingIt() = runBlocking {
+        repository.load()
+        val first = repository.add(WALLET_A, WalletNetwork.Mainnet, app = SEED_VAULT)
+        bindings.flow.value = listOf(feed(FEED_1, first.id))
+
+        val again =
+            repository.add(WALLET_A, WalletNetwork.Mainnet, app = SEED_VAULT, token = REFRESHED)
+
+        assertEquals(first.id, again.id)
+        assertEquals(1, repository.profiles.value.size)
+        assertEquals(REFRESHED, store().profiles().authorization(again.authorizationId)?.token)
+        // The connection naming it names the same profile, and nothing was unbound.
+        assertEquals(first.id, bindings.connection(FEED_1)?.walletProfileId)
+        // The old authorization nothing uses any more is not kept.
+        assertEquals(1, store().profiles().authorizations.size)
     }
 
     @Test
-    fun reusesTheStoredAuthorizationOnTheNextConnect() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Mainnet)
-        repository.connect(WalletNetwork.Mainnet)
-        assertEquals(listOf(null, SECRET), adapter.connects.map { it.second })
+    fun theSameAccountInAnotherWalletAppIsAnotherProfile() = runBlocking {
+        repository.load()
+        val seedVault = repository.add(WALLET_A, WalletNetwork.Mainnet, app = SEED_VAULT)
+        val other = repository.add(WALLET_A, WalletNetwork.Mainnet, app = OTHER_APP)
+
+        assertNotEquals(seedVault.id, other.id)
+        assertEquals(SEED_VAULT, repository.profile(seedVault.id)?.walletApp)
+        assertEquals(OTHER_APP, repository.profile(other.id)?.walletApp)
     }
 
     @Test
-    fun changesNothingWhenTheOwnerDeclines() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET)
-        repository.connect(WalletNetwork.Mainnet)
+    fun everyAccountOneAuthorizationNamesIsAProfileSharingIt() = runBlocking {
+        repository.load()
+        adapter.answerAccounts(WALLET_A, WALLET_B, authToken = SECRET)
+
+        val saved = repository.connectProfiles(WalletNetwork.Mainnet).profiles
+
+        assertEquals(listOf(WALLET_A, WALLET_B), saved.map { it.address })
+        assertEquals(1, saved.map { it.authorizationId }.toSet().size)
+        assertEquals(1, store().profiles().authorizations.size)
+    }
+
+    @Test
+    fun cancellingInTheWalletChangesNothing() = runBlocking {
+        repository.load()
+        val kept = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(feed(FEED_1, kept.id))
         adapter.answer(WalletResult.Declined)
 
-        assertEquals(WalletResult.Declined, repository.connect(WalletNetwork.Devnet))
-        assertEquals(WALLET, repository.wallet.value?.address)
-        assertEquals(WalletNetwork.Mainnet, repository.wallet.value?.network)
-        assertEquals(WALLET, server.wallet?.wallet)
+        val outcome = repository.connectProfiles(WalletNetwork.Devnet)
+
+        assertEquals(WalletResult.Declined, outcome.result)
+        assertEquals(listOf(kept), repository.profiles.value)
+        assertEquals(kept.id, bindings.connection(FEED_1)?.walletProfileId)
     }
 
     @Test
-    fun reportsNoWalletAndStoresNothing() = runBlocking {
-        pair()
-        adapter.answer(WalletResult.NoWallet)
-        assertEquals(WalletResult.NoWallet, repository.connect(WalletNetwork.Mainnet))
-        assertNull(repository.wallet.value)
-        assertNull(store.selected())
-        assertNull(server.wallet)
+    fun aProfileThatCannotBeStoredIsNotSaved() = runBlocking {
+        repository.load()
+        adapter.answerConnected(WALLET_A)
+        storageFails = true
+        try {
+            repository.connectProfiles(WalletNetwork.Mainnet)
+            error("storing should have failed")
+        } catch (e: WalletStorageException) {
+            // Reported, and nothing held.
+        }
+        storageFails = false
+        assertEquals(emptyList<WalletProfile>(), repository.profiles.value)
     }
 
     @Test
-    fun forgetsAnAuthorizationTheWalletNoLongerAccepts() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Mainnet)
-        adapter.answer(WalletResult.AuthorizationExpired)
+    fun renamingKeepsTheAccountLabelApartAndChangesNothingElse() = runBlocking {
+        repository.load()
+        adapter.answerConnected(WALLET_A, label = "Account 1")
+        val profile = repository.connectProfiles(WalletNetwork.Mainnet).profiles.single()
+        val direct = direct(DIRECT_X, profile.id)
+        bindings.flow.value = listOf(direct)
+        repository.publish()
+        val heard = bindings.published.getValue(DIRECT_X).size
 
-        assertEquals(WalletResult.AuthorizationExpired, repository.connect(WalletNetwork.Mainnet))
-        assertNull(repository.wallet.value)
-        assertNull(store.authorization())
-        // Every sidecar learns there's no wallet, so an agent gets WALLET_NOT_CONNECTED.
-        assertNull(server.wallet)
-        // The next attempt starts afresh, with no authorization to offer.
-        adapter.answerConnected(WALLET)
-        repository.connect(WalletNetwork.Mainnet)
-        assertNull(adapter.connects.last().second)
+        repository.rename(profile.id, "  Trading  ")
+
+        val renamed = checkNotNull(repository.profile(profile.id))
+        assertEquals("Trading", renamed.displayLabel)
+        assertEquals("Account 1", renamed.accountLabel)
+        // A name is local: no server is told anything again.
+        repository.publish()
+        assertEquals(heard, bindings.published.getValue(DIRECT_X).size)
+        repository.rename(profile.id, " ")
+        assertEquals("Account 1", repository.profile(profile.id)?.displayLabel)
     }
 
-    @Test
-    fun reportsANetworkTheWalletDoesNotServe() = runBlocking {
-        pair()
-        adapter.answer(WalletResult.NetworkUnsupported)
-        assertEquals(WalletResult.NetworkUnsupported, repository.connect(WalletNetwork.Devnet))
-        assertNull(repository.wallet.value)
-    }
+    // --- Readiness ------------------------------------------------------------------------------
 
     @Test
-    fun saysSoWhenTheWalletDidNotConfirmTheNetwork() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, chains = listOf("solana:mainnet"))
-        repository.connect(WalletNetwork.Devnet)
-        assertFalse(repository.wallet.value!!.networkConfirmed)
-        // A wallet that lists no chains hasn't contradicted anything.
-        adapter.answerConnected(WALLET, chains = emptyList())
-        repository.connect(WalletNetwork.Devnet)
-        assertTrue(repository.wallet.value!!.networkConfirmed)
-    }
+    fun aConnectionIsReadyOnlyWithItsOwnProfileOnADeclaredNetwork() = runBlocking {
+        repository.load()
+        val main = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val dev = repository.add(WALLET_A, WalletNetwork.Devnet)
+        bindings.flow.value =
+            listOf(
+                feed(FEED_1, null),
+                feed(FEED_2, main.id, networks = emptySet()),
+                feed(FEED_3, dev.id, networks = setOf(WalletNetwork.Mainnet)),
+                feed(FEED_4, "gone"),
+                feed(FEED_5, main.id, networks = setOf(WalletNetwork.Mainnet)),
+            )
 
-    @Test
-    fun tellsTheWalletAndEverySidecarWhenItIsDisconnected() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Mainnet)
-
-        repository.disconnect()
-        assertEquals(listOf(SECRET), adapter.disconnects)
-        assertNull(repository.wallet.value)
-        assertNull(store.selected())
-        assertNull(store.authorization())
-        assertNull(server.wallet)
-    }
-
-    @Test
-    fun readsTheStoredWalletBack() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET)
-        repository.connect(WalletNetwork.Devnet)
-
-        val next = WalletRepository(store, adapter, connections, io = Dispatchers.Unconfined)
-        next.load()
-        assertEquals(WALLET, next.wallet.value?.address)
-        assertEquals(WalletNetwork.Devnet, next.wallet.value?.network)
-    }
-
-    @Test
-    fun dropsAStoredWalletWhoseAuthorizationIsGone() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET)
-        repository.connect(WalletNetwork.Devnet)
-        File(folder.root, "no_backup/wallet/wallet-session").delete()
-
-        val next = WalletRepository(store, adapter, connections, io = Dispatchers.Unconfined)
-        next.load()
-        assertNull(next.wallet.value)
-        assertNull(store.selected())
-    }
-
-    @Test
-    fun reportsTheConnectionsItCouldNotTell() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET)
-        server.failure = GatewayException.Kind.Unreachable
-        repository.connect(WalletNetwork.Mainnet)
-        val failed = repository.publish()
-        assertEquals(1, failed.size)
-        assertNull(server.wallet)
-
-        server.failure = null
-        assertEquals(emptyList<String>(), repository.publish())
-        assertEquals(WALLET, server.wallet?.wallet)
-    }
-
-    @Test
-    fun tellsOnlyTheConnectionsThatHaveNotHeardItYet() = runBlocking {
-        val first = pair()
-        adapter.answerConnected(WALLET)
-        repository.connect(WalletNetwork.Mainnet)
-        val publications = server.publications
-
-        // Nothing changed, so nothing is sent again.
-        assertEquals(emptyList<String>(), repository.publish())
-        assertEquals(publications, server.publications)
-
-        // A newly paired connection hears it on the next publication.
-        val second = gateway.serve(OTHER_URL)
-        connections.pair(second.issue(OTHER_URL))
-        assertEquals(emptyList<String>(), repository.publish())
-        assertEquals(WALLET, second.wallet?.wallet)
-        assertNotNull(first.id)
-    }
-
-    @Test
-    fun tellsEveryConnectionAgainWhenTheOwnerAsks() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET)
-        repository.connect(WalletNetwork.Mainnet)
-        val publications = server.publications
-        assertEquals(emptyList<String>(), repository.publishAgain())
-        assertEquals(publications + 1, server.publications)
-    }
-
-    @Test
-    fun signsWithTheStoredAuthorizationAndTheSelectedWallet() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        val signature = ByteString.copyFrom(ByteArray(64) { 9 })
-        adapter.signWith(signature)
-
-        val message = ByteString.copyFromUtf8("Sign in to Example")
-        val result = repository.sign(message, selected)
-
-        assertEquals(SignResult.Signed(message, WALLET, signature), result)
-        val asked = adapter.signings.single()
-        assertEquals(message, asked.first)
-        assertEquals(selected, asked.second)
-        // The wallet's authorization is what reaches the wallet, and it never goes anywhere else.
-        assertEquals(SECRET, asked.third)
-        assertTrue(gateway.sent.none { (_, secret) -> secret == SECRET })
-    }
-
-    @Test
-    fun asksTheWalletNothingWithoutAConnectedWallet() = runBlocking {
-        pair()
+        assertEquals(WalletReadiness.NoProfile, repository.readiness(FEED_1))
+        // A server that declared no networks is never read as Mainnet.
+        assertEquals(WalletReadiness.NetworksUnknown(main), repository.readiness(FEED_2))
         assertEquals(
-            SignResult.NotConnected,
-            repository.sign(ByteString.copyFromUtf8("x"), REVIEWED),
+            WalletReadiness.NetworkUnsupported(dev, setOf(WalletNetwork.Mainnet)),
+            repository.readiness(FEED_3),
+        )
+        assertEquals(WalletReadiness.ProfileMissing, repository.readiness(FEED_4))
+        assertEquals(WalletReadiness.Ready(main), repository.readiness(FEED_5))
+        assertNull(repository.walletFor(FEED_2))
+        assertNull(repository.walletFor(FEED_3))
+        assertEquals(main.id, repository.walletFor(FEED_5)?.profileId)
+        // The access proof is address-only, so a feed that declared nothing can still prove its
+        // reader with its own wallet — and never with another's.
+        assertEquals(WALLET_A, repository.accessWalletFor(FEED_2)?.address)
+        assertNull(repository.accessWalletFor(FEED_1))
+    }
+
+    @Test
+    fun onlyProfilesOnADeclaredNetworkCanBeBound() = runBlocking {
+        repository.load()
+        val main = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val dev = repository.add(WALLET_A, WalletNetwork.Devnet)
+        bindings.flow.value = listOf(feed(FEED_1, null, networks = setOf(WalletNetwork.Mainnet)))
+
+        assertEquals(BindOutcome.Incompatible, repository.bind(FEED_1, dev.id))
+        assertNull(bindings.connection(FEED_1)?.walletProfileId)
+        assertEquals(BindOutcome.Bound, repository.bind(FEED_1, main.id))
+        assertEquals(main.id, bindings.connection(FEED_1)?.walletProfileId)
+        assertEquals(BindOutcome.Gone, repository.bind(FEED_1, "no-such-profile"))
+    }
+
+    // --- Direct publication ---------------------------------------------------------------------
+
+    @Test
+    fun twoDirectServersEachHearOnlyTheirOwnBinding() = runBlocking {
+        repository.load()
+        val aDev = repository.add(WALLET_A, WalletNetwork.Devnet)
+        val bMain = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(direct(DIRECT_X, null), direct(DIRECT_Y, null))
+
+        assertEquals(BindOutcome.Published(0), repository.bind(DIRECT_X, aDev.id))
+        assertEquals(BindOutcome.Published(0), repository.bind(DIRECT_Y, bMain.id))
+
+        assertEquals(
+            listOf(WALLET_A to Network.NETWORK_DEVNET),
+            bindings.published.getValue(DIRECT_X).map { it!!.wallet to it.network },
+        )
+        assertEquals(
+            listOf(WALLET_B to Network.NETWORK_MAINNET),
+            bindings.published.getValue(DIRECT_Y).map { it!!.wallet to it.network },
+        )
+        assertEquals(aDev.id, repository.walletFor(DIRECT_X)?.profileId)
+        assertEquals(bMain.id, repository.walletFor(DIRECT_Y)?.profileId)
+    }
+
+    @Test
+    fun addingOrReconnectingAProfileTellsNoServerAnything() = runBlocking {
+        repository.load()
+        val bound = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(direct(DIRECT_X, bound.id), direct(DIRECT_Y, null))
+        repository.publish()
+        val before = bindings.published.mapValues { it.value.toList() }
+
+        repository.add(WALLET_B, WalletNetwork.Mainnet)
+        adapter.answerConnected(WALLET_A, authToken = REFRESHED)
+        repository.reconnect(bound.id)
+        repository.publish()
+
+        assertEquals(before, bindings.published.mapValues { it.value.toList() })
+    }
+
+    @Test
+    fun rebindingOneDirectServerTellsOnlyThatServerAndReportsWhatItCancelled() = runBlocking {
+        repository.load()
+        val a = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val b = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(direct(DIRECT_X, a.id), direct(DIRECT_Y, a.id))
+        repository.publish()
+        bindings.cancels = { id, _ -> if (id == DIRECT_X) 2 else 0 }
+
+        assertEquals(BindOutcome.Published(2), repository.bind(DIRECT_X, b.id))
+
+        assertEquals(WALLET_B, bindings.published.getValue(DIRECT_X).last()?.wallet)
+        assertEquals(1, bindings.published.getValue(DIRECT_Y).size)
+        assertEquals(a.id, repository.walletFor(DIRECT_Y)?.profileId)
+    }
+
+    @Test
+    fun aServerThatMissedItsBindingSignsNothingUntilItHearsIt() = runBlocking {
+        repository.load()
+        val a = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val b = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(direct(DIRECT_X, a.id))
+        repository.publish()
+        val reviewed = checkNotNull(repository.walletFor(DIRECT_X))
+
+        bindings.reachable[DIRECT_X] = false
+        assertEquals(BindOutcome.PublicationFailed, repository.bind(DIRECT_X, b.id))
+
+        assertEquals(WalletReadiness.PublicationPending(b), repository.readiness(DIRECT_X))
+        assertNull(repository.walletFor(DIRECT_X))
+        // Neither the old wallet the server still holds, nor the new one it hasn't heard of.
+        assertEquals(SignResult.Changed, repository.sign(MESSAGE, reviewed, DIRECT_X))
+        assertEquals(
+            SignResult.Changed,
+            repository.sign(MESSAGE, b.selected(), DIRECT_X),
         )
         assertEquals(emptyList<Any>(), adapter.signings)
+
+        // Retried, it lands, and only then is the new wallet ready.
+        bindings.reachable[DIRECT_X] = true
+        assertEquals(emptyList<String>(), repository.publish())
+        assertEquals(b.id, repository.walletFor(DIRECT_X)?.profileId)
+    }
+
+    // --- Signing --------------------------------------------------------------------------------
+
+    @Test
+    fun signsWithTheConnectionsOwnProfileAuthorizationAndApp() = runBlocking {
+        repository.load()
+        val a = repository.add(WALLET_A, WalletNetwork.Mainnet, app = SEED_VAULT, token = "token-a")
+        val b = repository.add(WALLET_B, WalletNetwork.Mainnet, app = OTHER_APP, token = "token-b")
+        bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+        adapter.installed =
+            listOf(InstalledWallet(SEED_VAULT, "S"), InstalledWallet(OTHER_APP, "O"))
+        adapter.sendWith(SIGNATURE)
+        adapter.routes.clear()
+
+        repository.signAndSend(TRANSACTION, checkNotNull(repository.walletFor(FEED_2)), FEED_2)
+
+        val (_, wallet, token) = adapter.sendings.single()
+        assertEquals(WALLET_B, wallet.address)
+        assertEquals("token-b", token)
+        assertEquals(OTHER_APP, adapter.routes.single()?.packageName)
     }
 
     @Test
-    fun asksTheWalletNothingWhenTheSelectionIsNotTheOneReviewed() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        // The same wallet on another network is another selection: the owner reviewed one of them.
-        for (reviewed in listOf(REVIEWED, selected.copy(network = WalletNetwork.Mainnet))) {
-            assertEquals(
-                SignResult.Changed,
-                repository.sign(ByteString.copyFromUtf8("x"), reviewed),
-            )
-        }
+    fun aReviewForAConnectionThatWasReboundNeverReachesTheWallet() = runBlocking {
+        repository.load()
+        val a = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val b = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(feed(FEED_1, a.id))
+        val reviewed = checkNotNull(repository.walletFor(FEED_1))
+
+        repository.bind(FEED_1, b.id)
+
+        assertEquals(SendResult.Changed, repository.signAndSend(TRANSACTION, reviewed, FEED_1))
+        assertEquals(emptyList<Any>(), adapter.sendings)
+    }
+
+    @Test
+    fun aReviewOfARemovedProfileNeverReachesTheWallet() = runBlocking {
+        repository.load()
+        val a = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(feed(FEED_1, a.id))
+        val reviewed = checkNotNull(repository.walletFor(FEED_1))
+
+        repository.remove(a.id)
+
+        assertEquals(SignResult.Changed, repository.sign(MESSAGE, reviewed, FEED_1))
+        assertEquals(SignResult.Changed, repository.sign(MESSAGE, reviewed))
         assertEquals(emptyList<Any>(), adapter.signings)
     }
 
     @Test
-    fun keepsAnAuthorizationTheWalletReplacesWhileSigning() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        val publications = server.publications
-        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 9 }))
-        // The wallet reauthorizes this app as it signs, and hands back another authorization.
-        adapter.refreshedAuthorization = REFRESHED
+    fun aRequestForAnotherNetworkIsNotSignedWithAFallbackProfile() = runBlocking {
+        repository.load()
+        repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val dev = repository.add(WALLET_A, WalletNetwork.Devnet)
+        bindings.flow.value = listOf(feed(FEED_1, dev.id))
+        // What a screen would have captured had it been about Mainnet: the same address, another
+        // network. The connection's own profile is Devnet, and nothing else stands in.
+        val mainnet = SelectedWallet(WALLET_A, WalletNetwork.Mainnet, selectedAt = Instant.EPOCH)
 
-        val message = ByteString.copyFromUtf8("Sign in to Example")
-        assertTrue(repository.sign(message, selected) is SignResult.Signed)
-
-        // The one it replaced went to the wallet; the replacement is what this phone now keeps.
-        assertEquals(SECRET, adapter.signings.single().third)
-        assertEquals(REFRESHED, store.authorization())
-        // The owner's selection is untouched, and no sidecar was told anything new about it.
-        assertEquals(selected, repository.wallet.value)
-        assertEquals(selected, store.selected())
-        assertEquals(WALLET, server.wallet?.wallet)
-        assertEquals(Network.NETWORK_DEVNET, server.wallet?.network)
-        assertEquals(publications, server.publications)
-
-        // The next signing offers the replacement, and so does a repository that starts from the
-        // files this phone stored, the way the app does when it is opened again.
-        repository.sign(message, selected)
-        assertEquals(REFRESHED, adapter.signings[1].third)
-        val next = WalletRepository(store, adapter, connections, io = Dispatchers.Unconfined)
-        next.load()
-        assertEquals(selected, next.wallet.value)
-        next.sign(message, checkNotNull(next.wallet.value))
-        assertEquals(REFRESHED, adapter.signings[2].third)
+        assertEquals(SignResult.Changed, repository.sign(MESSAGE, mainnet, FEED_1))
+        assertEquals(emptyList<Any>(), adapter.signings)
     }
 
     @Test
-    fun keepsTheReplacedAuthorizationWhenTheOwnerDeclinesTheSigning() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
+    fun aRebindingQueuedBehindTheWalletLockIsCheckedAgainBeforeTheHandoff() = runBlocking {
+        repository.load()
+        val a = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val b = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+        val reviewedOne = checkNotNull(repository.walletFor(FEED_1))
+        val reviewedTwo = checkNotNull(repository.walletFor(FEED_2))
+        adapter.sendWith(SIGNATURE)
+        val release = CompletableDeferred<Unit>()
+        coroutineScope {
+            // Another review holds the wallet — the owner is in the wallet app for it.
+            val busy = launch { repository.withWallet { release.await() } }
+            yield()
+            // Meanwhile FEED_1 is rebound, and both reviews wait for the lock behind it.
+            val rebinding = launch { repository.bind(FEED_1, b.id) }
+            val first = launch {
+                assertEquals(
+                    SendResult.Changed,
+                    repository.signAndSend(TRANSACTION, reviewedOne, FEED_1),
+                )
+            }
+            val second = launch {
+                assertEquals(
+                    SendResult.Sent(SIGNATURE),
+                    repository.signAndSend(TRANSACTION, reviewedTwo, FEED_2),
+                )
+            }
+            yield()
+            release.complete(Unit)
+            listOf(busy, rebinding, first, second).forEach { it.join() }
+        }
+        // Only the review whose connection still names its profile reached the wallet.
+        assertEquals(listOf(WALLET_B), adapter.sendings.map { it.second.address })
+    }
+
+    @Test
+    fun aPositionFollowUpUsesItsOwnerNotTheFeedsNewWallet() = runBlocking {
+        repository.load()
+        val owner = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val newer = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(feed(FEED_1, newer.id))
+
+        assertEquals(owner.id, repository.ownerProfile(WALLET_A, WalletNetwork.Mainnet)?.profileId)
+        // No profile for the owner on another network: the follow-up is blocked, not rerouted.
+        assertNull(repository.ownerProfile(WALLET_A, WalletNetwork.Devnet))
+        repository.remove(owner.id)
+        assertNull(repository.ownerProfile(WALLET_A, WalletNetwork.Mainnet))
+    }
+
+    // --- Authorizations -------------------------------------------------------------------------
+
+    @Test
+    fun aRotatedTokenIsKeptForEveryProfileSharingIt() = runBlocking {
+        repository.load()
+        adapter.answerAccounts(WALLET_A, WALLET_B, authToken = SECRET)
+        val (a, b) = repository.connectProfiles(WalletNetwork.Mainnet).profiles
+        bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+        adapter.refreshedAuthorization = REFRESHED
         adapter.answerSigning(SignResult.Declined)
-        adapter.refreshedAuthorization = REFRESHED
 
-        assertEquals(SignResult.Declined, repository.sign(ByteString.copyFromUtf8("x"), selected))
+        repository.sign(MESSAGE, a.selected(), FEED_1)
+        adapter.refreshedAuthorization = null
+        repository.sign(MESSAGE, b.selected(), FEED_2)
 
-        // Declining says something about the message, not about this phone's authorization: the
-        // replacement the wallet issued is still good, and the wallet is still connected.
-        assertEquals(REFRESHED, store.authorization())
-        assertEquals(selected, repository.wallet.value)
-        assertEquals(WALLET, server.wallet?.wallet)
+        assertEquals(listOf(SECRET, REFRESHED), adapter.signings.map { it.third })
     }
 
     @Test
-    fun forgetsAnAuthorizationTheWalletRefusesWhileSigning() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
+    fun anExpiredAuthorizationNeedsReconnectingForItsOwnProfilesAndNoOthers() = runBlocking {
+        repository.load()
+        val a = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val b = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
         adapter.answerSigning(SignResult.AuthorizationExpired)
-        // A refused authorization is refused, whatever else the wallet reported with it.
-        adapter.refreshedAuthorization = REFRESHED
 
         assertEquals(
             SignResult.AuthorizationExpired,
-            repository.sign(ByteString.copyFromUtf8("x"), selected),
+            repository.sign(MESSAGE, a.selected(), FEED_1),
         )
-        // Nothing is left to sign with, and every sidecar is told there is no wallet.
-        assertNull(repository.wallet.value)
-        assertNull(store.authorization())
-        assertNull(server.wallet)
-    }
-
-    @Test
-    fun handsTheWalletTheExactTransactionAndTheStoredAuthorization() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        val signature = ByteString.copyFrom(ByteArray(64) { 4 })
-        adapter.sendWith(signature)
-
-        val transaction = ByteString.copyFrom(ByteArray(215) { (it * 3).toByte() })
-        val result = repository.signAndSend(transaction, selected)
-
-        assertEquals(SendResult.Sent(signature), result)
-        val asked = adapter.sendings.single()
-        assertEquals(transaction, asked.first)
-        assertEquals(selected, asked.second)
-        assertEquals(SECRET, asked.third)
-        // The wallet's authorization reaches the wallet and nothing else, sidecars included.
-        assertTrue(gateway.sent.none { (_, secret) -> secret == SECRET })
-    }
-
-    @Test
-    fun sendsNothingForASelectionTheOwnerDidNotReview() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        val transaction = ByteString.copyFromUtf8("x")
-        for (reviewed in listOf(REVIEWED, selected.copy(network = WalletNetwork.Mainnet))) {
-            assertEquals(SendResult.Changed, repository.signAndSend(transaction, reviewed))
-        }
-        assertEquals(emptyList<Any>(), adapter.sendings)
-        // And with no wallet at all there is nothing to ask.
-        repository.disconnect()
-        assertEquals(SendResult.NotConnected, repository.signAndSend(transaction, selected))
-        assertEquals(emptyList<Any>(), adapter.sendings)
-    }
-
-    @Test
-    fun runsOneWalletInteractionAtATime() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 1 }))
-        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 2 }))
-        val inTheWallet = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        adapter.beforeSending = {
-            inTheWallet.complete(Unit)
-            release.await()
-        }
-
-        coroutineScope {
-            val sending = launch { repository.signAndSend(ByteString.copyFromUtf8("t"), selected) }
-            inTheWallet.await()
-            // A signature asked for while a transaction is in front of the owner waits its turn:
-            // two wallet screens at once is how one approval signs the other's bytes.
-            val signing = launch { repository.sign(ByteString.copyFromUtf8("m"), selected) }
-            // Let it run as far as it can: without the lock it would reach the wallet right now.
-            repeat(4) { yield() }
-            assertEquals(emptyList<Any>(), adapter.signings)
-            release.complete(Unit)
-            sending.join()
-            signing.join()
-        }
-        assertEquals(1, adapter.sendings.size)
-        assertEquals(1, adapter.signings.size)
-    }
-
-    @Test
-    fun forgetsAnAuthorizationTheWalletRefusesWhileSending() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        adapter.answerSending(SendResult.AuthorizationExpired)
 
         assertEquals(
-            SendResult.AuthorizationExpired,
-            repository.signAndSend(ByteString.copyFromUtf8("x"), selected),
+            WalletReadiness.NeedsReconnect(a.copy(authorized = false)),
+            repository.readiness(FEED_1),
         )
-        assertNull(repository.wallet.value)
-        assertNull(store.authorization())
-        assertNull(server.wallet)
-    }
+        // The connection still names it: an expiry reconnects a wallet, it doesn't rebind one.
+        assertEquals(a.id, bindings.connection(FEED_1)?.walletProfileId)
+        assertEquals(b.id, repository.walletFor(FEED_2)?.profileId)
 
-    @Test
-    fun keepsAnAuthorizationTheWalletReplacesWhileSending() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        val publications = server.publications
-        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 4 }))
-        // The wallet reauthorizes this app as it sends, and hands back another authorization.
-        adapter.refreshedAuthorization = REFRESHED
-
-        val transaction = ByteString.copyFromUtf8("t")
-        assertTrue(repository.signAndSend(transaction, selected) is SendResult.Sent)
-
-        // The one it replaced went to the wallet; the replacement is what this phone now keeps.
-        assertEquals(SECRET, adapter.sendings.single().third)
-        assertEquals(REFRESHED, store.authorization())
-        // The owner's selection is untouched, and no sidecar was told anything new about it.
-        assertEquals(selected, repository.wallet.value)
-        assertEquals(selected, store.selected())
-        assertEquals(publications, server.publications)
-
-        // The next operation offers the replacement, whichever one it is, and so does a repository
-        // that starts from the record this phone stored, the way the app does when it is opened
-        // again. Without this, a transfer would leave the next one offering a token the wallet has
-        // already replaced.
-        repository.signAndSend(transaction, selected)
-        assertEquals(REFRESHED, adapter.sendings[1].third)
-        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 9 }))
-        repository.sign(ByteString.copyFromUtf8("m"), selected)
-        assertEquals(REFRESHED, adapter.signings.single().third)
-        val next = WalletRepository(store, adapter, connections, io = Dispatchers.Unconfined)
-        next.load()
-        assertEquals(selected, next.wallet.value)
-        next.signAndSend(transaction, checkNotNull(next.wallet.value))
-        assertEquals(REFRESHED, adapter.sendings[2].third)
-    }
-
-    @Test
-    fun keepsTheReplacedAuthorizationWhateverBecameOfTheTransaction() = runBlocking {
-        // Declining says something about the transaction, and an outcome nobody knows says nothing
-        // at all: neither says this phone's authorization is no good.
-        pair()
-        for (outcome in listOf(SendResult.Declined, SendResult.Unknown("no answer"))) {
-            adapter.answerConnected(WALLET, authToken = SECRET)
-            repository.connect(WalletNetwork.Devnet)
-            val selected = checkNotNull(repository.wallet.value)
-            adapter.answerSending(outcome)
-            adapter.refreshedAuthorization = REFRESHED
-
-            assertEquals(outcome, repository.signAndSend(ByteString.copyFromUtf8("t"), selected))
-
-            assertEquals(REFRESHED, store.authorization())
-            assertEquals(selected, repository.wallet.value)
-            repository.disconnect()
-            adapter.refreshedAuthorization = null
-        }
-    }
-
-    @Test
-    fun aStorageFailureNeverChangesWhatTheWalletDid() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        val signature = ByteString.copyFrom(ByteArray(64) { 4 })
-        adapter.sendWith(signature)
-        adapter.refreshedAuthorization = REFRESHED
-        // This phone's storage goes away while the transaction is with the wallet.
-        adapter.beforeSending = { storageFails = true }
-
-        val result = repository.signAndSend(ByteString.copyFromUtf8("t"), selected)
-
-        // The wallet sent it, and that is what is reported: a phone that couldn't write the
-        // replacement token down does not turn a sent transaction into a failure, and it does not
-        // ask the wallet for anything a second time.
-        assertEquals(SendResult.Sent(signature), result)
-        assertEquals(1, adapter.sendings.size)
-        storageFails = false
-        // The authorization is the one that was there, which is what an expired one leads to
-        // anyway: the owner connects the wallet again.
-        assertEquals(SECRET, store.authorization())
-        assertEquals(selected, repository.wallet.value)
-    }
-
-    @Test
-    fun asksTheWalletNothingWhenTheStoredRecordIsNotTheSelectionInHand() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        // A record naming another account can only come from a phone that was interrupted between
-        // two writes, which is what the single record makes impossible. If one ever appeared, its
-        // token is not this selection's, and nothing is signed or sent with it.
-        store.put(selected.copy(address = OTHER_WALLET), "authorization-for-another-account")
-
-        assertEquals(
-            SendResult.NotConnected,
-            repository.signAndSend(ByteString.copyFromUtf8("t"), selected),
-        )
-        assertEquals(
-            SignResult.NotConnected,
-            repository.sign(ByteString.copyFromUtf8("m"), selected),
-        )
-        assertEquals(emptyList<Any>(), adapter.sendings)
-        assertEquals(emptyList<Any>(), adapter.signings)
-    }
-
-    @Test
-    fun forgetsTheWalletWhenItNoLongerAuthorizesTheReviewedAccount() = runBlocking {
-        pair()
-        adapter.answerConnected(WALLET, authToken = SECRET)
-        repository.connect(WalletNetwork.Devnet)
-        val selected = checkNotNull(repository.wallet.value)
-        // The adapter reports this when the wallet's own reauthorization named another account.
-        adapter.answerSending(SendResult.Changed)
-        adapter.answerSigning(SignResult.Changed)
-
-        assertEquals(
-            SendResult.Changed,
-            repository.signAndSend(ByteString.copyFromUtf8("t"), selected),
-        )
-
-        // Nothing is left to sign with: the owner connects the wallet again and reviews afresh,
-        // and every sidecar is told there is no wallet rather than one this phone can't use.
-        assertNull(repository.wallet.value)
-        assertNull(store.session())
-        assertNull(server.wallet)
-        assertEquals(
-            SignResult.NotConnected,
-            repository.sign(ByteString.copyFromUtf8("m"), selected),
-        )
-    }
-
-    // SEE-159: the wallet app the owner connected, stored with their account, and reused by every
-    // signing — including the first one after the app was restarted.
-
-    @Test
-    fun storesTheWalletAppTheOwnerPickedAndTheUriTheWalletReported() = runBlocking {
-        pair()
-        adapter.installed = listOf(SEEKER, OTHER)
-        adapter.answerConnected(
-            WALLET,
-            authToken = SECRET,
-            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
-        )
-
-        repository.connect(WalletNetwork.Devnet, SEEKER)
-
-        // What the owner picked reached the wallet, and what came back is what is kept.
-        assertEquals(
-            WalletRouting(packageName = SEEKER.packageName, appLabel = SEEKER.label),
-            adapter.routes.single(),
-        )
-        assertEquals(
-            WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
-            store.session()?.route,
-        )
-        // The screen names the app, so an account's own label can't be read as the wallet.
-        assertEquals(SEEKER.label, repository.walletApp.value)
-    }
-
-    @Test
-    fun needsNobodyToPickWhenThisPhoneHasOneWalletApp() = runBlocking {
-        pair()
-        adapter.installed = listOf(SEEKER)
-        adapter.answerConnected(WALLET, authToken = SECRET)
-
-        repository.connect(WalletNetwork.Devnet)
-
-        // One installed wallet is one answer, and the system gave it: nothing asks the owner, and
-        // nothing asks Android either.
-        assertEquals(
-            WalletRouting(packageName = SEEKER.packageName, appLabel = SEEKER.label),
-            adapter.routes.single(),
-        )
-    }
-
-    @Test
-    fun opensTheSameWalletAppForEverySigningAndAfterARestart() = runBlocking {
-        pair()
-        adapter.installed = listOf(SEEKER, OTHER)
-        adapter.answerConnected(
-            WALLET,
-            authToken = SECRET,
-            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
-        )
-        repository.connect(WalletNetwork.Devnet, SEEKER)
-        val selected = checkNotNull(repository.wallet.value)
-        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 9 }))
-        adapter.routes.clear()
-
-        repository.sign(ByteString.copyFromUtf8("one"), selected)
-        repository.sign(ByteString.copyFromUtf8("two"), selected)
-
-        val route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label)
-        assertEquals(listOf(route, route), adapter.routes)
-
-        // A restart is a repository made afresh over the same stored record. The route is read
-        // back, so the first approval after it opens the same wallet as the one before it.
-        val restarted = WalletRepository(store, adapter, connections, io = Dispatchers.Unconfined)
-        restarted.load()
-        adapter.routes.clear()
-        restarted.sign(ByteString.copyFromUtf8("three"), selected)
-
-        assertEquals(listOf(route), adapter.routes)
-        assertEquals(SEEKER.label, restarted.walletApp.value)
-    }
-
-    @Test
-    fun keepsTheAssociationUriTheWalletMovedTo() = runBlocking {
-        pair()
-        adapter.installed = listOf(SEEKER)
-        adapter.answerConnected(
-            WALLET,
-            authToken = SECRET,
-            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
-        )
-        repository.connect(WalletNetwork.Devnet, SEEKER)
-        val selected = checkNotNull(repository.wallet.value)
-        adapter.signWith(ByteString.copyFrom(ByteArray(64) { 9 }))
-        adapter.reportedUriBase = MOVED
-
-        repository.sign(ByteString.copyFromUtf8("one"), selected)
-
-        // A wallet reauthorizes before it signs and may say it now lives somewhere else. That is
-        // the one to use from now on, exactly as a replaced authorization is.
-        assertEquals(
-            WalletRouting(MOVED, SEEKER.packageName, SEEKER.label),
-            store.session()?.route,
-        )
-        // And the selection itself is untouched: the owner reviewed that account, on that network.
-        assertEquals(selected, store.selected())
-    }
-
-    @Test
-    fun keepsTheRouteWhenTheWalletSaysNothingAboutWhereItLives() = runBlocking {
-        pair()
-        adapter.installed = listOf(SEEKER)
-        val route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label)
-        adapter.answerConnected(WALLET, authToken = SECRET, route = route)
-        repository.connect(WalletNetwork.Devnet, SEEKER)
-        val selected = checkNotNull(repository.wallet.value)
-        adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 4 }))
-        adapter.reportedUriBase = null
-
-        repository.signAndSend(ByteString.copyFromUtf8("tx"), selected)
-
-        assertEquals(route, store.session()?.route)
-    }
-
-    @Test
-    fun picksAWalletAppOverTheOneTheOwnerHadAndKeepsNothingOfTheOldOne() = runBlocking {
-        pair()
-        adapter.installed = listOf(SEEKER, OTHER)
-        adapter.answerConnected(
-            WALLET,
-            authToken = SECRET,
-            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
-        )
-        repository.connect(WalletNetwork.Devnet, SEEKER)
-        adapter.routes.clear()
-        adapter.answerConnected(
-            OTHER_WALLET,
-            authToken = REFRESHED,
-            route = WalletRouting(null, OTHER.packageName, OTHER.label),
-        )
-
-        repository.connect(WalletNetwork.Devnet, OTHER)
-
-        // Changing the wallet app carries nothing over from the one being left — least of all its
-        // association URI, which would send the next approval back to it.
-        assertEquals(
-            WalletRouting(packageName = OTHER.packageName, appLabel = OTHER.label),
-            adapter.routes.single(),
-        )
-        assertEquals(
-            WalletRouting(packageName = OTHER.packageName, appLabel = OTHER.label),
-            store.session()?.route,
-        )
-        assertEquals(OTHER.label, repository.walletApp.value)
-    }
-
-    @Test
-    fun switchingWalletAppsDoesNotOfferTheOldAppsAuthorizationToTheNewOne() = runBlocking {
-        pair()
-        adapter.installed = listOf(SEEKER, OTHER)
-        adapter.issuers[SECRET] = SEEKER.packageName
-        adapter.answerConnected(
-            WALLET,
-            authToken = SECRET,
-            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
-        )
-        repository.connect(WalletNetwork.Devnet, SEEKER)
-        adapter.answerConnected(
-            OTHER_WALLET,
-            authToken = REFRESHED,
-            route = WalletRouting(null, OTHER.packageName, OTHER.label),
-        )
-
-        val result = repository.connect(WalletNetwork.Devnet, OTHER)
-
-        // The new app is asked to authorize afresh: the old app's token is not its to honour, and
-        // offering it would be refused and read as the selection being gone.
-        assertTrue(result is WalletResult.Connected)
+        // Reconnecting asks afresh, since the token was refused, and makes it ready again.
+        adapter.answerConnected(WALLET_A, authToken = REFRESHED)
+        repository.reconnect(a.id)
         assertEquals(null, adapter.connects.last().second)
-        assertEquals(OTHER_WALLET, repository.wallet.value?.address)
-        assertEquals(OTHER.label, repository.walletApp.value)
+        assertEquals(a.id, repository.walletFor(FEED_1)?.profileId)
     }
 
     @Test
-    fun reconnectingTheSameWalletAppOffersItsOwnAuthorization() = runBlocking {
-        pair()
-        adapter.installed = listOf(SEEKER, OTHER)
-        adapter.issuers[SECRET] = SEEKER.packageName
-        adapter.answerConnected(
-            WALLET,
-            authToken = SECRET,
-            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
-        )
-        repository.connect(WalletNetwork.Devnet, SEEKER)
+    fun removingOneProfileLeavesTheAuthorizationAnotherStillUses() = runBlocking {
+        repository.load()
+        adapter.answerAccounts(WALLET_A, WALLET_B, authToken = SECRET)
+        val (a, b) = repository.connectProfiles(WalletNetwork.Mainnet).profiles
+        bindings.flow.value = listOf(feed(FEED_2, b.id))
 
-        repository.connect(WalletNetwork.Devnet, SEEKER)
-        repository.connect(WalletNetwork.Devnet)
+        repository.remove(a.id)
+        // The wallet isn't told to forget a grant another profile signs with.
+        assertEquals(emptyList<String>(), adapter.disconnects)
+        adapter.answerSigning(SignResult.Declined)
+        repository.sign(MESSAGE, b.selected(), FEED_2)
+        assertEquals(SECRET, adapter.signings.single().third)
 
-        assertEquals(listOf(SECRET, SECRET), adapter.connects.drop(1).map { it.second })
+        repository.remove(b.id)
+        assertEquals(listOf(SECRET), adapter.disconnects)
+        assertEquals(emptyList<Any>(), store().profiles().authorizations)
     }
 
     @Test
-    fun disconnectingTakesTheRouteWithIt() = runBlocking {
-        pair()
-        adapter.installed = listOf(SEEKER, OTHER)
-        adapter.answerConnected(
-            WALLET,
-            authToken = SECRET,
-            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
-        )
-        repository.connect(WalletNetwork.Devnet, SEEKER)
-        adapter.routes.clear()
+    fun removingAUsedProfileLeavesItsConnectionsWithoutAWalletAndTellsOnlyTheirServers() =
+        runBlocking {
+            repository.load()
+            val a = repository.add(WALLET_A, WalletNetwork.Mainnet)
+            val b = repository.add(WALLET_B, WalletNetwork.Mainnet)
+            bindings.flow.value =
+                listOf(direct(DIRECT_X, a.id), direct(DIRECT_Y, b.id), feed(FEED_1, a.id))
+            repository.publish()
 
-        repository.disconnect()
+            assertEquals(listOf(DIRECT_X, FEED_1), repository.usersOf(a.id).map { it.id })
+            val affected = repository.remove(a.id)
 
-        // The wallet app was told over its own route, and nothing aimed at it is left behind.
+            assertEquals(listOf(DIRECT_X, FEED_1), affected.map { it.id })
+            assertNull(bindings.connection(DIRECT_X)?.walletProfileId)
+            assertNull(bindings.connection(FEED_1)?.walletProfileId)
+            // Nothing was chosen in its place.
+            assertEquals(WalletReadiness.NoProfile, repository.readiness(FEED_1))
+            assertEquals(null, bindings.published.getValue(DIRECT_X).last())
+            assertEquals(1, bindings.published.getValue(DIRECT_Y).size)
+            assertEquals(b.id, repository.walletFor(DIRECT_Y)?.profileId)
+        }
+
+    // --- Migration ------------------------------------------------------------------------------
+
+    @Test
+    fun migratesTheSingleWalletIntoAProfileAndBindsTheConnectionsThatUsedIt() = runBlocking {
+        val route = WalletRouting(packageName = SEED_VAULT, appLabel = "Seed Vault Wallet")
+        val selected =
+            SelectedWallet(WALLET_A, WalletNetwork.Devnet, "Account 1", Instant.parse(AT))
+        store.put(selected, SECRET, route)
+        bindings.flow.value =
+            listOf(
+                direct(DIRECT_X, Connection.LEGACY_WALLET_PROFILE),
+                feed(FEED_1, Connection.LEGACY_WALLET_PROFILE),
+            )
+
+        repository.load()
+
+        val profile = repository.profiles.value.single()
+        assertEquals(WALLET_A to WalletNetwork.Devnet, profile.address to profile.network)
+        assertEquals(SEED_VAULT, profile.route.packageName)
+        assertEquals(SECRET, store().profiles().authorization(profile.authorizationId)?.token)
+        assertEquals(profile.id, bindings.connection(DIRECT_X)?.walletProfileId)
+        assertEquals(profile.id, bindings.connection(FEED_1)?.walletProfileId)
+        // The single-session record is gone only now that the profiles are committed.
+        assertNull(store().session())
+
+        // The same binding the server already held, so publishing it cancels nothing new.
+        repository.publish()
         assertEquals(
-            listOf<WalletRouting?>(WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label)),
-            adapter.routes,
+            listOf(WALLET_A to Network.NETWORK_DEVNET),
+            bindings.published.getValue(DIRECT_X).map { it!!.wallet to it.network },
         )
-        assertNull(store.session())
-        assertNull(repository.walletApp.value)
     }
 
     @Test
-    fun forgetsTheRouteWithTheSessionWhenTheWalletRefusesTheAccount() = runBlocking {
-        pair()
-        adapter.installed = listOf(SEEKER)
-        adapter.answerConnected(
-            WALLET,
-            authToken = SECRET,
-            route = WalletRouting(URI_BASE, SEEKER.packageName, SEEKER.label),
-        )
-        repository.connect(WalletNetwork.Devnet, SEEKER)
-        val selected = checkNotNull(repository.wallet.value)
-        // The wallet reauthorized an account the owner never reviewed (SEE-84). Nothing is signed,
-        // and nothing about that wallet — route included — is kept to sign with later.
-        adapter.answerSigning(SignResult.Changed)
-
-        assertEquals(SignResult.Changed, repository.sign(ByteString.copyFromUtf8("x"), selected))
-
+    fun aMigrationInterruptedAtAnyStepEndsInTheSameProfileAndBinding() = runBlocking {
+        val selected = SelectedWallet(WALLET_A, WalletNetwork.Mainnet, selectedAt = Instant.EPOCH)
+        store.put(selected, SECRET)
+        // The process died after the profiles were committed and before the old session was
+        // deleted, and before any connection was bound: the next start finds both.
+        val first = store().profiles()
+        store.put(selected, SECRET)
+        assertNotNull(store.session())
+        val second = store().profiles()
+        assertEquals(first.profiles.map { it.id }, second.profiles.map { it.id })
+        assertEquals(first.legacyProfileId, second.legacyProfileId)
         assertNull(store.session())
-        assertNull(repository.wallet.value)
-        assertNull(repository.walletApp.value)
+        // A fresh phone migrating the same session derives the same IDs, so a connection bound
+        // on an earlier attempt still names its profile.
+        store().clearProfiles()
+        store.put(selected, SECRET)
+        assertEquals(first.legacyProfileId, store().profiles().legacyProfileId)
+
+        bindings.flow.value = listOf(feed(FEED_1, Connection.LEGACY_WALLET_PROFILE))
+        repository.load()
+        repository.load()
+        assertEquals(first.legacyProfileId, bindings.connection(FEED_1)?.walletProfileId)
+        assertEquals(1, repository.profiles.value.size)
     }
+
+    @Test
+    fun withNoUsableWalletLegacyConnectionsWaitForOneAndNothingIsInvented() = runBlocking {
+        bindings.flow.value = listOf(direct(DIRECT_X, Connection.LEGACY_WALLET_PROFILE))
+
+        repository.load()
+
+        assertEquals(emptyList<WalletProfile>(), repository.profiles.value)
+        assertEquals(WalletReadiness.NoProfile, repository.readiness(DIRECT_X))
+        // The connection itself — and its credential — is untouched.
+        assertTrue(checkNotNull(bindings.connection(DIRECT_X)).usable)
+    }
+
+    // --- Over the real connection repository ----------------------------------------------------
+
+    @Test
+    fun eachPairedServersAddressQueryAnswersItsOwnBinding() = runBlocking {
+        val gateway = FakeConnectionGateway()
+        val x =
+            gateway.serve(URL).also {
+                it.manifest = directManifest(it.serverId, URL, networks = ALL_NETWORKS)
+            }
+        val y =
+            gateway.serve(OTHER_URL).also {
+                it.manifest = directManifest(it.serverId, OTHER_URL, networks = ALL_NETWORKS)
+            }
+        val connections =
+            ConnectionRepository(
+                store = ConnectionStore(File(folder.root, "connections")),
+                vault = CredentialVault(File(folder.root, "credentials")) { key },
+                results = ResultStore(File(folder.root, "results")),
+                gateway = gateway,
+                deviceName = "Seeker",
+                io = Dispatchers.Unconfined,
+            )
+        connections.load()
+        val first = connections.pair(x.issue(URL))
+        val second = connections.pair(y.issue(OTHER_URL))
+        connections.resolveManifest(first.id)
+        connections.resolveManifest(second.id)
+        val wallet = repository(connections)
+        wallet.load()
+        val aDev = wallet.add(WALLET_A, WalletNetwork.Devnet)
+        val bMain = wallet.add(WALLET_B, WalletNetwork.Mainnet)
+        x.addPendingTransfer(first.id, WALLET_B, Network.NETWORK_MAINNET)
+
+        wallet.bind(first.id, aDev.id)
+        wallet.bind(second.id, bMain.id)
+
+        assertEquals(WALLET_A to Network.NETWORK_DEVNET, x.wallet!!.wallet to x.wallet!!.network)
+        assertEquals(WALLET_B to Network.NETWORK_MAINNET, y.wallet!!.wallet to y.wallet!!.network)
+        // The binding survives a restart, stored with the connection.
+        val stored = ConnectionStore(File(folder.root, "connections")).get(first.id)
+        assertEquals(aDev.id, stored?.walletProfileId)
+        // And the first server cancelled its own request for another wallet, the other nothing.
+        assertEquals(emptyList<Any>(), x.pending[first.id].orEmpty())
+        assertFalse(gateway.published.any { (_, binding) -> binding.toString().contains("token") })
+        assertEquals(
+            aDev.id,
+            wallet.readinessByConnection().first()[first.id]?.profile?.id,
+        )
+    }
+
+    private fun direct(
+        id: String,
+        profileId: String?,
+        networks: Set<WalletNetwork> = WalletNetwork.entries.toSet(),
+    ) =
+        Connection(
+            id = id,
+            label = id,
+            serverUrl = "https://$id.example",
+            serverId = SERVER,
+            deviceName = "Seeker",
+            pairedAt = Instant.EPOCH,
+            mode = ConnectionMode.Direct,
+            server =
+                ServerRecord.Known(
+                    ServerManifest(
+                        serverId = SERVER,
+                        protocolVersion = SERVER_PROTOCOL,
+                        settingsRevision = 1,
+                        mode = ConnectionMode.Direct,
+                        reference = ServerReference.Direct("https://$id.example"),
+                        environments = setOf(PluginEnvironment.Production),
+                        supportedNetworks = networks,
+                    )
+                ),
+            walletProfileId = profileId,
+        )
+
+    private fun feed(
+        id: String,
+        profileId: String?,
+        networks: Set<WalletNetwork> = WalletNetwork.entries.toSet(),
+    ) =
+        Connection(
+            id = id,
+            label = id,
+            serverUrl = GATEWAY,
+            serverId = SERVER,
+            deviceName = "",
+            pairedAt = Instant.EPOCH,
+            hasCredential = false,
+            mode = ConnectionMode.GatewayFeed,
+            server =
+                ServerRecord.Known(
+                    ServerManifest(
+                        serverId = SERVER,
+                        protocolVersion = SERVER_PROTOCOL,
+                        settingsRevision = 1,
+                        mode = ConnectionMode.GatewayFeed,
+                        reference = ServerReference.Feed(GATEWAY, channelFor(SERVER)),
+                        environments = setOf(PluginEnvironment.Production),
+                        supportedNetworks = networks,
+                    )
+                ),
+            walletProfileId = profileId,
+        )
 
     private companion object {
-        val SEEKER = InstalledWallet("com.example.seekerwallet", "Seeker Wallet")
-        val OTHER = InstalledWallet("com.example.otherwallet", "Other Wallet")
-        const val URI_BASE = "https://wallet.example/ul"
-        const val MOVED = "https://wallet.example/ul/v2"
         const val URL = "http://127.0.0.1:8080"
         const val OTHER_URL = "http://127.0.0.1:8081"
-        const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
+        const val GATEWAY = "https://gateway.example.com"
+        const val SERVER = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+        const val WALLET_A = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
+        const val WALLET_B = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
         const val SECRET = "authorization-the-wallet-issued-0123456789"
         const val REFRESHED = "authorization-the-wallet-issued-later-9876543210"
-        const val OTHER_WALLET = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
-        val REVIEWED =
-            SelectedWallet(
-                address = OTHER_WALLET,
-                network = WalletNetwork.Devnet,
-                selectedAt = Instant.parse("2026-09-11T12:00:00Z"),
-            )
+        const val SEED_VAULT = "com.solanamobile.seedvault"
+        const val OTHER_APP = "app.other.wallet"
+        const val AT = "2026-09-01T10:00:00Z"
+        const val DIRECT_X = "direct-x"
+        const val DIRECT_Y = "direct-y"
+        const val FEED_1 = "feed-1"
+        const val FEED_2 = "feed-2"
+        const val FEED_3 = "feed-3"
+        const val FEED_4 = "feed-4"
+        const val FEED_5 = "feed-5"
+        val MESSAGE: ByteString = ByteString.copyFromUtf8("Sign in to Example")
+        val TRANSACTION: ByteString = ByteString.copyFrom(ByteArray(64) { it.toByte() })
+        val SIGNATURE: ByteString = ByteString.copyFrom(ByteArray(64) { 7 })
     }
 }

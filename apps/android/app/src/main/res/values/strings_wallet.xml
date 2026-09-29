@@ -47,4 +47,61 @@
     <string name="wallet_problem_network">The wallet doesn\'t serve this network. Pick another one.</string>
     <string name="wallet_problem_storage">This phone couldn\'t store the wallet\'s authorization, so nothing was saved.</string>
     <string name="wallet_problem_failed">The wallet couldn\'t complete the request.</string>
+
+    <!-- Wallet profiles (SEE-174): several saved wallets, one chosen per connection. -->
+    <string name="wallet_profiles_title">Wallets</string>
+    <string name="wallet_profiles_none_title">No wallets saved</string>
+    <string name="wallet_profiles_none_text">Add the wallet accounts you want connections to use. Each connection signs with the one you choose for it, on the network its server supports. This app never sees your seed phrase or keys.</string>
+    <string name="wallet_profiles_add_title">Add a wallet</string>
+    <string name="wallet_profiles_add_explanation">Your wallet asks which account to authorize. Adding the same account on another network makes a separate profile.</string>
+    <string name="wallet_profiles_add">Add wallet</string>
+    <string name="wallet_profiles_add_for">Add wallet for %1$s</string>
+    <string name="wallet_profile_summary">%1$s · %2$s</string>
+    <string name="wallet_profile_summary_app">%1$s · %2$s · %3$s</string>
+    <string name="wallet_profile_unnamed">Wallet account</string>
+    <string name="wallet_profile_unknown_app">Wallet app not recorded</string>
+    <plurals name="wallet_profile_used_by">
+        <item quantity="one">Used by 1 connection</item>
+        <item quantity="other">Used by %1$d connections</item>
+    </plurals>
+    <string name="wallet_profile_unused">Not used by any connection</string>
+    <string name="wallet_profile_needs_reconnect">The wallet no longer accepts this profile\'s authorization. Reconnect it to sign again; its connections keep it.</string>
+    <string name="wallet_profile_rename">Rename</string>
+    <string name="wallet_profile_reconnect">Reconnect</string>
+    <string name="wallet_profile_remove">Remove</string>
+    <string name="wallet_profile_rename_title">Rename wallet</string>
+    <string name="wallet_profile_remove_title">Remove %1$s?</string>
+    <string name="wallet_profile_remove_unused">No connection uses this wallet. It is removed from this phone only.</string>
+    <string name="wallet_profile_remove_used">These connections use it and will be left without a wallet until you choose one: %1$s. Direct servers are told there is no wallet, which cancels their pending requests. Nothing is chosen in its place, and your history is kept.</string>
+    <string name="wallet_profile_removed">Removed %1$s.</string>
+    <string name="wallet_profile_other_account">The wallet didn\'t authorize this profile\'s account, so nothing changed.</string>
+
+    <!-- A connection's wallet (SEE-174). -->
+    <string name="connection_wallet_title">Wallet</string>
+    <string name="connection_wallet_none">Choose a wallet</string>
+    <string name="connection_wallet_caption">This connection signs only with this wallet, on this network.</string>
+    <string name="connection_wallet_ready">%1$s · %2$s</string>
+    <string name="connection_wallet_state_none">No wallet chosen. Nothing from this server can be signed until you choose one.</string>
+    <string name="connection_wallet_state_missing">Its wallet was removed. Choose another to sign again.</string>
+    <string name="connection_wallet_state_reconnect">The wallet no longer accepts this profile\'s authorization. Reconnect it on the Wallets screen.</string>
+    <string name="connection_wallet_state_unknown">This server hasn\'t declared which Solana networks it supports. Nothing from it can be signed until it is updated to declare them.</string>
+    <string name="connection_wallet_state_unsupported">This server no longer supports %1$s. Choose a wallet on %2$s — the connection isn\'t moved for you.</string>
+    <string name="connection_wallet_state_pending">Telling the server about this wallet. Nothing is signed until it confirms.</string>
+    <string name="connection_wallet_picker_title">Wallet for %1$s</string>
+    <string name="connection_wallet_picker_networks">This server supports %1$s. Only wallets on those networks are shown.</string>
+    <string name="connection_wallet_picker_no_networks">This server hasn\'t declared any Solana network. You can still choose a wallet — a restricted feed proves who you are with it — but nothing is signed until the server declares one.</string>
+    <string name="connection_wallet_picker_none">No saved wallet is on a network this server supports.</string>
+    <string name="connection_wallet_picker_direct">Changing the wallet tells this server only. It cancels its pending requests made for the previous wallet.</string>
+    <string name="connection_wallet_picker_feed">Changing the wallet drops anything prepared for the previous one; signals are prepared again for the new wallet.</string>
+    <string name="connection_wallet_use">Use this wallet</string>
+    <string name="connection_wallet_published">The server now uses this wallet.</string>
+    <plurals name="connection_wallet_published_cancelled">
+        <item quantity="one">The server now uses this wallet, and cancelled 1 pending request made for the previous one.</item>
+        <item quantity="other">The server now uses this wallet, and cancelled %1$d pending requests made for the previous one.</item>
+    </plurals>
+    <string name="connection_wallet_publish_failed">Saved, but the server couldn\'t be told yet. It is tried again, and nothing is signed until it confirms.</string>
+    <string name="connection_wallet_incompatible">That wallet\'s network isn\'t one this server supports.</string>
+    <string name="connection_wallet_address">Wallet address</string>
+    <string name="connection_wallet_app">Wallet app</string>
+    <string name="connection_wallet_network">Network</string>
 </resources>

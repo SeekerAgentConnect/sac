@@ -228,6 +228,11 @@ data class ConnectionDetailSheetState(
     val inboxTag: String? = null,
     val disconnectTag: String? = null,
     val closeTag: String? = null,
+    /**
+     * The wallet profile this connection signs with, as a navigation row above Rules (SEE-174).
+     * Null for a connection that has none to show, such as a retired one.
+     */
+    val wallet: ConnectionDetailRules? = null,
 )
 
 data class ConnectionDetailSheetCallbacks(
@@ -238,6 +243,7 @@ data class ConnectionDetailSheetCallbacks(
     val onInbox: () -> Unit,
     val onDisconnect: () -> Unit,
     val onColour: (SourceColour) -> Unit = {},
+    val onWallet: () -> Unit = {},
 )
 
 @Composable
@@ -264,6 +270,16 @@ fun ConnectionDetailSheet(
             )
             Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus)) {
                 state.facts.forEach { fact -> ConnectionFactCard(fact) }
+            }
+            state.wallet?.let { wallet ->
+                SheetNavigationRow(
+                    title = wallet.title,
+                    supportingText = wallet.supportingText,
+                    icon = Icons.Outlined.AccountBalanceWallet,
+                    onClick = callbacks.onWallet,
+                    modifier = Modifier.optionalTag(wallet.tag),
+                )
+                SheetCaption(wallet.caption)
             }
             state.rules?.let { rules ->
                 SheetNavigationRow(

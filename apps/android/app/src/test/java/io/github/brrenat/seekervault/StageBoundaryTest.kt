@@ -1188,6 +1188,10 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.server.v1.GatewayFeed",
                 "io.github.brrenat.seekervault.server.v1.ServerEnvironment",
                 "io.github.brrenat.seekervault.server.v1.ServerManifest",
+                // The Solana networks a server declares (SEE-174), and the value this build
+                // names each one by. Data again: a network is compared, never acted on here.
+                "io.github.brrenat.seekervault.server.v1.SolanaNetwork",
+                "io.github.brrenat.seekervault.wallet.WalletNetwork",
             ),
             reaches,
         )
@@ -1231,11 +1235,15 @@ class StageBoundaryTest {
                 "direct",
                 "feed",
                 "url",
+                // The Solana networks the server's operations run on (SEE-174), in each reference:
+                // a statement the phone filters wallet profiles by, and never a wallet endpoint.
+                "supported_networks",
                 "gateway_url",
                 "channel",
                 // Who may read the feed (SEE-156), and nothing else about it: the policy, and the
                 // one origin a restricted feed's subscriber proves a wallet to.
                 "access",
+                "supported_networks",
                 "policy",
                 "auth_origin",
                 "plugin_id",

@@ -27,8 +27,15 @@ sealed interface WalletResult {
          * and every later signing is routed by it.
          */
         val route: WalletRouting = WalletRouting.Untargeted,
+        /**
+         * Every account the wallet authorized in this one authorization, [account] first (SEE-174).
+         * Mobile Wallet Adapter lets a wallet authorize several at once; each becomes a profile of
+         * its own, sharing the one [authToken].
+         */
+        val accounts: List<WalletAccount> = listOf(account),
     ) : WalletResult {
-        override fun toString() = "Connected(account=$account, authToken=<redacted>, route=$route)"
+        override fun toString() =
+            "Connected(accounts=$accounts, authToken=<redacted>, route=$route)"
     }
 
     /** No wallet app is installed that speaks Mobile Wallet Adapter. */

@@ -64,6 +64,11 @@ fun ConnectionDetailLibraryScreen(
      * Where this phone's access to a restricted feed stands (SEE-156), or null for a public one.
      */
     access: FeedAccessStore.Record? = null,
+    /** The connection's wallet row and facts (SEE-174); null for one that has none to show. */
+    walletRow: ConnectionDetailRules? = null,
+    walletFacts: List<ConnectionDetailFact> = emptyList(),
+    /** Opens the connection's wallet picker. */
+    onWallet: () -> Unit = {},
 ) {
     val problem = hasProblem(connection, live, support, feed, availability, access)
     // A restricted feed with no request (or a rejected one) cannot read anything: the second action
@@ -139,6 +144,7 @@ fun ConnectionDetailLibraryScreen(
                             // A restricted feed's access belongs to the wallet it was proven with
                             // and to this installation, and both are worth showing: they are what
                             // the publisher's Devices page lists this phone under (SEE-156).
+                            walletFacts +
                             listOfNotNull(
                                 access?.let {
                                     ConnectionDetailFact(
@@ -198,6 +204,7 @@ fun ConnectionDetailLibraryScreen(
                             ConnectionsTags.REMOVE
                         },
                     closeTag = ConnectionsTags.CLOSE,
+                    wallet = walletRow.takeIf { connection.retirement == null },
                 ),
             callbacks =
                 ConnectionDetailSheetCallbacks(
@@ -215,6 +222,7 @@ fun ConnectionDetailLibraryScreen(
                     onColour = { colour ->
                         onColour(ServerColour.entries.first { it.sourceColour() == colour })
                     },
+                    onWallet = onWallet,
                 ),
             modifier = Modifier.fillMaxWidth(),
         )

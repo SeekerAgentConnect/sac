@@ -154,7 +154,14 @@ class OperationViewModel(
             // emission happens before `load()` has read the store, and an empty list there means
             // "not read yet". Anything that treats a new record as an arrival — the foreground
             // banners (SEE-147) — would otherwise announce the whole stored feed on a cold start.
-            combine(proposals.proposals, proposals.loaded, connections) { held, loaded, live ->
+            // The feeds' wallet bindings are part of it (SEE-174): a feed rebound under an open
+            // review drops what was prepared for the wallet it had.
+            combine(
+                    proposals.proposals,
+                    proposals.loaded,
+                    connections,
+                    wallet.readinessByConnection(),
+                ) { held, loaded, live, _ ->
                     val feeds = live.filter { it.mode == ConnectionMode.GatewayFeed }
                     // A proposal is only ever held under the feed it arrived on, and a feed the
                     // owner removed takes its proposals with it — `ConnectionRepository.remove`
@@ -268,6 +275,7 @@ class OperationViewModel(
                     record.review?.takeIf { it.revision == record.proposal.revision }?.choice
                         ?: initial(terms.form),
                 served = terms.served,
+                wallet = wallet.walletFor(connectionId),
             )
         // The rules are read when the review opens, so the owner is not shown a gap where the
         // assessment will be.
@@ -490,9 +498,7 @@ class OperationViewModel(
                                 provider = namedProvider(record.proposal, providers),
                                 action = record.proposal.action,
                                 schemaVersion = record.proposal.capabilityVersion,
-                                network =
-                                    wallet.wallet.value?.network?.network
-                                        ?: Network.NETWORK_UNSPECIFIED,
+                                network = networkOf(open.connectionId),
                                 environment = environmentOf(open.connectionId),
                                 payload = payload,
                             ) as? ProviderResolution.Unsupported)
@@ -540,6 +546,9 @@ class OperationViewModel(
                             failure = outcome.failure,
                             acknowledged = false,
                             assessment = null,
+                            // The wallet these bytes were built for: the feed's own profile at
+                            // the moment of preparing, which a rebinding makes stale (SEE-174).
+                            preparedFor = operation.wallet,
                         )
                 }
             }
@@ -600,12 +609,13 @@ class OperationViewModel(
             stop(OperationProblem.NotAcknowledged)
             return
         }
-        val selected = wallet.wallet.value
+        // The feed's own wallet profile, read now, and never another connection's (SEE-174).
+        val selected = wallet.walletFor(open.connectionId)
         if (
             selected == null ||
                 reviewed == null ||
-                selected.address != reviewed.address ||
-                selected.network != reviewed.network
+                selected != reviewed ||
+                open.preparedFor != selected
         ) {
             stop(
                 if (selected == null) OperationProblem.NoWallet else OperationProblem.WalletChanged
@@ -686,6 +696,13 @@ class OperationViewModel(
         // be true is checked inside the lock, because the wait for it is exactly where the world
         // changes underneath an approval.
         wallet.withWallet { session ->
+            // Read again on this side of the wait: a feed rebound, or a profile removed or
+            // reconnected, while another wallet interaction held the lock is not the wallet the
+            // owner reviewed (SEE-174). The wallet call checks it once more.
+            if (wallet.walletFor(open.connectionId) != selected) {
+                stop(OperationProblem.WalletChanged)
+                return@withWallet
+            }
             when (
                 val begun =
                     proposals.beginExecution(
@@ -701,7 +718,7 @@ class OperationViewModel(
                 is ExecutionOutcome.Begun -> {
                     val answer =
                         try {
-                            session.signAndSend(prepared.transaction, selected)
+                            session.signAndSend(prepared.transaction, selected, open.connectionId)
                         } catch (e: CancellationException) {
                             // The app is going away with the operation still at the wallet. It is
                             // settled as unresolved on the next load, never as a failure, and the
@@ -768,7 +785,7 @@ class OperationViewModel(
         payload: ActionPayload?,
         inspection: ActionInspection?,
     ): RequestAssessment {
-        val network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED
+        val network = networkOf(record.connectionId)
         val facts =
             actionFacts(
                 connectionId = record.connectionId,
@@ -825,7 +842,7 @@ class OperationViewModel(
      */
     private fun provider(record: ProposalRecord, payload: ActionPayload): ExecutionProvider? {
         val environment = environmentOf(record.connectionId)
-        val network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED
+        val network = networkOf(record.connectionId)
         if (
             proposalProvider(record.proposal, providers, network, environment)
                 !is io.github.brrenat.seekervault.proposals.ProposalProvider.Serving
@@ -872,11 +889,19 @@ class OperationViewModel(
             // build carries, and this is only built for a resolved provider.
             provider = checkNotNull(namedProvider(record.proposal, providers)),
             environment = environmentOf(record.connectionId),
-            network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED,
+            network = networkOf(record.connectionId),
             payload = payload,
             request = null,
-            wallet = wallet.wallet.value,
+            wallet = wallet.walletFor(record.connectionId),
         )
+
+    /**
+     * The network [connectionId]'s own wallet profile is on (SEE-174), which is what a provider is
+     * asked about and what the rules read. Unspecified when the feed has no ready wallet, which no
+     * provider serves — so nothing is prepared on a network nobody chose.
+     */
+    private fun networkOf(connectionId: String): Network =
+        wallet.walletFor(connectionId)?.network?.network ?: Network.NETWORK_UNSPECIFIED
 
     private fun refreshed(open: OperationReview, state: OperationsUiState): OperationReview? {
         val record =
@@ -889,11 +914,36 @@ class OperationViewModel(
         // one to approve — new terms were never reviewed, and bytes prepared for a rehearsal are
         // not bytes anybody reviewed as a purchase (SEE-97) — so both drop it and both are named
         // here rather than left to the gate that would refuse it later.
+        val bound = wallet.walletFor(open.connectionId)
+        // A preparation made for another wallet — the feed was rebound, or its profile removed or
+        // reconnected — is for an owner nobody is reviewing any more (SEE-174). It goes, with the
+        // acknowledgement beside it, and a new number stops a read still in flight for the old
+        // wallet from landing on the new review; the terms themselves are kept.
+        if (open.preparing || open.prepared != null) {
+            val preparedFor = if (open.preparing) open.wallet else open.preparedFor
+            if (preparedFor != bound) {
+                return open.copy(
+                    generation = reviews.incrementAndGet(),
+                    record = record,
+                    standing = proposals.standing(record),
+                    environment = environment,
+                    wallet = bound,
+                    preparing = false,
+                    prepared = null,
+                    inspection = null,
+                    preparedFor = null,
+                    acknowledged = false,
+                    assessment = null,
+                    problem = OperationProblem.WalletChanged,
+                )
+            }
+        }
         val moved =
             record.proposal.revision != open.record.proposal.revision ||
                 environment != open.environment
         if (!moved) {
             return open.copy(
+                wallet = bound,
                 record = record,
                 standing = proposals.standing(record),
                 environment = environment,
@@ -933,6 +983,8 @@ class OperationViewModel(
                     ?: initial(terms.form),
             // Terms that moved are terms nobody reviewed. What was prepared was for the old ones,
             // and so was everything shown beside it.
+            wallet = bound,
+            preparedFor = null,
             prepared = null,
             inspection = null,
             acknowledged = false,
@@ -1054,6 +1106,13 @@ data class OperationReview(
     val acknowledged: Boolean = false,
     val sending: Boolean = false,
     val problem: OperationProblem? = null,
+    /**
+     * The feed's own wallet profile as it stands now, or null when it has none ready (SEE-174). It
+     * is what the review shows and what an approval is checked against; there is no global wallet.
+     */
+    val wallet: SelectedWallet? = null,
+    /** The wallet [prepared] was built for. A preparation for another is dropped. */
+    val preparedFor: SelectedWallet? = null,
 )
 
 /** Production executions continue in the external wallet; sandbox executions remain local. */

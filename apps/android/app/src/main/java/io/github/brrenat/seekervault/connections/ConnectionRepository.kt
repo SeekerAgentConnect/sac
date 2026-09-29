@@ -222,14 +222,14 @@ class ConnectionRepository(
      * [history] is.
      */
     private val tracking: SubmissionTracking? = null,
-) : SynchronizationHost {
+) : SynchronizationHost, ConnectionWallets {
     private val lock = Mutex()
     private val loading = Mutex()
     private val _loaded = MutableStateFlow(false)
     /** True only after connection metadata and credentials have been reconciled from disk. */
     val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
     private val _connections = MutableStateFlow<List<Connection>>(emptyList())
-    val connections: StateFlow<List<Connection>> = _connections.asStateFlow()
+    override val connections: StateFlow<List<Connection>> = _connections.asStateFlow()
     private val _inbox = MutableStateFlow(Inbox())
     val inbox: StateFlow<Inbox> = _inbox.asStateFlow()
 
@@ -324,7 +324,7 @@ class ConnectionRepository(
      * Reads the stored connections and answers. It deletes credentials and answers that no
      * connection owns, and answers that settled more than a week ago.
      */
-    suspend fun load() = loading.withLock {
+    override suspend fun load(): Unit = loading.withLock {
         if (_loaded.value) return@withLock
         val retired = locked {
             val retiredConnections = store.migrateRetired()
@@ -784,7 +784,7 @@ class ConnectionRepository(
         update(id) { it.copy(lastCheck = check) }
     }
 
-    fun connection(id: String): Connection? = find(id)
+    override fun connection(id: String): Connection? = find(id)
 
     /**
      * Tells one connection's sidecar which wallet the owner selected, or, with a null [binding],
@@ -793,22 +793,74 @@ class ConnectionRepository(
      * sidecar couldn't be told; publishing again later is safe, since an unchanged binding changes
      * nothing.
      */
-    suspend fun publishWallet(id: String, binding: WalletBinding?): Boolean {
-        val connection = find(id) ?: return false
-        if (!connection.usable) return false
+    suspend fun publishWallet(id: String, binding: WalletBinding?): Boolean =
+        publishWalletCancelling(id, binding) != null
+
+    /**
+     * [publishWallet], answering how many PENDING requests the sidecar cancelled because they no
+     * longer fit the binding, or null when it couldn't be told (SEE-174). Only [id]'s sidecar is
+     * told anything, and only its own requests can be cancelled.
+     */
+    override suspend fun publishWalletCancelling(id: String, binding: WalletBinding?): Int? {
+        val connection = find(id) ?: return null
+        if (!connection.usable) return null
         val credential = withContext(io) { vault.get(id) }
         if (credential == null) {
             forgetCredential(id)
-            return false
+            return null
         }
         return try {
             val cancelled = gateway.publishWallet(connection.serverUrl, credential, id, binding)
             if (cancelled.isNotEmpty()) dropPending(id, cancelled.toSet())
-            true
+            cancelled.size
         } catch (e: GatewayException) {
             if (e.kind == GatewayException.Kind.Unauthenticated) markRevoked(id)
-            false
+            null
         }
+    }
+
+    /**
+     * Binds [id] to the wallet profile [profileId], or to none (SEE-174). It is the owner's choice
+     * for this one connection and changes nothing else: no other connection's wallet, and nothing
+     * sent anywhere — telling a direct server is the wallet repository's, which owns what was
+     * published. Returns false when the connection is gone or retired.
+     */
+    override suspend fun setWalletProfile(id: String, profileId: String?): Boolean {
+        val connection = find(id) ?: return false
+        if (connection.retirement != null) return false
+        if (connection.walletProfileId == profileId) return true
+        update(id) { it.copy(walletProfileId = profileId) }
+        return find(id)?.walletProfileId == profileId
+    }
+
+    /**
+     * Binds every connection stored before wallet profiles existed to [profileId], the profile the
+     * phone's one wallet became, or to none when there was no usable wallet (SEE-174). A connection
+     * that already names a profile is left alone, so this can run on every start and after an
+     * interrupted one, and it does the same thing each time.
+     */
+    override suspend fun adoptLegacyWallet(profileId: String?): Unit = locked {
+        val legacy = store.list().filter { it.walletProfileId == Connection.LEGACY_WALLET_PROFILE }
+        for (connection in legacy) {
+            val adopted =
+                connection.copy(
+                    walletProfileId = profileId.takeIf { connection.retirement == null }
+                )
+            store.put(adopted)
+        }
+        if (legacy.isNotEmpty()) publish()
+    }
+
+    /**
+     * Clears [profileId] from every connection that names it, because the owner removed the profile
+     * (SEE-174). Nothing is chosen in its place: each of them waits for the owner to pick a wallet.
+     * Returns the connections that were bound to it.
+     */
+    override suspend fun clearWalletProfile(profileId: String): List<Connection> = locked {
+        val bound = store.list().filter { it.walletProfileId == profileId }
+        bound.forEach { store.put(it.copy(walletProfileId = null)) }
+        if (bound.isNotEmpty()) publish()
+        bound
     }
 
     // Takes requests the sidecar cancelled off the connection's pending list, and off its count.

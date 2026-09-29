@@ -4,6 +4,7 @@ import io.github.brrenat.seekervault.server.v1.ConnectionMode
 import io.github.brrenat.seekervault.server.v1.FeedAccess as WireAccess
 import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest
+import io.github.brrenat.seekervault.server.v1.SolanaNetwork
 import io.github.brrenat.seekervault.server.v1.directServer
 import io.github.brrenat.seekervault.server.v1.gatewayFeed
 import io.github.brrenat.seekervault.server.v1.pluginRequirement
@@ -36,12 +37,17 @@ fun directManifest(
     required: List<Pair<String, IntRange>> = emptyList(),
     environments: List<ServerEnvironment> = listOf(ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION),
     name: String = "",
+    /** The networks it declares (SEE-174). None, by default: a server from before SEE-174. */
+    networks: List<SolanaNetwork> = emptyList(),
 ): ServerManifest = serverManifest {
     this.serverId = serverId
     protocolVersion = protocol
     settingsRevision = revision
     mode = ConnectionMode.CONNECTION_MODE_DIRECT
-    direct = directServer { this.url = url }
+    direct = directServer {
+        this.url = url
+        supportedNetworks.addAll(networks)
+    }
     requiredPlugins.addAll(required.map(::requirement))
     this.environments.addAll(environments)
     displayName = name
@@ -62,6 +68,8 @@ fun feedManifest(
      * published before restricted feeds existed looks like and is read as public.
      */
     access: WireAccess? = null,
+    /** The networks it declares (SEE-174). None, by default: a feed from before SEE-174. */
+    networks: List<SolanaNetwork> = emptyList(),
 ): ServerManifest = serverManifest {
     this.serverId = serverId
     protocolVersion = protocol
@@ -71,6 +79,7 @@ fun feedManifest(
         gatewayUrl = gateway
         this.channel = channel
         access?.let { this.access = it }
+        supportedNetworks.addAll(networks)
     }
     requiredPlugins.addAll(required.map(::requirement))
     this.environments.addAll(environments)
@@ -82,3 +91,11 @@ private fun requirement(required: Pair<String, IntRange>) = pluginRequirement {
     minContract = required.second.first
     maxContract = required.second.last
 }
+
+/** Every network, as a server that runs on all three declares them. */
+val ALL_NETWORKS =
+    listOf(
+        SolanaNetwork.SOLANA_NETWORK_MAINNET,
+        SolanaNetwork.SOLANA_NETWORK_DEVNET,
+        SolanaNetwork.SOLANA_NETWORK_TESTNET,
+    )

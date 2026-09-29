@@ -6,13 +6,8 @@ import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.connections.Connection
-import io.github.brrenat.seekervault.connections.ConnectionRepository
-import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.ProposalRepository
-import io.github.brrenat.seekervault.connections.storage.ConnectionStore
-import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
-import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.feeds.ConnectFeedGateway
 import io.github.brrenat.seekervault.gateway.v1.ListRequestsRequest
 import io.github.brrenat.seekervault.gateway.v1.listRequestsRequest
@@ -40,6 +35,7 @@ import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
+import io.github.brrenat.seekervault.wallet.FakeConnectionWallets
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import io.github.brrenat.seekervault.wallet.WalletRepository
@@ -144,6 +140,7 @@ class OperationPrivacyTest {
                             reference = ServerReference.Feed(gatewayUrl, channelFor(SERVER_B)),
                             required = listOf(PluginRequirement(JUPITER_SWAP, 1..1)),
                             environments = setOf(PluginEnvironment.Production),
+                            supportedNetworks = setOf(WalletNetwork.Mainnet),
                         )
                     ),
             )
@@ -183,31 +180,25 @@ class OperationPrivacyTest {
                 now = { clock },
                 io = Dispatchers.Unconfined,
             )
+        val bindings = FakeConnectionWallets(MutableStateFlow(listOf(connection)))
         val wallet =
             WalletRepository(
                 WalletStore(File(folder.root, "wallet"), File(folder.root, "nb")) { key },
                 adapter,
-                ConnectionRepository(
-                    store = ConnectionStore(File(folder.root, "connections")),
-                    vault = CredentialVault(File(folder.root, "credentials")) { key },
-                    results = ResultStore(File(folder.root, "results")),
-                    gateway = FakeConnectionGateway(),
-                    history = history,
-                    deviceName = "Seeker",
-                    io = Dispatchers.Unconfined,
-                ),
+                bindings,
                 now = { clock },
                 io = Dispatchers.Unconfined,
             )
         adapter.answerConnected(owner)
         adapter.sendWith(signature)
         wallet.load()
-        wallet.connect(WalletNetwork.Mainnet)
+        // The feed signs with the profile the owner chose for it (SEE-174).
+        wallet.bind(CONNECTION, wallet.connectProfiles(WalletNetwork.Mainnet).profiles.single().id)
         val policies = PolicyStore(File(folder.root, "policies"))
         val model =
             OperationViewModel(
                 proposals = proposals,
-                connections = MutableStateFlow(listOf(connection)),
+                connections = bindings.flow,
                 connectionsLoaded = MutableStateFlow(true),
                 wallet = wallet,
                 policies = PolicyEvaluator(policies, records = { history.records.value }),
@@ -235,7 +226,7 @@ class OperationPrivacyTest {
             true,
             model.review.value?.inspection?.approvable,
         )
-        model.approve(wallet.wallet.value)
+        model.approve(wallet.walletFor(CONNECTION))
         await { adapter.sendings.isNotEmpty() }
 
         // It worked: the wallet signed exactly what was reviewed, and the record is local.

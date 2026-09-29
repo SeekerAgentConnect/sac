@@ -3,15 +3,18 @@ package io.github.brrenat.seekervault.wallet.storage
 import android.util.AtomicFile
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
+import io.github.brrenat.seekervault.wallet.WalletProfile
 import io.github.brrenat.seekervault.wallet.WalletRouting
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.security.GeneralSecurityException
+import java.security.MessageDigest
 import java.time.Instant
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -27,6 +30,68 @@ data class StoredSession(
     val route: WalletRouting = WalletRouting.Untargeted,
 ) {
     override fun toString() = "StoredSession(wallet=$wallet, authToken=<redacted>, route=$route)"
+}
+
+/**
+ * One authorization a wallet app issued this app (SEE-174): the token, the network it was asked
+ * for, and the wallet app that issued it. Mobile Wallet Adapter scopes a token to the wallet that
+ * issued it and to the chain it was authorized on, so a token is never offered to another app or
+ * used for another network; [WalletProfile]s reference it by [id], and several may share one when
+ * the wallet authorized several accounts at once.
+ */
+data class StoredAuthorization(
+    val id: String,
+    val token: String,
+    val network: WalletNetwork,
+    val route: WalletRouting = WalletRouting.Untargeted,
+) {
+    override fun toString() =
+        "StoredAuthorization(id=$id, token=<redacted>, network=$network, route=$route)"
+}
+
+/**
+ * Every wallet profile this phone holds, with the authorizations they use (SEE-174). It is one
+ * record, sealed as one, for the same reason SEE-84 made the single session one: a profile and the
+ * authorization it signs with are one fact, and an interrupted write must leave either the old
+ * record or the new one, never a profile naming an authorization that isn't there.
+ *
+ * [legacyProfileId] is the profile the single-session format became, when it did. It stays so that
+ * a connection stored before SEE-174 — which named no profile, because there was one wallet — is
+ * bound to the wallet it was using, however many restarts the migration took.
+ */
+data class WalletProfiles(
+    val profiles: List<WalletProfile> = emptyList(),
+    val authorizations: List<StoredAuthorization> = emptyList(),
+    val legacyProfileId: String? = null,
+) {
+    fun profile(id: String?): WalletProfile? = id?.let { wanted ->
+        profiles.firstOrNull { it.id == wanted }
+    }
+
+    fun authorization(id: String): StoredAuthorization? = authorizations.firstOrNull { it.id == id }
+
+    /** Profiles with their wallet app filled in from the authorization that holds it. */
+    fun routed(): WalletProfiles =
+        copy(
+            profiles =
+                profiles.map { profile ->
+                    authorization(profile.authorizationId)?.let { profile.copy(route = it.route) }
+                        ?: profile
+                }
+        )
+
+    /** Authorizations no profile uses any more. */
+    fun unreferenced(): List<StoredAuthorization> = authorizations.filter { held ->
+        profiles.none { it.authorizationId == held.id }
+    }
+
+    override fun toString() =
+        "WalletProfiles(profiles=$profiles, authorizations=${authorizations.size}, " +
+            "legacyProfileId=$legacyProfileId)"
+
+    companion object {
+        val Empty = WalletProfiles()
+    }
 }
 
 /**
@@ -55,8 +120,72 @@ class WalletStore(
     private val key: () -> SecretKey,
 ) {
     /**
-     * The wallet session this phone holds, or null when there is none, when it can't be decrypted,
-     * or when all that is left of one is half of the storage this app used before (SEE-84).
+     * Every wallet profile this phone holds (SEE-174), migrating the single session the app kept
+     * before it when that is all there is.
+     *
+     * The migration is restartable. The profile and authorization it makes have IDs derived from
+     * the session itself, so doing it twice — because the process died before the new record was
+     * written, or before the old one was deleted — makes the same record twice. The session is
+     * deleted only after the new record is committed; until then it is what the next read migrates
+     * again. A record that can't be decrypted is no profiles, exactly as an unreadable session was
+     * no wallet.
+     */
+    fun profiles(): WalletProfiles {
+        storedProfiles()?.let { held ->
+            // Committed: whatever the older format left is now only a copy of it.
+            if (File(secretDir, SESSION).exists() || File(dir, LEGACY_SELECTION).exists()) {
+                AtomicFile(File(secretDir, SESSION)).delete()
+                forgetLegacy()
+            }
+            return held.routed()
+        }
+        val session = session() ?: return WalletProfiles.Empty
+        val migrated = fromSession(session)
+        try {
+            putProfiles(migrated)
+            AtomicFile(File(secretDir, SESSION)).delete()
+            forgetLegacy()
+        } catch (e: GeneralSecurityException) {
+            // Not committed; the session is still there, and the next read migrates it again into
+            // the same IDs.
+        } catch (e: IOException) {
+            // Kept as it was; see above.
+        }
+        return migrated.routed()
+    }
+
+    /** Stores every profile and authorization as one sealed record, replacing the one there was. */
+    fun putProfiles(profiles: WalletProfiles) {
+        write(secretDir, PROFILES, seal(encodeProfiles(profiles), PROFILES_DATA))
+    }
+
+    /** Forgets every profile, and anything the older formats left behind. */
+    fun clearProfiles() {
+        AtomicFile(File(secretDir, PROFILES)).delete()
+        clear()
+    }
+
+    private fun storedProfiles(): WalletProfiles? {
+        val bytes =
+            try {
+                AtomicFile(File(secretDir, PROFILES)).readFully()
+            } catch (e: IOException) {
+                return null
+            }
+        val text = open(bytes, PROFILES_DATA) ?: return null
+        return try {
+            decodeProfiles(text)
+        } catch (e: JSONException) {
+            null
+        } catch (e: IllegalArgumentException) {
+            null // an unknown network or a malformed timestamp
+        }
+    }
+
+    /**
+     * The wallet session this phone holds in the single-session format that SEE-174 replaced, or
+     * null when there is none, when it can't be decrypted, or when all that is left of one is half
+     * of the storage this app used before (SEE-84). It is read only to migrate it into [profiles].
      */
     fun session(): StoredSession? = stored() ?: migrated()
 
@@ -174,11 +303,11 @@ class WalletStore(
             null // a truncated file: BufferUnderflowException, NegativeArraySizeException
         }
 
-    private fun seal(secret: String): ByteArray {
+    private fun seal(secret: String, associated: ByteArray = SESSION_DATA): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         // The Keystore picks the IV; a caller-chosen IV isn't allowed for its GCM keys.
         cipher.init(Cipher.ENCRYPT_MODE, key())
-        cipher.updateAAD(SESSION_DATA)
+        cipher.updateAAD(associated)
         val sealed = cipher.doFinal(secret.toByteArray(Charsets.UTF_8))
         val iv = cipher.iv
         return ByteBuffer.allocate(2 + iv.size + sealed.size)
@@ -203,6 +332,10 @@ class WalletStore(
     }
 
     private companion object {
+        const val PROFILES = "wallet-profiles"
+        /** SEE-174's record: every profile and authorization. */
+        const val PROFILES_FORMAT = 4
+        val PROFILES_DATA = "seekervault/wallet-profiles/v4".toByteArray(Charsets.UTF_8)
         const val SESSION = "wallet-session"
         const val LEGACY_SELECTION = "wallet.json"
         const val LEGACY_AUTHORIZATION = "wallet-authorization"
@@ -255,6 +388,126 @@ class WalletStore(
                 packageName = json.optString("walletPackage").takeIf { it.isNotEmpty() },
                 appLabel = json.optString("walletApp").takeIf { it.isNotEmpty() },
             )
+
+        /**
+         * The profile and authorization a single session becomes. Their IDs are derived from the
+         * session, so a migration that is repeated after an interruption produces the same ones,
+         * and a connection bound to the migrated profile on the first attempt still is after the
+         * second.
+         */
+        fun fromSession(session: StoredSession): WalletProfiles {
+            val wallet = session.wallet
+            val seed =
+                "${wallet.address}|${wallet.network.name}|${session.route.packageName.orEmpty()}"
+            val authorization =
+                StoredAuthorization(
+                    id = "wa_" + digest("legacy-authorization|$seed"),
+                    token = session.authToken,
+                    network = wallet.network,
+                    route = session.route,
+                )
+            val profile =
+                WalletProfile(
+                    id = "wp_" + digest("legacy-profile|$seed"),
+                    address = wallet.address,
+                    network = wallet.network,
+                    accountLabel = wallet.label,
+                    route = session.route,
+                    authorizationId = authorization.id,
+                    connectedAt = wallet.selectedAt,
+                    networkConfirmed = wallet.networkConfirmed,
+                )
+            return WalletProfiles(listOf(profile), listOf(authorization), profile.id)
+        }
+
+        fun digest(text: String): String =
+            MessageDigest.getInstance("SHA-256")
+                .digest(text.toByteArray(Charsets.UTF_8))
+                .take(12)
+                .joinToString("") { "%02x".format(it) }
+
+        fun encodeProfiles(state: WalletProfiles): String =
+            JSONObject()
+                .put("version", PROFILES_FORMAT)
+                .putOpt("legacyProfileId", state.legacyProfileId)
+                .put(
+                    "profiles",
+                    JSONArray().apply {
+                        state.profiles.forEach { profile ->
+                            put(
+                                JSONObject()
+                                    .put("id", profile.id)
+                                    .put("address", profile.address)
+                                    .put("network", profile.network.name)
+                                    .putOpt("label", profile.label)
+                                    .putOpt("accountLabel", profile.accountLabel)
+                                    .put("authorizationId", profile.authorizationId)
+                                    .put("connectedAt", profile.connectedAt.toString())
+                                    .put("networkConfirmed", profile.networkConfirmed)
+                                    .put("authorized", profile.authorized)
+                            )
+                        }
+                    },
+                )
+                .put(
+                    "authorizations",
+                    JSONArray().apply {
+                        state.authorizations.forEach { held ->
+                            put(
+                                JSONObject()
+                                    .put("id", held.id)
+                                    .put("authToken", held.token)
+                                    .put("network", held.network.name)
+                                    .putOpt("walletUriBase", held.route.uriBase)
+                                    .putOpt("walletPackage", held.route.packageName)
+                                    .putOpt("walletApp", held.route.appLabel)
+                            )
+                        }
+                    },
+                )
+                .toString()
+
+        fun decodeProfiles(text: String): WalletProfiles? {
+            val json = JSONObject(text)
+            if (json.getInt("version") != PROFILES_FORMAT) return null
+            val authorizations =
+                json.getJSONArray("authorizations").objects().mapNotNull { held ->
+                    val token = held.optString("authToken").takeIf { it.isNotEmpty() }
+                    token?.let {
+                        StoredAuthorization(
+                            id = held.getString("id"),
+                            token = it,
+                            network = WalletNetwork.valueOf(held.getString("network")),
+                            route = route(held),
+                        )
+                    }
+                }
+            val ids = authorizations.map { it.id }.toSet()
+            val profiles =
+                json.getJSONArray("profiles").objects().mapNotNull { profile ->
+                    val authorizationId = profile.getString("authorizationId")
+                    // A profile whose authorization is gone is not one this phone can sign with,
+                    // and it can't be: the two are written together.
+                    if (authorizationId !in ids) return@mapNotNull null
+                    WalletProfile(
+                        id = profile.getString("id"),
+                        address = profile.getString("address"),
+                        network = WalletNetwork.valueOf(profile.getString("network")),
+                        label = profile.optText("label"),
+                        accountLabel = profile.optText("accountLabel"),
+                        authorizationId = authorizationId,
+                        connectedAt = Instant.parse(profile.getString("connectedAt")),
+                        networkConfirmed = profile.optBoolean("networkConfirmed", true),
+                        authorized = profile.optBoolean("authorized", true),
+                    )
+                }
+            return WalletProfiles(profiles, authorizations, json.optText("legacyProfileId"))
+        }
+
+        fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
+
+        fun JSONObject.optText(name: String): String? =
+            if (isNull(name)) null else optString(name).takeIf { it.isNotEmpty() }
 
         fun decodeLegacy(text: String): SelectedWallet? {
             val json = JSONObject(text)

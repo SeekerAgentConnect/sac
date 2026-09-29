@@ -70,7 +70,7 @@ sealed interface AccessResult {
     /** No request was made from this phone yet. */
     data object NotRequested : AccessResult
 
-    /** No wallet is connected on this phone. */
+    /** The feed names no wallet profile on this phone (SEE-174). */
     data object NoWallet : AccessResult
 
     /** The owner declined in the wallet, or the wallet could not sign. Nothing was sent. */
@@ -101,8 +101,15 @@ sealed interface AccessResult {
  * 4. **Read.** Every read of the feed carries the session. A refusal from the gateway — revoked, or
  *    expired — lands in [denied], and the state says so.
  *
- * Access belongs to the wallet it was proven with. A different wallet selected later does not
- * inherit it: asking again with that wallet starts a new request and drops the old session.
+ * Access belongs to the wallet it was proven with, and each feed proves its own (SEE-174): [wallet]
+ * answers the profile one connection is bound to, so two restricted feeds bound to two different
+ * wallets are both readable at once, and a request, a refusal or a revocation on one touches
+ * nothing of the other. A feed rebound to another address does not inherit the access its old
+ * wallet proved: asking again with the new one starts a new request and drops the old session.
+ *
+ * The proof is a signature over an address and nothing else — no network enters it — so a feed
+ * rebound to the same address on another network keeps its access (docs/wiki/restricted-feeds.md).
+ * A wallet app's own authorization token is never part of it.
  */
 class FeedAccessManager(
     private val connections: () -> List<Connection>,
@@ -110,7 +117,8 @@ class FeedAccessManager(
     private val sessions: CredentialVault,
     private val keys: DeviceKeys,
     private val api: FeedAccessApi,
-    private val wallet: () -> SelectedWallet?,
+    /** The wallet profile [connectionId] is bound to, or null. Never another connection's. */
+    private val wallet: (connectionId: String) -> SelectedWallet?,
     private val sign: suspend (okio.ByteString, SelectedWallet) -> SignResult,
     private val label: () -> String,
     /** Registers a push target for a connected feed; best effort. */
@@ -138,9 +146,9 @@ class FeedAccessManager(
     private val _states = MutableStateFlow<Map<String, FeedAccessStore.Record>>(emptyMap())
 
     /**
-     * Every restricted feed's access for the wallet selected now, by connection ID. Access proven
-     * with another wallet is left out: it does not read the feed while that wallet is not the
-     * selected one, so to the screens it is a feed nothing has been asked of yet.
+     * Every restricted feed's access for the wallet that feed is bound to now, by connection ID.
+     * Access proven with another wallet is left out: it does not read the feed while that wallet is
+     * not the feed's, so to the screens it is a feed nothing has been asked of yet.
      */
     val states: StateFlow<Map<String, FeedAccessStore.Record>> = _states.asStateFlow()
 
@@ -176,14 +184,14 @@ class FeedAccessManager(
         byChannel[channel]?.takeIf { recordFor(channel)?.let(::isActive) == true }
 
     /**
-     * The selected wallet changed, or was loaded or disconnected: the feeds that wallet proved
-     * access to are the ones readable now, and only their sessions are presented.
+     * A feed's wallet binding changed, or the profiles were loaded or removed: the feeds whose own
+     * wallet proved their access are the ones readable now, and only their sessions are presented.
      */
     fun onWalletChanged() = publish()
 
-    /** Whether [record] was proven with the wallet selected now. */
+    /** Whether [record] was proven with the wallet its own feed is bound to now. */
     private fun isActive(record: FeedAccessStore.Record): Boolean =
-        record.wallet == wallet()?.address
+        record.wallet == wallet(record.connectionId)?.address
 
     private fun recordFor(channel: String): FeedAccessStore.Record? =
         _records.value.values.firstOrNull { channelFor(it.serverId) == channel }
@@ -216,12 +224,12 @@ class FeedAccessManager(
     }
 
     /**
-     * Asks the publisher for access with the wallet selected on this phone. It opens the wallet
-     * once, to sign the challenge.
+     * Asks the publisher for access with the wallet profile [connectionId] is bound to. It opens
+     * the wallet once, to sign the challenge.
      */
     suspend fun requestAccess(connectionId: String): AccessResult {
         val (connection, origin) = restricted(connectionId) ?: return AccessResult.NotRestricted
-        val selected = wallet() ?: return AccessResult.NoWallet
+        val selected = wallet(connectionId) ?: return AccessResult.NoWallet
         val held = lock.withLock { _records.value[connectionId] }
         if (
             held != null &&
@@ -421,7 +429,7 @@ class FeedAccessManager(
 
     /**
      * Registers [connectionId]'s feed again on [pushRetries], until it lands, the feed stops being
-     * connected with the selected wallet, or another path (a check, a new registration) landed it.
+     * connected with its own wallet, or another path (a check, a new registration) landed it.
      */
     private fun retryPush(connectionId: String) {
         scope.launch {
