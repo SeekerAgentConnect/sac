@@ -50,7 +50,8 @@ The phone rebuilds that text from the challenge's fields and compares it with th
 
 **The headless emulator cannot finish this flow.** Seed Vault Wallet and Mobile Wallet Adapter are
 absent there, so nothing can be signed ([emulator-e2e.md](../development/emulator-e2e.md)) and the
-app answers *"Connect a wallet first. A restricted feed grants access to a wallet, not to a phone."*
+app answers *"Choose a wallet for this feed first. A restricted feed grants access to a wallet, not
+to a phone."*
 Adding the feed and reading the restricted confirmation copy work; the approval path needs a wallet.
 
 ## 2. Register the feed as restricted on the gateway
@@ -201,31 +202,36 @@ signed-in name, so drive the page from a browser rather than a bare `curl`.
    restricted. After it is added, the publisher asks you to prove you control your wallet — by
    signing a message, not a transaction, which moves no funds — and then decides whether this
    device may read it."* Tap **Add feed**.
-2. **The signature.** Adding a restricted feed asks for access straight away
-   ([`ConnectionsViewModel.confirmFeed`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/connections/ConnectionsViewModel.kt)):
-   the phone generates a P-256 Keystore key for this connection, fetches a challenge, rebuilds the
+2. **Choose the feed's wallet.** The **Wallet** picker opens next, offering the saved wallet
+   profiles on a network the feed declares (`mainnet` for the demo). The wallet chosen here is the
+   one this feed proves its reader with, and only this feed: another restricted feed can be bound to
+   another wallet and both stay readable
+   ([restricted-feeds.md#one-wallet-per-feed](../wiki/restricted-feeds.md#one-wallet-per-feed)).
+3. **The signature.** Binding a restricted feed to a wallet asks for access with it straight away
+   ([`ConnectionsViewModel.afterWalletBound`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/connections/ConnectionsViewModel.kt));
+   an invitation the reference carried is redeemed right after. The phone generates a P-256 Keystore key for this connection, fetches a challenge, rebuilds the
    text, compares it, and only then opens the wallet — once, showing the text in §1. The answer is
    verified against the address before anything is sent.
-3. **Pending.** The connection's status line says *"Waiting for the publisher to approve this
+4. **Pending.** The connection's status line says *"Waiting for the publisher to approve this
    device."* It is not shown as a problem: it is the flow working.
-4. **The request appears.** Reload
+5. **The request appears.** Reload
    [`/trader/devices`](../../examples/demo-signals/internal/admin/devices.go). The row shows the wallet,
    the device-key fingerprint (`installation`), the label the phone claimed — marked *"label
    (user-supplied)"*, because it is a claim — the request time, and **Pending approval**.
-5. **Approve.** The page answers *"approved; the device receives a single-use invitation"*. The row
+6. **Approve.** The page answers *"approved; the device receives a single-use invitation"*. The row
    becomes *"Approved — waiting for the device to redeem its invitation"* and shows the invitation
    as a link, single use, for that device only, until its expiry. Showing it is safe: on any other
    phone it does nothing.
-6. **The phone redeems.** There is **no background poll for a decision**: the phone checks when the
+7. **The phone redeems.** There is **no background poll for a decision**: the phone checks when the
    owner opens that connection's detail sheet or taps **Refresh** on it
    ([`SeekerVaultApp.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/SeekerVaultApp.kt)).
    A feed with no request yet *asks*, which opens the wallet; one that already has a request only
    *checks*, signed with the device key, and a check that finds an invitation redeems it.
-7. **Connected.** The row moves to `grant_pending` — *"Approved — the gateway has not confirmed the
+8. **Connected.** The row moves to `grant_pending` — *"Approved — the gateway has not confirmed the
    grant yet"* — and then, once the syncer lands it, to *"Connected — the gateway admits this device
    until &lt;expiry&gt;, renewed while approved"*. The phone's status line stops talking about access
    and says whatever the ordinary feed status says.
-8. **A signal.** Create one on the signals page, or with `go run ./cmd/publishctl create` — the
+9. **A signal.** Create one on the signals page, or with `go run ./cmd/publishctl create` — the
    full swap invocation, with every `--term` it needs, is in
    [demos.md](../development/demos.md#running-them), and `PUBLISHER_API_URL` and
    `PUBLISHER_API_TOKEN` address it. It should reach that phone and no other. **(Not observed.)**
@@ -241,6 +247,14 @@ is the one case where asking again starts a fresh request instead of a check, wh
 once more
 ([`FeedAccessManager.requestAccess`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/access/FeedAccessManager.kt)).
 Rejected is treated as a problem on the connection row, because it needs the owner to do something.
+
+### Changing the feed's wallet
+
+The feed's **Wallet** row changes the wallet it uses, and nothing else. Choosing a profile with the
+**same address** on another network keeps the access: the proof is a signature by the address, and
+no network enters it. Choosing **another address** does not inherit the grant — the phone asks the
+publisher again with the new wallet, and the Devices page gets a new row. A wallet app's own
+authorization token is never part of any of this.
 
 ## 7. A second device on the same wallet
 
@@ -362,7 +376,7 @@ What the phone says when asking stopped before the publisher had anything to dec
 
 | Copy | Means |
 | --- | --- |
-| *"Connect a wallet first. A restricted feed grants access to a wallet, not to a phone."* | No wallet selected — the emulator case |
+| *"Choose a wallet for this feed first. A restricted feed grants access to a wallet, not to a phone."* | The feed has no wallet profile chosen, or its profile was removed — the emulator case |
 | *"The wallet didn't sign, so nothing was sent."* | The owner declined, or the signature did not verify against the address |
 | *"The publisher asked this phone to sign something it didn't recognise, so nothing was signed."* | The rebuilt text or a challenge field did not match, or the challenge claimed to last over thirty minutes |
 | *"Couldn't reach the publisher. Nothing changed — try again."* | The authentication origin did not answer. The client follows no redirects |

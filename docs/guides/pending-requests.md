@@ -94,6 +94,8 @@ current request appears.
 
 Requests from every connection appear together, each labeled with its connection. Two servers can use the same request ID. The phone keeps them apart, and an answer goes only to the server the request came from.
 
+Each connection also has its own wallet ([`wallet-setup.md`](wallet-setup.md#one-wallet-per-connection)). A wallet request is reviewed and signed with the wallet profile its own connection uses, never another connection's, and the review names it under **Signs with**. Changing one connection's wallet cancels only **that** server's pending wallet requests made for the old wallet; adding, renaming or reconnecting a wallet profile cancels nothing.
+
 ## Checking from the agent's side
 
 The test agent can make and read requests, without Hermes ([`tools/test-agent/README.md`](../../tools/test-agent/README.md)). `pnpm agent ack` needs the demo tool `vault_request_ack`, which the sidecar serves only with `MCP_DEMO_TOOLS=true` in its `.env`, as `.env.example` sets it:

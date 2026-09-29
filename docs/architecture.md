@@ -96,7 +96,7 @@ Jupiter client plugins and demo servers are different components. The demos publ
 
 ## Inside the Android application
 
-The app owns connections and encrypted credentials, wallet selection and authorization, owner inputs, policy assessment, review, explicit approval and durable local outcomes. Its composition root currently registers `JupiterSwapPlugin` and `JupiterPredictionPlugin`.
+The app owns connections and encrypted credentials, saved wallet profiles and their authorizations, each connection's choice of wallet profile, owner inputs, policy assessment, review, explicit approval and durable local outcomes. Its composition root currently registers `JupiterSwapPlugin` and `JupiterPredictionPlugin`.
 
 Plugins declare parameters, obtain execution data and inspect bytes as typed facts. Core retains policy evaluation, approval, persistence and wallet invocation. Plugins are compiled into the application; connecting a server never downloads executable code. Missing or incompatible plugins make an operation unsupported.
 
@@ -110,9 +110,10 @@ See [client plugins](wiki/client-plugins.md), [policy](policy.md) and [environme
 
 - The app and servers hold no wallet signing keys. An external MWA-compatible wallet signs and submits.
 - Policy assessments never replace explicit owner approval.
-- Review binds the source identity/revision, owner choices, selected wallet/network and exact prepared bytes. Changed content requires a new review.
+- Review binds the source identity/revision, owner choices, the connection's own wallet profile (address, network, wallet app) and exact prepared bytes. Changed content, or a changed wallet binding, requires a new review.
+- There is no global wallet. Each connection names one saved wallet profile, chosen by the owner; a direct server is told only its own connection's address and network, a feed is told nothing, and nothing signs for a connection whose server declares no Solana network or whose profile isn't on one it declares ([wallet profiles](wiki/wallet-profiles.md), [supported networks](wiki/server-manifests.md#supported-networks)).
 - Direct transfers retain the server-accepted preparation/approval sequence before wallet invocation. Public-feed execution has no server approval acknowledgement or result upload.
-- One wallet interaction is serialized with other wallet operations. Its outcome is persisted before any result delivery retry.
+- One wallet interaction is serialized with other wallet operations, however many profiles are saved. Its outcome is persisted before any result delivery retry.
 - Retrying delivery, restarting the app or receiving duplicate updates never re-signs or re-submits a transaction.
 - An uncertain submission remains unresolved; it is not retried as a failure. Submission and on-chain confirmation are distinct, and confirmation claims must identify the checked network result.
 

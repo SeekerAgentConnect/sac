@@ -461,3 +461,16 @@
 - **Re-probe a provider's live shape before building on an old fixture** (SEE-172). Jupiter moved to
   gasless builds (a pre-signed relayer fee payer) after the SEE-94 capture, and the buy review refused
   every current order. A new capture found it in minutes; the old fixture never would.
+- **A new protobuf field numbered after a oneof changes the bytes differently per runtime** (SEE-174).
+  `supported_networks = 11` on `ServerManifest` sat after the `reference` oneof (8/9). protobuf-go and
+  `buf convert` write oneof fields after every ordinary field, while protobuf-es and Java write in
+  field-number order, so the cross-runtime byte fixtures stopped agreeing. Declaration order doesn't
+  fix it. Before adding a field to a message with a oneof, check where the oneof is. Keep new
+  top-level fields numbered below it, or put the field inside the oneof's messages, and run every
+  runtime's fixture test before building on it.
+- **When the Buf registry rate-limits `pnpm generate`, generate locally with the pinned versions**
+  (SEE-174). Go: `protoc-gen-go` and `protoc-gen-connect-go` at the pinned versions, as
+  `local:` plugins in a throwaway template. Java/Kotlin: the protoc release that matches the
+  committed "Protobuf Java Version", via `protoc_builtin`, generated into a temp dir, copying back
+  only the files that changed so connect-kotlin output isn't wiped. Then diff against a clean run
+  when the registry is back.

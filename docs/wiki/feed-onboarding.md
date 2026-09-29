@@ -36,7 +36,7 @@ name, channel, environment or plugin requirement.
 
 | Repository outcome | Owner-facing result |
 | --- | --- |
-| `Added` | Open the new connection. Its manifest display name, Sandbox or Production environment, and required client plugins are visible. |
+| `Added` | Open the new connection. Its manifest display name, Sandbox or Production environment, and required client plugins are visible, and its **Wallet** picker opens so the owner chooses the wallet profile this feed uses, from those on a network the feed declares (SEE-174, [wallet-profiles.md](wallet-profiles.md#binding-a-connection)). |
 | `Already` | Explain that the feed is already present and nothing was stored; offer to open it. |
 | `Refused(ManifestProblem)` | Show the manifest problem code. Nothing is stored. |
 | `Failed(CheckOutcome)` | State the gateway/check failure. Only transient unreachable or failed checks offer **Retry**. |

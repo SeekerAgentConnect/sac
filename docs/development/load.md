@@ -96,6 +96,8 @@ subscriptions — is still as of its own last aggregation, so it lags a few seco
 harness's own listener count; both numbers are printed, and a difference between them at the end of
 a short window is that lag rather than a lost connection.
 
+**The synthetic publishers declare no Solana network** (SEE-174): their manifests' `feed.supported_networks` is empty, which a phone reads as "no networks declared" and never signs for ([supported networks](../wiki/server-manifests.md#supported-networks)). Nothing a run publishes is meant to reach a wallet, and `TestEveryPublisherItCreatesDeclaresNoNetwork` in `internal/drive/boundary_test.go` keeps it that way.
+
 ## The profiles
 
 `tools/loadtest/profiles.json` is data rather than code, so the numbers behind a report can be read
