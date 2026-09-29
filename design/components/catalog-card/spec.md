@@ -72,6 +72,15 @@ fun CatalogCard(
 The status text and the action label are caller content: the app says what the persisted access
 state is, and never says "Connected" for a restricted feed that is not.
 
+## Detail sheet
+
+`CatalogDetailSheet(state: CatalogDetailSheetState, onClose, onAction)` is the same feed in a
+`SheetScaffold` (`Plain`): the avatar with the access label and status text, the whole description
+in `bodyLarge`, the network chips, a one-sentence access explanation, `FactRow`s (networks, required
+plugins, gateway and server ID in `MonoWrap`), a closing `bodySmall` caption, and two `Lg` buttons —
+**Close** (`Neutral`) and the card's action (`Filled` while available, `Disabled` while working,
+`Tonal` otherwise). Allowed dependencies add `sheet-scaffold` and `fact-row`.
+
 ## Open questions
 
 - Visual references are pending a Claude Design re-export that adds the Discover screen and this
