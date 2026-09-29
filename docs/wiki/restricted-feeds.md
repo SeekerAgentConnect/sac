@@ -365,6 +365,13 @@ while it was proven with the address the feed is bound to now.
   profile with the same address on another network keeps its grant and its session. The access
   proof ignores the server's declared networks for the same reason: a feed that declares none can
   still be read, although nothing is signed for it.
+- **Rebinding while access is being asked for.** The feed's profile is captured before the
+  challenge is fetched, so the wallet repository checks — inside the wallet lock, before the wallet
+  opens — that the feed still names that profile (`signAccessProof`). The check is the binding and
+  the address alone, so a feed that declares no networks can still prove its reader. A feed rebound
+  meanwhile signs nothing with the old wallet; a proof signed, or a request answered, after the
+  feed was rebound is discarded without replacing what the phone held for the feed, and the owner
+  is told to ask again with the wallet the feed uses now.
 - **Another address: access is asked for again.** The old grant stays with the address that proved
   it and is not used; the phone starts a new request with the new wallet. A publisher that wants to
   end the old grant revokes it as before.

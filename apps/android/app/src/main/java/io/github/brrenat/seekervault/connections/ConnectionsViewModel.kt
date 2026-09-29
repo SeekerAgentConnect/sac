@@ -200,6 +200,8 @@ enum class AccessProblem {
     NoWallet,
     /** The owner declined in the wallet, or it could not sign. Nothing was sent. */
     NotSigned,
+    /** The feed was bound to another wallet while asking. Nothing was sent (SEE-174). */
+    WalletChanged,
     /** The publisher's challenge was not the text this phone would sign. Nothing was signed. */
     BadChallenge,
     /** The publisher could not be reached. Nothing changed, and it can be tried again. */
@@ -401,6 +403,7 @@ class ConnectionsViewModel(
                 AccessResult.NotRequested -> return null
                 AccessResult.NoWallet -> AccessProblem.NoWallet
                 is AccessResult.WalletDidNotSign -> AccessProblem.NotSigned
+                AccessResult.WalletChanged -> AccessProblem.WalletChanged
                 AccessResult.BadChallenge -> AccessProblem.BadChallenge
                 AccessResult.Unreachable -> AccessProblem.Unreachable
                 is AccessResult.Refused -> AccessProblem.Refused

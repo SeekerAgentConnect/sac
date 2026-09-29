@@ -493,11 +493,17 @@ class SeekerVaultApplication : Application() {
                 // The feed's own wallet profile, never another connection's (SEE-174).
                 wallet = { connectionId -> walletRepository.accessWalletFor(connectionId) },
                 // The one wallet signature in the whole flow, over text that says in its own
-                // words that it is not a transaction (FeedAccessProof). It is checked against
-                // the profile the proof was built for, which is address-only: no network enters
-                // it, so it is not checked against the feed's networks.
-                sign = { message, reviewed ->
-                    walletRepository.sign(ByteString.copyFrom(message.toByteArray()), reviewed)
+                // words that it is not a transaction (FeedAccessProof). It is checked, under the
+                // wallet lock, against the profile the feed names now, so a feed rebound while
+                // its challenge was pending never signs with the old one. The proof is
+                // address-only: no network enters it, so it is not checked against the feed's
+                // networks.
+                sign = { message, reviewed, connectionId ->
+                    walletRepository.signAccessProof(
+                        ByteString.copyFrom(message.toByteArray()),
+                        reviewed,
+                        connectionId,
+                    )
                 },
                 // The owner's own phone, as a label for the admin's list. It is a claim and
                 // shown as one: what proves the device is the key, not this.

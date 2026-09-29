@@ -441,6 +441,7 @@ private fun accessProblemText(reason: AccessProblem): String =
         when (reason) {
             AccessProblem.NoWallet -> R.string.access_problem_no_wallet
             AccessProblem.NotSigned -> R.string.access_problem_not_signed
+            AccessProblem.WalletChanged -> R.string.access_problem_wallet_changed
             AccessProblem.BadChallenge -> R.string.access_problem_bad_challenge
             AccessProblem.Unreachable -> R.string.access_problem_unreachable
             AccessProblem.Refused -> R.string.access_problem_refused

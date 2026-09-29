@@ -468,6 +468,27 @@ class WalletRepositoryTest {
     }
 
     @Test
+    fun anAccessProofIsSignedOnlyWhileTheFeedStillNamesItsProfile() = runBlocking {
+        repository.load()
+        val a = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val b = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        // A feed that declared no transaction network: nothing is signed for it as a transaction,
+        // but its reader's address can still be proven.
+        bindings.flow.value = listOf(feed(FEED_1, a.id, networks = emptySet()))
+        val reviewed = checkNotNull(repository.accessWalletFor(FEED_1))
+        adapter.signWith(SIGNATURE)
+
+        assertEquals(SignResult.Changed, repository.sign(MESSAGE, reviewed, FEED_1))
+        assertTrue(repository.signAccessProof(MESSAGE, reviewed, FEED_1) is SignResult.Signed)
+        assertEquals(listOf(WALLET_A), adapter.signings.map { it.second.address })
+
+        // Rebound to B while the proof was being built: A's wallet is not opened for it.
+        repository.bind(FEED_1, b.id)
+        assertEquals(SignResult.Changed, repository.signAccessProof(MESSAGE, reviewed, FEED_1))
+        assertEquals(1, adapter.signings.size)
+    }
+
+    @Test
     fun aPositionFollowUpUsesItsOwnerNotTheFeedsNewWallet() = runBlocking {
         repository.load()
         val owner = repository.add(WALLET_A, WalletNetwork.Mainnet)
@@ -545,6 +566,77 @@ class WalletRepositoryTest {
         assertEquals(listOf(SECRET), adapter.disconnects)
         assertEquals(emptyList<Any>(), store().profiles().authorizations)
     }
+
+    @Test
+    fun reconnectingOneSharedProfileKeepsTheGrantSoRemovingItRevokesNothingTheOtherUses() =
+        runBlocking {
+            repository.load()
+            adapter.answerAccounts(WALLET_A, WALLET_B, authToken = SECRET)
+            val (a, b) = repository.connectProfiles(WalletNetwork.Mainnet).profiles
+            bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+
+            // The wallet reauthorizes the shared grant and hands the same token back.
+            adapter.answerAccounts(WALLET_A, WALLET_B, authToken = SECRET)
+            repository.reconnect(a.id)
+
+            assertEquals(SECRET, adapter.connects.last().second)
+            // One grant, still shared: A wasn't split off onto an authorization of its own.
+            assertEquals(a.authorizationId, repository.profile(a.id)?.authorizationId)
+            assertEquals(a.authorizationId, repository.profile(b.id)?.authorizationId)
+            assertEquals(1, store().profiles().authorizations.size)
+
+            repository.remove(a.id)
+
+            // B still signs with that token, so the wallet isn't told to forget it.
+            assertEquals(emptyList<String>(), adapter.disconnects)
+            assertEquals(b.id, repository.walletFor(FEED_2)?.profileId)
+            adapter.answerSigning(SignResult.Declined)
+            repository.sign(MESSAGE, b.selected(), FEED_2)
+            assertEquals(SECRET, adapter.signings.single().third)
+        }
+
+    @Test
+    fun aTokenRotatedByReconnectingOneSharedProfileReachesTheOther() = runBlocking {
+        repository.load()
+        adapter.answerAccounts(WALLET_A, WALLET_B, authToken = SECRET)
+        val (a, b) = repository.connectProfiles(WalletNetwork.Mainnet).profiles
+        bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+
+        adapter.answerAccounts(WALLET_A, WALLET_B, authToken = REFRESHED)
+        repository.reconnect(a.id)
+
+        // B, which the wallet still authorizes, signs with the rotated token, not the stale one.
+        assertEquals(b.id, repository.walletFor(FEED_2)?.profileId)
+        adapter.answerSigning(SignResult.Declined)
+        repository.sign(MESSAGE, b.selected(), FEED_2)
+        assertEquals(REFRESHED, adapter.signings.single().third)
+        assertEquals(listOf(REFRESHED), store().profiles().authorizations.map { it.token })
+
+        repository.remove(a.id)
+        assertEquals(emptyList<String>(), adapter.disconnects)
+        repository.remove(b.id)
+        assertEquals(listOf(REFRESHED), adapter.disconnects)
+    }
+
+    @Test
+    fun anAccountTheReauthorizedGrantNoLongerNamesNeedsReconnectingAndKeepsItsGrant() =
+        runBlocking {
+            repository.load()
+            adapter.answerAccounts(WALLET_A, WALLET_B, authToken = SECRET)
+            val (a, b) = repository.connectProfiles(WalletNetwork.Mainnet).profiles
+            bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+
+            adapter.answerConnected(WALLET_A, authToken = REFRESHED)
+            repository.reconnect(a.id)
+
+            assertEquals(a.id, repository.walletFor(FEED_1)?.profileId)
+            // The wallet didn't name B: it is reconnected, never signed for with A's new token.
+            assertTrue(repository.readiness(FEED_2) is WalletReadiness.NeedsReconnect)
+            assertEquals(a.authorizationId, repository.profile(b.id)?.authorizationId)
+            repository.remove(a.id)
+            assertEquals(emptyList<String>(), adapter.disconnects)
+            assertEquals(b.id, bindings.connection(FEED_2)?.walletProfileId)
+        }
 
     @Test
     fun removingAUsedProfileLeavesItsConnectionsWithoutAWalletAndTellsOnlyTheirServers() =
