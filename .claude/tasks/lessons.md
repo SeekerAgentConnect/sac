@@ -474,3 +474,13 @@
   committed "Protobuf Java Version", via `protoc_builtin`, generated into a temp dir, copying back
   only the files that changed so connect-kotlin output isn't wiped. Then diff against a clean run
   when the registry is back.
+- **Dedupe across a race must keep provenance** (SEE-175 review). "Already held → nothing" silently
+  swallowed a live event whose item the racing snapshot had stored first. When two paths can deliver
+  the same item, record which path stored it and let the other one upgrade it (once), instead of
+  treating the second arrival as a plain duplicate. Test the overlap with the *same* ID on both
+  paths, not disjoint IDs.
+- **"Cleared on background" is not "owned by the foreground"** (SEE-175 review). App-scoped state
+  that repositories write is also written by workers while the app is away. Gate writes on an
+  explicit session (start/stop + a session token captured when a long operation begins).
+- **Re-check suppression when something delayed is finally presented** (SEE-175 review). A check
+  made on arrival goes stale during a cooldown or while queued behind another banner.

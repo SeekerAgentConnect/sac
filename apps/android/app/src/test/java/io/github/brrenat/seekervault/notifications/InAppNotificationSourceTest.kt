@@ -166,18 +166,67 @@ class InAppNotificationSourceTest {
         )
     }
 
+    @Test
+    fun `an item the snapshot got to before its live event is announced late, once`() {
+        source.accept(snapshot())
+        // The feed's first read: backlog, and one item published while it ran.
+        val backlog = (1..3).map { ReviewIdentity.Signal(OTHER_CONNECTION_ID, uuid(it)) }
+        val raced = ReviewIdentity.Signal(OTHER_CONNECTION_ID, uuid(4))
+        assertEquals(
+            emptyList<InAppNotificationArrival>(),
+            source.accept(snapshot(waiting = backlog + raced, live = emptyList())),
+        )
+
+        // Its live event follows: known already, never announced, and news.
+        assertEquals(
+            listOf(InAppNotificationArrival.Waiting(raced)),
+            source.accept(
+                snapshot(waiting = backlog + raced, live = emptyList(), late = listOf(raced))
+            ),
+        )
+        // Once.
+        assertEquals(
+            emptyList<InAppNotificationArrival>(),
+            source.accept(
+                snapshot(waiting = backlog + raced, live = emptyList(), late = listOf(raced))
+            ),
+        )
+    }
+
+    @Test
+    fun `a late mark never repeats an item that was already announced, nor one in the baseline`() {
+        source.accept(snapshot(waiting = listOf(FIRST), live = emptyList(), late = listOf(FIRST)))
+        assertEquals(
+            emptyList<InAppNotificationArrival>(),
+            source.accept(
+                snapshot(waiting = listOf(FIRST), live = emptyList(), late = listOf(FIRST))
+            ),
+        )
+
+        assertEquals(
+            listOf(InAppNotificationArrival.Waiting(SECOND)),
+            source.accept(snapshot(waiting = listOf(FIRST, SECOND), late = listOf(FIRST))),
+        )
+        assertEquals(
+            emptyList<InAppNotificationArrival>(),
+            source.accept(snapshot(waiting = listOf(FIRST, SECOND), late = listOf(FIRST, SECOND))),
+        )
+    }
+
     private fun snapshot(
         ready: Boolean = true,
         waiting: List<ReviewIdentity> = emptyList(),
         disconnected: List<String> = emptyList(),
         // Unless a test says otherwise, everything waiting arrived as news.
         live: List<ReviewIdentity> = waiting,
+        late: List<ReviewIdentity> = emptyList(),
     ) =
         InAppNotificationSnapshot(
             ready = ready,
             waiting = LinkedHashSet(waiting),
             disconnected = LinkedHashSet(disconnected),
             live = live.toSet(),
+            late = late.toSet(),
         )
 
     private fun uuid(n: Int) = "00000000-0000-4000-8000-%012d".format(n)

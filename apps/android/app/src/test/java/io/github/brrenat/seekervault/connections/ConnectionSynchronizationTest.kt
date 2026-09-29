@@ -23,6 +23,7 @@ import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -130,7 +131,7 @@ class ConnectionSynchronizationTest {
      */
     @Test
     fun onlyRequestsCreatedAfterTheFirstReadOfTheSessionAreMarkedAsNews() = runBlocking {
-        val arrivals = ArrivalLedger()
+        val arrivals = ArrivalLedger().apply { onForeground() }
         val repository = newRepository(arrivals = arrivals)
         val connection = repository.pair(server.issue(URL))
         val first = server.addPending(connection.id, REQUEST)
@@ -151,6 +152,7 @@ class ConnectionSynchronizationTest {
 
         // After the app has been away, the first read is catching up again.
         arrivals.onBackground()
+        arrivals.onForeground()
         val third = server.addPending(connection.id, THIRD_REQUEST)
         transport.response = { snapshot(it.connectionId, first, second, third) }
         repository.refresh(connection.id)
@@ -160,7 +162,7 @@ class ConnectionSynchronizationTest {
 
     @Test
     fun aStreamEventIsNewsAndACachedStateNever() = runBlocking {
-        val arrivals = ArrivalLedger()
+        val arrivals = ArrivalLedger().apply { onForeground() }
         val repository = newRepository(arrivals = arrivals)
         val connection = repository.pair(server.issue(URL))
         val request = server.addPending(connection.id, REQUEST)
@@ -199,7 +201,7 @@ class ConnectionSynchronizationTest {
 
     @Test
     fun whatEventsCreatedWhileTheFirstSnapshotWasReadIsNews() = runBlocking {
-        val arrivals = ArrivalLedger()
+        val arrivals = ArrivalLedger().apply { onForeground() }
         val repository = newRepository(arrivals = arrivals)
         val connection = repository.pair(server.issue(URL))
         val backlog = server.addPending(connection.id, REQUEST)
@@ -225,6 +227,90 @@ class ConnectionSynchronizationTest {
             arrivals.live.value,
         )
         assertEquals(2, repository.inbox.value.pending[connection.id]?.size)
+    }
+
+    /**
+     * The app's repositories are shared with the background workers. A read that completes while
+     * the app is away must not make the first foreground read after it news (SEE-175 review).
+     */
+    @Test
+    fun aWorkerReadWhileTheAppIsAwayLeavesTheNextCatchUpQuiet() = runBlocking {
+        val arrivals = ArrivalLedger().apply { onForeground() }
+        val repository = newRepository(arrivals = arrivals)
+        val connection = repository.pair(server.issue(URL))
+        val first = server.addPending(connection.id, REQUEST)
+        transport.response = { snapshot(it.connectionId, first) }
+        repository.refresh(connection.id)
+
+        arrivals.onBackground()
+        // The worker's read, while the app is away.
+        repository.refresh(connection.id)
+        assertFalse(arrivals.wasRead(connection.id))
+        // Published while still away.
+        val second = server.addPending(connection.id, OTHER_REQUEST)
+        val third = server.addPending(connection.id, THIRD_REQUEST)
+        transport.response = { snapshot(it.connectionId, first, second, third) }
+
+        // Back in the foreground: the first read is catching up.
+        arrivals.onForeground()
+        repository.refresh(connection.id)
+
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+        assertEquals(3, repository.inbox.value.pending[connection.id]?.size)
+        assertTrue(arrivals.wasRead(connection.id))
+    }
+
+    /**
+     * A request the first snapshot caught as backlog, whose live event then arrives identical, was
+     * created while the snapshot was read: it is handed over late. Nothing else is (SEE-175
+     * review).
+     */
+    @Test
+    fun aRequestTheFirstSnapshotCaughtIsHandedOverByItsLiveEvent() = runBlocking {
+        val arrivals = ArrivalLedger().apply { onForeground() }
+        val repository = newRepository(arrivals = arrivals)
+        val connection = repository.pair(server.issue(URL))
+        val request = server.addPending(connection.id, REQUEST)
+        val state =
+            ConnectionSyncState(
+                connectionId = connection.id,
+                requests =
+                    mapOf(
+                        REQUEST to
+                            ServerRequest(RequestKey(connection.id, REQUEST), 1, request = request)
+                    ),
+            )
+        repository.applyCache(state, SyncDelivery.Snapshot())
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+
+        // A request this session never read quietly is only a duplicate.
+        repository.handOver(connection.id, OTHER_REQUEST)
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.late.value)
+
+        repository.handOver(connection.id, REQUEST)
+        assertEquals(setOf(ReviewIdentity.Private(connection.id, REQUEST)), arrivals.late.value)
+    }
+
+    /** A replayed event is history: news only once this session has read the connection. */
+    @Test
+    fun aReplayedEventIsCatchingUpUntilTheConnectionHasBeenRead() = runBlocking {
+        val arrivals = ArrivalLedger().apply { onForeground() }
+        val repository = newRepository(arrivals = arrivals)
+        val connection = repository.pair(server.issue(URL))
+        val request = server.addPending(connection.id, REQUEST)
+        val state =
+            ConnectionSyncState(
+                connectionId = connection.id,
+                requests =
+                    mapOf(
+                        REQUEST to
+                            ServerRequest(RequestKey(connection.id, REQUEST), 1, request = request)
+                    ),
+            )
+
+        repository.applyCache(state, SyncDelivery.Replayed)
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+        assertEquals(1, repository.inbox.value.pending[connection.id]?.size)
     }
 
     private fun snapshot(

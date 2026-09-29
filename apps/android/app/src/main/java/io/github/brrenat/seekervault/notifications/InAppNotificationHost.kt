@@ -56,6 +56,8 @@ import io.github.brrenat.seekervault.inbox.PendingItem
  *   banner; a feed's first snapshot, the catch-up after coming back and a replayed history are
  *   listed and counted without one (SEE-175). Several at once are one banner
  *   ([InAppNotificationQueue.arrive]).
+ * @param late the items a catching-up read stored just before their live event arrived
+ *   ([ArrivalLedger.late]): news that lost the race to the snapshot, announced once.
  * @param reviewOpen whether the review for that identity is already on screen; a banner for a
  *   request the owner is already reading is suppressed.
  * @param modifier where the banner sits in its parent. The safe area is the host's own business
@@ -68,6 +70,7 @@ fun InAppNotifications(
     connections: List<Connection>,
     waiting: List<PendingItem>,
     live: Set<ReviewIdentity>,
+    late: Set<ReviewIdentity> = emptySet(),
     reviewOpen: (ReviewIdentity) -> Boolean,
     onOpen: (InAppNotificationTarget) -> Unit,
     modifier: Modifier = Modifier,
@@ -95,6 +98,7 @@ fun InAppNotifications(
             waiting = items.keys,
             disconnected = disconnected,
             live = live,
+            late = late,
         )
     val currentSnapshot by rememberUpdatedState(snapshot)
     val currentItems by rememberUpdatedState(items)

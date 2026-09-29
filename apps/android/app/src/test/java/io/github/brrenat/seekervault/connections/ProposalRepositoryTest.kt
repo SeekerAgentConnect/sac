@@ -103,6 +103,8 @@ class ProposalRepositoryTest {
         var answers: List<WireProposal> = emptyList()
         var sequence = 1L
         var failure: GatewayException.Kind? = null
+        /** Runs while the read is on its way, before it answers. */
+        var beforeAnswer: () -> Unit = {}
         val asked = mutableListOf<FeedReference>()
         val known = mutableListOf<Long>()
 
@@ -113,6 +115,7 @@ class ProposalRepositoryTest {
             asked += reference
             known += knownSequence
             failure?.let { throw GatewayException(it, "fake $it") }
+            beforeAnswer()
             if (knownSequence != 0L && knownSequence == sequence) {
                 return FeedSnapshot.Unchanged(sequence)
             }
@@ -141,7 +144,7 @@ class ProposalRepositoryTest {
      */
     @Test
     fun aFeedsFirstReadIsItsBacklogAndMarksNothingAsNews() = runBlocking {
-        val arrivals = ArrivalLedger()
+        val arrivals = ArrivalLedger().apply { onForeground() }
         val repository = repository(arrivals = arrivals)
         feed.answers = listOf(wireProposal(), wireProposal(proposalId = PROPOSAL_B))
 
@@ -158,7 +161,7 @@ class ProposalRepositoryTest {
      */
     @Test
     fun aLaterReadMarksOnlyTheProposalsItCreated() = runBlocking {
-        val arrivals = ArrivalLedger()
+        val arrivals = ArrivalLedger().apply { onForeground() }
         val repository = repository(arrivals = arrivals)
         feed.answers = listOf(wireProposal())
         repository.refresh(FEED)
@@ -177,13 +180,14 @@ class ProposalRepositoryTest {
 
     @Test
     fun aStreamedProposalIsNewsAndItsRepeatsAndRevisionsAreNot() = runBlocking {
-        val arrivals = ArrivalLedger()
+        val arrivals = ArrivalLedger().apply { onForeground() }
         val repository = repository(arrivals = arrivals)
 
         repository.apply(FEED, wireProposal())
         assertEquals(setOf(ReviewIdentity.Signal(FEED, PROPOSAL_A)), arrivals.live.value)
 
         arrivals.onBackground()
+        arrivals.onForeground()
         repository.apply(FEED, wireProposal())
         repository.apply(FEED, wireProposal(revision = 2))
         assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
@@ -191,7 +195,7 @@ class ProposalRepositoryTest {
 
     @Test
     fun replayedHistoryIsCatchingUpUntilTheFeedHasBeenReadInThisSession() = runBlocking {
-        val arrivals = ArrivalLedger()
+        val arrivals = ArrivalLedger().apply { onForeground() }
         val repository = repository(arrivals = arrivals)
 
         repository.apply(FEED, wireProposal(), FeedDelivery.Replayed)
@@ -206,6 +210,92 @@ class ProposalRepositoryTest {
         // And after the app has been away, the first read is catching up again.
         arrivals.onBackground()
         assertEquals(false, arrivals.wasRead(FEED))
+    }
+
+    /**
+     * The feed's stream opens before its snapshot is read, so a proposal published in between is in
+     * the snapshot — stored as catching up — and then arrives on the stream. It is news, and it is
+     * announced late, once; the rest of the backlog, a replay, and anything held from before this
+     * session are not (SEE-175 review).
+     */
+    @Test
+    fun aProposalPublishedWhileTheFirstSnapshotWasReadIsHandedOverByItsLiveEvent() = runBlocking {
+        val arrivals = ArrivalLedger().apply { onForeground() }
+        val repository = repository(arrivals = arrivals)
+        feed.answers = listOf(wireProposal(), wireProposal(proposalId = PROPOSAL_B))
+        repository.refresh(FEED)
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+
+        // A replay of backlog is still catching up.
+        repository.apply(FEED, wireProposal(), FeedDelivery.Replayed)
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.late.value)
+
+        // The live event for the one published during the read.
+        assertTrue(
+            repository.apply(FEED, wireProposal(proposalId = PROPOSAL_B))
+                is ProposalApplied.Unchanged
+        )
+        assertEquals(setOf(ReviewIdentity.Signal(FEED, PROPOSAL_B)), arrivals.late.value)
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+        assertEquals(2, repository.proposalsFor(FEED).size)
+
+        // A new session: what the last one read quietly is held, and a live duplicate of it is
+        // only a duplicate.
+        arrivals.onBackground()
+        arrivals.onForeground()
+        repository.apply(FEED, wireProposal())
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.late.value)
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+    }
+
+    /**
+     * A background worker shares this repository. A read it completes while the app is away must
+     * not make the next foreground catch-up news (SEE-175 review).
+     */
+    @Test
+    fun aReadCompletedWhileTheAppIsAwayLeavesTheNextCatchUpQuiet() = runBlocking {
+        val arrivals = ArrivalLedger().apply { onForeground() }
+        val repository = repository(arrivals = arrivals)
+        feed.answers = listOf(wireProposal())
+        repository.refresh(FEED)
+
+        arrivals.onBackground()
+        // The worker's read, while the app is away.
+        feed.sequence = 2
+        repository.refresh(FEED)
+        assertEquals(false, arrivals.wasRead(FEED))
+
+        // Published while still away, and read by the first foreground read after coming back.
+        feed.sequence = 3
+        feed.answers = listOf(wireProposal(), wireProposal(proposalId = PROPOSAL_B))
+        arrivals.onForeground()
+        repository.refresh(FEED)
+
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+        assertEquals(2, repository.proposalsFor(FEED).size)
+        assertTrue(arrivals.wasRead(FEED))
+    }
+
+    /** A read that started in one foreground session and completed in the next says nothing. */
+    @Test
+    fun aReadThatOutlivesItsSessionMarksNothingInTheNext() = runBlocking {
+        val arrivals = ArrivalLedger().apply { onForeground() }
+        val repository = repository(arrivals = arrivals)
+        feed.answers = listOf(wireProposal())
+        repository.refresh(FEED)
+
+        // Started as a later read of this session; the app leaves and comes back meanwhile.
+        feed.sequence = 2
+        feed.answers = listOf(wireProposal(), wireProposal(proposalId = PROPOSAL_B))
+        feed.beforeAnswer = {
+            arrivals.onBackground()
+            arrivals.onForeground()
+        }
+        repository.refresh(FEED, knownSequence = 1)
+
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+        assertEquals(false, arrivals.wasRead(FEED))
+        assertEquals(2, repository.proposalsFor(FEED).size)
     }
 
     @Test

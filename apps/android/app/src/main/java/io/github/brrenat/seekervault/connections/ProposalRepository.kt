@@ -242,8 +242,10 @@ class ProposalRepository(
         val connection = operationConnection(id) ?: return FeedRefresh.NotAFeed
         val source = feed ?: return FeedRefresh.NoFeed
         // Decided before the walk rather than after it: two reads racing at the start of a session
-        // are both catching up, whichever of them happens to finish second.
-        val news = arrivals?.wasRead(id) == true
+        // are both catching up, whichever of them happens to finish second. The session is taken
+        // with it, so a read that outlives the session it started in marks nothing in the next.
+        val session = arrivals?.session()
+        val arrival = Arrival(session, news = arrivals?.wasRead(id) == true, whole = true)
         val answer =
             try {
                 source.snapshot(
@@ -256,7 +258,7 @@ class ProposalRepository(
         val (sequence, messages) =
             when (answer) {
                 is FeedSnapshot.Unchanged -> {
-                    arrivals?.markRead(id)
+                    arrivals?.markRead(id, session)
                     return FeedRefresh.Unchanged(answer.sequence)
                 }
                 is FeedSnapshot.Read -> answer.sequence to answer.proposals
@@ -264,7 +266,7 @@ class ProposalRepository(
         var applied = 0
         val refused = mutableListOf<ProposalProblem>()
         for (message in messages) {
-            when (val outcome = applyProposal(id, message, news)) {
+            when (val outcome = applyProposal(id, message, arrival)) {
                 is ProposalApplied.Stored -> applied++
                 is ProposalApplied.Unchanged -> Unit
                 is ProposalApplied.Refused -> refused += outcome.problem
@@ -272,7 +274,7 @@ class ProposalRepository(
             }
         }
         for (message in answer.requests) {
-            when (val outcome = applyRequest(id, message, news)) {
+            when (val outcome = applyRequest(id, message, arrival)) {
                 is ProposalApplied.Stored -> applied++
                 is ProposalApplied.Unchanged -> Unit
                 is ProposalApplied.Refused -> refused += outcome.problem
@@ -280,7 +282,7 @@ class ProposalRepository(
             }
         }
         // Only now, after everything it brought was published: the next whole read brings news.
-        arrivals?.markRead(id)
+        arrivals?.markRead(id, session)
         return FeedRefresh.Read(applied, refused.toList(), sequence)
     }
 
@@ -305,12 +307,12 @@ class ProposalRepository(
         connectionId: String,
         message: WireProposal,
         delivery: FeedDelivery = FeedDelivery.Live,
-    ): ProposalApplied = applyProposal(connectionId, message, delivery.isNews(connectionId))
+    ): ProposalApplied = applyProposal(connectionId, message, delivery.arrival(connectionId))
 
     private suspend fun applyProposal(
         connectionId: String,
         message: WireProposal,
-        news: Boolean,
+        arrival: Arrival,
     ): ProposalApplied = locked {
         val connection = feedConnection(connectionId) ?: return@locked ProposalApplied.NotAFeed
         val held = stored(connection, message.proposalId)
@@ -329,7 +331,10 @@ class ProposalRepository(
             }
         val known = held?.proposal
         if (known != null && proposal.revision == known.revision) {
-            if (proposal == known) return@locked ProposalApplied.Unchanged(held)
+            if (proposal == known) {
+                handOver(held, arrival)
+                return@locked ProposalApplied.Unchanged(held)
+            }
             val contradiction = ProposalProblem.ChangedWithoutRevision
             write(held.copy(refused = contradiction), connection)
             publish()
@@ -340,7 +345,7 @@ class ProposalRepository(
         val record =
             held?.copy(proposal = proposal, refused = null)
                 ?: ProposalRecord(connectionId = connectionId, proposal = proposal)
-        if (held == null && news) announce(record)
+        if (held == null) arrived(record, arrival)
         write(record, connection)
         publish()
         ProposalApplied.Stored(record)
@@ -351,12 +356,12 @@ class ProposalRepository(
         connectionId: String,
         message: WireRequest,
         delivery: FeedDelivery = FeedDelivery.Live,
-    ): ProposalApplied = applyRequest(connectionId, message, delivery.isNews(connectionId))
+    ): ProposalApplied = applyRequest(connectionId, message, delivery.arrival(connectionId))
 
     private suspend fun applyRequest(
         connectionId: String,
         message: WireRequest,
-        news: Boolean,
+        arrival: Arrival,
     ): ProposalApplied = locked {
         val connection = operationConnection(connectionId) ?: return@locked ProposalApplied.NotAFeed
         val held = stored(connection, message.identity.requestId)
@@ -376,7 +381,10 @@ class ProposalRepository(
             }
         val known = held?.proposal
         if (known != null && proposal.revision == known.revision) {
-            if (proposal == known) return@locked ProposalApplied.Unchanged(held)
+            if (proposal == known) {
+                handOver(held, arrival)
+                return@locked ProposalApplied.Unchanged(held)
+            }
             val contradiction = ProposalProblem.ChangedWithoutRevision
             write(held.copy(refused = contradiction), connection)
             publish()
@@ -385,7 +393,7 @@ class ProposalRepository(
         val record =
             held?.copy(proposal = proposal, refused = null)
                 ?: ProposalRecord(connectionId = connectionId, proposal = proposal)
-        if (held == null && news) announce(record)
+        if (held == null) arrived(record, arrival)
         write(record, connection)
         publish()
         ProposalApplied.Stored(record)
@@ -607,21 +615,48 @@ class ProposalRepository(
     private fun supportOf(connectionId: String): ServerSupport =
         operationConnection(connectionId)?.let(::support) ?: ServerSupport.Unknown
 
-    private fun FeedDelivery.isNews(connectionId: String): Boolean =
+    /**
+     * How one document reached the apply path, as far as the banner is concerned (SEE-175): the
+     * foreground session it belongs to, whether it is [news], whether it came in a [whole] read of
+     * the feed, and whether it is a [live] stream event.
+     */
+    private class Arrival(
+        val session: Long?,
+        val news: Boolean,
+        val whole: Boolean = false,
+        val live: Boolean = false,
+    )
+
+    private fun FeedDelivery.arrival(connectionId: String): Arrival =
         when (this) {
-            FeedDelivery.Live -> true
-            FeedDelivery.Replayed -> arrivals?.wasRead(connectionId) == true
+            FeedDelivery.Live -> Arrival(arrivals?.session(), news = true, live = true)
+            FeedDelivery.Replayed ->
+                Arrival(arrivals?.session(), news = arrivals?.wasRead(connectionId) == true)
         }
 
     /**
-     * A proposal this phone has never held, delivered as news: marked before it is published, so
-     * the banner never sees it arrive unmarked (SEE-175). A new revision of one already held is an
-     * update, not an arrival, and is never marked.
+     * A proposal this phone has never held. Delivered as news, it is marked before it is published,
+     * so the banner never sees it arrive unmarked (SEE-175). Stored by a whole read that was
+     * catching up, it is marked quiet instead: if its live event follows, that is the snapshot/live
+     * handoff ([handOver]). A new revision of one already held is an update, not an arrival, and is
+     * never marked.
      */
-    private fun announce(record: ProposalRecord) {
-        arrivals?.markLive(
-            listOf(ReviewIdentity.Signal(record.connectionId, record.key.proposalId))
-        )
+    private fun arrived(record: ProposalRecord, arrival: Arrival) {
+        val identity = listOf(ReviewIdentity.Signal(record.connectionId, record.key.proposalId))
+        when {
+            arrival.news -> arrivals?.markLive(identity, arrival.session)
+            arrival.whole -> arrivals?.markQuiet(identity, arrival.session)
+        }
+    }
+
+    /**
+     * A live event carrying exactly what is held. When the feed's first read stored it moments
+     * before, the event is the item being published while that read ran, and the ledger announces
+     * it late; any other duplicate is nothing ([ArrivalLedger.handOver]).
+     */
+    private fun handOver(held: ProposalRecord, arrival: Arrival) {
+        if (!arrival.live) return
+        arrivals?.handOver(ReviewIdentity.Signal(held.connectionId, held.key.proposalId))
     }
 
     private suspend fun <T> locked(block: () -> T): T = lock.withLock {

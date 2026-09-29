@@ -130,20 +130,37 @@ always visible no later than the item it is about:
 | Feed history replayed when the stream opens (`replayed = true`) | `apply(…, Replayed)` | only if the feed was already read whole in this session |
 | Feed snapshot (`ProposalRepository.refresh`: stream open, push hint, manual, add-feed) | refresh | only if the feed was already read whole in this session (decided before the walk) |
 | Direct stream event (`SynchronizationRepository.applyEvent`) | `applyCache(…, SyncDelivery.Event)` | always, when it creates a pending request |
-| Direct snapshot (`synchronize`) | `applyCache(…, SyncDelivery.Snapshot(live))` | requests created by events buffered during the read; everything else only if already read this session |
+| Direct event replayed from the resume cursor (before `ReplayComplete`) | `applyCache(…, SyncDelivery.Replayed)` | only if already read this session |
+| Direct snapshot (`synchronize`) | `applyCache(…, SyncDelivery.Snapshot(live))` | requests carried by live (not replayed) events buffered during the read, whether or not the snapshot also caught them; everything else only if already read this session |
 | Legacy fetch (`ConnectionRepository.fetch`) | fetch | only if already read this session |
 | Sync cache loaded from disk | `applyCache(…, SyncDelivery.Cached)` | never |
 
 "Created" means the phone did not hold it: a repeated delivery, a new revision or a status update is
-never an arrival. `MainActivity.onStop` (a real one, not a rotation) calls
-`ArrivalLedger.onBackground()`, which forgets which connections were read and every mark, so the
-first read after coming back is catching up again. There is no timer anywhere in this: a live item
-published during a feed's first snapshot arrives on the stream, or in the next read, and is marked
-either way.
+never an arrival.
+
+The ledger belongs to a **foreground session**: `MainActivity.onStart` calls
+`ArrivalLedger.onForeground()` (a rotation stays in the same session) and a real `onStop` calls
+`onBackground()`. Each starts from nothing — no connection read, no mark. The repositories are shared
+with `PushSyncWorker`, `FeedSyncWorker` and periodic synchronization, so outside a session
+`markRead`, `markLive` and `markQuiet` do nothing, and a read that spans a session boundary takes
+the session when it starts (`ArrivalLedger.session()`) and has its marks ignored if the session
+changed. A worker's read while the app is away can therefore never make the first foreground read
+after it news.
+
+There is no timer anywhere in this. The one race is the **snapshot/live handoff**: a stream opens
+before its snapshot is read, so something published in between is in the snapshot — stored while
+catching up — and then arrives again on the stream as an identical document. A catching-up whole
+read marks what it created `markQuiet`; a live event that finds the identical document held calls
+`handOver`, which moves a quiet item of this session to `ArrivalLedger.late` once. The feed does it
+in `ProposalRepository.apply(…, Live)`; the direct path does it through
+`SynchronizationHost.handOver` for a live event ignored as a duplicate after the snapshot was
+applied, and through `Snapshot(live)` for one buffered during it. A replayed event never hands
+over, and neither does a duplicate of anything held from before the session.
 
 `InAppNotificationSource` keeps what it has seen for the whole foreground session, not just the last
 look, so an item that leaves the list and returns is not announced twice; items that appear unmarked
-become known silently. The inbox, its counts and unread state are untouched by all of this.
+become known silently. It keeps what it has *announced* apart from what it has *seen*, so a `late`
+item — seen unmarked, never announced — is announced when its handoff arrives, and only once. The inbox, its counts and unread state are untouched by all of this.
 
 ### One banner per burst, with limits
 
@@ -156,8 +173,11 @@ become known silently. The inbox, its counts and unread state are untouched by a
 - Its lifetime is `IncomingNotificationPolicy.LIFETIME_MS` (6 s) from when it becomes visible and is
   **never extended** by merging.
 - When it leaves — timed out, swiped or tapped — a cooldown of `COOLDOWN_MS` (30 s) starts. What
-  arrives meanwhile is held and shown as **one** banner when it ends; what was answered or opened in
-  the meantime is dropped from it (`retainWaiting`). So under sustained traffic at most one incoming
+  arrives meanwhile is held and shown as **one** banner when it ends; what was answered in the
+  meantime is dropped from it (`retainWaiting`), and so is anything whose review the owner opened
+  meanwhile — `reviewOpen` is asked again when the digest is raised, and again whenever an incoming
+  banner that waited behind a service message or a disconnection reaches the front. A banner left
+  with nothing is never shown and starts no cooldown. So under sustained traffic at most one incoming
   banner appears per `6 s + 200 ms exit + 30 s` ≈ 36 s, and dismissing one never brings the same
   burst back immediately.
 - At most `MOST_COUNTED` (99) items are counted or held; beyond that the banner says "99+".
