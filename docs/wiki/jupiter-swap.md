@@ -1,8 +1,10 @@
-# Jupiter's `swap` action (SEE-93, SEE-145)
+# Jupiter's `swap` action (SEE-93, SEE-145, SEE-173)
 
 `swap` is a provider-neutral, versioned action, and `jupiter` is the first bundled execution provider that serves it. A publisher broadcasts a spot-swap signal to everyone subscribed to its feed; each owner chooses their own amount on their own phone, the provider gets a route and a transaction from Jupiter, the phone reads those bytes back for itself, and the owner's wallet signs — once, by hand.
 
 It was `jupiter.swap`, one bundled plugin, until SEE-145 separated what the owner wants to do from who prepares it. Nothing about what happens to the owner changed: the same quote, the same build, the same independent reading of the bytes, the same one-attempt approval. What changed is that the action is now named at the protocol's own level and the provider is named beside it, so a second compatible Solana provider could serve the same action without core knowing ([execution providers](execution-providers.md)). A server manifest that requires `jupiter.swap` at contract `1..1` still resolves exactly as it did.
+
+**What the owner is told about who routes it (SEE-173).** The integration is named as Jupiter's agreement requires: **Swap routing: Metis · Powered by Jupiter** — Metis being the routing engine of Jupiter's v1 Swap API, not Jupiter Ultra, and not the same thing as trading on jup.ag. It appears on the review's "Who carries this out" card (with official links and the note that neither Jupiter nor the publisher endorses the app), in the facts read back from the bytes, on the wallet hand-off, on the executed result and in History ([integrations/jupiter.md](../integrations/jupiter.md#attribution-see-173)).
 
 It is written against the boundary [SEE-86](client-plugins.md) landed and takes nothing else: no credential, no wallet authorization token, no store, no approval, and neither of the app's own transports. It reaches one host of its own, which is the whole of what a provider is allowed to do that core cannot.
 
@@ -36,7 +38,7 @@ Neither number ever leaves the phone for the publisher or the gateway. That is n
 
 ## Why a legacy transaction
 
-The phone reaches no chain for a swap, on purpose, so it can only approve bytes it can read on its own. A versioned Solana message loads most of its accounts from **address lookup tables**, and resolving one needs the chain: offline, the phone cannot know which accounts those indexes name, and the decoder refuses such a message outright. Jupiter will state what its tables contain, and that answer is exactly the kind of thing this app has never accepted — a builder's account of its own bytes, which is not evidence about them (see [security.md](../security.md#inspecting-a-swap)).
+The phone reaches no chain to read a swap, on purpose (a fee build reads one account, the fee's receiver, and never the transaction), so it can only approve bytes it can read on its own. A versioned Solana message loads most of its accounts from **address lookup tables**, and resolving one needs the chain: offline, the phone cannot know which accounts those indexes name, and the decoder refuses such a message outright. Jupiter will state what its tables contain, and that answer is exactly the kind of thing this app has never accepted — a builder's account of its own bytes, which is not evidence about them (see [security.md](../security.md#inspecting-a-swap)).
 
 So the provider asks for `asLegacyTransaction=true` and every account is in the message. It also asks for `onlyDirectRoutes=true`, which narrows which pairs can be swapped and occasionally costs a better price; what it buys is a transaction of a fixed, small shape whose single hop the phone then *verifies in the bytes* rather than merely having asked for. If the provider answers with something that needs a lookup table anyway, nothing is prepared.
 
@@ -66,12 +68,25 @@ Inside the routing instruction, the phone reads the accounts and the four number
 - the **destination** is the owner's own token account for the output mint;
 - the **input amount** is exactly what the owner entered;
 - the **quoted output** and the **slippage** are the ones the offer stated, and the floor derived from them is the provider's own stated threshold to the base unit;
-- the **platform fee** is absent, in both the account and the basis points — nobody takes a share;
+- the **platform fee** is exactly the one decided before quoting: in a build with no SAC service fee, or for a pair or account the fee does not apply to, it is absent in both the account and the basis points; in a fee build it is exactly the configured rate, paid to exactly the receiving account the phone verified on chain, in the output mint ([the SAC service fee](#the-sac-service-fee-see-173));
 - the **route plan has one hop**, read from the instruction rather than trusted from the request.
 
 What it does **not** read is the route plan itself, which names the pools the aggregator will hop through and is a different shape for each of the hundred-odd venues it supports. That is a real limit, and it is not a hole in the review, because the route plan cannot change any of the things above: the program takes the input from that account, puts the output in that account, and fails the whole transaction unless the output is at least the quoted amount less the slippage. **The phone verifies the bounds; the chain enforces them.** So the worst case the owner is agreeing to is exactly the worst case they were shown — this much leaves, at least that much arrives, or nothing happens at all.
 
 Reading those four numbers from the end of the instruction's data is exact rather than approximate: Borsh writes fields one after another with no padding, so the last nineteen bytes are those four fields and nothing else. And if a later version of the program moved them, they would stop agreeing with the owner's own choice and with the quote, and the review would refuse the bytes rather than misread them.
+
+### The SAC service fee (SEE-173)
+
+A build may add a service fee to swaps; the default build adds none. When it does, the fee is decided **before** anything is quoted and bound to the offer with the bytes it was built into (`SwapFee` in [`jupiter/SwapFee.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/SwapFee.kt)):
+
+| Decision | When | What the review says |
+| --- | --- | --- |
+| `Disabled` | The build's rate is 0 | "SAC service fee (network and pool costs still apply): 0%" |
+| `NotForPair` | No receiving account for this swap's output mint | "SAC service fee (not charged on this pair): 0%" |
+| `Unverified` | The account could not be read, or is not a classic SPL Token account for that mint, owned by the fee wallet, initialized and not frozen | "SAC service fee (not charged: its fee account could not be verified): 0%" |
+| `Charged` | All of the above hold | The rate "taken from what you receive", the estimate in the output token, and the recipient account |
+
+Only `Charged` asks Metis for a fee (`platformFeeBps`) and names an account (`feeAccount`). The fee comes out of the output, so the amount the owner spends — and so every spending rule — is unchanged; the quoted output and the floor are net of it, and those are the numbers shown. The inspection then holds the bytes to exactly the decision (`fee_rate_mismatch`, `fee_account_mismatch`, `fee_mint_mismatch`, or `platform_fee` for a fee where none was decided); a mismatch is invalidating and cannot reach the wallet. The receipt — routing, rate, estimate, mint, recipient, or why there was none — is pinned in the execution binding, so History shows what was approved, marked as an estimate. Configuration: [development/swap-fee-config.md](../development/swap-fee-config.md).
 
 ### The owner receives
 
@@ -110,6 +125,7 @@ Changing any parameter throws away what was prepared for the old one, because by
 | [`plugins/actions/SwapInputs.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/plugins/actions/SwapInputs.kt) | The half that is the owner's: the amount and the slippage, and both sets of bounds folded together |
 | [`jupiter/JupiterSwapAction.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterSwapAction.kt) | Jupiter's half: the quote, the build, the inspection, and the offer it holds against the bytes it prepared |
 | [`jupiter/JupiterExecutionProvider.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterExecutionProvider.kt) | The provider itself, and `SWAP_CAPABILITY`: schema 1, mainnet, no floor or ceiling of Jupiter's own |
+| [`jupiter/SwapFee.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/SwapFee.kt), [`jupiter/JupiterAttribution.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterAttribution.kt) | The build's service-fee policy and its on-chain account check; how the integration is named and linked (SEE-173) |
 | [`jupiter/JupiterProvider.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterProvider.kt), [`jupiter/SwapInstructions.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/SwapInstructions.kt), [`jupiter/SwapInspection.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/SwapInspection.kt) | The two API calls, the instruction readers, and `inspectSwap` |
 
 ## Where the rules for this live

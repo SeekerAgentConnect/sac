@@ -112,6 +112,16 @@ the version exists (for the image, `<prefix>-<version>`). Re-running a finished 
 therefore a no-op that fails loudly rather than a silent overwrite. The moving development tags
 (`<prefix>-sha-<commit>`, `<prefix>-develop`) are exempt, which is what makes them moving tags.
 
+## The Android APK (SEE-173)
+
+The app is not a registry component and is not in `release/components.json`. A manual dispatch of
+the release workflow with `component: android` skips `resolve` and runs `android-apk`, which builds
+the unsigned release APK from the chosen commit and uploads it as a workflow artifact — it publishes
+and signs nothing. Its SAC swap fee comes from the repository **variables**
+`SEEKERVAULT_SWAP_FEE_BPS`, `SEEKERVAULT_SWAP_FEE_OWNER` and `SEEKERVAULT_SWAP_FEE_ACCOUNTS` (unset:
+no fee) and the Solana endpoint from the **secret** `SEEKERVAULT_SOLANA_RPC`; the run summary records
+the fee configuration. See [swap-fee-config.md](swap-fee-config.md).
+
 ## Access requirements
 
 ### npm

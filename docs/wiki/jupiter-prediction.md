@@ -1,10 +1,22 @@
-# Jupiter's `prediction.buy` action (SEE-94, SEE-145)
+# Jupiter's `prediction.buy` action (SEE-94, SEE-145, SEE-173)
 
 `prediction.buy` is a provider-neutral, versioned action, and `jupiter` is the bundled execution provider that serves it — the second of the two actions that one provider carries out. A publisher broadcasts a market; each owner picks a side and a stake on their own phone; the order is prepared through Jupiter's own API, resolved and read by the phone itself, and signed once by the owner's wallet. What the order then came to, the position it opened and selling that position are followed from the purchase's own History item ([prediction positions](prediction-positions.md), SEE-172).
 
 It was `jupiter.prediction`, one bundled plugin, until SEE-145 separated the action from whoever executes it. Nothing about what happens to the owner changed. A manifest that requires `jupiter.prediction` at contract `1..1` still resolves as it did, a publisher may spell the action `prediction` or `prediction.buy` and gets the same order from either, and the action is `prediction.buy` rather than `prediction` because buying a side is one thing that can be done to a market and not the only one — selling out (`prediction.sell`, SEE-172) and claiming a settled payout are others ([execution providers](execution-providers.md)).
 
 It is written against the same boundary as the swap ([client plugins](client-plugins.md)) and reaches the same API, plus one thing the swap needs and does not use: a read-only account reader for the chain.
+
+## What the owner is told before committing (SEE-173)
+
+The review names the venue as **Jupiter Prediction · Powered by Jupiter** — a "Prediction market" row, and the title of the disclosures — kept apart from the feed that published the signal (the "From" row) and from the market's own source (the "Provider" row). Before the owner approves, the sheet says, in the provider's own words (`PREDICTION_ABOUT` in [`jupiter/JupiterAttribution.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/jupiter/JupiterAttribution.kt)):
+
+- orders are placed on **Solana mainnet with real funds**; there is no test network for it;
+- Jupiter charges its own trading fee, **included in the quoted cost**, and the network charges for the transaction; **SAC adds no fee** to prediction orders — the order schema has no integrator-fee parameter and none is invented; the minimum order is currently $5;
+- Jupiter Prediction is **not available everywhere** — Jupiter currently restricts some regions, including the United States and South Korea;
+- **dismissing a signal spends nothing; approving submits an order**, which may fill fully, partly or not at all; a filled position **cannot be cancelled for a refund** — while its market is open it can be sold at the current bid (possibly at a loss), or held until the market settles;
+- neither Jupiter nor the publisher endorses the app, and the connected wallet — not the app — signs.
+
+Links to Jupiter's own [how it works](https://docs.jup.ag/user-docs/trade/predict/how-it-works), [terms](https://developers.jup.ag/docs/legal/terms-of-use) and [privacy policy](https://developers.jup.ag/docs/legal/privacy-policy) sit beside the market link. The order's record keeps the venue and "no SAC service fee" in its execution binding, so History says the same after the fact.
 
 ## The market provider is not the execution provider
 

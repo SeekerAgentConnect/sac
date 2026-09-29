@@ -6,6 +6,7 @@ import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.SWAP_ACTION
 import io.github.brrenat.seekervault.proposals.PROPOSAL_A
 import io.github.brrenat.seekervault.proposals.PROPOSAL_B
@@ -89,6 +90,38 @@ class ProposalStoreTest {
         // The largest quantity a transaction can carry survives as itself: base units are written
         // as decimal text, not as a JSON number.
         assertEquals(record, store.get(CONNECTION, PROPOSAL_A))
+    }
+
+    @Test
+    fun theRoutingAndServiceFeeTheOwnerApprovedSurviveARestart() {
+        // What History says about who routed a swap and what fee it carried is what was approved,
+        // so it is kept with the binding and comes back exactly (SEE-173).
+        val receipt =
+            listOf(
+                PluginReference("swap_routing", "Metis · Powered by Jupiter"),
+                PluginReference("service_fee_status", "charged"),
+                PluginReference("service_fee_bps", "20"),
+                PluginReference("service_fee_estimate", "0.000249103 SOL"),
+            )
+        val chose =
+            ParameterChoice(mapOf(ParameterKey("input_amount") to ParameterValue.Amount(5uL)))
+        val record =
+            ProposalRecord(
+                connectionId = CONNECTION,
+                proposal = proposal(wireProposal(revision = 2)),
+                execution =
+                    ProposalExecution(
+                        binding =
+                            binding(proposal(wireProposal(revision = 2)), chose)
+                                .copy(receipt = receipt),
+                        startedAt = AT,
+                        outcome = ProposalOutcome.Submitted(hash(3)),
+                    ),
+            )
+
+        store.put(record)
+
+        assertEquals(receipt, store.get(CONNECTION, PROPOSAL_A)?.execution?.binding?.receipt)
     }
 
     @Test

@@ -169,7 +169,7 @@ fun ProposalReviewScreen(
                                     verticalArrangement =
                                         Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
                                 ) {
-                                    receipt.forEach { (name, value) -> Pair(name, value) }
+                                    receipt.forEach { (name, value) -> Fact(name, value) }
                                 }
                             }
                             review.destinations.forEach {
@@ -211,7 +211,7 @@ fun ProposalReviewScreen(
                     ) {
                         // Carried and not interpreted: which key means what is the plugin's, and
                         // this shows the publisher's own names and values as they were written.
-                        proposal.values.forEach { Pair(it.key, it.text) }
+                        proposal.values.forEach { Fact(it.key, it.text) }
                         Text(
                             stringResource(
                                 R.string.operation_expires,
@@ -358,7 +358,7 @@ fun ProposalReviewScreen(
                                 }
                             }
                             // What else the bytes said, in the plugin's own words and values.
-                            inspection.details.forEach { Pair(stringResource(it.label), it.value) }
+                            inspection.details.forEach { Fact(stringResource(it.label), it.value) }
                             wallet?.let {
                                 Pair(
                                     stringResource(R.string.operation_fact_network),
@@ -629,6 +629,16 @@ private fun Address(name: String, value: String) {
         )
         Identifier(value, Modifier.weight(2f))
     }
+}
+
+/**
+ * A labelled value, laid out as an identifier when it is one: an account address cannot share a
+ * line with its label and still be read whole (SEE-173's fee recipient is one).
+ */
+@Composable
+private fun Fact(name: String, value: String) {
+    if (value.length >= 32 && value.none(Char::isWhitespace)) Address(name, value)
+    else Pair(name, value)
 }
 
 @Composable

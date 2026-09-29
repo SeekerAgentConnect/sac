@@ -18,7 +18,9 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: Component identifier from release/components.json
+        description: >-
+          Component identifier from release/components.json, or `android` to build the APK
+          (SEE-173) — the app is not a registry component and publishes nothing
         required: true
         type: string
       channel:
@@ -47,6 +49,8 @@ concurrency:
 jobs:
   resolve:
     name: Resolve the component and version
+    # The APK is not in release/components.json and has a job of its own below.
+    if: github.event.inputs.component != 'android'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -311,3 +315,50 @@ jobs:
             echo "$TAGS"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  android-apk:
+    # The app, built by hand from a chosen commit (SEE-173). It publishes nothing: the unsigned
+    # release APK is a workflow artifact for the owner to sign and distribute. Its only
+    # configuration is public — the SAC swap fee's rate and receiving accounts come from repository
+    # *variables*, never secrets, and are empty (no fee) unless the owner sets them. The Solana
+    # endpoint the phone verifies the fee accounts through can carry a provider key, so it is a
+    # secret; a fee build without one fails at configuration time rather than shipping a fee that
+    # can never be charged. docs/development/swap-fee-config.md
+    name: Android APK
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.component == 'android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SEEKERVAULT_SWAP_FEE_BPS: ${{ vars.SEEKERVAULT_SWAP_FEE_BPS }}
+      SEEKERVAULT_SWAP_FEE_OWNER: ${{ vars.SEEKERVAULT_SWAP_FEE_OWNER }}
+      SEEKERVAULT_SWAP_FEE_ACCOUNTS: ${{ vars.SEEKERVAULT_SWAP_FEE_ACCOUNTS }}
+      SOLANA_RPC: ${{ secrets.SEEKERVAULT_SOLANA_RPC }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+      - name: Build the unsigned release APK
+        run: |
+          args=()
+          if [ -n "$SOLANA_RPC" ]; then args+=("-Pseekervault.solanaRpc=$SOLANA_RPC"); fi
+          apps/android/gradlew -p apps/android :app:assembleRelease "${args[@]}"
+      - name: Record the fee configuration the APK was built with
+        run: |
+          {
+            echo "### SAC swap fee"
+            echo "- rate: ${SEEKERVAULT_SWAP_FEE_BPS:-0} bps"
+            echo "- owner: ${SEEKERVAULT_SWAP_FEE_OWNER:-none}"
+            echo "- accounts: ${SEEKERVAULT_SWAP_FEE_ACCOUNTS:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: seeker-agent-connect-${{ github.sha }}-unsigned
+          path: apps/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

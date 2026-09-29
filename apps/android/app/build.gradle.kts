@@ -321,7 +321,15 @@ tasks.withType<Test>().configureEach {
     // run reaches nothing and spends nothing. A property Gradle was given does not reach a test on
     // its own, and a test that silently skipped because of that would be worse than one that
     // fails.
-    for (name in listOf("seekervault.centrifugo", "seekervault.redis", "seekervault.jupiter")) {
+    // `seekervault.screenshots` names a directory the SEE-173 attribution screens are saved to
+    // (AttributionScreensTest, docs/testing/see-173.md); unset, nothing is written.
+    for (name in
+        listOf(
+            "seekervault.centrifugo",
+            "seekervault.redis",
+            "seekervault.jupiter",
+            "seekervault.screenshots",
+        )) {
         providers.systemProperty(name).orNull?.let { systemProperty(name, it) }
     }
     inputs

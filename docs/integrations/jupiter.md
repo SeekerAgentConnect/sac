@@ -1,4 +1,4 @@
-# Jupiter, as this app uses it (SEE-93, SEE-94, SEE-96, SEE-145, SEE-157)
+# Jupiter, as this app uses it (SEE-93, SEE-94, SEE-96, SEE-145, SEE-157, SEE-173)
 
 One bundled execution provider gets its data from Jupiter, directly from the owner's phone: `jupiter`, serving two provider-neutral actions — `swap`, for which it fetches a route and a transaction, and `prediction.buy`, for which it fetches a market and an order. This page is what was verified about those APIs, what the app sends them, and what happens when they say no. What the app does with the answers is [wiki/jupiter-swap.md](../wiki/jupiter-swap.md) and [wiki/jupiter-prediction.md](../wiki/jupiter-prediction.md).
 
@@ -12,12 +12,41 @@ Two calls, on the keyless host:
 
 | Call | Request | What is read from the answer |
 | --- | --- | --- |
-| `GET https://lite-api.jup.ag/swap/v1/quote` | `inputMint`, `outputMint`, `amount`, `slippageBps`, `swapMode=ExactIn`, `onlyDirectRoutes=true`, `asLegacyTransaction=true` | `inAmount`, `outAmount`, `otherAmountThreshold`, `swapMode`, `slippageBps`, `platformFee`, `routePlan` |
-| `POST https://lite-api.jup.ag/swap/v1/swap` | The quote back verbatim, `userPublicKey`, `asLegacyTransaction`, `wrapAndUnwrapSol`, `useSharedAccounts`, `dynamicComputeUnitLimit` — all true | `swapTransaction`, `simulationError`, `addressesByLookupTableAddress`, `lastValidBlockHeight` |
+| `GET https://lite-api.jup.ag/swap/v1/quote` | `inputMint`, `outputMint`, `amount`, `slippageBps`, `swapMode=ExactIn`, `onlyDirectRoutes=true`, `asLegacyTransaction=true`; `platformFeeBps` only in a fee build, for a pair with a verified fee account ([below](#the-sac-service-fee-see-173)) | `inAmount`, `outAmount`, `otherAmountThreshold`, `swapMode`, `slippageBps`, `platformFee`, `routePlan` |
+| `POST https://lite-api.jup.ag/swap/v1/swap` | The quote back verbatim, `userPublicKey`, `asLegacyTransaction`, `wrapAndUnwrapSol`, `useSharedAccounts`, `dynamicComputeUnitLimit` — all true; `feeAccount` exactly when the quote carries a fee | `swapTransaction`, `simulationError`, `addressesByLookupTableAddress`, `lastValidBlockHeight` |
 
 The host is a constant in the adapter's own file (`JupiterProvider.kt`) and a parameter everywhere else, which is what lets a test point it at a local server and what keeps a hostname out of the rest of the app. `StageBoundaryTest` fails if it appears anywhere else.
 
 **Why v1 and not v2.** `api.jup.ag/swap/v2/order` exists and answers keyless too, but it is a combined quote-and-build tied to a `requestId` and Jupiter's own `/execute`, and this app's wallet submits its own transactions. The two-step v1 flow is what the review needs — an offer to show the owner, then bytes built from exactly that offer — and it is what was verified. Both were probed on 2026-09-17: v1 answers on `lite-api.jup.ag` and on `api.jup.ag`; `/swap/v2/order` answers only on `api.jup.ag`, where keyless requests get a much smaller allowance.
+
+**Still v1, rechecked for SEE-173.** Jupiter's documentation now marks the Metis Swap API (v1) as no longer actively maintained and superseded by Swap V2. On 2026-09-29 `GET /swap/v1/quote` and `POST /swap/v1/swap` on `lite-api.jup.ag` still answered keyless, with and without `platformFeeBps`, and returned legacy transactions using the two routing instructions the inspector reads (`route` and `shared_accounts_route`; `instructionVersion` not requested, answered `null`). Nothing was migrated: V2's order/execute flow, Ultra's referral percentages, minimums and revenue sharing do not apply to this integration. If v1 stops answering, swaps stop preparing (the safe direction) and a migration is its own piece of work: V2's `/order` returns a combined, `requestId`-bound transaction meant for Jupiter's `/execute`, which does not fit this app's wallet-submits-its-own-bytes review.
+
+## Attribution (SEE-173)
+
+Jupiter's API & SDK License Agreement asks two things of an integrator, and the app does both ([agreement](https://developers.jup.ag/docs/legal/sdk-api-license-agreement), clauses 2.3 and 8.4, read 2026-09-29):
+
+- **Name the routing engine actually used.** The v1 Swap API is **Metis**; "Jupiter Ultra" is a different API with different behaviour, and plain "Jupiter" would suggest a swap here is the same as trading on jup.ag. Every swap surface says **Swap routing: Metis · Powered by Jupiter** — the review's "Who carries this out" card and its read-back facts, the wallet hand-off summary, the executed result and the History item (`SWAP_ROUTING_NAME`).
+- **Display "Powered by Jupiter".** It is part of both names. The prediction venue is **Jupiter Prediction · Powered by Jupiter** (`PREDICTION_VENUE_NAME`), kept apart from the feed's publisher and from the market's own source (Polymarket, Kalshi, …).
+
+No logo or brand asset is used — text only, so nothing implies a partnership or endorsement, and the review says outright that neither Jupiter nor the publisher endorses the app. The provider's "about" card links Jupiter's own pages: the [Metis Swap API docs](https://developers.jup.ag/docs/swap), [how Jupiter Prediction works](https://docs.jup.ag/user-docs/trade/predict/how-it-works), the [terms of use](https://developers.jup.ag/docs/legal/terms-of-use) and the [privacy policy](https://developers.jup.ag/docs/legal/privacy-policy). All of it lives in `jupiter/JupiterAttribution.kt`; core shows it through the provider-neutral `ExecutionProvider.about()` (`plugins/ActionReceipt.kt`).
+
+**Open questions for the owner** (not settled by API access): whether the agreement's subscription/revenue-based fee clause (6.1–6.3) applies to a keyless integration that charges an integrator fee; and whether Jupiter wants a specific placement or wording of "Powered by Jupiter" beyond the text used here. Neither API access nor this page is legal approval.
+
+## The SAC service fee (SEE-173)
+
+A build may add an integrator fee to swaps, credited to token accounts its owner configured. **The default build charges nothing** and needs no configuration. Operator setup, properties, bounds and build commands are in [development/swap-fee-config.md](../development/swap-fee-config.md); this is what the integration does with it.
+
+What Metis v1 supports, per its [fee guide](https://developers.jup.ag/docs/swap/v1/add-fees-to-swap) and verified live on 2026-09-29: `platformFeeBps` on the quote and `feeAccount` on the build; the fee account must be an initialized token account for a mint of the pair (for ExactIn, input or output); no Referral Program account is needed. For an ExactIn quote Metis takes the fee from the **route's output**: `platformFee.amount = floor(gross × bps / 10 000)`, `outAmount` is net of it, and `otherAmountThreshold` is the slippage off the net amount. In the built transaction the fee account is the routing instruction's `platform_fee_account` (index 6 of `route`, 9 of `shared_accounts_route`), the rate is its final `u8` (so at most 255 bps on chain), and `quoted_out_amount` is the net `outAmount`. **`/swap` did not check `feeAccount`**: it built a transaction naming a wallet address as the fee account, which then failed simulation — so the phone checks the account itself.
+
+What the app does:
+
+1. **Policy.** One receiving token account per **output** mint. A fee is charged only when the swap's output mint has one — it is the only side whose fee the quote was computed for, and the only one the inspector accepts. Any other pair is a swap with no fee, and the review says "not charged on this pair".
+2. **Chain check, before quoting.** The account is read with `getMultipleAccounts` through the app's own endpoint (`seekervault.solanaRpc`): it must exist, be owned by the classic SPL Token program (Token-2022 is not supported), hold the output mint, be owned by the configured fee wallet, and be initialized and not frozen. If the read fails or any of that is false, the swap is prepared **without** a fee and the review says the fee account could not be verified. A missing or invalid account can never produce a fee.
+3. **Quote and build.** `platformFeeBps` is sent only then, and the answer must carry exactly that rate with an amount that satisfies the formula above to the base unit; `feeAccount` is sent exactly when the quote carries a fee. A fee somebody else added, or one at another rate, is `provider_unusable`.
+4. **Inspection.** With no fee decided, any fee account or nonzero rate in the bytes is refused (`platform_fee`, as before). With one decided, the bytes must name exactly the verified account (`fee_account_mismatch`), exactly the rate (`fee_rate_mismatch`), in the output mint the account was verified for (`fee_mint_mismatch`). Everything else the inspection establishes is unchanged: signer, fee payer, the owner's source and destination accounts, the exact input (the fee does not change what is spent, so spending rules see the same amount), slippage, the floor, one hop, and no extra transfers or instructions.
+5. **Review and History.** Before signing the owner sees the rate "taken from what you receive", the provider's estimate in the output token, the recipient account, the network priority fee separately, and the minimum received net of every fee. A build without a fee shows "0% · network and pool costs still apply" — never "free". The approved receipt (routing, rate, estimate, mint, side, recipient, or why no fee) is pinned in the execution binding and shown in History as **estimated at review**: the chain takes its share of the actual output, which the app does not read back as a confirmed amount.
+
+Nothing a publisher, a server request or a QR payload sends has a field that reaches any of this: the rate and the accounts come from `BuildConfig` only. Prediction orders carry no SAC fee — the prediction order schema has no integrator fee parameter, and none is invented.
 
 ## Prediction orders
 
@@ -33,13 +62,15 @@ Three calls, on the same keyless host, all verified on 2026-09-17:
 
 **It is partially signed.** Two signature slots arrive, and the protocol's own is already filled — so `requiredSigners` lists only the owner, and the review's rule is "the only signature still missing is theirs" rather than "nothing else signs".
 
+**Before the owner commits, the review says what this is** (SEE-173): Jupiter Prediction on Solana mainnet with real funds and no test network; Jupiter's own trading fee is included in the quoted cost and SAC adds none; Jupiter restricts some regions, including the United States and South Korea ([prediction docs](https://developers.jup.ag/docs/prediction)); dismissing spends nothing, an order may fill fully, partly or not at all, and a filled position is not cancelled for a refund — it can be sold at the current bid while the market is open (which may be a loss), or held to settlement.
+
 **The minimum order is five dollars** (`5000000` base units). Since SEE-145 it is declared rather than hidden in a reader: it is `ActionCapability.leastDeposit` on the venue's `prediction.buy` capability, beside the two mints it settles in (`ActionCapability.depositAssets` — Jupiter's own dollar token and USDC). Both are facts about this venue rather than rules of the action, so a publisher naming a token Jupiter will not take is refused when the signal is read, and an amount below the floor is refused before anything is asked of anybody.
 
 **The documentation says these endpoints take an `x-api-key`.** The keyless host serves them without one, which is what this build uses and what `JupiterLiveTest` re-checks: it reads a live market and then asks for an order for a wallet holding nothing, which the provider refuses as `INSUFFICIENT_FUNDS`. That proves the arrangement still works without placing anything.
 
 ### The chain, for lookup tables only
 
-One more endpoint, and it is not Jupiter's: a Solana RPC, `getMultipleAccounts`, used only to read the address lookup tables a prediction order's transaction names. It is the **application's** endpoint, configured at build time (`-Pseekervault.solanaRpc=…`) and empty by default, so a checkout reaches no cluster; no publisher, manifest or provider answer can set it. What it is asked is a list of table addresses — public accounts, and asking about one says nothing about who asked.
+One more endpoint, and it is not Jupiter's: a Solana RPC, `getMultipleAccounts`, used to read the address lookup tables a prediction order's transaction names — and, in a fee build, the swap fee's receiving token account before a fee-bearing quote (SEE-173). It is the **application's** endpoint, configured at build time (`-Pseekervault.solanaRpc=…`) and empty by default, so a checkout reaches no cluster; no publisher, manifest or provider answer can set it. What it is asked is a list of table addresses — public accounts, and asking about one says nothing about who asked.
 
 
 ### Positions and selling (SEE-172)
@@ -116,7 +147,8 @@ The publisher template does poll, and the allowance is the reason its defaults l
 
 - **The quote** carries two mint addresses and an amount. Nothing about the owner: a price is a public fact.
 - **A market read** carries a market identifier, and nothing else at all.
-- **The build** — a swap's or an order's — additionally carries the owner's public address, because a transaction has to be built for the account that will sign it.
+- **The build** — a swap's or an order's — additionally carries the owner's public address, because a transaction has to be built for the account that will sign it. In a fee build it also carries the build's fee rate and public fee account — the app's configuration, not the owner's.
+- **The Solana endpoint** is asked about lookup tables and, in a fee build, the fee account: public accounts, nothing about the owner.
 - **Nothing else, ever.** Not which publisher proposed it, not the proposal's ID, not the signature afterwards, and no result of any kind — there is nothing to report to anybody.
 - **A destination is not a request.** Opening "this market on Jupiter" hands an address to another app or to a browser, which then fetches it as itself; this app opens no connection to `jup.ag` for it and learns nothing about what happened next.
 - **And nothing at all to the publisher or the shared gateway.** `OperationPrivacyTest` captures every request to both and searches it; `PredictionOperationTest` does the same for an order.
@@ -129,7 +161,7 @@ The publisher template does poll, and the allowance is the reason its defaults l
 | HTTP 429 | `provider_rate_limited` | Wait a moment and prepare again |
 | No route for the pair at this size | `no_route` | There is no direct route right now |
 | Any other refusal | `provider_refused`, with the status and never the body | The provider refused |
-| An answer that cannot be used — a missing field, an amount that is not base units, a quote about another pair, another amount or another slippage, a platform fee somebody added, more hops than were asked for, a transaction that needs a lookup table, bytes that are not base64 | `provider_unusable` | The answer could not be used |
+| An answer that cannot be used — a missing field, an amount that is not base units, a quote about another pair, another amount or another slippage, a platform fee somebody added or a fee at another rate than the build asked for, more hops than were asked for, a transaction that needs a lookup table, bytes that are not base64 | `provider_unusable` | The answer could not be used |
 | `simulationError` — most often no funds | `would_fail`, carrying the provider's own words | The provider tried it and it failed |
 
 For an order, two of its refusals are told apart from the rest because the owner should hear them as themselves: `INSUFFICIENT_FUNDS` (the provider checks the balance, which is how a phone that reaches no chain can honestly report one) and a market that closed between the read and the order. A `404` is "the provider has no such market", which a publisher naming one that never existed will produce.

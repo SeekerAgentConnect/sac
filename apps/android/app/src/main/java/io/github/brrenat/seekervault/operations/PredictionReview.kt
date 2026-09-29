@@ -453,7 +453,9 @@ private fun OperationReview.factsOf(
     plain(R.string.prediction_fact_from, source.name)
     // The venue the order is placed on, named as its provider requires (SEE-173). It is not the
     // feed's publisher, and it is not the market's own source below.
-    about?.let { add(ReviewSheetFactRow(resources.getString(it.role), it.name)) }
+    about?.let {
+        add(ReviewSheetFactRow(resources.getString(it.role), it.name.substringBefore(" · ")))
+    }
     val read = terms != null
     if (terms != null) {
         terms.marketProvider.takeIf(String::isNotBlank)?.let {

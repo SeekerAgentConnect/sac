@@ -181,6 +181,9 @@ jobs:
       # Includes verifyRoborazziDebug for both Android modules. CI never records over the
       # source-controlled baselines, so an unapproved rendering change fails this job.
       - run: pnpm check:android
+      # The SAC swap fee build configuration (SEE-173): default off, fee builds from properties
+      # and from environment variables, and every malformed setting refused at configuration time.
+      - run: pnpm check:swap-fee-build
 
   device:
     # The instrumentation UI test on an emulator, against the real sidecar over MCP. An emulator run
