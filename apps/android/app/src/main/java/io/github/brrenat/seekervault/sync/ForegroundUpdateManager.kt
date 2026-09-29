@@ -401,6 +401,8 @@ class ForegroundUpdateManager(
                                         connectionId,
                                         registered.generation,
                                         response,
+                                        // Until ReplayComplete it is history, not news (SEE-175).
+                                        replayed = replaying,
                                     )
                                 ) {
                                     EventApplyOutcome.FullSyncRequired -> reconcile(response.cursor)

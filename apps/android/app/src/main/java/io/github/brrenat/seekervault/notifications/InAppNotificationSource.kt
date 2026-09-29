@@ -20,6 +20,11 @@ data class InAppNotificationSnapshot(
      * ever announced; everything else in [waiting] is kept, counted and listed without a banner.
      */
     val live: Set<ReviewIdentity> = emptySet(),
+    /**
+     * Items a catching-up read stored before their live event arrived ([ArrivalLedger.late]). They
+     * are announced even though they are already known, once.
+     */
+    val late: Set<ReviewIdentity> = emptySet(),
 )
 
 /** Something that has just appeared and has not been announced in the app before. */
@@ -40,6 +45,12 @@ sealed interface InAppNotificationArrival {
  * a status update, a refresh that briefly lost it, a duplicate delivery — is not news the second
  * time.
  *
+ * The one exception is the snapshot/live handoff ([InAppNotificationSnapshot.late]): an item the
+ * feed's first read stored quietly and the stream then delivered as it was published. It is known
+ * already, but it has never been announced, and it is news. What has been announced is kept apart
+ * from what is known, so the handoff can reach an item that was seen but never an item that was
+ * told.
+ *
  * A disconnection is still the plain set difference the push path uses to decide what deserves a
  * system notification (`sync/PushSynchronization`): what is in the new snapshot and was not in the
  * old one is new, and nothing else is.
@@ -53,22 +64,31 @@ sealed interface InAppNotificationArrival {
 class InAppNotificationSource {
     private var seeded = false
     private val known = mutableSetOf<ReviewIdentity>()
+    private val announced = mutableSetOf<ReviewIdentity>()
     private var disconnected: Set<String> = emptySet()
 
     fun accept(snapshot: InAppNotificationSnapshot): List<InAppNotificationArrival> {
         if (!snapshot.ready) return emptyList()
         if (!seeded) {
             known += snapshot.waiting
+            // A handoff that completed before the baseline belongs to it, like any other mark.
+            announced += snapshot.late
             disconnected = snapshot.disconnected
             seeded = true
             return emptyList()
         }
         // Filtering keeps the waiting list's order, which is the chronological order the inbox
         // itself is sorted in, so a burst is counted oldest first.
-        val fresh = snapshot.waiting.filterNot(known::contains)
+        val fresh = snapshot.waiting.filterNot(known::contains).toSet()
         known += fresh
+        val news =
+            snapshot.waiting.filter { identity ->
+                identity !in announced &&
+                    ((identity in fresh && identity in snapshot.live) || identity in snapshot.late)
+            }
+        announced += news
         val arrivals =
-            fresh.filter(snapshot.live::contains).map(InAppNotificationArrival::Waiting) +
+            news.map(InAppNotificationArrival::Waiting) +
                 (snapshot.disconnected - disconnected).map(InAppNotificationArrival::Disconnected)
         disconnected = snapshot.disconnected
         return arrivals
@@ -78,6 +98,7 @@ class InAppNotificationSource {
     fun reset() {
         seeded = false
         known.clear()
+        announced.clear()
         disconnected = emptySet()
     }
 }

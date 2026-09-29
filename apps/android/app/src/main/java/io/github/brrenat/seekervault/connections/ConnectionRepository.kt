@@ -1602,12 +1602,18 @@ class ConnectionRepository(
         when (delivery) {
             SyncDelivery.Cached -> Unit
             SyncDelivery.Event -> announceCreated(state.connectionId, visiblePending)
-            is SyncDelivery.Snapshot ->
-                announceCreated(
-                    state.connectionId,
+            SyncDelivery.Replayed ->
+                if (arrivals?.wasRead(state.connectionId) == true) {
+                    announceCreated(state.connectionId, visiblePending)
+                }
+            is SyncDelivery.Snapshot -> {
+                val news =
                     if (arrivals?.wasRead(state.connectionId) == true) visiblePending
-                    else visiblePending.filter { it.ref.requestId in delivery.live },
-                )
+                    else visiblePending.filter { it.ref.requestId in delivery.live }
+                announceCreated(state.connectionId, news)
+                // The rest is catching up. A live event for one of them later is the handoff.
+                arrivals?.markQuiet(created(state.connectionId, visiblePending - news.toSet()))
+            }
         }
         _inbox.update {
             it.copy(pending = it.pending + (state.connectionId to visiblePending))
@@ -1631,15 +1637,21 @@ class ConnectionRepository(
      * status update — is not an arrival.
      */
     private fun announceCreated(connectionId: String, list: List<ActionRequest>) {
-        val ledger = arrivals ?: return
+        arrivals?.markLive(created(connectionId, list))
+    }
+
+    /** The requests in [list] this phone is not already showing for [connectionId]. */
+    private fun created(connectionId: String, list: List<ActionRequest>): List<ReviewIdentity> {
         val shown =
             _inbox.value.pending[connectionId].orEmpty().mapTo(HashSet()) { it.ref.requestId }
-        ledger.markLive(
-            list
-                .filter { it.ref.requestId !in shown }
-                .filter { it.ref.connectionId.isNotBlank() && it.ref.requestId.isNotBlank() }
-                .map { ReviewIdentity.Private(it.ref.connectionId, it.ref.requestId) }
-        )
+        return list
+            .filter { it.ref.requestId !in shown }
+            .filter { it.ref.connectionId.isNotBlank() && it.ref.requestId.isNotBlank() }
+            .map { ReviewIdentity.Private(it.ref.connectionId, it.ref.requestId) }
+    }
+
+    override suspend fun handOver(connectionId: String, requestId: String) {
+        arrivals?.handOver(ReviewIdentity.Private(connectionId, requestId))
     }
 
     override suspend fun recordFailure(connectionId: String, failure: CheckOutcome) {

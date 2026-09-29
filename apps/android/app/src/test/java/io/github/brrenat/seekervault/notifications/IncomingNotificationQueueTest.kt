@@ -254,6 +254,72 @@ class IncomingNotificationQueueTest {
     }
 
     @Test
+    fun `a review opened during the cooldown is not announced when it ends`() = runTest {
+        val open = mutableSetOf<ReviewIdentity>()
+        val queue = queue(open = open)
+        queue.arrive(listOf(request(1)))
+        elapse(LIFETIME_MS + exit)
+        assertTrue(queue.coolingDown)
+
+        queue.arrive(listOf(request(2)))
+        // The owner opens it from the Inbox while the cooldown runs; it is still waiting.
+        open += request(2)
+        elapse(COOLDOWN_MS)
+
+        assertNull(queue.visible)
+        assertTrue(queue.notes.value.isEmpty())
+    }
+
+    @Test
+    fun `a cooldown digest leaves out the one review opened meanwhile`() = runTest {
+        val open = mutableSetOf<ReviewIdentity>()
+        val queue = queue(open = open)
+        queue.arrive(listOf(request(1)))
+        elapse(LIFETIME_MS + exit)
+
+        queue.arrive(listOf(request(2), request(3)))
+        open += request(2)
+        elapse(COOLDOWN_MS)
+
+        assertEquals("single ${request(3).requestId}", queue.visible?.title)
+        assertEquals(InAppNotificationTarget.Review(request(3)), queue.visible?.target)
+    }
+
+    @Test
+    fun `a burst that waited behind a disconnection is checked again when it reaches the front`() =
+        runTest {
+            val open = mutableSetOf<ReviewIdentity>()
+            val queue = queue(open = open)
+            queue.disconnected()
+            queue.arrive((1..3).map(::request))
+            open += listOf(request(1), request(2))
+
+            queue.dismiss(queue.visible!!.id)
+            elapse(exit)
+
+            assertEquals("single ${request(3).requestId}", queue.visible?.title)
+            assertTrue(queue.visible!!.armed)
+        }
+
+    @Test
+    fun `a burst whose every review was opened while it waited is never shown`() = runTest {
+        val open = mutableSetOf<ReviewIdentity>()
+        val queue = queue(open = open)
+        queue.disconnected()
+        queue.arrive(listOf(request(1)))
+        open += request(1)
+
+        queue.dismiss(queue.visible!!.id)
+        elapse(exit)
+
+        assertNull(queue.visible)
+        // Nothing was shown, so nothing cools down: the next arrival is told at once.
+        assertFalse(queue.coolingDown)
+        queue.arrive(listOf(request(2)))
+        assertEquals("single ${request(2).requestId}", queue.visible?.title)
+    }
+
+    @Test
     fun `leaving the foreground forgets the burst, the cooldown and what was held`() = runTest {
         val queue = queue()
         queue.arrive(listOf(request(1)))

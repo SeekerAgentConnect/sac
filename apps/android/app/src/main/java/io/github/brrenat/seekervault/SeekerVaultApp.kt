@@ -207,6 +207,9 @@ fun SeekerVaultApp(
     val liveArrivals by
         remember(arrivals) { arrivals?.live ?: MutableStateFlow(emptySet<ReviewIdentity>()) }
             .collectAsStateWithLifecycle()
+    val lateArrivals by
+        remember(arrivals) { arrivals?.late ?: MutableStateFlow(emptySet<ReviewIdentity>()) }
+            .collectAsStateWithLifecycle()
     val policyState by policy.state.collectAsStateWithLifecycle()
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
     val notificationTap by notificationTaps.collectAsStateWithLifecycle()
@@ -761,6 +764,7 @@ fun SeekerVaultApp(
                 connections = state.connections,
                 waiting = commonPending,
                 live = liveArrivals,
+                late = lateArrivals,
                 reviewOpen = { identity ->
                     // Read at the moment the banner would be raised, not at the last recomposition.
                     navigator.state.sheets.any { sheet ->

@@ -56,13 +56,20 @@ sealed interface SyncDelivery {
 
     /**
      * A complete snapshot. What it brings is catching up unless this connection has been read whole
-     * in this foreground session already — except [live]: the request IDs that events buffered
-     * while it was being read created, which happened during the read and are news either way.
+     * in this foreground session already — except [live]: the request IDs that live events buffered
+     * while it was being read carried, which happened during the read and are news either way,
+     * whether or not the snapshot also caught them.
      */
     data class Snapshot(val live: Set<String> = emptySet()) : SyncDelivery
 
     /** One event on a stream that is already open: something that just happened. */
     data object Event : SyncDelivery
+
+    /**
+     * One event the stream replayed from its resume cursor: what was missed while it was closed. It
+     * is catching up unless this connection has been read whole in this foreground session.
+     */
+    data object Replayed : SyncDelivery
 }
 
 /**
@@ -85,6 +92,13 @@ interface SynchronizationHost {
 
     /** [applyCache], saying how the state arrived. A host with no banner to feed ignores it. */
     suspend fun applyCache(state: ConnectionSyncState, delivery: SyncDelivery) = applyCache(state)
+
+    /**
+     * A live event delivered [requestId] exactly as it is already held, so nothing was applied. If
+     * the snapshot before it stored the request as catching up, the event is the request arriving
+     * while that snapshot was read (SEE-175). A host with no banner to feed ignores it.
+     */
+    suspend fun handOver(connectionId: String, requestId: String) {}
 
     suspend fun recordFailure(connectionId: String, failure: CheckOutcome)
 
@@ -118,9 +132,19 @@ class SynchronizationRepository(
         var active: ActiveSync? = null
         var buffering = false
         var streamGeneration = 0L
-        val buffered = ArrayDeque<Pair<Long, SubscribeResponse>>()
+        val buffered = ArrayDeque<BufferedEvent>()
         var overflowed = false
     }
+
+    /**
+     * An event held while a snapshot is read. [replayed] is history the stream sent back from its
+     * resume cursor rather than something that happened while it was open (SEE-175).
+     */
+    private data class BufferedEvent(
+        val generation: Long,
+        val response: SubscribeResponse,
+        val replayed: Boolean,
+    )
 
     private val coordinators = ConcurrentHashMap<String, Coordinator>()
     private val loading = Mutex()
@@ -449,11 +473,15 @@ class SynchronizationRepository(
      * Applies one mutation and its cursor together. During Sync it is boundedly buffered, so a
      * post-snapshot event cannot be erased by snapshot absence. Unknown/conflicting order requests
      * another complete snapshot instead of guessing.
+     *
+     * [replayed] says the stream is still replaying from its resume cursor. It changes nothing
+     * about what is applied, only whether a request it brings is news (SEE-175).
      */
     suspend fun applyEvent(
         connectionId: String,
         generation: Long,
         response: SubscribeResponse,
+        replayed: Boolean = false,
     ): EventApplyOutcome {
         val coordinator = coordinators.getOrPut(connectionId) { Coordinator() }
         coordinator.control.withLock {
@@ -466,7 +494,7 @@ class SynchronizationRepository(
                     coordinator.buffered.clear()
                     coordinator.overflowed = true
                 } else if (!coordinator.overflowed) {
-                    coordinator.buffered.addLast(generation to response)
+                    coordinator.buffered.addLast(BufferedEvent(generation, response, replayed))
                 }
                 return if (coordinator.overflowed) EventApplyOutcome.FullSyncRequired
                 else EventApplyOutcome.Buffered
@@ -474,7 +502,7 @@ class SynchronizationRepository(
         }
         val applied =
             coordinator.apply.withLock {
-                applyOne(connectionId, generation, response, coordinator, persist = true).outcome
+                applyOne(connectionId, generation, response, coordinator, replayed).outcome
             }
         if (applied == EventApplyOutcome.Removed) {
             remove(connectionId)
@@ -569,9 +597,10 @@ class SynchronizationRepository(
 
         val authoritative = host.authoritativeRequests(connectionId)
         var revokedByBuffer = false
-        // What the snapshot itself held, before the events buffered during it were merged in: a
-        // request only those events created happened while the snapshot was read (SEE-175).
-        var snapshotPending: Set<String>? = null
+        // The requests that live events buffered during the snapshot carried. They happened while
+        // it was read, so they are news even when the snapshot caught them too (SEE-175); a
+        // replayed event is history and never among them.
+        val during = mutableSetOf<String>()
         val applied =
             coordinator.apply.withLock {
                 var merged = mergeSnapshot(previous, pages, authoritative, nextKnownIndex)
@@ -596,8 +625,7 @@ class SynchronizationRepository(
                                     fullSyncRequired = true,
                                 )
                         } else {
-                            snapshotPending = merged.pending.mapTo(HashSet()) { it.ref.requestId }
-                            for ((eventGeneration, event) in copy) {
+                            for ((eventGeneration, event, replayed) in copy) {
                                 val one =
                                     mergeEvent(
                                         merged,
@@ -620,6 +648,13 @@ class SynchronizationRepository(
                                     break
                                 }
                                 merged = one.state ?: merged
+                                if (
+                                    !replayed &&
+                                        event.eventCase ==
+                                            SubscribeResponse.EventCase.REQUEST_CHANGED
+                                ) {
+                                    during += event.requestChanged.request.ref.requestId
+                                }
                             }
                         }
                     }
@@ -633,10 +668,7 @@ class SynchronizationRepository(
                 if (!revokedByBuffer) {
                     withContext(io) { store.put(merged.persistable()) }
                     publish(merged)
-                    val during = snapshotPending?.let { held ->
-                        merged.pending.map { it.ref.requestId }.filterNot(held::contains)
-                    }
-                    host.applyCache(merged, SyncDelivery.Snapshot(during.orEmpty().toSet()))
+                    host.applyCache(merged, SyncDelivery.Snapshot(during.toSet()))
                 }
                 merged
             }
@@ -855,15 +887,25 @@ class SynchronizationRepository(
         generation: Long,
         response: SubscribeResponse,
         coordinator: Coordinator,
-        persist: Boolean,
+        replayed: Boolean,
     ): AppliedEvent {
         val current = _state.value.connections[connectionId] ?: emptyState(connectionId)
         val merged = mergeEvent(current, connectionId, generation, response, coordinator)
         val next = merged.state
-        if (next != null && persist) {
+        if (next != null) {
             withContext(io) { store.put(next.persistable()) }
             publish(next)
-            host.applyCache(next, SyncDelivery.Event)
+            host.applyCache(next, if (replayed) SyncDelivery.Replayed else SyncDelivery.Event)
+        }
+        if (
+            merged.outcome == EventApplyOutcome.Ignored &&
+                next != null &&
+                !replayed &&
+                response.eventCase == SubscribeResponse.EventCase.REQUEST_CHANGED
+        ) {
+            // Already held: the snapshot got there first. The host decides whether that snapshot
+            // was catching up and this is the handoff (SEE-175).
+            host.handOver(connectionId, response.requestChanged.request.ref.requestId)
         }
         return merged
     }

@@ -266,6 +266,101 @@ class SynchronizationRepositoryTest {
         assertEquals(SyncDelivery.Event, host.deliveries[A])
     }
 
+    /**
+     * The snapshot can catch a request that a live event buffered during it also carries: the
+     * request was still created while the snapshot was read, and it is handed over as news all the
+     * same. A replayed event buffered beside it is history and is not (SEE-175 review).
+     */
+    @Test
+    fun aLiveEventTheSnapshotAlsoCaughtIsStillHandedOverButAReplayIsNot() = runTest {
+        host.add(A)
+        // The same documents on both paths, as the server sends them.
+        val (a, b, old) = listOf(A_REQUEST, B_REQUEST, OLD_REQUEST).map { request(it) }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        transport.beforeSync = {
+            entered.complete(Unit)
+            release.await()
+        }
+        transport.pages[A] =
+            ArrayDeque(
+                listOf(
+                    snapshot(
+                        A,
+                        listOf(
+                            a to 1,
+                            b to 1,
+                            old to 1,
+                        ),
+                    )
+                )
+            )
+        val repository = repository()
+        val generation = repository.beginStream(A)
+
+        val sync = async { repository.synchronize(A) }
+        entered.await()
+        runCurrent()
+        repository.applyEvent(
+            A,
+            generation,
+            changed(A, old, 1, "replayed"),
+            replayed = true,
+        )
+        repository.applyEvent(A, generation, changed(A, b, 1, "during"))
+        release.complete(Unit)
+        sync.await()
+
+        assertEquals(SyncDelivery.Snapshot(live = setOf(B_REQUEST)), host.deliveries[A])
+        assertEquals(
+            setOf(A_REQUEST, B_REQUEST, OLD_REQUEST),
+            host.applied.getValue(A).pending.map { it.ref.requestId }.toSet(),
+        )
+    }
+
+    /**
+     * A live event that reaches the phone only after the snapshot that caught it was applied is
+     * ignored as a duplicate, and the host is told so it can recognise the handoff. A replayed
+     * duplicate says nothing, and a replayed change is applied as a replay (SEE-175 review).
+     */
+    @Test
+    fun aLiveDuplicateOfWhatTheSnapshotHeldIsOfferedToTheHostAsAHandoff() = runTest {
+        host.add(A)
+        val (a, b) = listOf(A_REQUEST, B_REQUEST).map { request(it) }
+        transport.pages[A] = ArrayDeque(listOf(snapshot(A, listOf(a to 1, b to 1))))
+        val repository = repository()
+        val generation = repository.beginStream(A)
+        repository.synchronize(A)
+
+        assertEquals(
+            EventApplyOutcome.Ignored,
+            repository.applyEvent(
+                A,
+                generation,
+                changed(A, b, 1, "replayed"),
+                replayed = true,
+            ),
+        )
+        assertEquals(emptyList<Pair<String, String>>(), host.handedOver)
+
+        assertEquals(
+            EventApplyOutcome.Ignored,
+            repository.applyEvent(A, generation, changed(A, a, 1, "late")),
+        )
+        assertEquals(listOf(A to A_REQUEST), host.handedOver)
+
+        assertEquals(
+            EventApplyOutcome.Applied,
+            repository.applyEvent(
+                A,
+                generation,
+                changed(A, request(OLD_REQUEST), 1, "missed"),
+                replayed = true,
+            ),
+        )
+        assertEquals(SyncDelivery.Replayed, host.deliveries[A])
+    }
+
     @Test
     fun recoverySyncFetchesOnlyTheRequestedActiveConnections() = runTest {
         host.add(A)
@@ -764,6 +859,7 @@ class SynchronizationRepositoryTest {
         val accesses = mutableMapOf<String, SyncConnection>()
         val applied = mutableMapOf<String, ConnectionSyncState>()
         val deliveries = mutableMapOf<String, SyncDelivery>()
+        val handedOver = mutableListOf<Pair<String, String>>()
         val retries = mutableMapOf<String, Int>()
         val local = mutableMapOf<String, List<LocalRequestState>>()
         val authoritative = mutableMapOf<String, Map<String, ActionRequest>>()
@@ -802,6 +898,10 @@ class SynchronizationRepositoryTest {
         override suspend fun applyCache(state: ConnectionSyncState, delivery: SyncDelivery) {
             deliveries[state.connectionId] = delivery
             applyCache(state)
+        }
+
+        override suspend fun handOver(connectionId: String, requestId: String) {
+            handedOver += connectionId to requestId
         }
 
         override suspend fun recordFailure(connectionId: String, failure: CheckOutcome) {

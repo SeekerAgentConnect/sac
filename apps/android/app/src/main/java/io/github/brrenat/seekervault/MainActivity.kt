@@ -234,6 +234,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // First, before anything below reads a connection: a new foreground session, whose first
+        // read of each connection is catching up whatever the workers read while it was away
+        // (SEE-175).
+        (application as SeekerVaultApplication).arrivals.onForeground()
         (application as SeekerVaultApplication).foregroundUpdates.onForeground()
         // The feeds' own listener, which is a separate transport to a separate service and shares
         // no state with the one above (SEE-91).

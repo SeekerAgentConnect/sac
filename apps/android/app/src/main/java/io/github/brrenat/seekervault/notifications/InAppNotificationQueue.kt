@@ -110,6 +110,10 @@ data class InAppNote(
  * - When it leaves, a cooldown starts ([IncomingNotificationPolicy.COOLDOWN_MS]). What arrives
  *   during it is held — unique, bounded — and shown as one banner when it ends, never replayed one
  *   by one.
+ * - Whether a review is open is asked again whenever a banner that waited is presented — when a
+ *   cooldown ends, and when a banner queued behind another reaches the front — because the owner
+ *   may have opened it meanwhile. What they are already reading is left out, and a banner left with
+ *   nothing is not shown.
  * - A service message or a disconnection is never held back by that: it is queued ahead of an
  *   incoming banner that is not yet visible, and nothing here throttles it.
  */
@@ -257,7 +261,10 @@ class InAppNotificationQueue(
         _notes.value = emptyList()
     }
 
-    private fun raise(items: Gathered) {
+    private fun raise(gathered: Gathered) {
+        // What was held may have been opened since it arrived.
+        val items = gathered.without(reviewOpen)
+        if (items.items.isEmpty()) return
         val copy = describe(items.burst()) ?: return
         val id = ++nextId
         incoming = Incoming(id, items)
@@ -309,11 +316,33 @@ class InAppNotificationQueue(
 
     private fun noteOf(id: Long): InAppNote? = _notes.value.firstOrNull { it.id == id }
 
+    /**
+     * An incoming banner about to be presented, checked against the reviews open now: it may have
+     * waited behind a service message or a disconnection while the owner opened one of its items.
+     * Those are left out; when nothing is left, or nothing left can be described, the banner is
+     * taken away without being shown and false is returned. Any other banner is shown as it is.
+     */
+    private fun stillWorthShowing(head: InAppNote): Boolean {
+        val current = incoming?.takeIf { it.noteId == head.id } ?: return true
+        val kept = current.items.without(reviewOpen)
+        if (kept == current.items) return true
+        val copy = kept.items.takeIf { it.isNotEmpty() }?.let { describe(kept.burst()) }
+        if (copy == null) {
+            incoming = null
+            _notes.update { queued -> queued.filterNot { it.id == head.id } }
+            return false
+        }
+        incoming = current.copy(items = kept)
+        rewrite(head.id, copy)
+        return true
+    }
+
     private fun armHead() {
         val head = _notes.value.firstOrNull() ?: return
         if (head.armed || head.leaving) return
         // A disconnected banner is never armed: it is the one thing here the owner has to answer.
         if (head.kind == InAppNotificationKind.Disconnected) return
+        if (!stillWorthShowing(head)) return armHead()
         _notes.update { queued ->
             queued.map { if (it.id == head.id) it.copy(armed = true) else it }
         }
@@ -349,6 +378,9 @@ class InAppNotificationQueue(
 
         fun retain(waiting: Set<ReviewIdentity>): Gathered =
             Gathered(items.filter(waiting::contains), overflow)
+
+        fun without(open: (ReviewIdentity) -> Boolean): Gathered =
+            Gathered(items.filterNot(open), overflow)
 
         fun burst() = IncomingBurst(items, overflow)
     }
