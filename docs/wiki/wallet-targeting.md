@@ -4,7 +4,9 @@ How this phone reaches the wallet app the owner connected, so that an approval o
 no other — the first time, every time, and after the app has been restarted (SEE-159).
 
 The owner-facing steps are in
-[docs/guides/wallet-setup.md](../guides/wallet-setup.md#2-connect). What the automated checks cover,
+[docs/guides/wallet-setup.md](../guides/wallet-setup.md#2-connect). Since SEE-174 the phone keeps
+several wallet profiles, each with its own route, and an approval opens the wallet app of the profile
+**its own connection** uses ([wallet-profiles.md](wallet-profiles.md)). What the automated checks cover,
 and what only a device can settle, is in
 [docs/testing/wallet-lifecycle.md](../testing/wallet-lifecycle.md#wallet-targeting).
 
@@ -32,8 +34,12 @@ inside one process and never be told one:
 ## What is stored
 
 `WalletRouting`, in the same sealed record as the account and its authorization
-(`wallet/storage/WalletStore.kt`, format 3). All three are one fact: an account without the app that
-holds it is how an approval reaches the wrong wallet, so they are written together and read together.
+(`wallet/storage/WalletStore.kt`). All three are one fact: an account without the app that holds it
+is how an approval reaches the wrong wallet, so they are written together and read together. SEE-159
+added it to the single session (format 3); since SEE-174 the `wallet-profiles` record (format 4)
+keeps it on each stored authorization, and every profile that uses the authorization takes its route
+from there, so a route the wallet reports while signing for one profile updates every profile sharing
+that authorization.
 
 | Field | Where it comes from |
 | --- | --- |
@@ -69,7 +75,8 @@ opens that app or fails, and can never open another.
 Falling back to a wide association there would put an approval the owner gave for one wallet in front
 of whichever other wallet Android found, which is exactly the silent switch that must never happen.
 The answer is `NoWallet` — the owner is told no wallet app answered, the request is still theirs to
-review, and they connect a wallet again on the Wallet screen. **Connecting** is the opposite case and
+review, and they add a profile in another wallet app on the Wallets screen and choose it for the
+connection. Nothing moves the connection to another profile for them. **Connecting** is the opposite case and
 does fall back to asking Android: connecting *is* the owner choosing a wallet.
 
 ## Building the association
@@ -98,20 +105,23 @@ still theirs.
 
 - **One wallet app installed.** It is connected outright. There is one answer and the system gave it,
   so nobody is asked and no chooser appears.
-- **Several installed.** The Wallet screen lists them under **Wallet app** — labels and packages from
-  `PackageManager`, nothing else — and the owner picks one before connecting. That is not Android's
+- **Several installed.** The Wallets screen's add form lists them under **Wallet app** — labels and
+  packages from `PackageManager`, nothing else — and the owner picks one before adding a profile. That is not Android's
   chooser and it sets no Android-wide default; it is a one-time choice inside this app, and it is
   what lets every association afterwards be aimed.
-- **Picking another one** replaces the whole route, association URI included. Carrying that over
-  would send the next approval back to the wallet being left.
-- **Disconnecting** clears the record, so nothing aimed at that wallet is left behind, and the wallet
-  app is told over its own route while it still exists.
+- **Another wallet app is another profile.** Adding an account from another app stores a new
+  authorization with its own route; nothing carries a route from one app to another, which would
+  send the next approval to the wallet being left. Reconnecting a profile keeps its own app.
+- **Removing a profile** drops its authorization when no other profile uses it, so nothing aimed at
+  that wallet is left behind, and the wallet app is told over its own route while it still exists.
 
 ## What the screens say
 
-The wallet is the app the session belongs to; the account label is the account's, inside it. The
-Wallet screen's card and the home card are both named after the app now, with the account label beside
-the address, so a label like "phantom" can no longer read as the wallet that would open. When this
+The wallet is the app the profile belongs to; the account label is the account's, inside it. Each
+profile on the Wallets screen, the connection's Wallet row and the wallet handoff name the app, with
+the account label beside the address, so a label like "phantom" can no longer read as the wallet that
+would open. The home card names the app when one profile is saved, and counts them when there are
+several. When this
 phone was never told which app answered — a record from an older build, or a connection Android
 resolved — the account label stands in, as it did before.
 

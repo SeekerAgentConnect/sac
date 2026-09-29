@@ -175,14 +175,16 @@ Every listed field is required, and `invalidActionReason` names the first one th
 
 ### The wallet binding
 
-The sidecar holds no keys and makes no wallet. The owner connects the wallet they already have, in the app, and the phone tells each sidecar which one it is (SAW-015; [`docs/guides/wallet-setup.md`](guides/wallet-setup.md)).
+The sidecar holds no keys and makes no wallet. The owner connects the wallets they already have, in the app, and chooses one saved wallet profile for each connection; the phone tells each sidecar the one **its own connection** uses, and nothing about any other (SAW-015, SEE-174; [`docs/guides/wallet-setup.md`](guides/wallet-setup.md#one-wallet-per-connection), [`docs/wiki/wallet-profiles.md`](wiki/wallet-profiles.md)). The protocol did not change for this: one binding per connection was always the model, and there is no list of wallets.
 
 - **`WalletBinding` is a public address and a network:** `wallet` (base58), `network`, and `bound_at`. It carries no key and no wallet authorization token; the authorization stays on the phone.
-- **The phone publishes it with `RequestService.PublishWallet`,** for its own connection. An absent `binding` means no wallet is connected, which is what disconnecting publishes.
+- **The phone publishes it with `RequestService.PublishWallet`,** for its own connection, and only to that connection's sidecar. Choosing, changing or removing one connection's wallet publishes to that sidecar alone; adding, renaming or reconnecting a profile publishes nothing. An absent `binding` means the connection has no wallet, which is what the phone publishes when the owner removes the profile it used.
+- **The phone tracks publication per connection and per binding.** At start it republishes each sidecar the binding it should already hold, which cancels nothing; a sidecar it couldn't reach is retried, and until that sidecar confirms, the phone signs nothing for its connection.
 - **The sidecar stamps `bound_at` with its own clock** and ignores a value the phone sends, as it does for every other timestamp.
 - **A connection has at most one binding,** and publishing replaces it. Publishing the same wallet and network again changes nothing.
 - **A new binding cancels the PENDING requests it no longer fits.** Those are the wallet actions whose `wallet`, or whose `network` for a transfer or swap, isn't the new one; the response lists them, and the phone takes them off its inbox. `ack` requests are never affected. A `sign_message` request names no network, so changing only the network leaves it.
-- **Each connection's binding is its own.** Pairing again makes a new connection, which starts with no wallet until the phone publishes one.
+- **Each connection's binding is its own.** Two sidecars can hold two different wallets, or the same address on two networks, at once. Pairing again makes a new connection, which starts with no wallet until the owner chooses one and the phone publishes it.
+- **The binding's network is one the server declares.** An up-to-date phone binds only a profile on a network in the server manifest's `direct.supported_networks`, and signs nothing for a connection whose server declares none ([supported networks](wiki/server-manifests.md#supported-networks)). A sidecar that receives a binding on a network it doesn't declare — only an older phone sends one — stores it as before and logs the mismatch.
 - **Agents read it with `vault_get_address`,** which fails with `WALLET_NOT_CONNECTED` rather than inventing an address.
 
 ### Idempotency
@@ -329,7 +331,7 @@ The sidecar builds a transfer itself, from the chain and the stored action. Noth
 | `RequestService` | `PrepareRequest` | Phone credential | A new version of a PENDING transfer's or swap's transaction |
 | `RequestService` | `SubmitResult` | Phone credential | A decision or a wallet result. It returns the request as it is afterwards. |
 | `RequestService` | `CheckStatus` | Phone credential | What became of a sent transaction, read from the chain. It reaches no wallet, and returns the request as it is afterwards (SAW-022). |
-| `RequestService` | `PublishWallet` | Phone credential | The wallet the owner selected, or none. It returns the stored binding and the requests it cancelled (SAW-015). |
+| `RequestService` | `PublishWallet` | Phone credential | The wallet profile the owner chose for this connection, or none. It returns the stored binding and the requests it cancelled (SAW-015, SEE-174). |
 | `UpdateService` | `Subscribe` | Phone credential | Bidirectional foreground request/state events over gRPC and HTTP/2 (SAW-048 contract; served from SAW-049) |
 | `UpdateService` | `Sync` | Phone credential | Frozen, paginated reconciliation for foreground recovery, Refresh, and background work (SAW-048 contract; served from SAW-049) |
 
@@ -411,7 +413,7 @@ A `sign_message` request is the one wallet action with no transaction: it produc
 | `vault_sign_message` | SAW-016 | `wallet`, `message` (text), `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_transfer` | SAW-019; served only with `SOLANA_RPC_URL` set | `wallet`, `network`, `recipient`, `amount`, `token_mint?`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
 | `vault_swap` | 6 | `wallet`, `network`, `input_asset`, `output_asset`, `input_amount`, `slippage_bps`, `idempotency_key`, `note?`, `expires_in_seconds?` | The request, PENDING |
-| `vault_get_address` | SAW-015 | Nothing | The owner's wallet: `wallet`, `network`, `bound_at` |
+| `vault_get_address` | SAW-015 | Nothing | This connection's wallet: `wallet`, `network`, `bound_at` |
 | `vault_get_capabilities` | SAW-016 | Nothing | What this sidecar serves: `approval`, `signing`, `operations`, `wallet_connected`, and the limits |
 | `vault_get_request` | SAW-010 | `request_id` | The request as it is now |
 | `vault_cancel_request` | SAW-010 | `request_id` | The request, CANCELLED |
@@ -421,7 +423,7 @@ A `sign_message` request is the one wallet action with no transaction: it produc
 - **`vault_request_ack` is served only with `MCP_DEMO_TOOLS=true`.** Without it, `tools/list` leaves it out, a call to it fails as an unknown tool, and the server's instructions don't mention it. The other tools are always served.
 - **`vault_sign_message` takes the message as text,** whose UTF-8 encoding is what the wallet signs, exactly as given: 1 to 4096 bytes, never empty. There is no way to ask for bytes that aren't text, because the owner reviews every byte they sign (SAW-016). It creates the request and nothing more: no wallet is contacted until the owner approves it on their phone, and the result carries `signed_message_base64` ([message results](#message-results)).
 - **`vault_get_capabilities` is read-only, always served, and never fails.** It says `approval: "manual"` — the owner decides every request, and no agent can ask for anything else — and `signing: "wallet"`, since the owner's own wallet signs and the sidecar holds no key. `operations` lists only what this sidecar serves now, so an agent treats anything missing from it as unavailable rather than trying it.
-- **`vault_get_address` is read-only and always served.** It fails with `NOT_PAIRED` when no phone is paired, and `WALLET_NOT_CONNECTED` when the owner has connected no wallet. There is no fallback address: the sidecar never makes one. The owner can change or disconnect the wallet at any time, so agents read it again rather than caching it. Its result is `{"wallet": "...", "network": "devnet", "bound_at": "2026-09-12T09:30:00.000Z"}`.
+- **`vault_get_address` is read-only and always served.** It fails with `NOT_PAIRED` when no phone is paired, and `WALLET_NOT_CONNECTED` when the owner has chosen no wallet for this connection. There is no fallback address: the sidecar never makes one, and it never learns the wallet another connection uses. The owner can change or remove this connection's wallet at any time, so agents read it again rather than caching it. Its result is `{"wallet": "...", "network": "devnet", "bound_at": "2026-09-12T09:30:00.000Z"}`.
 - **`vault_transfer` creates the request and nothing else.** No transaction is built, signed, or sent when it is called; the sidecar only reads the mint, so an agent hears at once about a token it can't send. The owner sees the request when they next open the app, and the transaction is built then ([transfers](#transfers-saw-019)). It is served only when the sidecar has a chain endpoint; without one it is absent from `tools/list` and from `operations`.
 - **`network`** is `"mainnet"`, `"devnet"`, or `"testnet"`.
 - **`token_mint`** names a classic SPL token; leaving it out sends native SOL. `asset`, `input_asset`, and `output_asset` in `packages/protocol/proto/` hold the same choice.
@@ -474,7 +476,7 @@ IDEMPOTENCY_CONFLICT: idempotency_key "deploy-2026-09-11" was already used for r
 | `NOT_FOUND` | No such request for the caller, including another connection's | Tool error | `not_found` |
 | `NOT_PAIRED` | No phone is paired to bind a new request to | Tool error | Not used |
 | `WALLET_MISMATCH` | The wallet or network isn't the connection's current one | Tool error | Not used |
-| `WALLET_NOT_CONNECTED` | The owner has no wallet connected on their phone (SAW-015) | Tool error | Not used |
+| `WALLET_NOT_CONNECTED` | The owner has no wallet chosen for this connection on their phone (SAW-015, SEE-174) | Tool error | Not used |
 | `PENDING_LIMIT` | The connection already has the most PENDING requests allowed (SAW-010) | Tool error | Not used |
 | `INVALID_STATE` | The state doesn't allow the operation: for example, cancelling a PROCESSING request, or approving a CANCELLED one | Tool error | `failed_precondition` |
 | `STALE_PREPARATION` | The approval isn't for the latest version, its hash differs, or the version's blockhash has expired or is about to | Not used | `failed_precondition` |
@@ -570,6 +572,7 @@ is the contract.
 | `direct.url` | Where a direct server is reached | The connection's own server URL, character for character, in the pairing code's normalized form. |
 | `feed.gateway_url` | The shared gateway's origin | The origin the feed was added through, with no path, query, user info, or fragment. |
 | `feed.channel` | The channel the publisher publishes on | `server/<server_id>` for this manifest's own `server_id`: a publisher may name only its own. |
+| `direct.supported_networks` / `feed.supported_networks` | The Solana networks the server's wallet operations run on (SEE-174) | `SOLANA_NETWORK_MAINNET`, `_DEVNET`, `_TESTNET`; never unspecified, no repeats, canonical order ascending. Empty means **no networks declared** — never Mainnet or all — and the phone signs nothing for such a server. Inside the reference so the reference stays last in every runtime's bytes. May change on a higher revision ([`docs/wiki/server-manifests.md`](wiki/server-manifests.md#supported-networks)). |
 | `feed.access` | Who may read the feed (SEE-156) | Absent means public, which is what every manifest before SEE-156 said. A restricted feed carries `FEED_ACCESS_POLICY_RESTRICTED` and the HTTPS origin its subscribers prove a wallet at. The gateway writes the field from the operator's registration, so a publisher cannot claim it and a feed reference cannot supply it (`## Restricted feeds`). |
 
 **`PairingService.GetServerManifest`** serves it, authenticated with the phone credential and scoped
@@ -578,10 +581,13 @@ caller's gets `not_found`. The response always carries a manifest.
 
 **A sidecar from before Stage 7.1 answers `unimplemented`.** That is the legacy-direct path: the
 server publishes no manifest, requires nothing, and the phone keeps calling it exactly as it always
-has. It is an absence, not a failure, and the phone records it as one.
+has. It is an absence, not a failure, and the phone records it as one. Since SEE-174 it also declares
+no Solana network, so an up-to-date phone reads its requests but signs nothing for it until it is
+updated.
 
 **The Node sidecar always declares `direct`,** its own public URL, no required plugins, and
-`production`. Its revision is real: it is stored, and it moves by one exactly when the content the
+`production`, with the Solana networks `SAC_SUPPORTED_NETWORKS` names (none when unset; SEE-174,
+[`docs/development/mcp-server.md`](development/mcp-server.md#configuration)). Its revision is real: it is stored, and it moves by one exactly when the content the
 manifest is built from changes, so restarting with the same settings republishes the same revision.
 
 **The phone refuses a manifest rather than following it** when the identity, the origin or the mode
@@ -1131,7 +1137,13 @@ a meaning that range carried.
 | `GATEWAY_PROBLEM_BAD_GRANT` = 54 | A grant whose identity, references, session digest or lifetime is malformed | `invalid_argument` |
 
 The order of the first three is the order a phone acts on: ask the publisher for access, accept that
-access ended, or wait for a renewal. `SetFeedPushTarget` on a deployment that relays nothing answers
+access ended, or wait for a renewal.
+
+SEE-174 adds one more, outside that group:
+
+| Problem | When | Connect code |
+| --- | --- | --- |
+| `GATEWAY_PROBLEM_BAD_NETWORK` = 55 | A manifest's `feed.supported_networks` names `SOLANA_NETWORK_UNSPECIFIED`, a value this gateway does not know, or a network twice. An empty list is not this ([supported networks](wiki/server-manifests.md#supported-networks)) | `invalid_argument` | `SetFeedPushTarget` on a deployment that relays nothing answers
 `GATEWAY_PROBLEM_NO_PUSH`, as `GetFeedTopics` does.
 
 **Both old sides fail closed.** An old client sends no `session`,

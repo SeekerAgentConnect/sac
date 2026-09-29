@@ -21,6 +21,16 @@ The app talks to each self-hosted sidecar through a **connection**. You pair onc
    If you'd rather not use the camera, or the QR code won't scan (light terminal themes can make that hard), type or paste the `seekervault://pair?` line into **Pairing code** and tap **Continue**.
 4. **Check the server.** The app shows the address it's about to contact and the server's ID. Pair only with a sidecar you run: whoever controls it can send the phone requests to review. If the code is for a server the phone already knows, the app says so.
 5. Tap **Pair**. The new connection's details open, named after the server's host.
+6. **Choose its wallet.** The **Wallet** picker opens by itself, listing only the saved wallet
+   profiles on a Solana network the sidecar declares. Pick one and tap **Use this wallet**; the
+   sidecar is told that wallet's address and network, and no other sidecar is. With no compatible
+   profile, **Add wallet for …** adds one for the network the sidecar needs. You can also close the
+   picker and choose later from the connection's **Wallet** row, but nothing from this sidecar can
+   be signed until you do ([`wallet-setup.md`](wallet-setup.md#one-wallet-per-connection)).
+
+   A sidecar that doesn't declare its networks yet can still be paired and read, but the connection
+   says the server has to be updated before anything is signed
+   ([supported networks](../wiki/server-manifests.md#supported-networks)).
 
 Pairing makes a new connection every time. It never changes a connection you already have. Because a sidecar has one paired phone at a time, pairing again revokes that sidecar's previous connection, whether it was on this phone or another one.
 
@@ -32,10 +42,11 @@ Pairing makes a new connection every time. It never changes a connection you alr
 | --- | --- |
 | **Refresh** | Asks the sidecar for the connection's pending requests. The app also does this when it opens and when you open a connection. |
 | **Rename** | Changes the connection's name on this phone, up to 64 characters. The sidecar never sees it. |
+| **Wallet** | Shows the wallet profile this connection signs with, and changes it. The sidecar is told the new wallet and cancels its own pending requests made for the old one ([`wallet-setup.md`](wallet-setup.md#change-the-wallet-or-the-network)). |
 | **Disconnect** | The sidecar revokes this phone's credential and cancels the connection's pending requests. Then the app removes the connection. If the sidecar can't be reached, the app says so and offers to remove the connection from the phone anyway. The credential then keeps working on the sidecar until you run `pnpm pair revoke` there. |
 | **Remove from this phone** | For a connection the sidecar no longer accepts. There's nothing left to revoke, so the app just deletes it. |
 
-Several sidecars work the same way: pair with each one. Removing one connection never touches another, and a connection never shows another connection's requests.
+Several sidecars work the same way: pair with each one. Removing one connection never touches another, and a connection never shows another connection's requests. Each connection has its own wallet: two sidecars can use two different wallet profiles at the same time, and removing a connection never removes the profile it used.
 
 The **Live test** button on Connections opens the Stage 1 live-test screen, which still uses `PHONE_TOKEN` ([`docs/development/android.md`](../development/android.md)).
 

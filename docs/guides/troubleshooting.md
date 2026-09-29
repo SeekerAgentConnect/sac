@@ -323,14 +323,22 @@ These are about the wallet and the round trip a signature makes; the whole flow 
 
 ### The wallet app didn't open when I tapped Approve and sign
 
-The button is disabled until a wallet is connected, so first check the **Wallet** row on
-Connections. If the screen says one of these, the app deliberately asked the wallet nothing:
+The button is disabled until the request's **own connection** has a wallet ready, so first check the
+**Wallet** row on that connection's page ([`wallet-setup.md`](wallet-setup.md#one-wallet-per-connection)).
+If the screen says one of these, the app deliberately asked the wallet nothing:
 
-- **"No wallet is connected on this phone…"** — connect one on the Wallet screen.
+- **"This connection has no wallet ready to sign…"** — the connection has no wallet chosen, its
+  profile was removed or needs reconnecting, its sidecar hasn't confirmed the wallet yet, or the
+  server hasn't declared the Solana network the wallet is on. The connection's Wallet row says which.
+  Another saved wallet is never used instead.
+- **"This server hasn't declared which Solana networks it supports…"** — the sidecar or publisher is
+  older than wallet profiles, or declares none. Update it and set its networks
+  ([supported networks](../wiki/server-manifests.md#supported-networks)); until then its requests
+  stay readable but nothing is signed.
 - **"This request names another wallet than the one you connected."** — the agent asked for an
-  address you don't have here. You can only reject it.
-- **"Your wallet changed while you were reviewing this."** — the selection isn't the one the screen
-  showed any more. Look at the request again; nothing was signed.
+  address that isn't this connection's wallet. You can only reject it.
+- **"Your wallet changed while you were reviewing this."** — the connection's wallet was changed,
+  removed or reconnected while the review was open. Look at the request again; nothing was signed.
 
 ### It says "This phone never learned what the wallet did"
 

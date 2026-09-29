@@ -87,7 +87,9 @@ who sent it and whether it matches your rules.
 Pair a direct server using its one-use link or QR code, or add a feed link from its publisher.
 Feeds can be **Public** or **Restricted**. For a Restricted feed, prove wallet ownership by signing
 an access message and wait for the publisher to approve your device. Each connection has its own
-status, history and rules.
+status, history, rules and wallet: save several wallet profiles (different accounts, wallet apps, or
+the same address on Mainnet, Devnet or Testnet) and choose one per connection from those on a
+network its server supports.
 
 <p align="center">
   <img src="docs/assets/readme/pairing.png" width="30%" alt="Pairing with a QR code" />
@@ -155,8 +157,8 @@ Both policies use the same publication and delivery path.
 
 A direct server needs no gateway to pair or serve requests. It can optionally use the SAC push
 relay for content-free wake-ups; private request content and results still travel directly.
-When a reviewed action needs a signature, SAC opens Seed Vault Wallet through Mobile Wallet
-Adapter. Acknowledgements and Sandbox simulations finish without signing.
+When a reviewed action needs a signature, SAC opens the wallet app of the connection's own wallet
+profile, such as Seed Vault Wallet, through Mobile Wallet Adapter. Acknowledgements and Sandbox simulations finish without signing.
 
 Read [How it works](https://seekeragentconnect.github.io/docs/how-it-works) for the architecture
 and data boundaries, or [Build your own server](https://seekeragentconnect.github.io/docs/direct-or-feed)

@@ -21,7 +21,14 @@ This page is what is checked automatically, what only the Seeker can show, and t
   sends a result afterwards — a refresh, **Send again**, a retry after a lost response — goes
   through `ConnectionRepository.deliver`, which talks to the sidecar and never to a wallet.
 - **One wallet interaction at a time.** Every wallet call takes `WalletRepository`'s lock, so a
-  second request can't open a wallet screen while the owner is deciding in the first.
+  second request can't open a wallet screen while the owner is deciding in the first — however many
+  wallet profiles are saved.
+- **The wallet is the connection's own (SEE-174).** A review captures the wallet profile its own
+  connection names, and the signing call carries it with the connection ID. Inside the lock, after
+  any wait, the connection must still name that profile and be ready — a declared network, an
+  authorization the wallet honours, and for a direct sidecar a confirmed binding — or nothing is
+  asked of the wallet and the owner reviews again. No other saved profile ever stands in
+  ([wallet-profiles.md](../wiki/wallet-profiles.md#signing); coverage in [see-174.md](see-174.md)).
 - **What the wallet did is stored before it is sent.** `recordSigning` writes the signature to
   `filesDir/results/` and only then submits it. A dead network, a lost response, or a closed app
   after that point costs nothing: the next send delivers what is already on disk.
@@ -73,20 +80,23 @@ This page is what is checked automatically, what only the Seeker can show, and t
   same session, so a signing or a transfer the owner declines still leaves the phone holding a
   working authorization, and the wallet is never opened again just to ask for one. It is kept for
   every outcome, including one nobody knows: a transaction whose fate is unknown says nothing about
-  the token that came with it. The selected wallet, its address, and its network don't change with
-  it, and a token the wallet refuses is forgotten as before.
+  the token that came with it. The profile, its address, and its network don't change with it; a
+  token rotated for an authorization several profiles share is rotated for all of them, and a token
+  the wallet refuses marks only those profiles as needing reconnect (SEE-174).
 - **A storage failure never changes what the wallet did (SEE-84).** Writing the replacement token is
   the last thing that happens, after the outcome is known. If this phone can't write it — a locked
   Keystore, a full disk — the wallet's answer still stands exactly as it was, nothing is asked of
   the wallet a second time, and the phone carries on with the token it had, which is refused next
-  time and sends the owner to **Connect wallet**. That is what an expired authorization does anyway.
+  time and sends the owner to **Reconnect** on that profile. That is what an expired authorization
+  does anyway.
 - **The account the wallet authorizes is the account the owner reviewed (SEE-84).** A wallet
   reauthorizes at the start of every session, and what it authorizes then is what it would sign
   with. Before anything is put to it, the session's own reauthorization is checked against the
   reviewed address: if that account isn't among the ones the wallet now lists, or the wallet lists
   chains for it that don't include the reviewed network, nothing is signed and nothing is sent. The
-  outcome is the same "this changed, look again" the phone reports when its own selection moved, the
-  session is forgotten, and the owner connects the wallet and reviews the request afresh. A wallet
+  outcome is the same "this changed, look again" the phone reports when the connection's wallet
+  moved, the session is forgotten, and the owner reconnects the profile and reviews the request
+  afresh. A wallet
   that lists no chains for the account has said nothing, which is neither a contradiction nor a
   confirmation — it is exactly how connecting reads it.
 - **A failure before the transaction reached the wallet is a failure; anything after it is unknown
@@ -114,9 +124,9 @@ Full description: [docs/wiki/wallet-targeting.md](../wiki/wallet-targeting.md).
 - **It is dropped, not reused, when it stops meaning the same wallet.** Disconnecting ends it, an
   authorization the wallet refused ends it, another network is another session — a client is bound to
   the chain it authorized on — and so is another wallet app.
-- **A restart opens the same wallet.** The route is read back out of the stored session, so the first
-  approval after the app is reopened goes to the app the owner connected, exactly as the one before
-  it did. It was not always so: Mobile Wallet Adapter's own `MobileWalletAdapter` keeps the wallet's
+- **A restart opens the same wallet.** The route is read back out of the stored record — since
+  SEE-174, the authorization each profile uses — so the first approval after the app is reopened goes
+  to the app the connection's profile lives in, exactly as the one before it did. It was not always so: Mobile Wallet Adapter's own `MobileWalletAdapter` keeps the wallet's
   association URI in a private field with no setter (checked against the pinned `mwa = 2.2.0`), so
   routing could be learned within a process and never restored into one. The app builds the
   association itself now, over the library's public `LocalAssociationScenario`,

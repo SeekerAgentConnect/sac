@@ -330,9 +330,10 @@ the one value that reads the feed — is sealed in its own vault, `noBackupFiles
 the same format and under the same Keystore key as a phone credential. Both are out of backups, for
 the reason the device key is.
 
-**Access belongs to the wallet it was proven with.** Selecting a different wallet does not inherit
-it. Asking again with that wallet starts a new request and drops the old session, so a wallet change
-can never silently reuse another wallet's authorization.
+**Access belongs to the wallet it was proven with**, and that wallet is the feed's own
+([One wallet per feed](#one-wallet-per-feed)). Binding the feed to a different address does not
+inherit it. Asking again with that wallet starts a new request and drops the old session, so a
+wallet change can never silently reuse another wallet's authorization.
 
 **Removing the connection forgets all of it.** Removal drops the session, deletes the access record
 and deletes the Keystore key, alongside the credential, answers, rules and proposals a removal
@@ -343,6 +344,41 @@ the owner's own Activity, which is theirs and not the connection's.
 that feed's manifest, on every call, and the HTTP client used for it follows no redirects: an answer
 from anywhere else is not the publisher's. It refuses a challenge whose fields do not match what it
 asked for, or that claims to last longer than thirty minutes, before the wallet is opened at all.
+
+## One wallet per feed
+
+Since SEE-174 the phone keeps several wallet profiles and binds each connection to one of them
+([wallet-profiles.md](wallet-profiles.md)). A restricted feed proves its reader with **the profile
+that feed is bound to** — `FeedAccessManager` asks `WalletRepository.accessWalletFor(connectionId)`,
+which answers that connection's own profile and never another's — and an access record counts only
+while it was proven with the address the feed is bound to now.
+
+- **Two feeds, two wallets, both readable.** Two restricted feeds bound to different addresses each
+  hold their own access and session. A request, a refusal, a revocation or an expiry on one touches
+  nothing of the other, and each one's stream and push are its own.
+- **Choosing the wallet comes first.** A restricted feed is added, its wallet is chosen in the
+  picker that opens next, and only then is access requested with that wallet. An invitation the
+  feed's link carried is held in memory until then and redeemed straight after the request it
+  belongs to; a process that dies before the wallet is chosen asks again without it.
+- **Same address, another network: the grant stays.** The proof is a message signature by the
+  address over the publisher's challenge, and no Solana network enters it, so a feed rebound to a
+  profile with the same address on another network keeps its grant and its session. The access
+  proof ignores the server's declared networks for the same reason: a feed that declares none can
+  still be read, although nothing is signed for it.
+- **Another address: access is asked for again.** The old grant stays with the address that proved
+  it and is not used; the phone starts a new request with the new wallet. A publisher that wants to
+  end the old grant revokes it as before.
+- **A wallet app's token is never a feed grant.** A Mobile Wallet Adapter authorization is scoped to
+  one wallet app and one chain, lives only in the phone's wallet record, and is never sent to the
+  publisher or the gateway, used as proof of access, or carried over from one network's profile to
+  another's. The feed session is the only thing that reads a restricted feed.
+- **No wallet, no access.** A feed whose profile was removed, or which has none chosen, stops using
+  the access it had: to the screens it is a feed nothing has been asked of yet, and choosing a wallet
+  asks again (or, for the same address, finds the access it proved).
+
+Auth-origin verification, device binding, revocation, expiry and the no-anonymous-fallback rule are
+unchanged: they are properties of the grant, and a grant still belongs to one address and one
+device key.
 
 ## The operator's page
 
