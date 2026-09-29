@@ -604,6 +604,13 @@ The answer to an unauthenticated call says nothing about which way it failed. No
 credential that was never issued, and a revoked one all get the same refusal: a caller learns that it
 may not publish, and never whether the thing it presented used to work.
 
+**App recommendations are a registration setting too (SEE-176).** `register --recommend yes
+--description "…"` or `listing --server <uuid> --recommend yes|no --description "…"` lists a feed in
+the app's Discover catalog with a public, plain-text description. It is off by default — every
+registration made before migrates to unlisted — and it is independent of the access policy: a
+restricted feed may be listed and stays restricted, and unlisting revokes nothing. See
+[Discover](discover.md).
+
 ## The operator's admin page
 
 SEE-141 added a second surface for the paragraph above, because "the operator runs a command on the
@@ -659,6 +666,13 @@ retires every stream name issued under the old policy, so it asks for the server
 forgetting does; asking for the policy already held changes nothing and asks nothing. Without this, an
 operator on a platform whose container has no usable shell could register a restricted publisher
 only by reaching the database from somewhere else.
+
+**So is whether the app recommends it (SEE-176).** *Add server* has a **Show in app
+recommendations** switch and a public description, and each server's page has an **App
+recommendations** form that does what `feed-gatewayctl listing` does through
+`PublisherAdminStore.SetListing`. It needs no confirmation — no stream name, grant or credential
+moves — and the page says whether the feed is actually in the catalog or which metadata is still
+missing. [Discover](discover.md) has the whole contract, including `FeedService.ListRecommendedFeeds`.
 
 **Sessions are held in the process.** A random token in an `HttpOnly`, `SameSite=Strict` cookie
 scoped to the admin path, stored as its SHA-256, with an absolute lifetime. That is a deliberate

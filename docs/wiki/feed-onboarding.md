@@ -4,6 +4,10 @@ SEE-107 makes a public broadcast feed addable from the app's existing **Add conn
 does not add a deep link or intent filter: the owner scans, types or pastes the reference while that
 screen is open.
 
+Since SEE-176 a feed can also be started from the **Discover** tab: **Connect** or **Request access**
+on a card opens this same Add connection screen with the card's reference already entered, and
+everything below applies unchanged — see [Discover](discover.md).
+
 ## The input boundary
 
 The flow accepts two schemes, and only one path handles either input:
