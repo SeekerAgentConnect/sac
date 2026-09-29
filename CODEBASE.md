@@ -4,6 +4,8 @@
 
 ## Project Overview
 
+Planned improvements are tracked in [`roadmap.md`](roadmap.md); list order does not indicate priority or implementation sequence.
+
 Seeker Agent Connect (repository: `SeekerAgentWallet`; compatibility package name: `seeker-vault`) is an Android app for the Solana Seeker phone that acts as a control center for requests from external AI agents. Exactly two connection modes are active: private requests from an independently operated direct server, and public feeds through the shared feed gateway. The reusable TypeScript Direct Server SDK powers the separately packaged MCP application; the user reviews each request on the phone and approves it through Mobile Wallet Adapter and Seed Vault Wallet. No server holds keys or signs. Stack: Kotlin/Compose (Android), TypeScript/Node (Direct Server SDK, MCP server, test agent), Go (feed gateway and demos), Protobuf + Buf + Connect, and independent Docker Compose deployments.
 
 **Layout (SEE-167):** one product monorepo grouped by kind — `apps/android` (the app), `services/gateway` (the feed gateway with its admin UI, push relay and Centrifugo image), `packages/protocol` (the one canonical Buf module, every `buf.gen*.yaml` template and the vendored broker schema), `packages/server-sdk`, `packages/publisher-support`, `servers/mcp-server`, `servers/mcp-skr-staking`, `examples/demo-signals` (CopyTrading), `examples/demo-prediction`, `tools/test-agent` and `tools/loadtest`. The folder name is the component identifier used by root commands, CI jobs and release tags. The old → new mapping, dependencies and deployment migration steps are in `docs/development/monorepo-layout.md`.
