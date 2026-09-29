@@ -4,10 +4,18 @@
 
     <!-- What the phone read out of the built transaction, for the owner to see. -->
     <string name="jupiter_fact_minimum_out">You receive at least</string>
-    <string name="jupiter_fact_quoted_out">Quoted now</string>
+    <string name="jupiter_fact_quoted_out">Quoted now, after fees</string>
     <string name="jupiter_fact_slippage">Price movement allowed</string>
     <string name="jupiter_fact_priority_fee">Priority fee (SOL)</string>
     <string name="jupiter_fact_new_account">A new token account will be created for</string>
+    <!-- Attribution and the SAC service fee (SEE-173). -->
+    <string name="jupiter_fact_routing">Swap routing</string>
+    <string name="jupiter_fact_service_fee_rate">SAC service fee, taken from what you receive</string>
+    <string name="jupiter_fact_service_fee_estimate">SAC service fee, estimated</string>
+    <string name="jupiter_fact_service_fee_recipient">SAC service fee recipient</string>
+    <string name="jupiter_fact_service_fee_none">SAC service fee (network and pool costs still apply)</string>
+    <string name="jupiter_fact_service_fee_not_for_pair">SAC service fee (not charged on this pair)</string>
+    <string name="jupiter_fact_service_fee_unverified">SAC service fee (not charged: its fee account could not be verified)</string>
 
     <!-- Why the publisher's terms could not be read as a swap. -->
 
@@ -43,6 +51,9 @@
     <string name="jupiter_finding_slippage">The price movement allowed in this transaction is not the one you chose.</string>
     <string name="jupiter_finding_quote">The least this transaction will pay out is not what you were quoted.</string>
     <string name="jupiter_finding_platform_fee">Someone would take a share of what you receive.</string>
+    <string name="jupiter_finding_fee_rate">The service fee rate in this transaction is not the one shown to you.</string>
+    <string name="jupiter_finding_fee_account">The service fee would go to an account other than the verified recipient, or is missing.</string>
+    <string name="jupiter_finding_fee_mint">The service fee would be taken in a different token than the one shown to you.</string>
     <string name="jupiter_finding_legs">This route takes more steps than this phone reads.</string>
     <string name="jupiter_finding_extra_transfer">This transaction also moves funds somewhere a swap has no reason to.</string>
     <string name="jupiter_finding_account_creation">A token account would be created for someone other than you.</string>
@@ -52,6 +63,23 @@
     <string name="jupiter_finding_unreadable_value">A program that can move funds is asked to do something this phone does not read.</string>
     <string name="jupiter_finding_unrecognized">This transaction contains an instruction this phone does not read.</string>
     <string name="jupiter_finding_no_offer">This phone no longer holds the quote these bytes were built for, so there is nothing to check them against. Prepare again.</string>
+    <!-- Who carries this out, before anything is prepared (SEE-173). -->
+    <string name="jupiter_about_swap_role">Swap routing</string>
+    <string name="jupiter_about_swap_what">Metis is the routing engine of Jupiter\'s v1 Swap API. This phone asks it directly for a quote and an unsigned transaction, sending the two tokens, the amount and your public wallet address. This phone then checks the transaction, and your wallet signs it. Metis is not Jupiter Ultra, and a swap here is not the same as trading on jup.ag.</string>
+    <string name="jupiter_about_swap_fee_on">This build adds a SAC service fee of %1$s, taken from what you receive, on pairs it has a verified fee account for. Otherwise no service fee is charged, and the review says which applies. Network, priority and pool fees are separate.</string>
+    <string name="jupiter_about_swap_fee_off">This build adds no SAC service fee. That does not make swaps free: network, priority and pool fees still apply.</string>
+    <string name="jupiter_about_not_endorsed">The signal\'s publisher is not Jupiter, and neither Jupiter nor the publisher endorses this app.</string>
+    <string name="jupiter_about_metis_docs">About Metis (Jupiter developer docs)</string>
+    <string name="jupiter_about_fee_docs">How the SAC service fee works</string>
+    <string name="jupiter_about_terms">Jupiter terms of use</string>
+    <string name="jupiter_about_privacy">Jupiter privacy policy</string>
+    <string name="jupiter_about_prediction_role">Prediction market</string>
+    <string name="jupiter_about_prediction_mainnet">Orders are placed on Jupiter Prediction, on Solana mainnet, with real funds. There is no test network for it. The market itself comes from the source the signal names.</string>
+    <string name="jupiter_about_prediction_fees">Jupiter charges its own trading fee, included in the quoted cost, and the network charges for the transaction. SAC adds no fee to prediction orders. Jupiter\'s minimum order is currently $5, which it may change.</string>
+    <string name="jupiter_about_prediction_region">Jupiter Prediction is not available everywhere: Jupiter currently restricts some regions, including the United States and South Korea.</string>
+    <string name="jupiter_about_prediction_lifecycle">Dismissing a signal spends nothing. Approving submits an order, which may fill fully, partly or not at all. A filled position cannot be cancelled for a refund: while its market is open you can sell it at the current bid, which may be a loss, or hold it until the market settles.</string>
+    <string name="jupiter_about_prediction_docs">How Jupiter Prediction works</string>
+
     <!-- jupiter.prediction (SEE-94). -->
     <string name="jupiter_destination_market">This market on Jupiter</string>
     <string name="jupiter_destination_order">Open order on Jupiter</string>

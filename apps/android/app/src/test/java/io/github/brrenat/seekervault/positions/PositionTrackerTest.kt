@@ -698,9 +698,10 @@ class PositionTrackerTest {
             terms: SwapPayload,
             amount: ULong,
             slippageBps: Int,
+            platformFeeBps: Int,
         ): JupiterQuote = throw AssertionError("a position asked for a swap")
 
-        override suspend fun build(quote: JupiterQuote, wallet: String) =
+        override suspend fun build(quote: JupiterQuote, wallet: String, feeAccount: String?) =
             throw AssertionError("a position asked for a swap")
     }
 

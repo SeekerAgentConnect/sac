@@ -88,7 +88,7 @@ class Phone(
     val chain = OrderChain()
 
     /** The real bundled provider, with only the two APIs it reaches stood in for (SEE-145). */
-    val jupiter = JupiterExecutionProvider(provider, markets, chain, clock)
+    val jupiter = JupiterExecutionProvider(provider, markets, chain, now = clock)
     val plugins: ProviderRegistry =
         ProviderRegistry.of(*(listOf(jupiter) + alternates).toTypedArray())
 
@@ -278,13 +278,24 @@ class FakeProvider : JupiterProvider {
         )
     }
 
-    override suspend fun quote(terms: SwapPayload, amount: ULong, slippageBps: Int): JupiterQuote {
-        asked += "quote ${terms.inputMint}->${terms.outputMint} $amount @$slippageBps"
+    override suspend fun quote(
+        terms: SwapPayload,
+        amount: ULong,
+        slippageBps: Int,
+        platformFeeBps: Int,
+    ): JupiterQuote {
+        asked +=
+            "quote ${terms.inputMint}->${terms.outputMint} $amount @$slippageBps" +
+                (if (platformFeeBps > 0) " fee $platformFeeBps" else "")
         return answersQuote(terms, amount, slippageBps)
     }
 
-    override suspend fun build(quote: JupiterQuote, wallet: String): JupiterSwap {
-        asked += "build $wallet ${quote.inAmount}"
+    override suspend fun build(
+        quote: JupiterQuote,
+        wallet: String,
+        feeAccount: String?,
+    ): JupiterSwap {
+        asked += "build $wallet ${quote.inAmount}" + (feeAccount?.let { " fee $it" } ?: "")
         return answersBuild(quote, wallet)
     }
 }

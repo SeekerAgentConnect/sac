@@ -614,8 +614,11 @@ class StageBoundaryTest {
         val everywhere = File(main, "java").walk().filter { it.extension == "kt" }.toList()
         fun named(host: Regex) =
             everywhere.filter { host.containsMatchIn(it.readText()) }.map { it.name }.sorted()
+        // A third, since SEE-173: Jupiter's official pages about its own integrations — its
+        // developer documentation, terms and privacy policy — which a review links to and never
+        // dials, kept together in the one file that says how the app attributes Jupiter.
         assertEquals(
-            listOf("JupiterPredictionAction.kt", "JupiterProvider.kt"),
+            listOf("JupiterAttribution.kt", "JupiterPredictionAction.kt", "JupiterProvider.kt"),
             named(Regex("""jup\.ag""")),
         )
         // The endpoint the plugins read from, in the one file that makes a request to it.
@@ -870,9 +873,6 @@ class StageBoundaryTest {
                 "ConnectionDetailsScreen.kt",
                 "ConnectionRepository.kt",
                 "ConnectionText.kt",
-                // The History record says which promise an item was made under: the binding's,
-                // as the record kept it (SEE-161).
-                "HistoryDetailMapping.kt",
             ),
             promise,
         )
@@ -893,6 +893,10 @@ class StageBoundaryTest {
                 // so matching the constant is the only way the copy cannot drift from what
                 // `actionOf` produces (SEE-145).
                 "FeedNotifications.kt",
+                // The History record says which promise an item was made under, and who routed it
+                // and what service fee it carried: the binding's, as the record kept it (SEE-161,
+                // SEE-173). It reads a receipt's rows and prepares nothing.
+                "HistoryDetailMapping.kt",
                 // The History item's live position (SEE-172): it names the position a purchase went
                 // into so the provider's own links can be built for it, and prepares nothing.
                 "HistoryDetailRoute.kt",
@@ -959,6 +963,9 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.plugins.ParameterChoice",
                 "io.github.brrenat.seekervault.plugins.PluginEnvironment",
                 "io.github.brrenat.seekervault.plugins.PluginId",
+                // What the owner was shown about who carried it out and its service fee, kept
+                // with the binding for the record and gating nothing (SEE-173).
+                "io.github.brrenat.seekervault.plugins.PluginReference",
                 "io.github.brrenat.seekervault.plugins.ProviderRegistry",
                 "io.github.brrenat.seekervault.plugins.ProviderResolution",
                 "io.github.brrenat.seekervault.plugins.SUPPORTED_PROVIDER_CONTRACTS",

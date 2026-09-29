@@ -79,6 +79,9 @@
     <!-- What the owner has once an operation has been submitted (SEE-94). -->
     <string name="operation_identifiers">What is being submitted</string>
     <string name="operation_afterwards">Where to look now</string>
+    <!-- Who carries an operation out, and what the approved one cost beyond the network (SEE-173). -->
+    <string name="operation_about">Who carries this out</string>
+    <string name="operation_about_signer">This app reviews the transaction. Your connected wallet signs it; this app never holds your keys.</string>
     <string name="operation_signature">Transaction</string>
     <string name="operation_explorer">This transaction on the explorer</string>
     <string name="operation_afterwards_note">This app submitted the transaction and stops there. It does not follow whether an order filled, what a position is worth, how a market settles, or whether anything is paid out — open the links above to see any of that.</string>

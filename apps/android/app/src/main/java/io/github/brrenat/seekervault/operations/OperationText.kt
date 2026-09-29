@@ -7,7 +7,9 @@ import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterForm
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.UnsupportedReason
+import io.github.brrenat.seekervault.plugins.receiptRows
 import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -42,6 +44,8 @@ object OperationTags {
     const val AFTERWARDS = "operations.afterwards"
     const val SANDBOX = "operations.sandbox"
     const val REFERENCES = "operations.references"
+    const val ABOUT = "operations.about"
+    const val RECEIPT = "operations.receipt"
 
     fun link(name: String) = "operations.link.$name"
 
@@ -170,3 +174,13 @@ fun choiceRows(
                     },
             )
         }
+
+/**
+ * The routing and service-fee lines the owner reviewed, repeated on the last screen before the
+ * wallet opens (SEE-173): who routes it and what fee it carries, without the addresses, which the
+ * review above already showed in full. Empty when the provider named neither.
+ */
+fun handoffReceipt(receipt: List<PluginReference>): String =
+    receiptRows(receipt)
+        .filterNot { (label, _) -> label.endsWith("token") || label.endsWith("recipient") }
+        .joinToString(separator = "") { (label, value) -> "\n$label: $value" }

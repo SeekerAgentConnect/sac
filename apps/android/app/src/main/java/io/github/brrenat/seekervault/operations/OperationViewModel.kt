@@ -27,6 +27,7 @@ import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFailure
 import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.PreparedOperation
+import io.github.brrenat.seekervault.plugins.ProviderAbout
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.ProviderResolution
 import io.github.brrenat.seekervault.plugins.actionFacts
@@ -269,6 +270,7 @@ class OperationViewModel(
                 // anywhere truthful to send them (SEE-94). It comes from the terms alone, so it
                 // survives a restart and needs no preparation — and no URL is ever stored.
                 destinations = terms.destinations,
+                about = terms.about,
                 // A review already written for these terms is what the owner last chose about
                 // them; anything else starts from the provider's own suggestion.
                 choice =
@@ -292,6 +294,8 @@ class OperationViewModel(
         val form: ParameterForm,
         val destinations: List<PluginDestination>,
         val served: Boolean,
+        /** What the provider says about itself for this action (SEE-173). */
+        val about: ProviderAbout? = null,
     )
 
     /**
@@ -326,6 +330,7 @@ class OperationViewModel(
                 },
             destinations = destinationsOf(record, payload, references),
             served = resolved != null,
+            about = if (resolved != null && operation != null) resolved.about(operation) else null,
         )
     }
 
@@ -655,6 +660,9 @@ class OperationViewModel(
                 preparedVersion = prepared.version,
                 contentHash = hash(prepared.transaction),
                 expiresAtEpochSeconds = prepared.expiresAtEpochSeconds,
+                // Who routed it and what service fee the bytes carry, as the owner reviewed them:
+                // pinned with the binding so History keeps what was approved (SEE-173).
+                receipt = open.inspection?.receipt.orEmpty(),
             )
         // The assessment the owner read, and the identifiers the provider named, both kept for the
         // record that is about to be written (SAW-028, SEE-94).
@@ -975,6 +983,7 @@ class OperationViewModel(
             payload = terms.payload,
             form = terms.form,
             destinations = terms.destinations,
+            about = terms.about,
             served = terms.served,
             // What the owner last chose about *these* terms, or the provider's suggestion — never
             // the previous revision's answer carried forward onto terms they never saw.
@@ -1102,6 +1111,12 @@ data class OperationReview(
     val details: List<PluginFact> = emptyList(),
     /** Where the owner may continue outside the app, built fresh and never read off disk. */
     val destinations: List<PluginDestination> = emptyList(),
+    /**
+     * Who carries this out, as its provider describes itself: the integration's name, the
+     * disclosures to read before committing and official links (SEE-173). Built fresh, never read
+     * off disk.
+     */
+    val about: ProviderAbout? = null,
     val assessment: RequestAssessment? = null,
     val acknowledged: Boolean = false,
     val sending: Boolean = false,

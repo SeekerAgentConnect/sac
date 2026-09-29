@@ -236,6 +236,7 @@ suspend fun inspectPrediction(
                 PluginReference(POSITION_ACCOUNT, placed.position),
                 PluginReference(MARKET, terms.marketId),
             ),
+        receipt = PREDICTION_RECEIPT,
     )
 }
 

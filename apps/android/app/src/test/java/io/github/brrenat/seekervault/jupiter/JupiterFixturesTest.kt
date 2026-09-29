@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.jupiter
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.plugins.actions.SwapChoice
 import io.github.brrenat.seekervault.plugins.actions.WRAPPED_SOL
 import io.github.brrenat.seekervault.transactions.DecodeResult
@@ -94,7 +95,7 @@ class JupiterFixturesTest {
                 formatBaseUnits(fixture.quote.minimumOut, fixture.terms.outputDecimals) +
                     " " +
                     fixture.terms.outputSymbol,
-                inspection.details.first().value,
+                inspection.details.first { it.label == R.string.jupiter_fact_minimum_out }.value,
             )
         }
     }

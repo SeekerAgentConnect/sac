@@ -79,6 +79,7 @@ import io.github.brrenat.seekervault.operations.PredictionReviewScreen
 import io.github.brrenat.seekervault.operations.PredictionReviewSource
 import io.github.brrenat.seekervault.operations.ProposalReviewScreen
 import io.github.brrenat.seekervault.operations.choiceRows
+import io.github.brrenat.seekervault.operations.handoffReceipt
 import io.github.brrenat.seekervault.operations.requiresWalletHandoff
 import io.github.brrenat.seekervault.operations.reviewedAsPrediction
 import io.github.brrenat.seekervault.policy.PolicyAddressKind
@@ -1067,7 +1068,9 @@ private fun WalletHandoffRoute(
                 }
             } else {
                 WalletHandoffScreen(
-                    summary = "$label will continue in ${open.wallet?.walletApp ?: "your wallet"}",
+                    summary =
+                        "$label will continue in ${open.wallet?.walletApp ?: "your wallet"}" +
+                            handoffReceipt(open.inspection?.receipt.orEmpty()),
                     walletApp = open.wallet?.walletApp,
                     onApprove = {
                         approvalStarted = true

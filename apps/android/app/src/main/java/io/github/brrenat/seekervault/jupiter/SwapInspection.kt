@@ -6,6 +6,9 @@ import io.github.brrenat.seekervault.plugins.ActionInspection
 import io.github.brrenat.seekervault.plugins.InspectedAction
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFinding
+import io.github.brrenat.seekervault.plugins.PluginReference
+import io.github.brrenat.seekervault.plugins.ReceiptKey
+import io.github.brrenat.seekervault.plugins.ServiceFeeStatus
 import io.github.brrenat.seekervault.plugins.actions.SwapChoice
 import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import io.github.brrenat.seekervault.plugins.actions.WRAPPED_SOL
@@ -37,7 +40,9 @@ import io.github.brrenat.seekervault.wallet.SelectedWallet
  *    the amount the owner entered.
  * 5. The output arrives in the owner's own token account for the mint the publisher named, and the
  *    floor the instruction enforces is the one the quote stated.
- * 6. Nobody takes a cut: no platform fee account and no fee in basis points.
+ * 6. Nobody takes a cut but the one this build decided on before quoting: with no SAC service fee,
+ *    no platform fee account and no fee in basis points; with one, exactly its rate, exactly its
+ *    verified receiving account, in the output mint (SEE-173, [SwapFee]).
  * 7. Every other instruction is one of the small set a swap is allowed to contain, and each one is
  *    about the owner's own accounts.
  *
@@ -97,8 +102,14 @@ enum class SwapFinding(val code: String) {
      * changed between quoting and building, or the instruction's numbers are not the quote's.
      */
     QuoteMismatch("quote_mismatch"),
-    /** Somebody would take a cut of the output. */
+    /** Somebody would take a cut of the output, and this swap was to carry none. */
     PlatformFee("platform_fee"),
+    /** The fee rate in the transaction, or in the quote, is not the one this build decided on. */
+    FeeRateMismatch("fee_rate_mismatch"),
+    /** The fee would be paid to an account other than the verified one, or to none. */
+    FeeAccountMismatch("fee_account_mismatch"),
+    /** The fee would be taken in a mint other than the output mint its account was verified for. */
+    FeeMintMismatch("fee_mint_mismatch"),
     /** The route takes more hops than this plugin reads. */
     TooManyLegs("too_many_legs"),
     /** The transaction moves value somewhere a swap has no reason to. */
@@ -151,6 +162,7 @@ fun inspectSwap(
     wallet: SelectedWallet?,
     transaction: ByteString,
     version: Int,
+    fee: SwapFee = SwapFee.Disabled,
 ): ActionInspection {
     val findings = mutableListOf<SwapFinding>()
     val decoded =
@@ -210,7 +222,7 @@ fun inspectSwap(
     if (route.quotedOutAmount != quote.outAmount || route.minimumOut != quote.minimumOut) {
         findings += SwapFinding.QuoteMismatch
     }
-    if (route.platformFee != null || route.platformFeeBps != 0) findings += SwapFinding.PlatformFee
+    checkFee(route, quote, terms, fee, findings)
     if (route.legs != MOST_LEGS) findings += SwapFinding.TooManyLegs
 
     checkOthers(steps, terms, choice, owner, findings)
@@ -246,8 +258,81 @@ fun inspectSwap(
                 recognizedInstructions = steps.count { it !is SwapStep.Unread },
             ),
         version = version,
-        details = details(terms, route, steps),
+        details = details(terms, route, steps, quote, fee),
+        receipt = swapReceipt(terms, route, quote, fee),
     )
+}
+
+/**
+ * What the owner's record keeps about who routed this and what it cost (SEE-173): the routing
+ * integration's name, and the SAC service fee exactly as the bytes carry it — or why there is none.
+ */
+internal fun swapReceipt(
+    terms: SwapPayload,
+    route: SwapStep.Route,
+    quote: JupiterQuote,
+    fee: SwapFee,
+): List<PluginReference> = buildList {
+    add(PluginReference(ReceiptKey.SWAP_ROUTING, SWAP_ROUTING_NAME))
+    when (fee) {
+        is SwapFee.Charged -> {
+            add(PluginReference(ReceiptKey.SERVICE_FEE_STATUS, ServiceFeeStatus.CHARGED))
+            add(PluginReference(ReceiptKey.SERVICE_FEE_BPS, route.platformFeeBps.toString()))
+            add(
+                PluginReference(
+                    ReceiptKey.SERVICE_FEE_ESTIMATE,
+                    labelled(
+                        quote.platformFeeAmount,
+                        terms.outputDecimals,
+                        terms.outputSymbol.ifEmpty { terms.outputMint },
+                    ),
+                )
+            )
+            add(PluginReference(ReceiptKey.SERVICE_FEE_MINT, fee.mint))
+            add(PluginReference(ReceiptKey.SERVICE_FEE_SIDE, ServiceFeeStatus.SIDE_OUTPUT))
+            add(PluginReference(ReceiptKey.SERVICE_FEE_RECIPIENT, fee.account))
+        }
+        SwapFee.Disabled ->
+            add(PluginReference(ReceiptKey.SERVICE_FEE_STATUS, ServiceFeeStatus.NONE))
+        is SwapFee.NotForPair ->
+            add(PluginReference(ReceiptKey.SERVICE_FEE_STATUS, ServiceFeeStatus.NOT_FOR_PAIR))
+        is SwapFee.Unverified -> {
+            add(PluginReference(ReceiptKey.SERVICE_FEE_STATUS, ServiceFeeStatus.UNVERIFIED))
+            add(PluginReference(ReceiptKey.SERVICE_FEE_REASON, fee.reason))
+        }
+    }
+}
+
+/**
+ * The fee in the bytes against the fee decided before quoting (SEE-173).
+ *
+ * With none decided, any fee account or any rate is somebody's cut ([SwapFinding.PlatformFee]).
+ * With one, the rate, the account and the mint all have to be exactly the decided ones — a fee that
+ * is missing is as much a disagreement as one that is larger, because either way the review would
+ * describe a transaction other than this one.
+ */
+private fun checkFee(
+    route: SwapStep.Route,
+    quote: JupiterQuote,
+    terms: SwapPayload,
+    fee: SwapFee,
+    findings: MutableList<SwapFinding>,
+) {
+    if (fee !is SwapFee.Charged) {
+        if (route.platformFee != null || route.platformFeeBps != 0 || quote.platformFeeBps != 0) {
+            findings += SwapFinding.PlatformFee
+        }
+        return
+    }
+    if (route.platformFeeBps != fee.bps || quote.platformFeeBps != fee.bps) {
+        findings += SwapFinding.FeeRateMismatch
+    }
+    if (route.platformFee != fee.account) findings += SwapFinding.FeeAccountMismatch
+    // The account was verified for the output mint, and the output is the only side this app
+    // lets a fee be taken from: an input-mint fee would not be the one the quote was made with.
+    if (fee.mint != terms.outputMint || route.destinationMint != fee.mint) {
+        findings += SwapFinding.FeeMintMismatch
+    }
 }
 
 /**
@@ -261,10 +346,15 @@ private fun details(
     terms: SwapPayload,
     route: SwapStep.Route,
     steps: List<SwapStep>,
+    quote: JupiterQuote,
+    fee: SwapFee,
 ): List<PluginFact> {
     val out = terms.outputDecimals
     val facts =
         mutableListOf(
+            // Who routes this swap, named as what it is: Jupiter's Metis routing through its v1
+            // Swap API — not "Jupiter Ultra", and not the same thing as Jupiter's own web app.
+            PluginFact(R.string.jupiter_fact_routing, SWAP_ROUTING_NAME),
             PluginFact(
                 R.string.jupiter_fact_minimum_out,
                 labelled(route.minimumOut, out, terms.outputSymbol),
@@ -275,6 +365,7 @@ private fun details(
             ),
             PluginFact(R.string.jupiter_fact_slippage, percent(route.slippageBps)),
         )
+    facts += feeFacts(terms, route, quote, fee)
     // What a priority fee actually costs, in lamports: the limit the transaction asks for times the
     // price per unit. Both are in the bytes; neither is the provider's word for it.
     val limit = steps.filterIsInstance<SwapStep.Budget>().firstNotNullOfOrNull { it.unitLimit }
@@ -306,7 +397,53 @@ private fun labelled(amount: ULong, decimals: Int, symbol: String): String {
 }
 
 /** Basis points as a percentage, exactly: 50 is "0.5%", 1 is "0.01%". */
-private fun percent(bps: Int): String = formatBaseUnits(bps.toULong(), 2) + "%"
+internal fun percent(bps: Int): String = formatBaseUnits(bps.toULong(), 2) + "%"
+
+/**
+ * The SAC service fee, as the owner should read it before signing (SEE-173).
+ *
+ * Always present, so a build that charges nothing says "0%" rather than nothing — while never
+ * claiming the swap is free: the priority fee, the network's base fee and the route's pool fees
+ * (already inside the quote) are separate and still apply. When a fee is charged, the rate and
+ * where it is taken from are on the label, the estimate is the value, and the recipient account is
+ * its own row.
+ */
+private fun feeFacts(
+    terms: SwapPayload,
+    route: SwapStep.Route,
+    quote: JupiterQuote,
+    fee: SwapFee,
+): List<PluginFact> =
+    when (fee) {
+        is SwapFee.Charged ->
+            listOf(
+                PluginFact(R.string.jupiter_fact_service_fee_rate, percent(route.platformFeeBps)),
+                PluginFact(
+                    R.string.jupiter_fact_service_fee_estimate,
+                    labelled(
+                        quote.platformFeeAmount,
+                        terms.outputDecimals,
+                        terms.outputSymbol.ifEmpty { terms.outputMint },
+                    ),
+                ),
+                PluginFact(R.string.jupiter_fact_service_fee_recipient, fee.account),
+            )
+        SwapFee.Disabled -> listOf(PluginFact(R.string.jupiter_fact_service_fee_none, percent(0)))
+        is SwapFee.NotForPair ->
+            listOf(PluginFact(R.string.jupiter_fact_service_fee_not_for_pair, percent(0)))
+        is SwapFee.Unverified ->
+            listOf(PluginFact(R.string.jupiter_fact_service_fee_unverified, percent(0)))
+    }
+
+/**
+ * The name the review gives the routing integration.
+ *
+ * Jupiter's API agreement requires an integration of its v1 Swap API to be labelled "Metis" — not
+ * "Jupiter Ultra", and not "Jupiter" as though it were Jupiter's own web app — and requires
+ * "Powered by Jupiter" to be displayed (docs/integrations/jupiter.md#attribution). It is a name, so
+ * it is not translated.
+ */
+const val SWAP_ROUTING_NAME: String = "Metis · Powered by Jupiter"
 
 /**
  * The rest of the transaction: the wrap, the unwrap, the account creation and the fee settings.
@@ -410,6 +547,9 @@ private val SwapFinding.message: Int
             SwapFinding.SlippageMismatch -> R.string.jupiter_finding_slippage
             SwapFinding.QuoteMismatch -> R.string.jupiter_finding_quote
             SwapFinding.PlatformFee -> R.string.jupiter_finding_platform_fee
+            SwapFinding.FeeRateMismatch -> R.string.jupiter_finding_fee_rate
+            SwapFinding.FeeAccountMismatch -> R.string.jupiter_finding_fee_account
+            SwapFinding.FeeMintMismatch -> R.string.jupiter_finding_fee_mint
             SwapFinding.TooManyLegs -> R.string.jupiter_finding_legs
             SwapFinding.ExtraTransfer -> R.string.jupiter_finding_extra_transfer
             SwapFinding.AccountCreationForSomeoneElse -> R.string.jupiter_finding_account_creation

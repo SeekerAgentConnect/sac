@@ -153,6 +153,13 @@ interface ExecutionProvider {
     ): ActionStatus = ActionStatus.Unsupported
 
     /**
+     * What this provider says about itself for [operation]: the integration's name, its role, the
+     * disclosures to read before committing and official links (SEE-173). Null when it has nothing
+     * to add. Pure: it reaches nothing.
+     */
+    fun about(operation: ActionOperation): ProviderAbout? = null
+
+    /**
      * What this provider can read and do about a position the owner already holds, or null when it
      * manages none (SEE-172). A sale is never a publisher's proposal: it is reached from the
      * owner's own History item, through this and nothing else.
