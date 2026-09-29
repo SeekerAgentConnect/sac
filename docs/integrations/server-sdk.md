@@ -36,6 +36,37 @@ The runnable [`minimal.ts`](../../packages/server-sdk/examples/minimal.ts) examp
 only public imports. Production ingress, TLS, authorization, health checks and process signals stay
 in the embedding host.
 
+## Declaring networks
+
+A server says which Solana networks its wallet operations run against with `supportedNetworks`
+(SEE-174). The phone offers only wallet profiles on those networks when the owner sets the
+connection up, and signs nothing for a connection bound to any other:
+
+```ts
+import { openDirectServer, parseSupportedNetworks } from "@seeker_agent_connect/server-sdk";
+
+openDirectServer({
+  // …
+  // "mainnet", "devnet", "testnet", comma-separated; refused at startup if unknown or repeated.
+  supportedNetworks: parseSupportedNetworks(
+    process.env.SAC_SUPPORTED_NETWORKS ?? "",
+    "SAC_SUPPORTED_NETWORKS",
+  ),
+});
+```
+
+There is no default. A server that sets nothing publishes an empty list, which declares no network:
+it is never read as Mainnet or as every network, and an up-to-date phone shows the connection but
+signs nothing on it until the server declares one. List what the server really uses — the cluster
+its RPC endpoint serves, and any network the owner signs messages on — not every network the
+protocol names, and do not derive it from the environment: `production` is not Mainnet.
+
+The list is part of the manifest, so changing it moves the settings revision on the next start and
+the phone rereads it; the same list, in any order, keeps the revision. Update servers first and set
+the list, then phones: an older phone ignores it, and an updated one gates signing on it. The SDK
+keeps storing a wallet binding on an undeclared network, which only an older phone publishes, and
+logs that it did.
+
 ## Waking a phone
 
 A direct server that holds a Firebase service-account credential passes an `invalidationSender`;

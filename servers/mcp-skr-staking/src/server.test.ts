@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
+import { SolanaNetwork } from "@seeker_agent_connect/server-sdk/protocol";
 import { MAINNET_GENESIS_HASH } from "./skr/chain.ts";
 import {
   configFor,
@@ -65,6 +66,26 @@ describe("starting the staking server", () => {
     try {
       assert.deepEqual(cluster.methods(), ["getGenesisHash"]);
       assert.match(server.url, /^http:\/\/127\.0\.0\.1:\d+$/);
+    } finally {
+      await server.close();
+      await cluster.close();
+    }
+  });
+
+  // SEE-174: the network it just established is the one its manifest declares, and the only one.
+  // A phone offers this server only a Mainnet wallet, and signs for nothing else on it.
+  it("declares Mainnet as its one network", async () => {
+    const cluster = await stubCluster(MAINNET_GENESIS_HASH);
+    const server = await startStakingServer(configFor(cluster.url), {
+      log: () => undefined,
+    });
+    try {
+      const { reference } = server.direct.manifest;
+      assert.equal(reference.case, "direct");
+      assert.deepEqual(
+        reference.case === "direct" ? reference.value.supportedNetworks : [],
+        [SolanaNetwork.MAINNET],
+      );
     } finally {
       await server.close();
       await cluster.close();

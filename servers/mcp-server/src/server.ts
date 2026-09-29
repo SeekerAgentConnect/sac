@@ -34,6 +34,7 @@ import {
   isPairingLinkPath,
   openDirectServer,
   ProviderUnavailable,
+  solanaNetworkName,
   UnsupportedPreparation,
   type AgentRequests,
   type ConfirmationProvider,
@@ -164,6 +165,9 @@ async function serve(
     direct = openDirectServer({
       databasePath: config.databasePath,
       publicOrigin: () => config.publicUrl ?? listeningUrl ?? "",
+      // SEE-174: what SAC_SUPPORTED_NETWORKS says, and nothing when it is unset — never a default
+      // the operator didn't choose.
+      supportedNetworks: config.supportedNetworks ?? [],
       requestTtlSeconds: config.requestTtlSeconds,
       pendingLimit: config.pendingLimit,
       pairingTokenTtlSeconds: config.pairingTokenTtlSeconds ?? 600,
@@ -338,6 +342,18 @@ async function serve(
     log(
       `the server manifest names ${config.publicUrl ?? url} as a direct server, ` +
         `protocol ${manifest.protocolVersion}, settings revision ${manifest.settingsRevision}`,
+    );
+    // Said at every start, because an empty list is the one setting that quietly stops a phone
+    // from signing anything for this server (SEE-174). The list is in the direct reference.
+    const networks =
+      manifest.reference.case === "direct"
+        ? manifest.reference.value.supportedNetworks
+        : [];
+    log(
+      networks.length === 0
+        ? "the manifest declares no Solana network, so an up-to-date phone signs nothing for this server; " +
+            'set SAC_SUPPORTED_NETWORKS (for example "mainnet") to the networks it runs against'
+        : `the manifest declares ${networks.map(solanaNetworkName).join(", ")} (SAC_SUPPORTED_NETWORKS)`,
     );
 
     let closing: Promise<void> | undefined;

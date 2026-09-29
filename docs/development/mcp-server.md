@@ -20,7 +20,7 @@ command remains an explicit migration alias. The executable package additionally
 `MCP_SERVER_CONFIG`, or the optional `<MCP_SERVER_DATA_DIR>/config.env`; see the product
 [`README`](../../servers/mcp-server/README.md) for source, Docker and npm starts.
 
-`MCP_ENABLED`, `MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `MCP_OAUTH_ISSUER`, `MCP_OAUTH_RESOURCE`, `MCP_OAUTH_JWKS_URL`, `MCP_OAUTH_SCOPE`, `MCP_SERVER_DATA_DIR`, `MCP_SERVER_CONFIG`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, `SOLANA_RPC_TIMEOUT_MS`, and `FCM_PROJECT_ID` are optional, and an empty one counts as unset. The others are required.
+`MCP_ENABLED`, `MCP_ALLOWED_HOSTS`, `MCP_DEMO_TOOLS`, `MCP_OAUTH_ISSUER`, `MCP_OAUTH_RESOURCE`, `MCP_OAUTH_JWKS_URL`, `MCP_OAUTH_SCOPE`, `MCP_SERVER_DATA_DIR`, `MCP_SERVER_CONFIG`, `DATABASE_PATH`, `REQUEST_TTL_SECONDS`, `REQUEST_PENDING_LIMIT`, `SIDECAR_PUBLIC_URL`, `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH`, `SIDECAR_UPDATE_PORT`, `PAIRING_TOKEN_TTL_SECONDS`, `SOLANA_RPC_URL`, `SOLANA_RPC_TIMEOUT_MS`, `SAC_SUPPORTED_NETWORKS`, and `FCM_PROJECT_ID` are optional, and an empty one counts as unset. The others are required.
 
 | Variable | Meaning | Rules |
 | --- | --- | --- |
@@ -48,6 +48,7 @@ command remains an explicit migration alias. The executable package additionally
 | `PAIRING_TOKEN_TTL_SECONDS` | Optional. How long a pairing code works | 60 to 3600; defaults to 600 (10 minutes) |
 | `SOLANA_RPC_URL` | Optional. The Solana JSON-RPC endpoint transfers are prepared against (SAW-019), and the one a sent transaction's outcome is read from (SAW-022). Without it the sidecar serves no `vault_transfer`, prepares no transaction, and can confirm nothing. | An `http://` or `https://` URL. It may carry an API key, so the sidecar never logs it or puts it in an error message; only its **host** is recorded, as the endpoint a confirmed or failed transfer's word came from. |
 | `SOLANA_RPC_TIMEOUT_MS` | Optional. How long one chain call may take | 1000 to 20000; defaults to 10000. A whole operation is bounded too: 20000 ms, however many calls it makes |
+| `SAC_SUPPORTED_NETWORKS` | Optional, but a server the owner signs for needs it. The Solana networks the [server manifest](../wiki/server-manifests.md#supported-networks) declares (SEE-174): the phone offers only wallet profiles on these networks when the connection is set up, and signs nothing for a connection bound to any other. Unset or empty declares **none** — never Mainnet, never "all" — and an up-to-date phone then shows the connection but signs nothing for it; the startup log says so. | Comma-separated `mainnet`, `devnet`, `testnet`, or `none` alone: lowercase, no aliases (`mainnet-beta` is refused), no duplicates or empty entries. Order doesn't matter; the manifest lists them in canonical order. It is **not** inferred from `SOLANA_RPC_URL`: list the cluster that endpoint serves, plus any network the owner signs messages on. Changing it moves the manifest's settings revision on the next start. |
 | `FCM_PROJECT_ID` | Optional. The Firebase/Google Cloud project for the SAW-054 Firebase Admin sender | A 6–30 character lowercase Google Cloud project ID. Empty means no Firebase Admin app or sender is constructed. Credentials come from Application Default Credentials, not this value; see the [Firebase setup guide](../guides/firebase.md). |
 
 Generate each token with `openssl rand -hex 32`. If the configuration is invalid, the CLI names
@@ -179,8 +180,26 @@ the manifest it would publish and asks the database for the revision that conten
 sidecar restarts, and changing one — the public URL, say — moves it up by one. It never moves down,
 which is what lets a phone refuse a manifest older than the one it already holds.
 
-There is nothing to configure. A deployment from before Stage 7.1 answers `unimplemented`, which
-the phone reads as the legacy-direct path: no manifest, and behaviour exactly as it was.
+Since SEE-174 the manifest's direct reference also carries `supported_networks`
+(`direct.supportedNetworks` in JSON), the Solana networks this sidecar
+runs against, from `SAC_SUPPORTED_NETWORKS` ([configuration](#configuration)). It is the one thing
+in the manifest an operator sets, and it has no default: unset, the manifest declares no network,
+and an up-to-date phone shows the connection but signs nothing for it — no message, no transfer.
+The sidecar does not read `SOLANA_RPC_URL` to guess the list, because the endpoint's cluster is
+known only by asking it, and a manifest that depended on the endpoint answering at startup would
+change whenever it didn't. Startup logs the declared networks, or that there are none. Changing the
+list is a settings change like the URL: the next start moves the revision up by one, and a start
+with the same list keeps it. An unset list leaves the fingerprint exactly as it was before the
+field existed, so upgrading alone moves nothing.
+
+Deploy in this order: update the sidecar and set `SAC_SUPPORTED_NETWORKS` first, then update the
+phone. An older phone ignores the field and keeps signing as it did; an updated phone gates signing
+on it, so an updated phone meeting an undeclared sidecar is the combination that stops. A wallet
+binding on a network the sidecar doesn't declare — which only an older phone publishes — is still
+stored, as it always was, and the sidecar logs a line naming the network and what it declares.
+
+A deployment from before Stage 7.1 answers `unimplemented`, which the phone reads as the
+legacy-direct path: no manifest, and behaviour exactly as it was.
 
 ### Production update listener
 

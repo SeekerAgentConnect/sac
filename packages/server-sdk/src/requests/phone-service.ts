@@ -17,6 +17,8 @@ import {
   RequestState,
 } from "../gen/seekervault/request/v1/request_pb.js";
 import { RequestService } from "../gen/seekervault/request/v1/service_pb.js";
+import type { SolanaNetwork } from "../gen/seekervault/server/v1/manifest_pb.js";
+import { solanaNetworkName } from "../manifest.ts";
 import type { PairingStore } from "../storage/pairing-store.ts";
 import { networkName, type RequestStore } from "../storage/request-store.ts";
 import { checkable, type ConfirmationTracker } from "./confirmation.ts";
@@ -41,6 +43,11 @@ export function requestRoutes(
   preparer?: TransactionPreparer,
   /** Absent for the same reason: with no endpoint there is no chain to check a signature on. */
   tracker?: ConfirmationTracker,
+  /**
+   * The networks the manifest declares (SEE-174), in canonical order, and only for the log: see
+   * publishWallet below.
+   */
+  supportedNetworks: readonly SolanaNetwork[] = [],
 ): (router: ConnectRouter) => void {
   /**
    * Authenticates the paired phone, then runs `work` for its connection, turning a RequestFailure
@@ -183,6 +190,25 @@ export function requestRoutes(
               : // The address is a public key, so it belongs in the log; nothing secret does.
                 `connection ${connectionId}: wallet ${binding.wallet} on ${networkName(binding.network)}`,
           );
+          // A binding on a network the manifest doesn't declare is stored all the same (SEE-174).
+          // A phone that reads supported_networks never offers one, so this is an older phone, and
+          // refusing it would take away the wallet it has always published without making anything
+          // safer: the network check that matters is the phone's, which signs nothing for a network
+          // the server didn't declare. The operator is told, because it is the reason signing on
+          // that connection stops once the phone is updated. SolanaNetwork and Network share their
+          // numbers by contract, so the two are compared by number.
+          if (
+            binding !== undefined &&
+            !supportedNetworks.some(
+              (network) => Number(network) === Number(binding.network),
+            )
+          ) {
+            log(
+              `connection ${connectionId}: ${networkName(binding.network)} is not a network this server declares ` +
+                `(${supportedNetworks.length === 0 ? "it declares none" : supportedNetworks.map(solanaNetworkName).join(", ")}); ` +
+                "an up-to-date phone signs nothing for this connection until it is",
+            );
+          }
           if (cancelled.length > 0) {
             log(
               `${cancelled.length} pending request(s) cancelled: they no longer fit the owner's wallet`,

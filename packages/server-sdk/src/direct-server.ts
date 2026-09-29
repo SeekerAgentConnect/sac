@@ -20,9 +20,12 @@ import {
   ActionRequestSchema,
   type ActionRequest,
 } from "./gen/seekervault/request/v1/request_pb.js";
-import type { ServerManifest } from "./gen/seekervault/server/v1/manifest_pb.js";
+import type {
+  ServerManifest,
+  SolanaNetwork,
+} from "./gen/seekervault/server/v1/manifest_pb.js";
 import { LiveCommandBridge } from "./live/bridge.ts";
-import { publishManifest } from "./manifest.ts";
+import { canonicalSupportedNetworks, publishManifest } from "./manifest.ts";
 import { pairingRoutes } from "./pairing/service.ts";
 import { pairingUri } from "./pairing/uri.ts";
 import { phoneRoutes } from "./phone-api.ts";
@@ -73,6 +76,20 @@ export interface OpenDirectServerOptions {
   readonly databasePath: string;
   /** The externally advertised origin placed in pairing codes and the direct manifest. */
   readonly publicOrigin: string | (() => string);
+  /**
+   * The Solana networks this server's wallet operations are configured for, published as the
+   * manifest's `direct.supported_networks` (SEE-174). There is deliberately no default: absent or
+   * empty declares no network, and the phone shows the connection but signs nothing for it until
+   * the server declares one. A host that reads the list from its configuration uses
+   * `parseSupportedNetworks`, so every server accepts the same names.
+   *
+   * List what the server actually runs against — a server whose chain reads and preparation only
+   * work on Mainnet says Mainnet — and never every network the protocol can name. It is separate
+   * from the environment: a production server may run on Devnet. UNSPECIFIED, unknown values and
+   * duplicates make opening fail; order doesn't matter, because it is published in canonical
+   * order. Changing it moves the manifest's settings revision on the next start.
+   */
+  readonly supportedNetworks?: readonly SolanaNetwork[];
   readonly requestTtlSeconds: number;
   readonly pendingLimit: number;
   readonly pairingTokenTtlSeconds: number;
@@ -187,6 +204,11 @@ function buildInvalidations(
 export function openDirectServer(
   options: OpenDirectServerOptions,
 ): DirectServer {
+  // Checked before anything is opened, so a bad list is a startup failure with a named reason and
+  // never a manifest the phone has to refuse.
+  const supportedNetworks = canonicalSupportedNetworks(
+    options.supportedNetworks ?? [],
+  );
   const db = openDatabase(options.databasePath);
   try {
     const requests = new RequestStore(db, {
@@ -293,6 +315,7 @@ export function openDirectServer(
         return publishManifest(pairingStore, {
           serverId,
           url: publicOrigin(),
+          supportedNetworks,
         });
       },
       requests: core,
@@ -328,6 +351,7 @@ export function openDirectServer(
               options.log,
               preparer,
               tracker,
+              supportedNetworks,
             )(router);
             pairingRoutes(
               pairingStore,

@@ -61,6 +61,11 @@ Two values have no default: `SKR_STAKING_MCP_TOKEN` (`openssl rand -hex 32`) and
 run — every problem at once, rather than one per attempt — and no value that could be a secret is ever
 echoed, because an endpoint URL can carry an API key.
 
+There is no network setting. The manifest's `direct.supported_networks` is always Mainnet (SEE-174): the
+server has just refused to start against any other cluster, so it is a fact rather than a default,
+and a variable that could say "devnet" would advertise a network every request would fail on.
+`server.test.ts` pins it.
+
 ## Checks
 
 ```bash

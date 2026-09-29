@@ -15,8 +15,10 @@ import {
   invalidRelayReason,
   invalidServerUrlReason,
   normalizeServerUrl,
+  parseSupportedNetworks,
   type RelayConfiguration,
 } from "@seeker_agent_connect/server-sdk";
+import type { SolanaNetwork } from "@seeker_agent_connect/server-sdk/protocol";
 
 import { isSecureEndpoint, type OAuthConfig } from "./oauth.ts";
 import { CHAIN_BUDGET_MS } from "./solana/rpc.ts";
@@ -75,6 +77,13 @@ export interface SidecarConfig {
   readonly solanaRpcUrl?: string;
   /** How long one chain call may take (SOLANA_RPC_TIMEOUT_MS); the default applies when unset. */
   readonly solanaRpcTimeoutMs?: number;
+  /**
+   * The Solana networks this server's manifest declares (SAC_SUPPORTED_NETWORKS, SEE-174), in
+   * canonical order. Absent declares none: a phone then shows the connection but signs nothing for
+   * it. There is no default, and in particular not Mainnet — the list is the operator's statement
+   * of what this server runs against, and SOLANA_RPC_URL is not read to guess it.
+   */
+  readonly supportedNetworks?: readonly SolanaNetwork[];
   /** Cleartext HTTP/2 update listener for loopback development (SIDECAR_UPDATE_PORT). */
   readonly updatePort?: number;
   /**
@@ -266,6 +275,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     DEFAULT_SOLANA_RPC_TIMEOUT_MS,
     problems,
   );
+  const networks = supportedNetworksOf(env, problems);
   const updatePort = optionalNumber(
     env,
     "SIDECAR_UPDATE_PORT",
@@ -357,6 +367,7 @@ export function loadSidecarConfig(env: Env): SidecarConfig & {
     ...(oauth === undefined ? {} : { oauth }),
     solanaRpcUrl,
     solanaRpcTimeoutMs,
+    ...networks,
     ...(updatePort === undefined ? {} : { updatePort }),
     ...(h2c ? { h2c: true } : {}),
     ...(tlsCertificatePath === undefined ? {} : { tlsCertificatePath }),
@@ -578,6 +589,33 @@ function endpointUrl(env: Env, problems: string[]): string | undefined {
     return undefined;
   }
   return url.toString();
+}
+
+/**
+ * SAC_SUPPORTED_NETWORKS: the networks this server's manifest declares (SEE-174), such as
+ * "mainnet" or "mainnet,devnet". Unset or blank declares none, and startup says so.
+ *
+ * It is not inferred from SOLANA_RPC_URL. The endpoint's cluster is known for certain only by
+ * asking it for its genesis hash, and a manifest that depended on the endpoint answering at startup
+ * would move its revision — and stop a phone signing — whenever the endpoint had a bad minute.
+ * Guessing from how a URL is spelt is worse, and nothing here names a cluster's endpoint anyway.
+ * Nor is it the endpoint's cluster alone: vault_sign_message needs no chain at all, so a server
+ * with no endpoint can still have a network its owner signs on. The operator says which.
+ */
+function supportedNetworksOf(
+  env: Env,
+  problems: string[],
+): Pick<SidecarConfig, "supportedNetworks"> {
+  const raw = env.SAC_SUPPORTED_NETWORKS?.trim();
+  if (!raw) return {};
+  try {
+    return {
+      supportedNetworks: parseSupportedNetworks(raw, "SAC_SUPPORTED_NETWORKS"),
+    };
+  } catch (error) {
+    problems.push(`${(error as Error).message}.`);
+    return {};
+  }
 }
 
 /**

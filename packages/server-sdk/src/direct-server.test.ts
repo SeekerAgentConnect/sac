@@ -9,9 +9,12 @@ import { createConnectTransport } from "@connectrpc/connect-node";
 import {
   AckActionSchema,
   ActionSchema,
+  Network,
   PairingService,
   RequestService,
   RequestState,
+  SolanaNetwork,
+  type ServerManifest,
 } from "./protocol.ts";
 import {
   openDirectServer,
@@ -105,6 +108,116 @@ describe("public direct-server API", () => {
     );
     assert.equal(retried.request.ref?.requestId, requestId);
     await restarted.close();
+  });
+});
+
+/**
+ * The networks a direct server declares (SEE-174), through openDirectServer rather than the
+ * manifest module: the option is checked before anything is opened, the manifest carries it in
+ * canonical order, and a wallet the phone publishes on another network is still stored — an older
+ * phone keeps working — while the operator is told why an updated one will not sign for it.
+ */
+describe("supported networks", () => {
+  const declared = (manifest: ServerManifest) =>
+    manifest.reference.case === "direct"
+      ? manifest.reference.value.supportedNetworks
+      : undefined;
+  const WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW";
+  const options = (
+    databasePath: string,
+    supportedNetworks?: readonly SolanaNetwork[],
+    log: (message: string) => void = () => undefined,
+  ) => ({
+    databasePath,
+    publicOrigin: "http://127.0.0.1:1",
+    requestTtlSeconds: 86_400,
+    pendingLimit: 100,
+    pairingTokenTtlSeconds: 600,
+    liveCommandTimeoutSeconds: 30,
+    log,
+    ...(supportedNetworks === undefined ? {} : { supportedNetworks }),
+  });
+
+  it("declares nothing unless the host does, and never defaults to Mainnet", async () => {
+    const direct = openDirectServer(options(temporaryDatabasePath()));
+    assert.deepEqual(declared(direct.manifest), []);
+    await direct.close();
+  });
+
+  it("refuses a list the contract refuses before opening anything", () => {
+    for (const supportedNetworks of [
+      [SolanaNetwork.MAINNET, SolanaNetwork.MAINNET],
+      [SolanaNetwork.UNSPECIFIED],
+      [7 as SolanaNetwork],
+    ]) {
+      assert.throws(() =>
+        openDirectServer(options(temporaryDatabasePath(), supportedNetworks)),
+      );
+    }
+  });
+
+  it("publishes them in canonical order and moves the revision when they change", async () => {
+    const databasePath = temporaryDatabasePath();
+    const revision = async (supportedNetworks: readonly SolanaNetwork[]) => {
+      const direct = openDirectServer(options(databasePath, supportedNetworks));
+      const manifest = direct.manifest;
+      await direct.close();
+      return [manifest.settingsRevision, declared(manifest)] as const;
+    };
+
+    assert.deepEqual(await revision([SolanaNetwork.MAINNET]), [
+      1n,
+      [SolanaNetwork.MAINNET],
+    ]);
+    assert.deepEqual(await revision([SolanaNetwork.MAINNET]), [
+      1n,
+      [SolanaNetwork.MAINNET],
+    ]);
+    assert.deepEqual(
+      await revision([SolanaNetwork.DEVNET, SolanaNetwork.MAINNET]),
+      [2n, [SolanaNetwork.MAINNET, SolanaNetwork.DEVNET]],
+    );
+  });
+
+  it("stores a binding on an undeclared network and says so", async () => {
+    const lines: string[] = [];
+    const direct = openDirectServer(
+      options(temporaryDatabasePath(), [SolanaNetwork.MAINNET], (line) =>
+        lines.push(line),
+      ),
+    );
+    const phoneApi = await startPhoneApi(direct, {
+      host: "127.0.0.1",
+      port: 0,
+    });
+    const issued = direct.pairing.issue();
+    const paired = await client(
+      PairingService,
+      phoneApi.url,
+      issued.token,
+    ).pair({ serverUrl: issued.serverUrl, deviceName: "SDK test phone" });
+    const phone = client(RequestService, phoneApi.url, paired.phoneToken);
+
+    const devnet = await phone.publishWallet({
+      connectionId: paired.connectionId,
+      binding: { wallet: WALLET, network: Network.DEVNET },
+    });
+    assert.equal(devnet.binding?.network, Network.DEVNET);
+    assert.ok(
+      lines.some((line) =>
+        line.includes("devnet is not a network this server declares (mainnet)"),
+      ),
+    );
+
+    lines.length = 0;
+    await phone.publishWallet({
+      connectionId: paired.connectionId,
+      binding: { wallet: WALLET, network: Network.MAINNET },
+    });
+    assert.ok(!lines.some((line) => line.includes("not a network")));
+
+    await phoneApi.close();
+    await direct.close();
   });
 });
 

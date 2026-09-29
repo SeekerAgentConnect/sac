@@ -68,6 +68,7 @@ file, or set environment variables. Existing `SIDECAR_*` names remain stable for
 | `PAIRING_TOKEN_TTL_SECONDS` | `600` | One-use pairing-code lifetime, 60–3600. |
 | `SOLANA_RPC_URL` | off | Optional read-only preparation/confirmation provider. Without it transfer is not advertised. |
 | `SOLANA_RPC_TIMEOUT_MS` | `10000` | Per-call provider timeout, 1000–20000. |
+| `SAC_SUPPORTED_NETWORKS` | none declared | Comma-separated Solana networks the manifest declares: `mainnet`, `devnet`, `testnet` (lowercase, no duplicates). Empty or `none` declares none, and an up-to-date phone signs nothing for this server. Never inferred from `SOLANA_RPC_URL`. |
 | `FCM_PROJECT_ID` | off | Optional notification invalidations; credentials come from ADC. |
 | `SIDECAR_TLS_CERT_PATH`, `SIDECAR_TLS_KEY_PATH` | off; both or neither | PEM identity for the HTTP/2 + HTTP/1.1 production listener. |
 | `SIDECAR_HEALTH_CA_CERT_PATH` | system trust | Optional CA PEM used only by the container health probe, in addition to Node's system roots. Hostname and chain verification remain enabled. |
@@ -320,6 +321,11 @@ Docker and npm launches.
 ## Optional integrations and ingress
 
 `SOLANA_RPC_URL` adds transfer preparation and confirmation reads; absence removes that capability.
+`SAC_SUPPORTED_NETWORKS` is the list of Solana networks the server manifest declares (SEE-174), and
+a phone offers only wallets on those networks and signs only for them. It has no default — not even
+Mainnet — so set it to what this deployment actually runs against: the cluster `SOLANA_RPC_URL`
+serves, plus any network the owner signs messages on. Changing it moves the manifest's settings
+revision, and the phone rereads the manifest.
 `FCM_PROJECT_ID` enables content-free invalidations and uses ADC from a credential mounted outside
 the image/package. `MCP_OAUTH_ISSUER` makes `/mcp` validate an external issuer's access tokens; this
 application does not provide login, client registration, consent, accounts, or a new authority.
@@ -359,6 +365,9 @@ credentials, requests, notes, RPC URLs, Firebase targets or TLS key bytes.
 - agent works but phone does not: check the second leg—`SIDECAR_PUBLIC_URL`, DNS, trusted TLS,
   HTTP/2 for updates, and phone reachability. Agent localhost proves none of those.
 - transfer is absent: configure a matching `SOLANA_RPC_URL`; the server never chooses a network.
+- the phone says the server has declared no networks, or will not sign: set
+  `SAC_SUPPORTED_NETWORKS` (for example `mainnet`) and restart. The startup log says which networks
+  the manifest declares, or that it declares none.
 - OAuth metadata is absent: OAuth is off; use the static bearer path or configure the complete
   external issuer profile.
 - database is newer than the binary: restore the pre-upgrade backup or run the newer binary.

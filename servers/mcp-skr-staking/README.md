@@ -40,6 +40,10 @@ rather than assumed — and a devnet endpoint reads every account as absent, whi
 from an owner who has nothing staked. The server compares genesis hashes at startup and refuses to
 come up against any other cluster.
 
+Its manifest says the same thing to the phone: `direct.supported_networks` is Mainnet and only Mainnet
+(SEE-174), so the phone offers only a Mainnet wallet for this connection and signs for nothing
+else. It is fixed rather than configured, because no other value would be true.
+
 ## Running it
 
 From source, in a checkout:

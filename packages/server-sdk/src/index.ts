@@ -83,7 +83,16 @@ export {
   RELAY_PROTOCOL_VERSION,
   invalidRelayReason,
 } from "./push/relay.ts";
-export { SERVER_PROTOCOL_VERSION } from "./manifest.ts";
+export {
+  SERVER_PROTOCOL_VERSION,
+  // The networks a server declares in its manifest (SEE-174). The enum itself is in
+  // `./protocol`; these are how a host reads and checks a configured list.
+  SOLANA_NETWORK_NAMES,
+  canonicalSupportedNetworks,
+  parseSupportedNetworks,
+  solanaNetworkName,
+  type SolanaNetworkName,
+} from "./manifest.ts";
 export type { PairingCode, ParsedPairingUri } from "./pairing/uri.ts";
 export type { PairedPhone } from "./storage/pairing-store.ts";
 export {
