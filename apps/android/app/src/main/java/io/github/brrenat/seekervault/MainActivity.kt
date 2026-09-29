@@ -11,6 +11,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.brrenat.seekervault.activity.ActivityViewModel
 import io.github.brrenat.seekervault.connections.ConnectionsViewModel
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
+import io.github.brrenat.seekervault.discover.DiscoverViewModel
 import io.github.brrenat.seekervault.inbox.InboxViewModel
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
 import io.github.brrenat.seekervault.notifications.ProposalNotificationIntent
@@ -71,6 +72,20 @@ class MainActivity : ComponentActivity() {
                     // Restricted-feed access (SEE-156): the state of each request, and the one
                     // action on these screens that opens the wallet.
                     feedAccess = app.feedAccessManager,
+                )
+            }
+        }
+    }
+
+    /** The Discover tab's catalog (SEE-176): reads only, from the build's configured gateway. */
+    private val discover: DiscoverViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val app = application as SeekerVaultApplication
+                DiscoverViewModel(
+                    catalog = app.feedCatalog(),
+                    gatewayUrl = app.discoveryUrl(),
+                    cleartextPermitted = app::isCleartextPermitted,
                 )
             }
         }
@@ -190,6 +205,8 @@ class MainActivity : ComponentActivity() {
                     startInLiveTest = intent.getBooleanExtra(EXTRA_LIVE_TEST, false),
                     positions = positions,
                     arrivals = (application as SeekerVaultApplication).arrivals,
+                    discover = discover,
+                    discoveryUrl = (application as SeekerVaultApplication).discoveryUrl(),
                 )
             }
         }

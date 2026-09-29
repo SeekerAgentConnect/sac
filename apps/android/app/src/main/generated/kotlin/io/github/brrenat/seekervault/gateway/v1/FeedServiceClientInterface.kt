@@ -110,4 +110,20 @@ public interface FeedServiceClientInterface {
    *  again.
    */
   public suspend fun setFeedPushTarget(request: SetFeedPushTargetRequest, headers: Headers = emptyMap()): ResponseMessage<SetFeedPushTargetResponse>
+
+  /**
+   *  The feeds this gateway's operator listed in the app's Discover catalog (SEE-176).
+   *
+   *  It is how a phone that holds no feed reference yet finds one: a page of the feeds the operator
+   *  opted in, each with what onboarding needs to build its reference and describe it before the
+   *  owner chooses anything. Listing is the operator's choice and nothing else — it is independent
+   *  of a feed's access policy, a listed restricted feed stays restricted, and nothing here admits
+   *  anyone to anything: every item is onboarding metadata a manifest read would already answer.
+   *
+   *  Like every read here, the answer is the same for everyone who asks, and asking changes
+   *  nothing and records nothing. A phone that goes on to add a feed reads and validates its
+   *  manifest as it would for a pasted reference, so a card that went stale between the two is
+   *  caught there rather than believed.
+   */
+  public suspend fun listRecommendedFeeds(request: ListRecommendedFeedsRequest, headers: Headers = emptyMap()): ResponseMessage<ListRecommendedFeedsResponse>
 }

@@ -237,6 +237,8 @@ fun EnvChip(
 enum class NetworkChipNetwork {
     Devnet,
     Mainnet,
+    /** Hand-written (SEE-176): the neutral chip, as for the captured two. */
+    Testnet,
 }
 
 @Composable
@@ -253,6 +255,7 @@ fun NetworkChip(
         when (network) {
             NetworkChipNetwork.Devnet -> "Solana devnet"
             NetworkChipNetwork.Mainnet -> "Solana mainnet"
+            NetworkChipNetwork.Testnet -> "Solana testnet"
         }
 
     val devnet = flagged && network == NetworkChipNetwork.Devnet

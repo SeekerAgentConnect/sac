@@ -108,6 +108,8 @@ data class HomeRouteCallbacks(
     val onGlobalRules: () -> Unit,
     val onActivity: () -> Unit,
     val onOpenPending: (PendingItem) -> Unit,
+    /** The Discover tab (SEE-176). */
+    val onDiscover: () -> Unit = {},
 )
 
 /** Stateless rendering of the SEE-121 Home reference. */
@@ -276,6 +278,7 @@ fun HomeRoute(
                             onInbox = callbacks.onInbox,
                             onWallet = callbacks.onWallet,
                             onActivity = callbacks.onActivity,
+                            onDiscover = callbacks.onDiscover,
                         ),
                 ),
             modifier = Modifier.fillMaxSize(),

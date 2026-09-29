@@ -395,6 +395,18 @@ internal val componentGallerySpecimens =
         GallerySpecimen(component = "segmented", variant = "count=3 selected=1") {
             SegmentedThreeSelectedPreview()
         },
+        GallerySpecimen(component = "catalog-card", variant = "status=available") {
+            CatalogCardAvailablePreview()
+        },
+        GallerySpecimen(component = "catalog-card", variant = "status=waiting") {
+            CatalogCardWaitingPreview()
+        },
+        GallerySpecimen(component = "catalog-card", variant = "status=connected") {
+            CatalogCardConnectedPreview()
+        },
+        GallerySpecimen(component = "catalog-card", variant = "sheet=detail") {
+            CatalogDetailSheetPreview()
+        },
         GallerySpecimen(component = "server-row", variant = "state=connected") {
             ServerRowConnectedPreview()
         },

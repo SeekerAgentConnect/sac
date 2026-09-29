@@ -31,6 +31,7 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.discover.FeedCatalog
 import io.github.brrenat.seekervault.feeds.CentrifugoFeedStream
 import io.github.brrenat.seekervault.feeds.ConnectFeedGateway
 import io.github.brrenat.seekervault.feeds.FeedStatusManager
@@ -160,6 +161,15 @@ class SeekerVaultApplication : Application() {
      * rather than by the manager so a test can point one at a local server without a rebuild.
      */
     var relayUrl: () -> String = { BuildConfig.RELAY_URL }
+
+    /**
+     * The gateway whose Discover catalog this build shows (SEE-176), or "" for a build with none.
+     * Replaceable for the same reason as [relayUrl].
+     */
+    var discoveryUrl: () -> String = { BuildConfig.DISCOVERY_URL }
+
+    /** Where the Discover tab reads the catalog: the same feed client every other read uses. */
+    var feedCatalog: () -> FeedCatalog = { feedGateway() }
 
     /**
      * User-visible alerts exist only in an APK built with an operator-supplied Firebase project.

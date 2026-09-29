@@ -81,6 +81,9 @@ const (
 	// FeedServiceSetFeedPushTargetProcedure is the fully-qualified name of the FeedService's
 	// SetFeedPushTarget RPC.
 	FeedServiceSetFeedPushTargetProcedure = "/seekervault.gateway.v1.FeedService/SetFeedPushTarget"
+	// FeedServiceListRecommendedFeedsProcedure is the fully-qualified name of the FeedService's
+	// ListRecommendedFeeds RPC.
+	FeedServiceListRecommendedFeedsProcedure = "/seekervault.gateway.v1.FeedService/ListRecommendedFeeds"
 )
 
 // FeedServiceClient is a client for the seekervault.gateway.v1.FeedService service.
@@ -151,6 +154,19 @@ type FeedServiceClient interface {
 	// being live, and a hint that was already queued grants nothing: every read it prompts is checked
 	// again.
 	SetFeedPushTarget(context.Context, *connect.Request[v1.SetFeedPushTargetRequest]) (*connect.Response[v1.SetFeedPushTargetResponse], error)
+	// The feeds this gateway's operator listed in the app's Discover catalog (SEE-176).
+	//
+	// It is how a phone that holds no feed reference yet finds one: a page of the feeds the operator
+	// opted in, each with what onboarding needs to build its reference and describe it before the
+	// owner chooses anything. Listing is the operator's choice and nothing else — it is independent
+	// of a feed's access policy, a listed restricted feed stays restricted, and nothing here admits
+	// anyone to anything: every item is onboarding metadata a manifest read would already answer.
+	//
+	// Like every read here, the answer is the same for everyone who asks, and asking changes
+	// nothing and records nothing. A phone that goes on to add a feed reads and validates its
+	// manifest as it would for a pasted reference, so a card that went stale between the two is
+	// caught there rather than believed.
+	ListRecommendedFeeds(context.Context, *connect.Request[v1.ListRecommendedFeedsRequest]) (*connect.Response[v1.ListRecommendedFeedsResponse], error)
 }
 
 // NewFeedServiceClient constructs a client for the seekervault.gateway.v1.FeedService service. By
@@ -218,20 +234,27 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("SetFeedPushTarget")),
 			connect.WithClientOptions(opts...),
 		),
+		listRecommendedFeeds: connect.NewClient[v1.ListRecommendedFeedsRequest, v1.ListRecommendedFeedsResponse](
+			httpClient,
+			baseURL+FeedServiceListRecommendedFeedsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("ListRecommendedFeeds")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // feedServiceClient implements FeedServiceClient.
 type feedServiceClient struct {
-	getServerManifest *connect.Client[v1.GetServerManifestRequest, v1.GetServerManifestResponse]
-	listRequests      *connect.Client[v1.ListRequestsRequest, v1.ListRequestsResponse]
-	getRequest        *connect.Client[v1.GetRequestRequest, v1.GetRequestResponse]
-	listProposals     *connect.Client[v1.ListProposalsRequest, v1.ListProposalsResponse]
-	getProposal       *connect.Client[v1.GetProposalRequest, v1.GetProposalResponse]
-	getStreamTicket   *connect.Client[v1.GetStreamTicketRequest, v1.GetStreamTicketResponse]
-	getFeedTopics     *connect.Client[v1.GetFeedTopicsRequest, v1.GetFeedTopicsResponse]
-	getFeedStatus     *connect.Client[v1.GetFeedStatusRequest, v1.GetFeedStatusResponse]
-	setFeedPushTarget *connect.Client[v1.SetFeedPushTargetRequest, v1.SetFeedPushTargetResponse]
+	getServerManifest    *connect.Client[v1.GetServerManifestRequest, v1.GetServerManifestResponse]
+	listRequests         *connect.Client[v1.ListRequestsRequest, v1.ListRequestsResponse]
+	getRequest           *connect.Client[v1.GetRequestRequest, v1.GetRequestResponse]
+	listProposals        *connect.Client[v1.ListProposalsRequest, v1.ListProposalsResponse]
+	getProposal          *connect.Client[v1.GetProposalRequest, v1.GetProposalResponse]
+	getStreamTicket      *connect.Client[v1.GetStreamTicketRequest, v1.GetStreamTicketResponse]
+	getFeedTopics        *connect.Client[v1.GetFeedTopicsRequest, v1.GetFeedTopicsResponse]
+	getFeedStatus        *connect.Client[v1.GetFeedStatusRequest, v1.GetFeedStatusResponse]
+	setFeedPushTarget    *connect.Client[v1.SetFeedPushTargetRequest, v1.SetFeedPushTargetResponse]
+	listRecommendedFeeds *connect.Client[v1.ListRecommendedFeedsRequest, v1.ListRecommendedFeedsResponse]
 }
 
 // GetServerManifest calls seekervault.gateway.v1.FeedService.GetServerManifest.
@@ -277,6 +300,11 @@ func (c *feedServiceClient) GetFeedStatus(ctx context.Context, req *connect.Requ
 // SetFeedPushTarget calls seekervault.gateway.v1.FeedService.SetFeedPushTarget.
 func (c *feedServiceClient) SetFeedPushTarget(ctx context.Context, req *connect.Request[v1.SetFeedPushTargetRequest]) (*connect.Response[v1.SetFeedPushTargetResponse], error) {
 	return c.setFeedPushTarget.CallUnary(ctx, req)
+}
+
+// ListRecommendedFeeds calls seekervault.gateway.v1.FeedService.ListRecommendedFeeds.
+func (c *feedServiceClient) ListRecommendedFeeds(ctx context.Context, req *connect.Request[v1.ListRecommendedFeedsRequest]) (*connect.Response[v1.ListRecommendedFeedsResponse], error) {
+	return c.listRecommendedFeeds.CallUnary(ctx, req)
 }
 
 // FeedServiceHandler is an implementation of the seekervault.gateway.v1.FeedService service.
@@ -347,6 +375,19 @@ type FeedServiceHandler interface {
 	// being live, and a hint that was already queued grants nothing: every read it prompts is checked
 	// again.
 	SetFeedPushTarget(context.Context, *connect.Request[v1.SetFeedPushTargetRequest]) (*connect.Response[v1.SetFeedPushTargetResponse], error)
+	// The feeds this gateway's operator listed in the app's Discover catalog (SEE-176).
+	//
+	// It is how a phone that holds no feed reference yet finds one: a page of the feeds the operator
+	// opted in, each with what onboarding needs to build its reference and describe it before the
+	// owner chooses anything. Listing is the operator's choice and nothing else — it is independent
+	// of a feed's access policy, a listed restricted feed stays restricted, and nothing here admits
+	// anyone to anything: every item is onboarding metadata a manifest read would already answer.
+	//
+	// Like every read here, the answer is the same for everyone who asks, and asking changes
+	// nothing and records nothing. A phone that goes on to add a feed reads and validates its
+	// manifest as it would for a pasted reference, so a card that went stale between the two is
+	// caught there rather than believed.
+	ListRecommendedFeeds(context.Context, *connect.Request[v1.ListRecommendedFeedsRequest]) (*connect.Response[v1.ListRecommendedFeedsResponse], error)
 }
 
 // NewFeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -410,6 +451,12 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("SetFeedPushTarget")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceListRecommendedFeedsHandler := connect.NewUnaryHandler(
+		FeedServiceListRecommendedFeedsProcedure,
+		svc.ListRecommendedFeeds,
+		connect.WithSchema(feedServiceMethods.ByName("ListRecommendedFeeds")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/seekervault.gateway.v1.FeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FeedServiceGetServerManifestProcedure:
@@ -430,6 +477,8 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceGetFeedStatusHandler.ServeHTTP(w, r)
 		case FeedServiceSetFeedPushTargetProcedure:
 			feedServiceSetFeedPushTargetHandler.ServeHTTP(w, r)
+		case FeedServiceListRecommendedFeedsProcedure:
+			feedServiceListRecommendedFeedsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -473,4 +522,8 @@ func (UnimplementedFeedServiceHandler) GetFeedStatus(context.Context, *connect.R
 
 func (UnimplementedFeedServiceHandler) SetFeedPushTarget(context.Context, *connect.Request[v1.SetFeedPushTargetRequest]) (*connect.Response[v1.SetFeedPushTargetResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.SetFeedPushTarget is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) ListRecommendedFeeds(context.Context, *connect.Request[v1.ListRecommendedFeedsRequest]) (*connect.Response[v1.ListRecommendedFeedsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.ListRecommendedFeeds is not implemented"))
 }

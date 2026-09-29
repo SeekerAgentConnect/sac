@@ -67,6 +67,17 @@ fun clusterRpc(cluster: String) =
 //     -Pseekervault.relayUrl=https://feeds.example.com
 val relayUrl = (providers.gradleProperty("seekervault.relayUrl").orNull ?: "").trim().trimEnd('/')
 
+// The gateway whose Discover catalog this build shows (SEE-176, docs/wiki/discover.md). An origin,
+// and a public one: the catalog is the operator's list of feeds anyone may browse, and adding one
+// still reads and validates that feed's manifest like a pasted reference. Unset, it is the relay's
+// gateway, which is the gateway this build already trusts; with neither, the Discover tab says the
+// build has no catalog configured and nothing else changes.
+//
+//   apps/android/gradlew -p apps/android :app:assembleDebug \
+//     -Pseekervault.discoveryUrl=https://feeds.example.com
+val discoveryUrl =
+    (providers.gradleProperty("seekervault.discoveryUrl").orNull ?: relayUrl).trim().trimEnd('/')
+
 android {
     namespace = "io.github.brrenat.seekervault"
     compileSdk = 37
@@ -92,6 +103,8 @@ android {
         // is an origin, not a credential: what it grants is nothing until the owner's phone
         // authorizes a server at it, one direct connection at a time.
         buildConfigField("String", "RELAY_URL", "\"$relayUrl\"")
+        // The gateway origin the Discover tab reads its catalog from, or "" for none (SEE-176).
+        buildConfigField("String", "DISCOVERY_URL", "\"$discoveryUrl\"")
         // src/androidTest: the device round trip, run by `pnpm test:hello --device`.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

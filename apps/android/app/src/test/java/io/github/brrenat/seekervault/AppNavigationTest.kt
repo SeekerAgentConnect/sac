@@ -256,9 +256,93 @@ class AppNavigationTest {
 
     private companion object {
         const val CONNECTION = "connection-a"
+        const val GATEWAY_URL = "https://feeds.example.com"
+        const val SERVER = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
         const val OTHER_CONNECTION = "connection-b"
         const val REQUEST = "request-a"
         const val OTHER_REQUEST = "request-b"
         const val ASSET = "devnet/sol"
+    }
+
+    /**
+     * Discover (SEE-176): a peer tab whose card details, onboarding and connections return to it.
+     */
+    @Test
+    fun discoverIsAPeerTabAndEverythingOpenedFromItReturnsToIt() {
+        val navigator = AppNavigator()
+        assertTrue(navigator.selectTab(AppScreen.Discover))
+        assertFalse(navigator.back())
+
+        // A card's details are a sheet over Discover, and Back reveals the same tab.
+        assertTrue(navigator.openCatalogDetail(GATEWAY_URL, SERVER))
+        assertEquals(
+            NavigationState(
+                AppScreen.Discover,
+                listOf(AppSheet.CatalogDetail(GATEWAY_URL, SERVER)),
+            ),
+            navigator.state,
+        )
+        // Connect is from the tab itself, never from over a sheet.
+        assertFalse(navigator.openCatalogConnect())
+        assertTrue(navigator.back())
+
+        // Connect opens Add connection, and Back returns to Discover, not Home.
+        assertTrue(navigator.openCatalogConnect())
+        assertEquals(AppScreen.AddConnection(from = AppScreen.Discover), navigator.state.screen)
+        assertTrue(navigator.back())
+        assertEquals(NavigationState(AppScreen.Discover), navigator.state)
+
+        // A feed already held opens its connection over Discover, with its rules above it.
+        assertTrue(navigator.openConnectionDetail(CONNECTION))
+        assertTrue(navigator.openConnectionRules(CONNECTION))
+        assertTrue(navigator.back())
+        assertTrue(navigator.back())
+        assertEquals(NavigationState(AppScreen.Discover), navigator.state)
+    }
+
+    @Test
+    fun catalogEdgesExistOnlyOnDiscover() {
+        val navigator = AppNavigator()
+        assertFalse(navigator.openCatalogDetail(GATEWAY_URL, SERVER))
+        assertFalse(navigator.openCatalogConnect())
+        // Home's FAB still returns to Home.
+        assertTrue(navigator.openAddConnection())
+        assertEquals(AppScreen.AddConnection(), navigator.state.screen)
+        assertTrue(navigator.back())
+        assertEquals(NavigationState(AppScreen.Home), navigator.state)
+
+        assertTrue(navigator.selectTab(AppScreen.Inbox))
+        assertFalse(navigator.openCatalogDetail(GATEWAY_URL, SERVER))
+        assertFalse(navigator.openConnectionDetail(CONNECTION))
+        assertTrue(navigator.selectTab(AppScreen.Discover))
+        assertFalse(navigator.openAddConnection())
+    }
+
+    @Test
+    fun discoverRoutesSurviveASaveAndRestore() {
+        listOf(
+                NavigationState(AppScreen.Discover),
+                NavigationState(
+                    AppScreen.Discover,
+                    listOf(AppSheet.CatalogDetail(GATEWAY_URL, SERVER)),
+                ),
+                NavigationState(AppScreen.Discover, listOf(AppSheet.ConnectionDetail(CONNECTION))),
+                NavigationState(AppScreen.AddConnection(from = AppScreen.Discover)),
+                NavigationState(AppScreen.AddConnection()),
+            )
+            .forEach { state ->
+                assertEquals(state, decodeNavigationState(encodeNavigationState(state)))
+            }
+        // A catalog detail cannot be restored anywhere but over Discover.
+        val forged =
+            encodeNavigationState(
+                    NavigationState(
+                        AppScreen.Discover,
+                        listOf(AppSheet.CatalogDetail(GATEWAY_URL, SERVER)),
+                    )
+                )
+                .toMutableList()
+                .also { it[1] = "home" }
+        assertEquals(null, decodeNavigationState(forged))
     }
 }

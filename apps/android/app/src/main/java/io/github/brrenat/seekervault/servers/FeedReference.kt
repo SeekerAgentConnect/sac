@@ -5,6 +5,7 @@ import io.github.brrenat.seekervault.connections.PairingCodes
 import io.github.brrenat.seekervault.connections.isConnectionId
 import java.net.URI
 import java.net.URISyntaxException
+import java.net.URLEncoder
 
 /**
  * How a publisher's feed is added: the shared gateway it publishes through, and which server it is
@@ -146,6 +147,22 @@ object FeedReferences {
             null -> null
             PairingCodeProblem.InsecureServerUrl -> FeedReferenceProblem.InsecureGatewayUrl
             else -> FeedReferenceProblem.BadGatewayUrl
+        }
+    }
+
+    /**
+     * [reference] written as the `seekervault://feed` text [parse] reads back to the same
+     * reference, for a feed the app found itself — a Discover card (SEE-176) — to go through the
+     * same Add connection path as a pasted one. An invitation is written only when the reference
+     * carries one.
+     */
+    fun format(reference: FeedReference): String = buildString {
+        append("seekervault://feed?v=").append(VERSION)
+        append("&gateway=").append(URLEncoder.encode(reference.gatewayUrl, "UTF-8"))
+        append("&server=").append(URLEncoder.encode(reference.serverId, "UTF-8"))
+        if (reference.restricted) append("&access=restricted")
+        reference.invitation?.let {
+            append("&invitation=").append(URLEncoder.encode(it, "UTF-8"))
         }
     }
 

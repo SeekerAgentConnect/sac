@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/credential"
+	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
+	"google.golang.org/protobuf/proto"
 )
 
 // Publisher is a registered publisher, as the operator's tool lists one.
@@ -50,6 +52,9 @@ func (s *Store) Register(ctx context.Context, registration Registration, capabil
 		return "", fmt.Errorf("not an access policy: %q with origin %q",
 			registration.Access.Policy, registration.Access.AuthOrigin)
 	}
+	if !registration.Listing.Valid() {
+		return "", fmt.Errorf("not a public description: %q", registration.Listing.Description)
+	}
 	err := s.write(ctx, func(tx *Tx) error {
 		known, err := tx.PublisherExists(ctx, registration.ServerID)
 		if err != nil {
@@ -60,11 +65,13 @@ func (s *Store) Register(ctx context.Context, registration Registration, capabil
 		}
 		if _, err := tx.tx.ExecContext(ctx,
 			`INSERT INTO `+Schema+`.publisher
-			   (server_id, label, host, created_at_ms, publishing, relaying, access_policy, auth_origin)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			   (server_id, label, host, created_at_ms, publishing, relaying, access_policy, auth_origin,
+			    show_in_recommendations, public_description)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 			registration.ServerID, registration.Label, registration.Host, milliseconds(at),
 			registration.Publishing, registration.Relaying,
-			string(policyOf(registration.Access)), registration.Access.AuthOrigin); err != nil {
+			string(policyOf(registration.Access)), registration.Access.AuthOrigin,
+			registration.Listing.Recommended, registration.Listing.Description); err != nil {
 			return fmt.Errorf("register publisher: %w", err)
 		}
 		return tx.addCredential(ctx, registration.ServerID, registration.Label, capability, hash, at)
@@ -96,6 +103,63 @@ func (s *Store) SetCapabilities(ctx context.Context, serverID string, publishing
 		}
 		return nil
 	})
+}
+
+// SetListing is the operator listing or unlisting a feed in the app's Discover catalog, and
+// editing the description it is listed with (SEE-176). The access policy, its epoch, the grants and
+// the credentials are not touched: see the SQLite store, where that is argued.
+func (s *Store) SetListing(ctx context.Context, serverID string, listing storage.Listing) error {
+	if !listing.Valid() {
+		return fmt.Errorf("not a public description: %q", listing.Description)
+	}
+	return s.write(ctx, func(tx *Tx) error {
+		outcome, err := tx.tx.ExecContext(ctx,
+			`UPDATE `+Schema+`.publisher SET show_in_recommendations = $1, public_description = $2
+			  WHERE server_id = $3`,
+			listing.Recommended, listing.Description, serverID)
+		if err != nil {
+			return fmt.Errorf("set listing: %w", err)
+		}
+		return one(outcome, fmt.Errorf("%w: %s", ErrNoPublisher, serverID))
+	})
+}
+
+// Listed is the Discover catalog's candidates (SEE-176), with the same selection as the SQLite
+// store's: listed, publishing, described, and with a manifest — read in one statement, fresh on
+// every call.
+func (s *Store) Listed(ctx context.Context) ([]storage.ListedFeed, error) {
+	rows, err := s.reader.QueryContext(ctx,
+		`SELECT p.server_id, p.public_description, p.access_policy, p.auth_origin, p.access_epoch,
+		        m.document
+		   FROM `+Schema+`.publisher p JOIN `+Schema+`.manifest m ON m.server_id = p.server_id
+		  WHERE p.show_in_recommendations AND p.publishing AND p.public_description <> ''
+		  ORDER BY p.server_id
+		  LIMIT $1`, storage.MostListed)
+	if err != nil {
+		return nil, fmt.Errorf("list the catalog: %w", err)
+	}
+	defer rows.Close()
+	var listed []storage.ListedFeed
+	for rows.Next() {
+		var (
+			one      storage.ListedFeed
+			policy   string
+			epoch    int64
+			document []byte
+		)
+		if err := rows.Scan(&one.ServerID, &one.Description, &policy, &one.Access.AuthOrigin,
+			&epoch, &document); err != nil {
+			return nil, fmt.Errorf("list the catalog: %w", err)
+		}
+		one.Access.Policy = storage.AccessPolicy(policy)
+		one.Access.Epoch = uint64(epoch)
+		one.Manifest = &serverv1.ServerManifest{}
+		if err := proto.Unmarshal(document, one.Manifest); err != nil {
+			return nil, fmt.Errorf("read manifest %s: %w", one.ServerID, err)
+		}
+		listed = append(listed, one)
+	}
+	return listed, rows.Err()
 }
 
 // AddCredential is a rotation: the publisher keeps publishing with what it has while the new
@@ -318,7 +382,8 @@ const publisherColumns = `SELECT p.server_id, p.label, p.host, p.created_at_ms,
 	        p.access_policy, p.auth_origin, p.access_epoch,
 	        (SELECT COUNT(*) FROM ` + Schema + `.access_grant g
 	          WHERE g.server_id = p.server_id AND g.revoked_at_ms IS NULL
-	            AND g.expires_at_ms > (EXTRACT(EPOCH FROM now()) * 1000)::BIGINT)`
+	            AND g.expires_at_ms > (EXTRACT(EPOCH FROM now()) * 1000)::BIGINT),
+	        p.show_in_recommendations, p.public_description`
 
 func scanPublisher(from scanner) (Publisher, error) {
 	var (
@@ -330,7 +395,8 @@ func scanPublisher(from scanner) (Publisher, error) {
 	if err := from.Scan(&publisher.ServerID, &publisher.Label, &publisher.Host, &created,
 		&publisher.Publishing, &publisher.Relaying, &publisher.Active,
 		&publisher.ActiveRelay, &policy, &publisher.Access.AuthOrigin, &epoch,
-		&publisher.Grants); err != nil {
+		&publisher.Grants, &publisher.Listing.Recommended,
+		&publisher.Listing.Description); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return publisher, err
 		}

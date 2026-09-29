@@ -17,9 +17,11 @@
 //
 //	feed-gatewayctl register --server <uuid> --label <note> [--host <url>] [--for publish|relay|both]
 //	                         [--access public|restricted --auth-origin <https origin>]
+//	                         [--recommend yes|no] [--description <text>]
 //	feed-gatewayctl rotate   --server <uuid> [--label <note>] [--for publish|relay]
 //	feed-gatewayctl capabilities --server <uuid> --for publish|relay|both|none
 //	feed-gatewayctl access   --server <uuid> --access public|restricted [--auth-origin <https origin>]
+//	feed-gatewayctl listing  --server <uuid> [--recommend yes|no] [--description <text>]
 //	feed-gatewayctl revoke   --credential <id>
 //	feed-gatewayctl revoke   --server <uuid> --all
 //	feed-gatewayctl list     [--server <uuid>]
@@ -39,6 +41,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,14 +91,18 @@ func main() {
 const usage = `feed-gatewayctl manages the publishers a feed gateway accepts.
 
   register --server <uuid> [--label <note>] [--host <url>] [--for publish|relay|both]
+           [--access ...] [--recommend yes|no] [--description <text>]
                                               register a server and print one credential
   rotate   --server <uuid> [--label <note>] [--for publish|relay]
                                               add a second credential, so the first can be retired
   capabilities --server <uuid> --for publish|relay|both|none
+                                              enable or disable what a server may do
   access   --server <uuid> --access public|restricted [--auth-origin <origin>]
                                               who may read a feed, and where its subscribers
                                               prove who they are (SEE-156)
-                                              enable or disable what a server may do
+  listing  --server <uuid> [--recommend yes|no] [--description <text>]
+                                              whether the app's Discover tab shows a feed, and
+                                              its public description (SEE-176)
   revoke   --credential <id>                  end one credential
   revoke   --server <uuid> --all              end every credential a server holds
   list     [--server <uuid>]                  what is registered, and which credentials exist
@@ -181,9 +188,16 @@ func run(arguments []string, out io.Writer) error {
 		"public or restricted: who may read the feed (SEE-156); omitted, register makes it public")
 	authOrigin := flags.String("auth-origin", "",
 		"with --access restricted: the HTTPS origin where the feed's subscribers prove who they are")
+	recommend := flags.String("recommend", "",
+		"yes or no: whether the app's Discover tab shows the feed (SEE-176); omitted, register "+
+			"leaves it unlisted and listing leaves it as it is")
+	description := flags.String("description", "",
+		"the feed's public description in the Discover tab: plain text, at most 500 characters")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
+	given := map[string]bool{}
+	flags.Visit(func(set *flag.Flag) { given[set.Name] = true })
 
 	// The one command that touches no database: it turns a password into the hash a deployment
 	// configures, so an operator never has to put the password itself anywhere (SEE-141).
@@ -206,6 +220,46 @@ func run(arguments []string, out io.Writer) error {
 	now := time.Now()
 
 	switch command {
+	case "listing":
+		if !rules.IsID(*serverID) {
+			return fmt.Errorf("--server must be a lowercase UUID")
+		}
+		if !given["recommend"] && !given["description"] {
+			return fmt.Errorf("listing needs --recommend yes|no, --description <text>, or both")
+		}
+		held, err := documents.Publisher(ctx, *serverID)
+		if err != nil {
+			return err
+		}
+		if held == nil {
+			return fmt.Errorf("%w: %s", storage.ErrNoPublisher, *serverID)
+		}
+		// Only what was given changes, so editing the description leaves the flag alone and
+		// switching the flag keeps the description the operator wrote.
+		listing := held.Listing
+		if given["recommend"] {
+			if listing.Recommended, err = recommendOf(*recommend); err != nil {
+				return err
+			}
+		}
+		if given["description"] {
+			if listing.Description, err = admin.Description(*description); err != nil {
+				return fmt.Errorf("--description: %v", err)
+			}
+		}
+		if listing.Recommended && !held.Publishing {
+			return fmt.Errorf("%s is not enabled for publishing, so it has no feed to recommend; "+
+				"run `capabilities --server %s --for publish` first", *serverID, *serverID)
+		}
+		if err := documents.SetListing(ctx, *serverID, listing); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s is now %s\n", *serverID, describeListing(listing))
+		fmt.Fprint(out, "Who may read the feed has not changed, and neither has any subscription or "+
+			"feed link.\nThe catalog shows a listed feed once it has a description and a published "+
+			"manifest.\n")
+		return nil
+
 	case "access":
 		if !rules.IsID(*serverID) {
 			return fmt.Errorf("--server must be a lowercase UUID")
@@ -278,9 +332,24 @@ func run(arguments []string, out io.Writer) error {
 			if accessErr != nil {
 				return accessErr
 			}
+			// Unlisted unless the operator says otherwise, which is what every registration made
+			// before SEE-176 is.
+			listing := storage.Listing{}
+			if given["recommend"] {
+				if listing.Recommended, err = recommendOf(*recommend); err != nil {
+					return err
+				}
+			}
+			if listing.Description, err = admin.Description(*description); err != nil {
+				return fmt.Errorf("--description: %v", err)
+			}
+			if listing.Recommended && !publishing {
+				return fmt.Errorf("--recommend belongs to a feed: a server that does not publish " +
+					"has nothing to recommend")
+			}
 			issued, err = documents.Register(ctx, storage.Registration{
 				ServerID: *serverID, Label: note, Host: recorded,
-				Publishing: publishing, Relaying: relaying, Access: access,
+				Publishing: publishing, Relaying: relaying, Access: access, Listing: listing,
 			}, first, hash, now)
 			if errors.Is(err, storage.ErrPublisherExists) {
 				return fmt.Errorf("%s is already registered; use `rotate --server %s` to add a "+
@@ -289,6 +358,7 @@ func run(arguments []string, out io.Writer) error {
 			if err == nil {
 				fmt.Fprintf(out, "capabilities %s\n", enabled(publishing, relaying))
 				fmt.Fprintf(out, "access      %s\n", describeAccess(access))
+				fmt.Fprintf(out, "listing     %s\n", describeListing(listing))
 			}
 		} else {
 			if strings.TrimSpace(*host) != "" {
@@ -298,6 +368,10 @@ func run(arguments []string, out io.Writer) error {
 			if *policy != "" || *authOrigin != "" {
 				return fmt.Errorf("--access belongs to `register` and `access`: rotation adds a " +
 					"credential and changes nothing else about a server")
+			}
+			if given["recommend"] || given["description"] {
+				return fmt.Errorf("--recommend and --description belong to `register` and " +
+					"`listing`: rotation adds a credential and changes nothing else about a server")
 			}
 			for_, capErr := credentialFor(*capability)
 			if capErr != nil {
@@ -404,6 +478,10 @@ func run(arguments []string, out io.Writer) error {
 				fmt.Fprintf(out, "%*s  %s, %d live grant(s)\n", len(publisher.ServerID), "",
 					describeAccess(publisher.Access), publisher.Grants)
 			}
+			if publisher.Listing.Recommended {
+				fmt.Fprintf(out, "%*s  %s\n", len(publisher.ServerID), "",
+					describeListing(publisher.Listing))
+			}
 		}
 		return nil
 
@@ -491,4 +569,27 @@ func describeAccess(access storage.Access) string {
 		return "restricted, authenticated at " + access.AuthOrigin
 	}
 	return "public"
+}
+
+// recommendOf reads --recommend. It is a word rather than a boolean flag so that `listing` can tell
+// "leave it as it is" (omitted) from "turn it off" (no).
+func recommendOf(value string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "yes", "on", "true":
+		return true, nil
+	case "no", "off", "false":
+		return false, nil
+	}
+	return false, fmt.Errorf("--recommend must be yes or no")
+}
+
+func describeListing(listing storage.Listing) string {
+	said := "unlisted in app recommendations"
+	if listing.Recommended {
+		said = "listed in app recommendations"
+	}
+	if strings.TrimSpace(listing.Description) == "" {
+		return said + ", with no public description"
+	}
+	return said + ", described as " + strconv.Quote(listing.Description)
 }
