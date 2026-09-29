@@ -61,7 +61,7 @@
     </plurals>
     <string name="message_hidden_characters">This message contains characters that normally can\'t be seen. They\'re marked above, and the wallet signs the message exactly as it is.</string>
     <string name="message_not_a_payment">Signing proves your wallet signed this text. It moves no funds and sends nothing to the network.</string>
-    <string name="message_no_wallet">Connect a wallet before approving this. Nothing can be signed until you do.</string>
+    <string name="message_no_wallet">This connection has no wallet ready to sign. Check its wallet on the connection\'s page; nothing can be signed until it is ready.</string>
     <string name="signing_wallet">%1$s on %2$s</string>
     <string name="acknowledge">Acknowledge</string>
     <string name="approve">Approve and sign</string>
@@ -98,7 +98,7 @@
     <string name="status_not_signed">Nothing was signed. %1$s</string>
     <string name="status_unresolved">This phone never learned what the wallet did. %1$s No signature reached this phone, and nothing was sent to the network.</string>
     <string name="status_unknown_transfer">This phone never learned what the wallet did. %1$s The transaction may or may not have been sent, so the server is told the outcome is unknown. Nothing is sent to the wallet again.</string>
-    <string name="problem_no_wallet">No wallet is connected on this phone, so nothing can be signed. Connect one on the Wallet screen.</string>
+    <string name="problem_no_wallet">This connection has no wallet ready to sign, so nothing can be signed. Choose or reconnect its wallet on the connection\'s page.</string>
     <string name="problem_other_wallet">This request names another wallet than the one you connected. It can only be rejected.</string>
     <string name="problem_wallet_changed">Your wallet changed while you were reviewing this. Check the request again before approving it.</string>
     <string name="problem_not_verified">The transaction on screen is not the one this phone holds any more, or this phone could not read all of it. Nothing was approved. Read it again and review the new version.</string>
@@ -159,7 +159,7 @@
 
     <!-- Approving a transfer through the wallet (SAW-021). docs/guides/transfers.md -->
     <string name="transfer_not_approvable">This transfer can\'t be approved on this phone. Only a transaction this phone read whole, and found to match the request, is ever handed to your wallet. You can reject it.</string>
-    <string name="transfer_no_wallet">Connect a wallet before approving this. Nothing can be sent until you do.</string>
+    <string name="transfer_no_wallet">This connection has no wallet ready to sign. Check its wallet on the connection\'s page; nothing can be sent until it is ready.</string>
 
     <!-- What the phone found wrong with a prepared transaction, or could not account for. -->
     <string name="finding_hash_mismatch">The server\'s own checksum is not the checksum of the bytes it sent.</string>
@@ -169,7 +169,7 @@
     <string name="finding_already_signed">The transaction already carries a signature. A wallet must be handed an unsigned one.</string>
     <string name="finding_fee_payer">The account paying and signing is not the wallet this request names.</string>
     <string name="finding_extra_signer">Somebody else would have to sign as well, so your approval would carry theirs.</string>
-    <string name="finding_no_wallet">No wallet is connected on this phone, so there is nothing to check this against.</string>
+    <string name="finding_no_wallet">This connection has no wallet ready, so there is nothing to check this against.</string>
     <string name="finding_other_wallet">This request names a wallet other than the one you connected.</string>
     <string name="finding_network_mismatch">This request is for another network than the wallet you connected.</string>
     <string name="finding_no_transfer">The transaction does not contain the transfer this request asks for.</string>
@@ -298,7 +298,7 @@
     <string name="staking_finding_version">This transaction uses a message version this app does not read.</string>
     <string name="staking_finding_lookup">This transaction loads accounts from a lookup table, so what it touches cannot be read here.</string>
     <string name="staking_finding_already_signed">Something has already signed this transaction.</string>
-    <string name="staking_finding_no_wallet">No wallet is connected, so there is nothing to check this against.</string>
+    <string name="staking_finding_no_wallet">This connection has no wallet ready, so there is nothing to check this against.</string>
     <string name="staking_finding_other_wallet">This request names a wallet other than the one you connected.</string>
     <string name="staking_finding_network">This request is for a different network than your wallet.</string>
     <string name="staking_finding_fee_payer">Your wallet is not the account paying for this transaction.</string>

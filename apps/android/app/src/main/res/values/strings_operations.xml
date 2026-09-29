@@ -47,7 +47,7 @@
     <string name="operation_unserved_contract">This build carries that execution provider, but at a version it cannot call.</string>
     <string name="operation_unserved_action">That execution provider does not do what this signal asks for.</string>
     <string name="operation_unserved_schema">This signal states a version of its action that this build does not read.</string>
-    <string name="operation_unserved_network">That execution provider does not serve the network your wallet is selected for.</string>
+    <string name="operation_unserved_network">That execution provider does not serve the network this feed\'s wallet is on.</string>
     <string name="operation_unserved_environment">That execution provider does not serve this connection\'s environment.</string>
     <string name="operation_unserved_asset">That execution provider does not take the asset this signal names.</string>
     <string name="operation_unsupported">This build has no plugin for what this server proposes, so it is shown in full and nothing here can carry it out.</string>
@@ -86,8 +86,8 @@
     <!-- Why an approval stopped. -->
     <string name="operation_problem_rules_changed">Your rules changed while this was open, so the review was made again. Read it and approve again if you still mean to.</string>
     <string name="operation_problem_not_acknowledged">Tick the box above to go ahead past the warnings.</string>
-    <string name="operation_problem_no_wallet">Connect a wallet first.</string>
-    <string name="operation_problem_wallet_changed">The selected wallet is not the one this review was made for. Nothing was signed.</string>
+    <string name="operation_problem_no_wallet">Choose a wallet for this feed first, on a network it supports.</string>
+    <string name="operation_problem_wallet_changed">This feed\'s wallet changed since this review was prepared. Prepare it again for the new wallet; nothing was signed.</string>
     <string name="operation_problem_gone">This proposal, or the feed it came from, is no longer on this phone.</string>
 
     <!-- The rules between a review and the wallet. -->
@@ -108,8 +108,8 @@
     <string name="operation_binding_other_contract">These bytes were prepared against a plugin boundary this build does not use.</string>
     <string name="operation_binding_nothing_prepared">Nothing was prepared, so there is nothing to sign.</string>
     <string name="operation_binding_preparation_expired">The quote and the transaction have expired. Prepare again for a fresh one.</string>
-    <string name="operation_binding_no_wallet">No wallet is connected on this phone.</string>
-    <string name="operation_binding_other_wallet">The wallet selected now is not the one this was prepared for.</string>
-    <string name="operation_binding_other_network">Your wallet is selected for another network than this was prepared for.</string>
+    <string name="operation_binding_no_wallet">This feed has no wallet ready to sign.</string>
+    <string name="operation_binding_other_wallet">This feed\'s wallet is not the one this was prepared for.</string>
+    <string name="operation_binding_other_network">This feed\'s wallet is on another network than this was prepared for.</string>
     <string name="operation_binding_other_environment">This feed changed between sandbox and production while you were reading. Prepare it again and review it as it is now.</string>
 </resources>

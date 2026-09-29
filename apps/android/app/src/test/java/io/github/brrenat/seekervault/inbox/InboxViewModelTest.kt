@@ -41,6 +41,7 @@ import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.StakingOperation
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
+import io.github.brrenat.seekervault.servers.ALL_NETWORKS
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.directManifest
 import io.github.brrenat.seekervault.skr.ADDRESSES
@@ -56,11 +57,13 @@ import io.github.brrenat.seekervault.skr.tokenAccount
 import io.github.brrenat.seekervault.skr.userStakeAccount
 import io.github.brrenat.seekervault.transactions.Finding
 import io.github.brrenat.seekervault.transactions.Verdict
+import io.github.brrenat.seekervault.wallet.BindOutcome
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SendResult
 import io.github.brrenat.seekervault.wallet.SignResult
 import io.github.brrenat.seekervault.wallet.WalletNetwork
+import io.github.brrenat.seekervault.wallet.WalletReadiness
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
@@ -95,8 +98,15 @@ class InboxViewModelTest {
     @get:Rule val folder = TemporaryFolder()
 
     private val gateway = FakeConnectionGateway()
-    private val server = gateway.serve(URL)
-    private val other = gateway.serve(OTHER_URL)
+    // Both servers declare every network, so a test's wallet network is its own choice (SEE-174).
+    private val server =
+        gateway.serve(URL).also {
+            it.manifest = directManifest(it.serverId, URL, networks = ALL_NETWORKS)
+        }
+    private val other =
+        gateway.serve(OTHER_URL).also {
+            it.manifest = directManifest(it.serverId, OTHER_URL, networks = ALL_NETWORKS)
+        }
     private val key = softwareKey()
     private val history by lazy { ActivityLog(ActivityStore(File(folder.root, "activity"))) }
     private val policies by lazy { PolicyStore(File(folder.root, "policies")) }
@@ -290,14 +300,25 @@ class InboxViewModelTest {
     ): Pair<RequestKey, SelectedWallet> = runBlocking {
         val connection = repository.pair(server.issue(URL))
         adapter.answerConnected(address)
-        wallet.connect(network)
+        val selected = bindWallet(connection.id, network)
         val request = server.addPendingMessage(connection.id, address, text)
         repository.refresh(connection.id)
-        RequestKey(connection.id, request.ref.requestId) to
-            checkNotNull(wallet.wallet.value) { "the wallet is connected" }
+        RequestKey(connection.id, request.ref.requestId) to selected
     }
 
     private fun submitted() = gateway.submits.map { it.second.resultCase }
+
+    /**
+     * Connects a wallet on [network] and binds [connectionId] to it, which tells that server and no
+     * other (SEE-174). The server's manifest is read first, the way a refresh reads it, so the
+     * binding is checked against the networks it declares. Returns the wallet it now signs with.
+     */
+    private suspend fun bindWallet(connectionId: String, network: WalletNetwork): SelectedWallet {
+        repository.resolveManifest(connectionId)
+        val profile = wallet.connectProfiles(network).profiles.single()
+        wallet.bind(connectionId, profile.id)
+        return checkNotNull(wallet.walletFor(connectionId)) { "the wallet is ready" }
+    }
 
     @Test
     fun asksTheWalletOnlyOnceTheOwnerHasApproved() {
@@ -385,20 +406,23 @@ class InboxViewModelTest {
     @Test
     fun asksNothingWhenTheWalletChangedWhileTheOwnerWasReviewing() {
         val (key, reviewed) = readyToSign()
-        // The owner connected another wallet on the Wallet screen while this was on screen. The
-        // server couldn't be told, so this phone still has the request in front of them.
+        // The owner rebound this connection to another wallet while this was on screen (SEE-174).
+        // The server couldn't be told, so this phone still has the request in front of them — and
+        // the connection's wallet is waiting for its server, so it is no wallet to sign with.
         runBlocking {
             server.failure = GatewayException.Kind.Unreachable
             adapter.answerConnected(OTHER_WALLET)
-            wallet.connect(WalletNetwork.Mainnet)
+            val other = wallet.connectProfiles(WalletNetwork.Mainnet).profiles.single()
+            assertEquals(BindOutcome.PublicationFailed, wallet.bind(key.connectionId, other.id))
             server.failure = null
         }
         assertNotNull(repository.inbox.value.pendingRequest(key))
+        assertTrue(wallet.readiness(key.connectionId) is WalletReadiness.PublicationPending)
         val viewModel = viewModel()
 
         viewModel.approve(key, reviewed)
 
-        assertEquals(SigningProblem.Changed, viewModel.state.value.problem)
+        assertEquals(SigningProblem.NoWallet, viewModel.state.value.problem)
         assertEquals(key, viewModel.state.value.problemKey)
         assertEquals(emptyList<Any>(), adapter.signings)
         assertEquals(emptyList<Any>(), submitted())
@@ -672,9 +696,12 @@ class InboxViewModelTest {
         val first = runBlocking { repository.pair(server.issue(URL)) }
         val second = runBlocking { repository.pair(other.issue(OTHER_URL)) }
         adapter.answerConnected(WALLET)
+        // One profile, bound to both connections: each still signs only its own requests.
         val selected = runBlocking {
-            wallet.connect(WalletNetwork.Mainnet)
-            checkNotNull(wallet.wallet.value)
+            val bound = bindWallet(first.id, WalletNetwork.Mainnet)
+            repository.resolveManifest(second.id)
+            wallet.bind(second.id, bound.profileId)
+            bound
         }
         // The same request ID on both servers: only the connection tells them apart.
         server.addPendingMessage(first.id, WALLET, "For the first", OTHER_REQUEST)
@@ -727,7 +754,7 @@ class InboxViewModelTest {
         val fields = case.getJSONObject("request")
         val connection = repository.pair(server.issue(URL))
         adapter.answerConnected(fields.getString("wallet"))
-        wallet.connect(WalletNetwork.Devnet)
+        bindWallet(connection.id, WalletNetwork.Devnet)
         val request =
             server.addPendingTransfer(
                 connection.id,
@@ -770,7 +797,7 @@ class InboxViewModelTest {
     ): Pair<RequestKey, FakeChain> = runBlocking {
         val connection = repository.pair(server.issue(URL))
         adapter.answerConnected(OWNER)
-        wallet.connect(WalletNetwork.Mainnet)
+        bindWallet(connection.id, WalletNetwork.Mainnet)
         val request =
             server.addPendingStaking(
                 connection.id,
@@ -1221,10 +1248,16 @@ class InboxViewModelTest {
     }
 
     @Test
-    fun connectingAnotherWalletTakesTheTransferOffThisPhoneEntirely() {
+    fun rebindingTheConnectionToAnotherWalletTakesTheTransferOffThisPhoneEntirely() {
         val (key, viewModel, reviewed) = reviewedTransfer()
         adapter.answerConnected(OTHER_WALLET)
-        runBlocking { wallet.connect(WalletNetwork.Devnet) }
+        runBlocking {
+            // Adding a wallet tells no server anything (SEE-174): only binding this connection to
+            // it does, and only this connection's server.
+            val other = wallet.connectProfiles(WalletNetwork.Devnet).profiles.single()
+            assertNotNull(viewModel.state.value.inbox.pendingRequest(key))
+            assertEquals(BindOutcome.Published(1), wallet.bind(key.connectionId, other.id))
+        }
 
         // The sidecar cancelled it when the new binding was published, so there is nothing left to
         // approve, and the approval of what they reviewed goes nowhere.
@@ -2159,7 +2192,7 @@ class InboxViewModelTest {
     private fun pendingSwap(): RequestKey = runBlocking {
         val connection = repository.pair(server.issue(URL))
         adapter.answerConnected(WALLET)
-        wallet.connect(WalletNetwork.Devnet)
+        bindWallet(connection.id, WalletNetwork.Devnet)
         val request =
             server.addPendingSwap(
                 connection.id,
@@ -2237,7 +2270,10 @@ class InboxViewModelTest {
             directManifest(
                 serverId = server.serverId,
                 url = URL,
+                // A new revision of what it said, still declaring its networks (SEE-174).
+                revision = 2,
                 required = listOf("jupiter.swap" to 1..1),
+                networks = ALL_NETWORKS,
             )
         runBlocking { repository.refresh(key.connectionId) }
         val viewModel = viewModel()
@@ -2266,7 +2302,10 @@ class InboxViewModelTest {
             directManifest(
                 serverId = server.serverId,
                 url = URL,
+                // A new revision of what it said, still declaring its networks (SEE-174).
+                revision = 2,
                 required = listOf("jupiter.swap" to 1..1),
+                networks = ALL_NETWORKS,
             )
         runBlocking { repository.refresh(key.connectionId) }
         val viewModel = viewModel()
@@ -2286,7 +2325,10 @@ class InboxViewModelTest {
             directManifest(
                 serverId = server.serverId,
                 url = URL,
+                // A new revision of what it said, still declaring its networks (SEE-174).
+                revision = 2,
                 required = listOf("jupiter.swap" to 1..1),
+                networks = ALL_NETWORKS,
             )
         runBlocking { repository.refresh(key.connectionId) }
         val viewModel = viewModel()
@@ -2329,7 +2371,10 @@ class InboxViewModelTest {
             directManifest(
                 serverId = server.serverId,
                 url = URL,
+                // A new revision of what it said, still declaring its networks (SEE-174).
+                revision = 2,
                 required = listOf("jupiter.swap" to 1..1),
+                networks = ALL_NETWORKS,
             )
         runBlocking { repository.refresh(key.connectionId) }
         adapter.answerSigning(

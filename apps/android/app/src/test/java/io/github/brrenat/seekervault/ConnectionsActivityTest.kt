@@ -20,6 +20,7 @@ import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
 import io.github.brrenat.seekervault.connections.PairingCode
 import io.github.brrenat.seekervault.connections.softwareKey
+import io.github.brrenat.seekervault.wallet.WalletTags
 import java.io.File
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
@@ -78,9 +79,15 @@ class ConnectionsActivityTest {
         compose.onNodeWithTag(ConnectionsTags.CONTINUE).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.PAIR).performScrollTo().performClick()
 
-        // Pairing returns to Home, as the flow map requires. Details open only from its row.
+        // Pairing returns to Home and opens the new connection's sheet with its wallet picker: the
+        // wallet is chosen next (SEE-174). Putting that off leaves the connection on Home, without
+        // a wallet.
         val id = server.connections.keys.single()
         val credential = server.connections.getValue(id)
+        compose.onNodeWithTag(WalletTags.PICKER).assertExists()
+        compose.onNodeWithTag(ConnectionsTags.DIALOG_DISMISS).performClick()
+        compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
+        compose.mainClock.advanceTimeBy(240)
         compose.onNodeWithTag(ConnectionsTags.item(id)).performScrollTo().assertExists()
         compose.onNodeWithText(app.getString(R.string.message_paired, HOST)).assertExists()
         // Let the snackbar go, so it doesn't cover the buttons below.

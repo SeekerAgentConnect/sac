@@ -18,6 +18,7 @@ import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.manifest
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -70,7 +71,7 @@ class ConnectionStore(private val dir: File) {
                     val text = String(AtomicFile(file).readFully(), Charsets.UTF_8)
                     val json = JSONObject(text)
                     if (
-                        json.optInt("version") in FIRST_VERSION until VERSION &&
+                        json.optInt("version") in FIRST_VERSION until RETIREMENT_VERSION &&
                             json.optString("mode") == LEGACY_GATEWAY_PRIVATE
                     ) {
                         decode(text)?.let(::put)
@@ -126,7 +127,7 @@ class ConnectionStore(private val dir: File) {
 
     private companion object {
         const val SUFFIX = ".json"
-        const val VERSION = 6
+        const val VERSION = 7
         const val LEGACY_GATEWAY_PRIVATE = "gateway_private"
         /**
          * Version 1 files predate the mode and the manifest, and are read as direct and unasked.
@@ -136,6 +137,13 @@ class ConnectionStore(private val dir: File) {
         const val ENVIRONMENT_VERSION = 3
         /** Version 6 added the marker colour; before it, records had none (SEE-83). */
         const val COLOUR_VERSION = 6
+        /**
+         * The first version that names a wallet profile (SEE-174). An older record was written when
+         * the phone had one wallet, and every active connection used it.
+         */
+        const val WALLET_PROFILE_VERSION = 7
+        /** The version that retired gateway-private records into inert history (SEE-130). */
+        const val RETIREMENT_VERSION = 6
 
         fun encode(connection: Connection): String =
             JSONObject()
@@ -161,6 +169,7 @@ class ConnectionStore(private val dir: File) {
                 .putOpt("retirement", connection.retirement?.code)
                 .put("environment", connection.environment.code)
                 .putOpt("colour", connection.colour?.name)
+                .putOpt("walletProfileId", connection.walletProfileId)
                 .put("server", encodeServer(connection.server))
                 .toString()
 
@@ -217,6 +226,13 @@ class ConnectionStore(private val dir: File) {
                     JSONArray().apply { manifest.environments.forEach { put(it.code) } },
                 )
                 .put("name", manifest.name)
+                .put(
+                    "supportedNetworks",
+                    JSONArray().apply {
+                        // In the protocol's order, so an unchanged manifest writes the same bytes.
+                        manifest.supportedNetworks.sortedBy { it.ordinal }.forEach { put(it.name) }
+                    },
+                )
 
         fun decode(text: String): Connection? {
             val json = JSONObject(text)
@@ -224,9 +240,10 @@ class ConnectionStore(private val dir: File) {
             if (version !in FIRST_VERSION..VERSION) return null
             val retirement =
                 when {
-                    version < VERSION && json.optString("mode") == LEGACY_GATEWAY_PRIVATE ->
+                    version < RETIREMENT_VERSION &&
+                        json.optString("mode") == LEGACY_GATEWAY_PRIVATE ->
                         ConnectionRetirement.GatewayPrivateRemoved
-                    version >= VERSION ->
+                    version >= RETIREMENT_VERSION ->
                         ConnectionRetirement.entries.firstOrNull {
                             it.code == json.optString("retirement")
                         }
@@ -311,6 +328,9 @@ class ConnectionStore(private val dir: File) {
                             ?.let { name ->
                                 ServerColour.entries.firstOrNull { it.name == name }
                             },
+                walletProfileId =
+                    if (version < WALLET_PROFILE_VERSION) Connection.LEGACY_WALLET_PROFILE
+                    else json.optString("walletProfileId").takeIf { it.isNotEmpty() },
             )
         }
 
@@ -391,6 +411,17 @@ class ConnectionStore(private val dir: File) {
                 if (!environments.add(environment)) return null
             }
             if (environments.isEmpty()) return null
+            // A manifest cached before SEE-174 has no list, which is what an empty one says: no
+            // network declared, so nothing is signed until the server is asked again and answers
+            // with its networks under a new revision.
+            val networks = json.optJSONArray("supportedNetworks") ?: JSONArray()
+            val supportedNetworks = mutableSetOf<WalletNetwork>()
+            for (index in 0 until networks.length()) {
+                val network =
+                    WalletNetwork.entries.firstOrNull { it.name == networks.optString(index) }
+                        ?: return null
+                if (!supportedNetworks.add(network)) return null
+            }
             return ServerManifest(
                 serverId = serverId,
                 protocolVersion = protocolVersion,
@@ -400,6 +431,7 @@ class ConnectionStore(private val dir: File) {
                 required = required.toList(),
                 environments = environments.toSet(),
                 name = json.optString("name"),
+                supportedNetworks = supportedNetworks.toSet(),
             )
         }
     }

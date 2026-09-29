@@ -41,6 +41,7 @@ import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
+import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SendResult
@@ -102,8 +103,7 @@ class OperationViewModelTest {
         proposal: io.github.brrenat.seekervault.proposal.v1.Proposal = swapProposal(),
     ): OperationViewModel = runBlocking {
         phone.adapter.answerConnected(address, chains = listOf(network.chain))
-        phone.wallet.load()
-        phone.wallet.connect(network)
+        phone.connectWallet(network)
         phone.feed.answers = listOf(proposal)
         val model = phone.viewModel()
         model.refresh(CONNECTION)
@@ -143,6 +143,7 @@ class OperationViewModelTest {
                         reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_A)),
                         required = listOf(PluginRequirement(JUPITER_SWAP, 1..1)),
                         environments = setOf(PluginEnvironment.Production),
+                        supportedNetworks = WalletNetwork.entries.toSet(),
                     )
                 ),
         )
@@ -192,8 +193,7 @@ class OperationViewModelTest {
         phone.connections.value = listOf(phone.connection, other)
         val model = runBlocking {
             phone.adapter.answerConnected(owner, chains = listOf(WalletNetwork.Mainnet.chain))
-            phone.wallet.load()
-            phone.wallet.connect(WalletNetwork.Mainnet)
+            phone.connectWallet(WalletNetwork.Mainnet)
             phone.feed.answersByChannel =
                 mapOf(
                     channelFor(SERVER_B) to listOf(swapProposal()),
@@ -317,6 +317,63 @@ class OperationViewModelTest {
     }
 
     @Test
+    fun rebindingTheFeedDropsWhatWasPreparedForItsOldWallet() = runBlocking {
+        // SEE-174: the feed signs with the profile it is bound to, and bytes built for one owner
+        // are not bytes for another.
+        val phone = phone()
+        val model = opened(phone)
+        choose(model, 1_000_000UL)
+        model.prepare()
+        val before = checkNotNull(model.review.value)
+        assertNotNull(before.prepared)
+        assertEquals(owner, before.preparedFor?.address)
+        val reviewed = before.wallet
+
+        phone.adapter.answerConnected(OTHER_OWNER)
+        val other = phone.wallet.connectProfiles(WalletNetwork.Mainnet).profiles.single()
+        phone.wallet.bind(CONNECTION, other.id)
+
+        val after = checkNotNull(model.review.value)
+        assertNull(after.prepared)
+        assertNull(after.inspection)
+        assertFalse(after.acknowledged)
+        assertEquals(OperationProblem.WalletChanged, after.problem)
+        assertEquals(OTHER_OWNER, after.wallet?.address)
+        // The shared signal itself is untouched: only this phone's preparation went.
+        assertEquals(before.record.proposal, after.record.proposal)
+        // And the review from before the change reaches no wallet.
+        model.approve(reviewed)
+        assertEquals(
+            emptyList<Triple<ByteString, SelectedWallet, String>>(),
+            phone.adapter.sendings,
+        )
+    }
+
+    @Test
+    fun aFeedWithoutAWalletOnADeclaredNetworkPreparesNothing() = runBlocking {
+        // A feed bound to a Devnet profile whose server declares only Mainnet has no wallet to
+        // prepare for, and nothing falls back to another profile (SEE-174).
+        val phone = phone()
+        phone.connection =
+            phone.connection.copy(
+                server =
+                    ServerRecord.Known(
+                        checkNotNull(phone.connection.server.manifest)
+                            .copy(supportedNetworks = setOf(WalletNetwork.Mainnet))
+                    )
+            )
+        phone.connections.value = listOf(phone.connection)
+        val model = opened(phone, network = WalletNetwork.Devnet)
+
+        assertNull(phone.wallet.walletFor(CONNECTION))
+        assertNull(checkNotNull(model.review.value).wallet)
+        choose(model, 1_000_000UL)
+        model.prepare()
+        assertNull(checkNotNull(model.review.value).prepared)
+        assertEquals(emptyList<String>(), phone.provider.asked)
+    }
+
+    @Test
     fun aQuoteThatWentStaleIsPreparedAgainRatherThanSigned() = runBlocking {
         val phone = phone()
         val model = opened(phone)
@@ -331,7 +388,7 @@ class OperationViewModelTest {
         // The owner reads, thinks about it, and comes back after the window. The quote is a price
         // from a minute ago and the blockhash is nearly gone, so nothing is signed.
         clock = clock.plus(SWAP_PREPARATION_LIFETIME).plusSeconds(1)
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
 
         assertEquals(
             OperationProblem.Binding(BindingProblem.PreparationExpired),
@@ -346,7 +403,7 @@ class OperationViewModelTest {
         // Preparing again gets a fresh quote and a fresh window, and then it goes through.
         phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
         model.prepare()
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
         assertEquals(1, phone.adapter.sendings.size)
         assertTrue(
             phone.proposals.proposal(CONNECTION, PROPOSAL)?.execution?.outcome
@@ -363,7 +420,7 @@ class OperationViewModelTest {
         model.prepare()
         val reviewed = checkNotNull(checkNotNull(model.review.value).prepared)
 
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
 
         assertEquals(1, phone.adapter.sendings.size)
         val (bytes, signed, _) = phone.adapter.sendings.single()
@@ -402,7 +459,7 @@ class OperationViewModelTest {
         choose(model, 1_000_000UL)
         model.prepare()
 
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
 
         assertEquals(
             ProposalOutcome.Declined,
@@ -411,7 +468,7 @@ class OperationViewModelTest {
         // One execution per proposal, ever. A second tap finds the first one's record.
         phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 1 }))
         model.prepare()
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
         assertEquals(
             OperationProblem.Binding(BindingProblem.AlreadyExecuted),
             checkNotNull(model.review.value).problem,
@@ -434,7 +491,7 @@ class OperationViewModelTest {
         choose(model, 1_000_000UL)
         model.prepare()
 
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
 
         val outcome = phone.proposals.proposal(CONNECTION, PROPOSAL)?.execution?.outcome
         assertTrue(outcome is ProposalOutcome.Unresolved)
@@ -480,7 +537,7 @@ class OperationViewModelTest {
                     expiresAtEpochSeconds = prepared.expiresAtEpochSeconds,
                 )
             },
-            phone.wallet.wallet.value,
+            phone.wallet.walletFor(CONNECTION),
         )
         assertEquals(
             ProposalOutcome.Pending,
@@ -546,7 +603,7 @@ class OperationViewModelTest {
 
         // Approving is not offered, and asking anyway does nothing: it is input validation, not a
         // rule anybody could overrule.
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
         assertEquals(
             emptyList<Triple<ByteString, SelectedWallet, String>>(),
             phone.adapter.sendings,
@@ -626,7 +683,7 @@ class OperationViewModelTest {
         assertTrue(review.inspection?.approvable == true)
         assertTrue(phone.provider.asked.any { it.contains("1000000") })
 
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
 
         // And then nothing was signed and nothing was sent. Not a refusal — there is no problem on
         // the screen — but the whole operation, carried out as far as this environment goes.
@@ -688,7 +745,7 @@ class OperationViewModelTest {
         assertNull(review.inspection)
         assertFalse(review.acknowledged)
         // Approving now does nothing at all: there is nothing prepared to approve.
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
         assertEquals(
             emptyList<Triple<ByteString, SelectedWallet, String>>(),
             phone.adapter.sendings,
@@ -721,7 +778,12 @@ class OperationViewModelTest {
             io.github.brrenat.seekervault.connections.ExecutionOutcome.Refused(
                 BindingProblem.OtherEnvironment
             ),
-            phone.proposals.beginExecution(CONNECTION, PROPOSAL, stale, phone.wallet.wallet.value),
+            phone.proposals.beginExecution(
+                CONNECTION,
+                PROPOSAL,
+                stale,
+                phone.wallet.walletFor(CONNECTION),
+            ),
         )
     }
 
@@ -770,7 +832,7 @@ class OperationViewModelTest {
         val after = checkNotNull(model.review.value)
         assertNull(after.prepared)
         assertEquals("too_much", after.failure?.code)
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
         assertEquals(
             emptyList<Triple<ByteString, SelectedWallet, String>>(),
             phone.adapter.sendings,
@@ -807,7 +869,7 @@ class OperationViewModelTest {
 
         // And the binding is for that pair, so the approval gets past the gate rather than being
         // refused as another instrument.
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
         assertEquals(1, phone.adapter.sendings.size)
         assertEquals(
             checkNotNull(after.prepared).transaction,
@@ -831,7 +893,7 @@ class OperationViewModelTest {
         assertEquals(2L, review.record.proposal.revision)
         assertNull(review.prepared)
         assertNull(review.inspection)
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
         assertEquals(
             emptyList<Triple<ByteString, SelectedWallet, String>>(),
             phone.adapter.sendings,
@@ -840,5 +902,6 @@ class OperationViewModelTest {
 
     private companion object {
         const val OTHER_CONNECTION = "d5f6e2b4-4c60-4167-9b50-8d3ebb4f6a92"
+        const val OTHER_OWNER = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh"
     }
 }

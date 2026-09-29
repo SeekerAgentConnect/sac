@@ -19,7 +19,7 @@ import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.transactions.transfer
 
-/** The app-owned step immediately before a reviewed action is handed to Seed Vault Wallet. */
+/** The app-owned step immediately before a reviewed action is handed to the connection's wallet. */
 @Composable
 internal fun WalletHandoffScreen(
     summary: String,
@@ -27,11 +27,16 @@ internal fun WalletHandoffScreen(
     onDecline: () -> Unit,
     onLeaveWithoutAnswering: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * The wallet app the connection's own profile lives in, which is the one this opens (SEE-159,
+     * SEE-174). Null when the profile never learned it.
+     */
+    walletApp: String? = null,
 ) {
     WalletHandoffSheet(
         state =
             WalletHandoffSheetState(
-                walletName = "Seed Vault Wallet",
+                walletName = walletApp ?: "Your wallet",
                 walletKind = "Another app",
                 headline = "Approve a transaction",
                 summary = summary,

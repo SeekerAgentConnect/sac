@@ -77,6 +77,18 @@ data class Connection(
      * readable and simply gets an assignment again.
      */
     val colour: ServerColour? = null,
+    /**
+     * The saved wallet profile this connection signs with (SEE-174,
+     * docs/guides/wallet-setup.md#one-wallet-per-connection), or null when the owner hasn't chosen
+     * one. It is the owner's choice and nobody else's: a server's manifest can't set it, removing a
+     * profile clears it rather than picking another, and every review, preparation and signing for
+     * this connection resolves the wallet from it and from nothing global.
+     *
+     * [LEGACY_WALLET_PROFILE] marks a record stored before profiles existed, when every connection
+     * used the one wallet. It resolves to nothing until [ConnectionRepository.adoptLegacyWallet]
+     * replaces it with the profile that wallet became.
+     */
+    val walletProfileId: String? = null,
 ) {
     init {
         // A gateway connection exists only because a manifest was read for it: its gateway
@@ -125,6 +137,14 @@ data class Connection(
      */
     val usable: Boolean
         get() = mode == ConnectionMode.Direct && revokedAt == null && hasCredential
+
+    companion object {
+        /**
+         * What a connection stored before SEE-174 names as its wallet: "the one wallet this phone
+         * had". Never a real profile ID, and never written by anything but the store's upgrade.
+         */
+        const val LEGACY_WALLET_PROFILE = "legacy:single-wallet"
+    }
 }
 
 /** Historical reason a stored connection is visible but cannot perform any action. */

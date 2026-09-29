@@ -53,11 +53,13 @@ import io.github.brrenat.seekervault.reviews.reviewVerdict
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.executable
+import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.sync.ForegroundConnectionState
 import io.github.brrenat.seekervault.sync.UpdateAvailability
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.WalletReadiness
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -221,6 +223,13 @@ fun HomeRoute(
     walletApp: String? = null,
     /** What the owner's rules make of each waiting signal, keyed by its feed and proposal. */
     signalAssessments: Map<RequestKey, RequestAssessment> = emptyMap(),
+    /**
+     * How many wallet profiles the owner saved (SEE-174). With more than one, [wallet] is null and
+     * the banner counts them instead: no one of them is "the" wallet any more.
+     */
+    profileCount: Int = if (wallet == null) 0 else 1,
+    /** Where each connection stands with its own wallet profile (SEE-174). */
+    walletReadiness: Map<String, WalletReadiness> = emptyMap(),
 ) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
@@ -238,6 +247,8 @@ fun HomeRoute(
                     pendingItems = pendingItems,
                     requestAssessments = requestAssessments,
                     signalAssessments = signalAssessments,
+                    profileCount = profileCount,
+                    walletReadiness = walletReadiness,
                 ),
             callbacks =
                 HomeScreenCallbacks(
@@ -334,6 +345,8 @@ fun homeScreenState(
     formatTime: (Instant) -> String = ::homeShortTime,
     signalAssessments: Map<RequestKey, RequestAssessment> = emptyMap(),
     walletApp: String? = null,
+    profileCount: Int = if (wallet == null) 0 else 1,
+    walletReadiness: Map<String, WalletReadiness> = emptyMap(),
 ): HomeScreenState {
     val connections = connectionsState.connections.associateBy(Connection::id)
     val newestFirst =
@@ -345,16 +358,27 @@ fun homeScreenState(
         )
     return HomeScreenState(
         wallet =
-            HomeWalletState(
-                // The wallet app the session belongs to, not the account's own label inside it
-                // (SEE-159): a card named after the account read as if that were the wallet.
-                name =
-                    walletApp?.takeIf(String::isNotBlank)
-                        ?: wallet?.label?.takeIf(String::isNotBlank)
-                        ?: HomeCopy.Wallet,
-                address = wallet?.address ?: HomeCopy.NoWallet,
-                canCopy = wallet != null,
-            ),
+            if (profileCount > 1) {
+                // Several saved profiles, each bound to its own connections (SEE-174): the banner
+                // leads to the Wallets screen rather than naming one of them as the wallet.
+                HomeWalletState(
+                    name = HomeCopy.Wallets,
+                    address = "$profileCount ${HomeCopy.WalletProfiles}",
+                    canCopy = false,
+                )
+            } else {
+                HomeWalletState(
+                    // The wallet app the session belongs to, not the account's own label inside
+                    // it (SEE-159): a card named after the account read as if that were the
+                    // wallet.
+                    name =
+                        walletApp?.takeIf(String::isNotBlank)
+                            ?: wallet?.label?.takeIf(String::isNotBlank)
+                            ?: HomeCopy.Wallet,
+                    address = wallet?.address ?: HomeCopy.NoWallet,
+                    canCopy = wallet != null,
+                )
+            },
         pendingCount = inboxSummary?.waitingForYou ?: newestFirst.size,
         pending =
             newestFirst.map { item ->
@@ -383,6 +407,7 @@ fun homeScreenState(
                     support = connectionsState.support[connection.id],
                     access = connectionsState.access[connection.id],
                     formatTime = formatTime,
+                    wallet = walletReadiness[connection.id],
                 )
             },
     )
@@ -488,6 +513,23 @@ private fun transferAmountAndAsset(request: Request): Pair<String, String?> {
     }
 }
 
+/**
+ * What a connected row says about its wallet (SEE-174), or null when there is nothing to say: it is
+ * ready, nobody said, or the server declares no network and has no wallet to need one.
+ */
+private fun walletLine(wallet: WalletReadiness?, declaresNetworks: Boolean): String? =
+    when (wallet) {
+        null,
+        is WalletReadiness.Ready,
+        WalletReadiness.NoConnection -> null
+        WalletReadiness.NoProfile,
+        WalletReadiness.ProfileMissing -> HomeCopy.ChooseWallet.takeIf { declaresNetworks }
+        is WalletReadiness.NeedsReconnect -> HomeCopy.ReconnectWallet
+        is WalletReadiness.NetworkUnsupported -> HomeCopy.WalletNetworkUnsupported
+        is WalletReadiness.NetworksUnknown -> HomeCopy.NoNetworksDeclared
+        is WalletReadiness.PublicationPending -> HomeCopy.WalletUnconfirmed
+    }
+
 private fun Connection.toHomeServerState(
     live: ForegroundConnectionState?,
     feed: FeedListenerState?,
@@ -507,7 +549,14 @@ private fun Connection.toHomeServerState(
      */
     access: FeedAccessStore.Record?,
     formatTime: (Instant) -> String,
+    /**
+     * Where the connection stands with its own wallet profile (SEE-174), or null when nobody said.
+     * A connection that can't sign yet is not a connection that can't be reached, so it keeps the
+     * connected row, and the line says what is missing.
+     */
+    wallet: WalletReadiness? = null,
 ): HomeServerState {
+    val declaresNetworks = server.manifest?.supportedNetworks.orEmpty().isNotEmpty()
     val liveState = directTransport(live)
     val feedState = feedTransport(feed)
     val disconnected =
@@ -607,6 +656,8 @@ private fun Connection.toHomeServerState(
                             "${HomeCopy.UpgradeForLiveUpdates} · $currentPending pending"
                         unsupported == UpdateAvailability.Incompatible ->
                             "${HomeCopy.LiveUpdatesUnusable} · $currentPending pending"
+                        walletLine(wallet, declaresNetworks) != null ->
+                            "${walletLine(wallet, declaresNetworks)} · $currentPending pending"
                         mode == ConnectionMode.Direct && lastCheck?.morePending == true ->
                             "Connected · more than $currentPending pending"
                         else -> "Connected · $currentPending pending"
@@ -694,6 +745,13 @@ object HomeCopy {
     const val EmptyServersBody = "Add a connection to receive requests and signals."
     const val Wallet = "Wallet"
     const val NoWallet = "No wallet connected."
+    const val Wallets = "Wallets"
+    const val ChooseWallet = "Choose a wallet"
+    const val ReconnectWallet = "Reconnect its wallet"
+    const val WalletNetworkUnsupported = "Wallet network unsupported"
+    const val NoNetworksDeclared = "Server declares no network"
+    const val WalletUnconfirmed = "Telling it the wallet"
+    const val WalletProfiles = "wallet profiles"
     const val MessageBytes = "Message bytes"
     const val RecipientUnavailable = "Recipient unavailable"
     const val Sol = "SOL"

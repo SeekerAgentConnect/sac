@@ -15,6 +15,8 @@ import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
+import io.github.brrenat.seekervault.servers.manifest
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.io.File
 import java.time.Instant
 import org.json.JSONArray
@@ -119,7 +121,9 @@ class ConnectionStoreTest {
 
         val restored = checkNotNull(store.get(a.id))
 
-        assertEquals(a, restored)
+        // Stored when the phone had one wallet, it names that one until the wallet repository
+        // binds it to the profile the wallet became (SEE-174).
+        assertEquals(a.copy(walletProfileId = Connection.LEGACY_WALLET_PROFILE), restored)
         assertEquals(ConnectionMode.Direct, restored.mode)
         assertEquals(ServerRecord.Unknown, restored.server)
         assertTrue(restored.usable)
@@ -177,7 +181,7 @@ class ConnectionStoreTest {
         assertEquals(ServerReference.Feed(GATEWAY, channelFor(SERVER_B)), known.manifest.reference)
         assertFalse(upgraded.hasCredential)
         store.put(upgraded)
-        assertEquals(6, JSONObject(File(dir, "${b.id}.json").readText()).getInt("version"))
+        assertEquals(7, JSONObject(File(dir, "${b.id}.json").readText()).getInt("version"))
         assertEquals(upgraded, ConnectionStore(dir).get(b.id))
     }
 
@@ -265,7 +269,7 @@ class ConnectionStoreTest {
         assertNull(migrated.lastCheck)
         assertEquals(ServerRecord.Unknown, migrated.server)
         val persisted = JSONObject(File(dir, "${a.id}.json").readText())
-        assertEquals(6, persisted.getInt("version"))
+        assertEquals(7, persisted.getInt("version"))
         assertFalse(persisted.has("mode"))
         assertEquals("gateway_private_removed", persisted.getString("retirement"))
         assertEquals(migrated, ConnectionStore(dir).migrateRetired().single())
@@ -304,7 +308,7 @@ class ConnectionStoreTest {
         file.writeText(
             file
                 .readText()
-                .replace("\"version\":6", "\"version\":2")
+                .replace("\"version\":7", "\"version\":2")
                 .replace(
                     ",\"environment\":\"sandbox\"",
                     "",
@@ -364,15 +368,78 @@ class ConnectionStoreTest {
 
         val restored = checkNotNull(ConnectionStore(dir).get(a.id))
         assertEquals(ServerColour.Rose, restored.colour)
-        assertEquals(6, JSONObject(File(dir, "${a.id}.json").readText()).getInt("version"))
+        assertEquals(7, JSONObject(File(dir, "${a.id}.json").readText()).getInt("version"))
 
         val file = File(dir, "${a.id}.json")
         file.writeText(file.readText().replace("\"Rose\"", "\"chartreuse\""))
         assertNull(store.get(a.id)?.colour)
         assertEquals(a.id, store.get(a.id)?.id)
 
-        file.writeText(file.readText().replace("\"version\":6", "\"version\":5"))
+        file.writeText(file.readText().replace("\"version\":7", "\"version\":5"))
         assertNull(store.get(a.id)?.colour)
+    }
+
+    @Test
+    fun keepsEachConnectionsWalletProfileAndItsServersNetworks() {
+        // SEE-174: the profile the owner chose, and the networks the server declared, both
+        // survive a restart; a connection with no profile stays without one.
+        val bound =
+            b.copy(
+                mode = ConnectionMode.GatewayFeed,
+                hasCredential = false,
+                serverUrl = GATEWAY,
+                serverId = SERVER_B,
+                deviceName = "",
+                server =
+                    ServerRecord.Known(
+                        feedManifest()
+                            .copy(
+                                supportedNetworks =
+                                    setOf(WalletNetwork.Devnet, WalletNetwork.Mainnet)
+                            )
+                    ),
+                walletProfileId = "profile-1",
+            )
+        store.put(bound)
+        store.put(a)
+
+        val reopened = ConnectionStore(dir)
+        assertEquals(bound, reopened.get(bound.id))
+        assertNull(reopened.get(a.id)?.walletProfileId)
+        // In the protocol's order, whatever order the set came in.
+        assertEquals(
+            "[\"Mainnet\",\"Devnet\"]",
+            JSONObject(File(dir, "${bound.id}.json").readText())
+                .getJSONObject("server")
+                .getJSONObject("manifest")
+                .getJSONArray("supportedNetworks")
+                .toString(),
+        )
+    }
+
+    @Test
+    fun aManifestCachedBeforeNetworksExistedDeclaresNone() {
+        val feed =
+            b.copy(
+                mode = ConnectionMode.GatewayFeed,
+                hasCredential = false,
+                serverUrl = GATEWAY,
+                serverId = SERVER_B,
+                deviceName = "",
+                server = ServerRecord.Known(feedManifest()),
+            )
+        store.put(feed)
+        val file = File(dir, "${feed.id}.json")
+        val json = JSONObject(file.readText())
+        json.getJSONObject("server").getJSONObject("manifest").remove("supportedNetworks")
+        json.put("version", 6).remove("walletProfileId")
+        file.writeText(json.toString())
+
+        val restored = checkNotNull(store.get(feed.id))
+
+        // Nothing declared, which is never read as Mainnet, and the one wallet it used before.
+        assertEquals(emptySet<WalletNetwork>(), restored.server.manifest?.supportedNetworks)
+        assertEquals(Connection.LEGACY_WALLET_PROFILE, restored.walletProfileId)
     }
 
     private companion object {

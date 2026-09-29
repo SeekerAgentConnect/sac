@@ -31,7 +31,9 @@ import io.github.brrenat.seekervault.notifications.RequestNotificationIntent
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
+import io.github.brrenat.seekervault.servers.ALL_NETWORKS
 import io.github.brrenat.seekervault.servers.ServerRecord
+import io.github.brrenat.seekervault.servers.directManifest
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.io.File
@@ -57,7 +59,21 @@ class InboxActivityTest {
 
     private val app = ApplicationProvider.getApplicationContext<SeekerVaultApplication>()
     private val gateway = FakeConnectionGateway()
-    private val server = gateway.serve(URL)
+    // The server declares every network, so the wallet a test binds is its own choice (SEE-174).
+    private val server =
+        gateway.serve(URL).also {
+            it.manifest = directManifest(it.serverId, URL, networks = ALL_NETWORKS)
+        }
+
+    /**
+     * Connects a wallet on [network] and binds [connectionId] to it, telling its server (SEE-174).
+     */
+    private fun bindWallet(connectionId: String, network: WalletNetwork) = runBlocking {
+        app.connectionRepository.resolveManifest(connectionId)
+        val profile = app.walletRepository.connectProfiles(network).profiles.single()
+        app.walletRepository.bind(connectionId, profile.id)
+    }
+
     private val key = softwareKey()
     private val adapter = FakeWalletAdapter()
     private var scenario: ActivityScenario<MainActivity>? = null
@@ -237,7 +253,7 @@ class InboxActivityTest {
     fun aRotationWhileTheWalletHasTheMessageKeepsTheRequestAndItsSignature() {
         val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
         adapter.answerConnected(WALLET)
-        runBlocking { app.walletRepository.connect(WalletNetwork.Mainnet) }
+        bindWallet(connection.id, WalletNetwork.Mainnet)
         val request = server.addPendingMessage(connection.id, WALLET, "Sign in to Example")
         val key = RequestKey(connection.id, request.ref.requestId)
         val signature = ByteString.copyFrom(ByteArray(64) { 6 })
@@ -316,7 +332,7 @@ class InboxActivityTest {
         val fields = case.getJSONObject("request")
         val connection = runBlocking { app.connectionRepository.pair(server.issue(URL)) }
         adapter.answerConnected(fields.getString("wallet"))
-        runBlocking { app.walletRepository.connect(WalletNetwork.Devnet) }
+        bindWallet(connection.id, WalletNetwork.Devnet)
         val request =
             server.addPendingTransfer(
                 connection.id,

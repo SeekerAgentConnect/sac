@@ -21,6 +21,25 @@ object WalletTags {
     fun app(packageName: String) = "walletApp:$packageName"
 
     fun field(name: String) = "walletField:$name"
+
+    /** One saved wallet profile, and its actions (SEE-174). */
+    fun profile(id: String) = "walletProfile:$id"
+
+    fun profileWarning(id: String) = "walletProfileWarning:$id"
+
+    fun rename(id: String) = "walletProfileRename:$id"
+
+    fun reconnect(id: String) = "walletProfileReconnect:$id"
+
+    fun remove(id: String) = "walletProfileRemove:$id"
+
+    /** A connection's wallet picker (SEE-174). */
+    const val PICKER = "walletPicker"
+    const val PICKER_USE = "walletPickerUse"
+    const val PICKER_ADD = "walletPickerAdd"
+    const val REMOVE_CONFIRM = "walletProfileRemoveConfirm"
+
+    fun choice(id: String) = "walletPickerChoice:$id"
 }
 
 @Composable

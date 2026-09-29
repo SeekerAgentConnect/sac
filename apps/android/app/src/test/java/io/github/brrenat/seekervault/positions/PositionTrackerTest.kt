@@ -647,6 +647,7 @@ class PositionTrackerTest {
         override suspend fun signAndSend(
             transaction: ByteString,
             reviewed: SelectedWallet,
+            connectionId: String?,
         ): SendResult {
             sent += transaction
             suspendUntil?.await()

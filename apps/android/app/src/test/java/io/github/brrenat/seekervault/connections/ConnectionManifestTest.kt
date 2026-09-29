@@ -8,6 +8,7 @@ import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
+import io.github.brrenat.seekervault.server.v1.SolanaNetwork
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.GATEWAY
@@ -23,6 +24,7 @@ import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.servers.feedManifest
 import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.servers.serverSupport
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.io.File
 import java.time.Instant
 import javax.crypto.SecretKey
@@ -122,6 +124,45 @@ class ConnectionManifestTest {
 
         assertEquals(
             ServerRecord.Refused(ManifestProblem.StaleRevision),
+            repository.connection(connection.id)?.server,
+        )
+    }
+
+    @Test
+    fun aRevisionThatOnlyDeclaresNetworksIsReadAndOneThatDoesNotMoveIsRefused() = runBlocking {
+        // SEE-174: a server from before networks existed declares none; updated, it declares its
+        // networks under a new revision, and the phone reads them. The same revision with other
+        // networks is the contradiction any other changed content is.
+        server.manifest = directManifest(serverId = SERVER, url = URL, revision = 3)
+        val connection = repository.pair(server.issue(URL))
+        assertEquals(
+            emptySet<WalletNetwork>(),
+            repository.connection(connection.id)?.server?.manifest?.supportedNetworks,
+        )
+
+        server.manifest =
+            directManifest(
+                serverId = SERVER,
+                url = URL,
+                revision = 4,
+                networks = listOf(SolanaNetwork.SOLANA_NETWORK_DEVNET),
+            )
+        repository.refresh(connection.id)
+        assertEquals(
+            setOf(WalletNetwork.Devnet),
+            repository.connection(connection.id)?.server?.manifest?.supportedNetworks,
+        )
+
+        server.manifest =
+            directManifest(
+                serverId = SERVER,
+                url = URL,
+                revision = 4,
+                networks = listOf(SolanaNetwork.SOLANA_NETWORK_MAINNET),
+            )
+        repository.refresh(connection.id)
+        assertEquals(
+            ServerRecord.Refused(ManifestProblem.ChangedWithoutRevision),
             repository.connection(connection.id)?.server,
         )
     }

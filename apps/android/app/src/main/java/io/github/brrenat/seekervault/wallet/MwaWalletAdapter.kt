@@ -263,7 +263,19 @@ class MwaWalletAdapter(
             val token =
                 authorization.token
                     ?: return WalletResult.Failed("the wallet returned no authorization")
-            return WalletResult.Connected(account, token, routed(asked, used, authorization))
+            // A wallet may authorize several accounts at once (SEE-174). Each one it named with a
+            // well-formed address is offered as a profile; one that isn't an address is left out
+            // rather than failing the accounts that are, and the same address twice is one account.
+            val accounts =
+                authorization.accounts
+                    .filter { decodeBase58(it.address)?.size == PUBLIC_KEY_BYTES }
+                    .distinctBy { it.address }
+            return WalletResult.Connected(
+                account,
+                token,
+                routed(asked, used, authorization),
+                accounts,
+            )
         }
 
         /**

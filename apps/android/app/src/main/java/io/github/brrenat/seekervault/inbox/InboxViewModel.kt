@@ -47,6 +47,7 @@ import io.github.brrenat.seekervault.transactions.transfer
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SendResult
 import io.github.brrenat.seekervault.wallet.SignResult
+import io.github.brrenat.seekervault.wallet.WalletReadiness
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import java.io.IOException
 import java.time.Duration
@@ -216,8 +217,11 @@ data class Consent(
 data class InboxUiState(
     val connections: List<Connection> = emptyList(),
     val inbox: Inbox = Inbox(),
-    /** The wallet that would sign an approved message; null when none is connected. */
-    val wallet: SelectedWallet? = null,
+    /**
+     * Where each connection stands with its own wallet profile (SEE-174). A request is signed only
+     * with its own connection's profile, and only when that is [WalletReadiness.Ready].
+     */
+    val wallets: Map<String, WalletReadiness> = emptyMap(),
     /** A refresh started from the inbox is running. */
     val refreshing: Boolean = false,
     /** Answers being sent now: their buttons stay disabled until the send ends. */
@@ -240,7 +244,14 @@ data class InboxUiState(
     val acknowledged: Map<RequestKey, Consent> = emptyMap(),
     /** A notification tap remains read-only until its paired sidecar has answered a fresh fetch. */
     val notificationOpen: NotificationOpen? = null,
-)
+) {
+    /**
+     * The wallet that would sign for [connectionId]: its own profile when it is ready, and null
+     * otherwise — never another connection's.
+     */
+    fun walletFor(connectionId: String?): SelectedWallet? =
+        (connectionId?.let(wallets::get) as? WalletReadiness.Ready)?.profile?.selected()
+}
 
 enum class NotificationOpenStatus {
     Loading,
@@ -320,15 +331,16 @@ class InboxViewModel(
     private val assessmentLock = Mutex()
 
     val state: StateFlow<InboxUiState> =
-        combine(repository.connections, repository.inbox, wallet.wallet, activity) {
-                connections,
-                inbox,
-                selected,
-                now ->
+        combine(
+                repository.connections,
+                repository.inbox,
+                wallet.readinessByConnection(),
+                activity,
+            ) { connections, inbox, wallets, now ->
                 InboxUiState(
                     connections,
                     inbox,
-                    selected,
+                    wallets,
                     now.refreshing,
                     now.sending,
                     now.problem,
@@ -346,7 +358,7 @@ class InboxViewModel(
                 InboxUiState(
                     repository.connections.value,
                     repository.inbox.value,
-                    wallet.wallet.value,
+                    repository.connections.value.associate { it.id to wallet.readiness(it.id) },
                 ),
             )
 
@@ -569,7 +581,8 @@ class InboxViewModel(
         val inbox = repository.inbox.value
         val request = inbox.pendingRequest(key) ?: inbox.result(key)?.request ?: return null
         val prepared = activity.value.preparations[key] as? Preparation.Ready
-        val network = wallet.wallet.value?.network?.network ?: Network.NETWORK_UNSPECIFIED
+        val network =
+            wallet.walletFor(key.connectionId)?.network?.network ?: Network.NETWORK_UNSPECIFIED
         val owner = actionOwner(request)
         if (owner is ActionOwner.Provider) {
             return actionFacts(
@@ -651,7 +664,8 @@ class InboxViewModel(
         if (key in activity.value.sending || inbox.result(key) != null) return
         val request = inbox.pendingRequest(key) ?: return
         val message = request.signMessage() ?: return
-        val selected = wallet.wallet.value
+        // The request's own connection's wallet, and nothing else (SEE-174).
+        val selected = wallet.walletFor(key.connectionId)
         val problem =
             when {
                 // Before the wallet is even looked at: a server this build doesn't support has
@@ -661,7 +675,8 @@ class InboxViewModel(
                 selected == null -> SigningProblem.NoWallet
                 reviewed == null ||
                     selected.address != reviewed.address ||
-                    selected.network != reviewed.network -> SigningProblem.Changed
+                    selected.network != reviewed.network ||
+                    selected.profileId != reviewed.profileId -> SigningProblem.Changed
                 message.wallet != selected.address -> SigningProblem.OtherWallet
                 else -> null
             }
@@ -697,7 +712,9 @@ class InboxViewModel(
                 // A wallet that never answers leaves the request unresolved rather than open: the
                 // signature, if there ever was one, reached nothing and no one.
                 val signed =
-                    withTimeoutOrNull(walletTimeout.toMillis()) { wallet.sign(bytes, selected) }
+                    withTimeoutOrNull(walletTimeout.toMillis()) {
+                        wallet.sign(bytes, selected, key.connectionId)
+                    }
                 repository.recordSigning(
                     key,
                     signed?.let { outcomeOf(it, bytes) } ?: SigningOutcome.Unresolved(NO_ANSWER),
@@ -739,7 +756,7 @@ class InboxViewModel(
                         if (staking == null) null
                         else chain?.let { readSkrPosition(it, staking.wallet) }
                     val prepared = repository.prepare(key)
-                    val selected = wallet.wallet.value
+                    val selected = wallet.walletFor(key.connectionId)
                     if (staking == null) {
                         Preparation.Ready(
                             prepared,
@@ -798,13 +815,14 @@ class InboxViewModel(
         ) {
             return problem(key, SigningProblem.NotVerified)
         }
-        val selected = wallet.wallet.value
+        val selected = wallet.walletFor(key.connectionId)
         val mismatch =
             when {
                 selected == null -> SigningProblem.NoWallet
                 reviewed.wallet == null ||
                     selected.address != reviewed.wallet.address ||
-                    selected.network != reviewed.wallet.network -> SigningProblem.Changed
+                    selected.network != reviewed.wallet.network ||
+                    selected.profileId != reviewed.wallet.profileId -> SigningProblem.Changed
                 boundWallet != selected.address -> SigningProblem.OtherWallet
                 else -> null
             }
@@ -830,6 +848,15 @@ class InboxViewModel(
                     // The owner's rules and every required Activity record are read after the wait
                     // for the lock and immediately before any answer. A change elsewhere while the
                     // review was open therefore stops here, before the sidecar or wallet is asked.
+                    // The connection's wallet is read again on this side of the wait too: a
+                    // rebinding, a removed profile or an expired authorization while another
+                    // wallet interaction held the lock stops here, before anything is approved
+                    // (SEE-174). The wallet call below checks it once more.
+                    val bound = wallet.walletFor(key.connectionId)
+                    if (bound == null || bound != selected) {
+                        problem(key, SigningProblem.Changed)
+                        return@withWallet
+                    }
                     val fresh = cleared(key) ?: return@withWallet
                     note(key, fresh, wentAhead = true)
                     if (!stillFresh(reviewed.prepared)) {
@@ -857,7 +884,11 @@ class InboxViewModel(
                             // otherwise.
                             val sent =
                                 withTimeoutOrNull(walletTimeout.toMillis()) {
-                                    session.signAndSend(approved.transaction, selected)
+                                    session.signAndSend(
+                                        approved.transaction,
+                                        selected,
+                                        key.connectionId,
+                                    )
                                 }
                             repository.recordSigning(
                                 key,

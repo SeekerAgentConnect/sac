@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.servers
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -36,6 +37,25 @@ class ServerManifestFixturesTest {
         assertEquals(emptyList<PluginRequirement>(), manifest.required)
         assertEquals(setOf(PluginEnvironment.Production), manifest.environments)
         assertEquals("", manifest.name)
+        // What the sidecar is configured for, and nothing it merely could name (SEE-174).
+        assertEquals(setOf(WalletNetwork.Mainnet), manifest.supportedNetworks)
+    }
+
+    @Test
+    fun aDirectServerThatDeclaresNoNetwork() {
+        // Every manifest from before SEE-174 reads this way. It is valid, and it declares nothing:
+        // never Mainnet, never every network.
+        val manifest =
+            valid(
+                "no_networks",
+                ManifestExpectation(
+                    serverId = SIDECAR,
+                    mode = ConnectionMode.Direct,
+                    origin = "https://vault.example.com",
+                ),
+            )
+
+        assertEquals(emptySet<WalletNetwork>(), manifest.supportedNetworks)
     }
 
     @Test
@@ -61,6 +81,10 @@ class ServerManifestFixturesTest {
         // A name in another script, with an emoji: shown as it is, and never as this app's word
         // for the publisher.
         assertEquals("Копи-трейдинг 📈", manifest.name)
+        assertEquals(
+            setOf(WalletNetwork.Mainnet, WalletNetwork.Devnet),
+            manifest.supportedNetworks,
+        )
     }
 
     @Test
@@ -97,7 +121,7 @@ class ServerManifestFixturesTest {
                 .sorted()
                 .toList()
         assertEquals(
-            listOf("direct", "feed", "foreign_channel", "max_revision"),
+            listOf("direct", "feed", "foreign_channel", "max_revision", "no_networks"),
             names,
         )
     }

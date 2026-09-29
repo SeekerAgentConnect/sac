@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.servers
 
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 
 /**
  * What a server says about itself, as this phone validated it (SEE-88,
@@ -63,6 +64,15 @@ data class ServerManifest(
      * verified: it is a default the owner can rename, and their name is the one the app shows.
      */
     val name: String = "",
+    /**
+     * The Solana networks the server's wallet operations run on (SEE-174,
+     * docs/wiki/server-manifests.md#supported-networks). Empty is a server that declared none —
+     * every manifest from before SEE-174, and a server whose requests never reach a wallet — and it
+     * never means Mainnet or "every network": wallet profiles are offered, and signing is allowed,
+     * only for a network named here. It is a different question from [environments]: production is
+     * not Mainnet, and sandbox is not Devnet.
+     */
+    val supportedNetworks: Set<WalletNetwork> = emptySet(),
 ) {
     init {
         require(mode == reference.mode) {

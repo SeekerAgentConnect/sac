@@ -101,6 +101,7 @@ class AlternateProviderTest {
                                             )
                                         ),
                                     environments = setOf(PluginEnvironment.Production),
+                                    supportedNetworks = WalletNetwork.entries.toSet(),
                                 )
                             )
                     )
@@ -109,8 +110,7 @@ class AlternateProviderTest {
 
     private fun opened(phone: Phone, plugin: String = examplePlugin.value) = runBlocking {
         phone.adapter.answerConnected(owner, chains = listOf(WalletNetwork.Mainnet.chain))
-        phone.wallet.load()
-        phone.wallet.connect(WalletNetwork.Mainnet)
+        phone.connectWallet(WalletNetwork.Mainnet)
         phone.feed.answers =
             listOf(swapProposal(extra = emptyMap()).toBuilder().setPluginId(plugin).build())
         val model = phone.viewModel()
@@ -143,7 +143,7 @@ class AlternateProviderTest {
         assertEquals(listOf("inputs", "resolve", "prepare", "inspect"), provider.calls)
         val prepared = checkNotNull(checkNotNull(model.review.value).prepared)
 
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
 
         // One wallet interaction, with exactly the bytes that were reviewed.
         assertEquals(1, phone.adapter.sendings.size)
@@ -193,7 +193,7 @@ class AlternateProviderTest {
         val model = opened(phone)
         model.choose(ParameterKey("input_amount"), ParameterValue.Amount(2_000_000uL))
         model.prepare()
-        model.approve(phone.wallet.wallet.value)
+        model.approve(phone.wallet.walletFor(CONNECTION))
 
         // The same rehearsal the bundled provider gets, from the same place: core holds the wallet,
         // so core is what stops (SEE-97). The provider still did all of its own work.

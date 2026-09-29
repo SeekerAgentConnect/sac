@@ -7,6 +7,7 @@ import io.github.brrenat.seekervault.plugins.PluginDestination
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletRepository
+import io.github.brrenat.seekervault.wallet.walletNetworkOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,7 +29,18 @@ class PositionsViewModel(
 
     val state: StateFlow<PositionsState> = tracker.state
 
-    val selected: StateFlow<SelectedWallet?> = wallet.wallet
+    /**
+     * The wallet profile that owns [account]'s position: its original owner on its original
+     * network, and nothing that merely stands in for it (SEE-172, SEE-174). A sale is prepared and
+     * signed with this, never with whichever wallet the feed the signal came from is bound to now;
+     * null when this phone holds no authorized profile for that owner, and then the sale is blocked
+     * until the owner reconnects that wallet.
+     */
+    fun ownerWallet(account: String): SelectedWallet? {
+        val held = tracker.state.value.holdings[account]?.held ?: return null
+        val network = walletNetworkOf(held.network) ?: return null
+        return wallet.ownerProfile(held.owner, network)
+    }
 
     private val _notices = MutableStateFlow<Map<String, SellOutcome>>(emptyMap())
 
@@ -42,7 +54,7 @@ class PositionsViewModel(
     /** Builds and reads a sale for review. Opening the sheet asks for this; nothing is signed. */
     fun prepareSale(account: String) {
         _notices.update { it - account }
-        viewModelScope.launch { tracker.prepareSale(account, wallet.wallet.value) }
+        viewModelScope.launch { tracker.prepareSale(account, ownerWallet(account)) }
     }
 
     /** Hands the reviewed sale of [account] to the wallet, if it is still the one reviewed. */
@@ -53,7 +65,7 @@ class PositionsViewModel(
             val outcome =
                 tracker.sell(
                     draft = draft,
-                    selected = { wallet.wallet.value },
+                    selected = { ownerWallet(account) },
                     withWallet = { block -> wallet.withWallet { session -> block(session) } },
                 )
             if (outcome != SellOutcome.Handed) _notices.update { it + (account to outcome) }

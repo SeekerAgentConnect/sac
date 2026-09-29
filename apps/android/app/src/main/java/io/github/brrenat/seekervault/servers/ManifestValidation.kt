@@ -10,6 +10,8 @@ import io.github.brrenat.seekervault.server.v1.FeedAccessPolicy as WireAccessPol
 import io.github.brrenat.seekervault.server.v1.GatewayFeed as WireFeed
 import io.github.brrenat.seekervault.server.v1.ServerEnvironment as WireEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
+import io.github.brrenat.seekervault.server.v1.SolanaNetwork as WireNetwork
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 
 /**
  * Reading a manifest a server published (SEE-88, docs/wiki/server-manifests.md).
@@ -103,6 +105,12 @@ enum class ManifestProblem(val code: String) {
     /** A name too long, or one that isn't printable text. */
     BadName("bad_name"),
     /**
+     * A supported network left unspecified, named twice, or more of them than a manifest may name
+     * (SEE-174). An empty list is not this: it is a server that declares no network, which the
+     * phone reads as exactly that.
+     */
+    BadNetwork("bad_network"),
+    /**
      * An access policy this build does not know, or a restricted feed whose authentication origin
      * is not an origin this phone may send a wallet proof to (SEE-156). Never read as public.
      */
@@ -171,6 +179,13 @@ fun manifestFrom(message: WireManifest, expect: ManifestExpectation): ManifestRe
     }
     if (environments.isEmpty()) return invalid(ManifestProblem.BadEnvironment)
     if (!printableName(message.displayName)) return invalid(ManifestProblem.BadName)
+    val networks =
+        supportedNetworksOf(
+            when (mode) {
+                ConnectionMode.Direct -> message.direct.supportedNetworksValueList
+                ConnectionMode.GatewayFeed -> message.feed.supportedNetworksValueList
+            }
+        ) ?: return invalid(ManifestProblem.BadNetwork)
     return ManifestResult.Valid(
         ServerManifest(
             serverId = message.serverId,
@@ -181,9 +196,40 @@ fun manifestFrom(message: WireManifest, expect: ManifestExpectation): ManifestRe
             required = required.toList(),
             environments = environments.toSet(),
             name = message.displayName,
+            supportedNetworks = networks,
         )
     )
 }
+
+/**
+ * The Solana networks a manifest's reference says its wallet operations run on (SEE-174), as
+ * [values] on the wire, or null when the list breaks a rule. The list is in the reference —
+ * `DirectServer` or `GatewayFeed` — so that the reference stays the last thing serialized.
+ *
+ * Unspecified and a repeated value are refused, because each says something the server can't have
+ * meant. A value this build doesn't know — a network from a later version of the format — is left
+ * out rather than refused: no wallet profile on this phone can be on it, so it could never be
+ * offered or signed for, and the networks this build does know are still what the server said. The
+ * order is not part of the statement.
+ *
+ * Empty is a valid answer, and it is not Mainnet: it is a server that declared no network, which
+ * the phone shows as such and never signs for
+ * ([io.github.brrenat.seekervault.wallet.WalletReadiness]).
+ */
+private fun supportedNetworksOf(values: List<Int>): Set<WalletNetwork>? {
+    if (values.size > MAX_SUPPORTED_NETWORKS) return null
+    if (values.toSet().size != values.size) return null
+    if (WireNetwork.SOLANA_NETWORK_UNSPECIFIED_VALUE in values) return null
+    return values
+        .mapNotNull { value -> WalletNetwork.entries.firstOrNull { it.network.number == value } }
+        .toSet()
+}
+
+/**
+ * The most networks a manifest may name. There are three today; the bound leaves room for a later
+ * format to name more without letting a manifest be arbitrarily long.
+ */
+const val MAX_SUPPORTED_NETWORKS = 8
 
 /** Why this manifest's reference can't be used, or null if it can. */
 private fun referenceProblem(

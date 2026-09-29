@@ -110,6 +110,7 @@ class ResolveScopeTest {
             required =
                 listOf(PluginRequirement(examplePlugin, PROVIDER_CONTRACT..PROVIDER_CONTRACT)),
             environments = setOf(PluginEnvironment.Production),
+            supportedNetworks = WalletNetwork.entries.toSet(),
         )
 
     /** The same proposal ID, published by two different servers: two documents, one name. */
@@ -124,8 +125,7 @@ class ResolveScopeTest {
     /** Connects the wallet and reads both feeds, without opening anything. */
     private fun loaded(phone: Phone): OperationViewModel = runBlocking {
         phone.adapter.answerConnected(owner, chains = listOf(WalletNetwork.Mainnet.chain))
-        phone.wallet.load()
-        phone.wallet.connect(WalletNetwork.Mainnet)
+        phone.connectWallet(WalletNetwork.Mainnet)
         phone.feed.answersByChannel =
             mapOf(
                 channelFor(SERVER_B) to listOf(published(SERVER_B)),

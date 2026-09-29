@@ -277,6 +277,104 @@ class WalletStoreTest {
             )
     }
 
+    @Test
+    fun keepsEveryProfileAndTheAuthorizationsTheyShareAsOneSealedRecord() {
+        // SEE-174: several profiles, two of them sharing the one authorization their wallet app
+        // issued for both accounts, and the same address again on another network.
+        val shared = StoredAuthorization("a1", AUTHORIZATION, WalletNetwork.Mainnet, route())
+        val devnet = StoredAuthorization("a2", OTHER_AUTHORIZATION, WalletNetwork.Devnet, route())
+        val profiles =
+            WalletProfiles(
+                profiles =
+                    listOf(
+                        profile("p1", WALLET, WalletNetwork.Mainnet, "a1", label = "Trading"),
+                        profile("p2", OTHER_WALLET, WalletNetwork.Mainnet, "a1"),
+                        profile("p3", WALLET, WalletNetwork.Devnet, "a2", authorized = false),
+                    ),
+                authorizations = listOf(shared, devnet),
+                legacyProfileId = "p1",
+            )
+        store.putProfiles(profiles)
+
+        val reopened = WalletStore(dir, secretDir) { key }.profiles()
+
+        assertEquals(profiles.routed(), reopened)
+        assertEquals(WALLET_APP, reopened.profile("p3")?.route?.packageName)
+        val sealed = String(File(secretDir, "wallet-profiles").readBytes(), Charsets.ISO_8859_1)
+        assertFalse(sealed, AUTHORIZATION in sealed)
+        assertFalse(sealed, WALLET in sealed)
+    }
+
+    @Test
+    fun migratesTheSingleSessionIntoOneProfileAndDropsItOnlyOnceCommitted() {
+        val route = route()
+        store.put(wallet, AUTHORIZATION, route)
+
+        val migrated = store.profiles()
+
+        val profile = migrated.profiles.single()
+        assertEquals(WALLET to WalletNetwork.Devnet, profile.address to profile.network)
+        assertEquals("Seeker account 1", profile.accountLabel)
+        assertEquals(wallet.selectedAt, profile.connectedAt)
+        assertEquals(route, profile.route)
+        assertEquals(AUTHORIZATION, migrated.authorization(profile.authorizationId)?.token)
+        assertEquals(profile.id, migrated.legacyProfileId)
+        assertFalse(record.exists())
+        // Read again: the committed record, not a second migration.
+        assertEquals(migrated, WalletStore(dir, secretDir) { key }.profiles())
+    }
+
+    @Test
+    fun aMigrationThatCannotCommitKeepsTheSessionForTheNextStart() {
+        store.put(wallet, AUTHORIZATION)
+        // The key opens the old record but can't seal the new one: an interrupted write.
+        var reads = 0
+        val failing =
+            WalletStore(dir, secretDir) {
+                if (++reads > 1) throw GeneralSecurityException("keystore went away") else key
+            }
+
+        val interim = failing.profiles()
+
+        assertEquals(WALLET, interim.profiles.single().address)
+        assertTrue(record.exists())
+        // The next start migrates it into exactly the same IDs.
+        assertEquals(interim, store.profiles())
+    }
+
+    @Test
+    fun anUnreadableProfilesRecordIsNoProfiles() {
+        store.putProfiles(
+            WalletProfiles(
+                listOf(profile("p1", WALLET, WalletNetwork.Mainnet, "a1")),
+                listOf(StoredAuthorization("a1", AUTHORIZATION, WalletNetwork.Mainnet)),
+            )
+        )
+        assertEquals(WalletProfiles.Empty, WalletStore(dir, secretDir) { softwareKey() }.profiles())
+    }
+
+    private fun route() =
+        WalletRouting(uriBase = null, packageName = WALLET_APP, appLabel = "Seeker Wallet")
+
+    private fun profile(
+        id: String,
+        address: String,
+        network: WalletNetwork,
+        authorization: String,
+        label: String? = null,
+        authorized: Boolean = true,
+    ) =
+        io.github.brrenat.seekervault.wallet.WalletProfile(
+            id = id,
+            address = address,
+            network = network,
+            label = label,
+            accountLabel = "Account",
+            authorizationId = authorization,
+            connectedAt = Instant.parse("2026-09-12T09:30:00Z"),
+            authorized = authorized,
+        )
+
     /** The authorization exactly as the build before SEE-84 sealed it. */
     private fun writeLegacyAuthorization(authToken: String) {
         secretDir.mkdirs()

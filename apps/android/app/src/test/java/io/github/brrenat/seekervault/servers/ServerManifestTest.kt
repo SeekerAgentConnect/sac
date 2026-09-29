@@ -5,8 +5,10 @@ import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.server.v1.ConnectionMode as WireMode
 import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
+import io.github.brrenat.seekervault.server.v1.SolanaNetwork
 import io.github.brrenat.seekervault.server.v1.copy
 import io.github.brrenat.seekervault.server.v1.gatewayFeed
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -240,6 +242,76 @@ class ServerManifestTest {
                     )
                 )
                 .environments,
+        )
+    }
+
+    /** [message] with [values] appended to its direct reference's networks, as raw wire values. */
+    private fun withRawNetworks(message: WireManifest, values: List<Int>): WireManifest =
+        message
+            .toBuilder()
+            .setDirect(message.direct.toBuilder().addAllSupportedNetworksValue(values))
+            .build()
+
+    @Test
+    fun supportedNetworksAreReadFromTheReferenceAsASet() {
+        // Direct and feed carry the same list, each in its own reference (SEE-174).
+        assertEquals(
+            setOf(WalletNetwork.Mainnet, WalletNetwork.Devnet),
+            valid(
+                    directManifest(
+                        networks =
+                            listOf(
+                                SolanaNetwork.SOLANA_NETWORK_DEVNET,
+                                SolanaNetwork.SOLANA_NETWORK_MAINNET,
+                            )
+                    )
+                )
+                .supportedNetworks,
+        )
+        assertEquals(
+            setOf(WalletNetwork.Testnet),
+            valid(feedManifest(networks = listOf(SolanaNetwork.SOLANA_NETWORK_TESTNET)), feed)
+                .supportedNetworks,
+        )
+        // None declared is valid, and is exactly that: no network, never Mainnet.
+        assertEquals(emptySet<WalletNetwork>(), valid(directManifest()).supportedNetworks)
+    }
+
+    @Test
+    fun anUnspecifiedOrRepeatedNetworkIsRefusedAndAnUnknownOneIsLeftOut() {
+        assertEquals(
+            ManifestProblem.BadNetwork,
+            refused(directManifest(networks = listOf(SolanaNetwork.SOLANA_NETWORK_UNSPECIFIED))),
+        )
+        assertEquals(
+            ManifestProblem.BadNetwork,
+            refused(
+                directManifest(
+                    networks =
+                        listOf(
+                            SolanaNetwork.SOLANA_NETWORK_MAINNET,
+                            SolanaNetwork.SOLANA_NETWORK_MAINNET,
+                        )
+                )
+            ),
+        )
+        assertEquals(
+            ManifestProblem.BadNetwork,
+            refused(
+                withRawNetworks(directManifest(), List(MAX_SUPPORTED_NETWORKS + 1) { 100 + it })
+            ),
+        )
+        // A network from a later version of the format: no profile on this phone can be on it, so
+        // it is left out, and the ones this build knows still stand.
+        assertEquals(
+            setOf(WalletNetwork.Mainnet),
+            valid(
+                    withRawNetworks(
+                        directManifest(networks = listOf(SolanaNetwork.SOLANA_NETWORK_MAINNET)),
+                        listOf(42),
+                    )
+                )
+                .supportedNetworks,
         )
     }
 

@@ -44,6 +44,8 @@ import java.time.format.FormatStyle
 
 /** Test tags for the connection screens' controls. */
 object ConnectionsTags {
+    /** The connection's wallet row on its detail sheet (SEE-174). */
+    const val WALLET_ROW = "connectionWallet"
     const val LIVE_TEST = "liveTest"
     const val ADD = "addConnection"
     const val EMPTY = "connectionsEmpty"
