@@ -77,11 +77,17 @@ sealed interface FeedStreamEvent {
      */
     data class Opened(val subscriptions: Map<String, FeedSubscription>) : FeedStreamEvent
 
-    /** A document, and the offset it sits at — the cursor to hold once it has been applied. */
+    /**
+     * A document, and the offset it sits at — the cursor to hold once it has been applied.
+     *
+     * [replayed] marks history the broker sent back when the stream opened, as opposed to something
+     * published while it was open. It is applied the same way; it is only not news (SEE-175).
+     */
     data class Published(
         val streamChannel: String,
         val offset: Long,
         val event: FeedEvent,
+        val replayed: Boolean = false,
     ) : FeedStreamEvent
 
     /**

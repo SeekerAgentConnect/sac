@@ -46,6 +46,26 @@ class SyncConnection(val serverUrl: String, val credential: String) {
 data class LocalRequestState(val key: RequestKey, val state: RequestState)
 
 /**
+ * How a synchronization state reached [SynchronizationHost.applyCache] (SEE-175). It changes
+ * nothing about what is applied; it says which of the requests it brings are news to the foreground
+ * banner.
+ */
+sealed interface SyncDelivery {
+    /** Read back from this phone's own cache when the repository loads. Nothing in it is news. */
+    data object Cached : SyncDelivery
+
+    /**
+     * A complete snapshot. What it brings is catching up unless this connection has been read whole
+     * in this foreground session already — except [live]: the request IDs that events buffered
+     * while it was being read created, which happened during the read and are news either way.
+     */
+    data class Snapshot(val live: Set<String> = emptySet()) : SyncDelivery
+
+    /** One event on a stream that is already open: something that just happened. */
+    data object Event : SyncDelivery
+}
+
+/**
  * The narrow bridge to phone-owned state. It offers no wallet operation, preparation call, policy,
  * or way to create an answer. Synchronization can retry an already-recorded result and reconcile an
  * already-recorded Activity row, and nothing else.
@@ -62,6 +82,9 @@ interface SynchronizationHost {
     suspend fun authoritativeRequests(connectionId: String): Map<String, ActionRequest>
 
     suspend fun applyCache(state: ConnectionSyncState)
+
+    /** [applyCache], saying how the state arrived. A host with no banner to feed ignores it. */
+    suspend fun applyCache(state: ConnectionSyncState, delivery: SyncDelivery) = applyCache(state)
 
     suspend fun recordFailure(connectionId: String, failure: CheckOutcome)
 
@@ -124,7 +147,7 @@ class SynchronizationRepository(
             coordinator.control.withLock { coordinator.removed = false }
         }
         _state.value = SynchronizationState(loaded = true, connections = loaded)
-        for (connection in loaded.values) host.applyCache(connection)
+        for (connection in loaded.values) host.applyCache(connection, SyncDelivery.Cached)
     }
 
     /** Headless entry point used by a process started only for synchronization. */
@@ -546,6 +569,9 @@ class SynchronizationRepository(
 
         val authoritative = host.authoritativeRequests(connectionId)
         var revokedByBuffer = false
+        // What the snapshot itself held, before the events buffered during it were merged in: a
+        // request only those events created happened while the snapshot was read (SEE-175).
+        var snapshotPending: Set<String>? = null
         val applied =
             coordinator.apply.withLock {
                 var merged = mergeSnapshot(previous, pages, authoritative, nextKnownIndex)
@@ -570,6 +596,7 @@ class SynchronizationRepository(
                                     fullSyncRequired = true,
                                 )
                         } else {
+                            snapshotPending = merged.pending.mapTo(HashSet()) { it.ref.requestId }
                             for ((eventGeneration, event) in copy) {
                                 val one =
                                     mergeEvent(
@@ -606,7 +633,10 @@ class SynchronizationRepository(
                 if (!revokedByBuffer) {
                     withContext(io) { store.put(merged.persistable()) }
                     publish(merged)
-                    host.applyCache(merged)
+                    val during = snapshotPending?.let { held ->
+                        merged.pending.map { it.ref.requestId }.filterNot(held::contains)
+                    }
+                    host.applyCache(merged, SyncDelivery.Snapshot(during.orEmpty().toSet()))
                 }
                 merged
             }
@@ -833,7 +863,7 @@ class SynchronizationRepository(
         if (next != null && persist) {
             withContext(io) { store.put(next.persistable()) }
             publish(next)
-            host.applyCache(next)
+            host.applyCache(next, SyncDelivery.Event)
         }
         return merged
     }

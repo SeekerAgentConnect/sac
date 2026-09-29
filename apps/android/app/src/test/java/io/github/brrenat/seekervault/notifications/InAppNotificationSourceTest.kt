@@ -101,16 +101,86 @@ class InAppNotificationSourceTest {
         )
     }
 
+    @Test
+    fun `a feed's first snapshot fills the inbox without a single arrival`() {
+        source.accept(snapshot(waiting = listOf(FIRST)))
+
+        // Fifty proposals from a feed that was just connected: read, not delivered as news.
+        val backlog = (1..50).map { ReviewIdentity.Signal(OTHER_CONNECTION_ID, uuid(it)) }
+        assertEquals(
+            emptyList<InAppNotificationArrival>(),
+            source.accept(snapshot(waiting = listOf(FIRST) + backlog, live = emptyList())),
+        )
+        // And they are known now: a later look that happens to carry marks does not bring them
+        // back as arrivals.
+        assertEquals(
+            emptyList<InAppNotificationArrival>(),
+            source.accept(snapshot(waiting = listOf(FIRST) + backlog, live = backlog)),
+        )
+    }
+
+    @Test
+    fun `a live item that lands with the snapshot is announced and the backlog around it is not`() {
+        source.accept(snapshot())
+
+        val backlog = (1..50).map { ReviewIdentity.Signal(OTHER_CONNECTION_ID, uuid(it)) }
+        val live = ReviewIdentity.Signal(OTHER_CONNECTION_ID, uuid(51))
+        assertEquals(
+            listOf(InAppNotificationArrival.Waiting(live)),
+            source.accept(snapshot(waiting = backlog + live, live = listOf(live))),
+        )
+    }
+
+    @Test
+    fun `an item is announced once a session however often it leaves and comes back`() {
+        source.accept(snapshot())
+        assertEquals(
+            listOf(InAppNotificationArrival.Waiting(FIRST)),
+            source.accept(snapshot(waiting = listOf(FIRST))),
+        )
+
+        // A refresh that briefly lost it, a status update, a duplicate delivery: none is news.
+        source.accept(snapshot(waiting = emptyList()))
+        assertEquals(
+            emptyList<InAppNotificationArrival>(),
+            source.accept(snapshot(waiting = listOf(FIRST))),
+        )
+        assertEquals(
+            emptyList<InAppNotificationArrival>(),
+            source.accept(snapshot(waiting = listOf(FIRST))),
+        )
+    }
+
+    @Test
+    fun `a mark that arrives before its item is honoured when the item appears`() {
+        source.accept(snapshot())
+
+        // The repositories mark before they publish, so the mark can be a look ahead of the item.
+        assertEquals(
+            emptyList<InAppNotificationArrival>(),
+            source.accept(snapshot(waiting = emptyList(), live = listOf(SECOND))),
+        )
+        assertEquals(
+            listOf(InAppNotificationArrival.Waiting(SECOND)),
+            source.accept(snapshot(waiting = listOf(SECOND), live = listOf(SECOND))),
+        )
+    }
+
     private fun snapshot(
         ready: Boolean = true,
         waiting: List<ReviewIdentity> = emptyList(),
         disconnected: List<String> = emptyList(),
+        // Unless a test says otherwise, everything waiting arrived as news.
+        live: List<ReviewIdentity> = waiting,
     ) =
         InAppNotificationSnapshot(
             ready = ready,
             waiting = LinkedHashSet(waiting),
             disconnected = LinkedHashSet(disconnected),
+            live = live.toSet(),
         )
+
+    private fun uuid(n: Int) = "00000000-0000-4000-8000-%012d".format(n)
 
     private companion object {
         const val CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"

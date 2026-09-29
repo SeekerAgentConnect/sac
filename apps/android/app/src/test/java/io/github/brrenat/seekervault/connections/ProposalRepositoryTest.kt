@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.connections
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.ReviewIdentity
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.ActivityOutcome
@@ -8,6 +9,7 @@ import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.confirmations.Submission
 import io.github.brrenat.seekervault.confirmations.SubmissionTracking
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
+import io.github.brrenat.seekervault.notifications.ArrivalLedger
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
@@ -80,6 +82,7 @@ class ProposalRepositoryTest {
         plugins: ProviderRegistry = ProviderRegistry.of(jupiterLike()),
         store: ProposalStore = this.store,
         tracking: SubmissionTracking? = null,
+        arrivals: ArrivalLedger? = null,
     ) =
         ProposalRepository(
             store = store,
@@ -90,6 +93,7 @@ class ProposalRepositoryTest {
             now = { clock },
             io = Dispatchers.Unconfined,
             tracking = tracking,
+            arrivals = arrivals,
         )
 
     private val repository by lazy { repository() }
@@ -130,6 +134,78 @@ class ProposalRepositoryTest {
             repository.proposalsFor(FEED).map { it.key.proposalId }.sorted(),
         )
         assertEquals(ProposalStanding.Open, repository.standing(repository.proposalsFor(FEED)[0]))
+    }
+
+    /**
+     * A feed that was just connected: its whole backlog is read, and none of it is news (SEE-175).
+     */
+    @Test
+    fun aFeedsFirstReadIsItsBacklogAndMarksNothingAsNews() = runBlocking {
+        val arrivals = ArrivalLedger()
+        val repository = repository(arrivals = arrivals)
+        feed.answers = listOf(wireProposal(), wireProposal(proposalId = PROPOSAL_B))
+
+        repository.refresh(FEED)
+
+        assertEquals(2, repository.proposalsFor(FEED).size)
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+        assertTrue(arrivals.wasRead(FEED))
+    }
+
+    /**
+     * A read after the first one in the session — a push-triggered read, a feed whose gateway has
+     * no stream — brings what was published since, and only what it created is news.
+     */
+    @Test
+    fun aLaterReadMarksOnlyTheProposalsItCreated() = runBlocking {
+        val arrivals = ArrivalLedger()
+        val repository = repository(arrivals = arrivals)
+        feed.answers = listOf(wireProposal())
+        repository.refresh(FEED)
+
+        feed.sequence = 2
+        feed.answers =
+            listOf(
+                // Held already, at a new revision: an update, not an arrival.
+                wireProposal(revision = 2),
+                wireProposal(proposalId = PROPOSAL_B),
+            )
+        repository.refresh(FEED, knownSequence = 1)
+
+        assertEquals(setOf(ReviewIdentity.Signal(FEED, PROPOSAL_B)), arrivals.live.value)
+    }
+
+    @Test
+    fun aStreamedProposalIsNewsAndItsRepeatsAndRevisionsAreNot() = runBlocking {
+        val arrivals = ArrivalLedger()
+        val repository = repository(arrivals = arrivals)
+
+        repository.apply(FEED, wireProposal())
+        assertEquals(setOf(ReviewIdentity.Signal(FEED, PROPOSAL_A)), arrivals.live.value)
+
+        arrivals.onBackground()
+        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, wireProposal(revision = 2))
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+    }
+
+    @Test
+    fun replayedHistoryIsCatchingUpUntilTheFeedHasBeenReadInThisSession() = runBlocking {
+        val arrivals = ArrivalLedger()
+        val repository = repository(arrivals = arrivals)
+
+        repository.apply(FEED, wireProposal(), FeedDelivery.Replayed)
+        assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
+
+        feed.answers = listOf(wireProposal())
+        repository.refresh(FEED)
+        // Replayed across a reconnect later in the same session: what was missed is news.
+        repository.apply(FEED, wireProposal(proposalId = PROPOSAL_B), FeedDelivery.Replayed)
+        assertEquals(setOf(ReviewIdentity.Signal(FEED, PROPOSAL_B)), arrivals.live.value)
+
+        // And after the app has been away, the first read is catching up again.
+        arrivals.onBackground()
+        assertEquals(false, arrivals.wasRead(FEED))
     }
 
     @Test

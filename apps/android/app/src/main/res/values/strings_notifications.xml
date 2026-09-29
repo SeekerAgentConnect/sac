@@ -41,4 +41,25 @@
     <string name="in_app_notification_open_signal">%1$s, open signal</string>
     <string name="in_app_notification_open_disconnected">%1$s, open</string>
     <string name="in_app_notification_dismiss">Dismiss</string>
+    <!-- SEE-175: several requests or signals arriving together are one banner that opens the Inbox.
+         The count is a string so that a burst past the counted limit can say "99+". -->
+    <plurals name="in_app_notification_burst_requests_title">
+        <item quantity="one">%1$s new request</item>
+        <item quantity="other">%1$s new requests</item>
+    </plurals>
+    <plurals name="in_app_notification_burst_signals_title">
+        <item quantity="one">%1$s new signal</item>
+        <item quantity="other">%1$s new signals</item>
+    </plurals>
+    <plurals name="in_app_notification_burst_mixed_title">
+        <item quantity="one">%1$s new item to review</item>
+        <item quantity="other">%1$s new items to review</item>
+    </plurals>
+    <string name="in_app_notification_burst_one_source">From %1$s · Open Inbox to review</string>
+    <plurals name="in_app_notification_burst_many_sources">
+        <item quantity="one">From %1$d connection · Open Inbox to review</item>
+        <item quantity="other">From %1$d connections · Open Inbox to review</item>
+    </plurals>
+    <string name="in_app_notification_burst_overflow">%1$d+</string>
+    <string name="in_app_notification_open_inbox">%1$s, open inbox</string>
 </resources>

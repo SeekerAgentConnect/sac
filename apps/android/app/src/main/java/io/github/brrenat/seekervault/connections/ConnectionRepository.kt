@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.connections
 
+import io.github.brrenat.seekervault.ReviewIdentity
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.confirmations.ConfirmationTracker
@@ -8,6 +9,7 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
+import io.github.brrenat.seekervault.notifications.ArrivalLedger
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposals.settled
@@ -41,6 +43,7 @@ import io.github.brrenat.seekervault.skr.staking
 import io.github.brrenat.seekervault.sync.ConnectionSyncState
 import io.github.brrenat.seekervault.sync.LocalRequestState
 import io.github.brrenat.seekervault.sync.SyncConnection
+import io.github.brrenat.seekervault.sync.SyncDelivery
 import io.github.brrenat.seekervault.sync.SynchronizationHost
 import io.github.brrenat.seekervault.sync.SynchronizationRepository
 import io.github.brrenat.seekervault.sync.SynchronizeOutcome
@@ -222,6 +225,13 @@ class ConnectionRepository(
      * [history] is.
      */
     private val tracking: SubmissionTracking? = null,
+    /**
+     * Where a pending request that reached this phone as news is marked, before it is published
+     * (SEE-175). A whole read — a synchronization snapshot or a legacy fetch — is news only once
+     * this connection has already been read whole in the foreground session; a stream event always
+     * is.
+     */
+    private val arrivals: ArrivalLedger? = null,
 ) : SynchronizationHost, ConnectionWallets {
     private val lock = Mutex()
     private val loading = Mutex()
@@ -768,7 +778,11 @@ class ConnectionRepository(
                             .toSet()
                     own.filterNot { it.ref.requestId in settled }
                         .also { list ->
+                            // A legacy sidecar only has whole lists: what one brings is news once
+                            // the first of them in this session has been read (SEE-175).
+                            if (arrivals?.wasRead(id) == true) announceCreated(id, list)
                             _inbox.update { it.copy(pending = it.pending + (id to list)) }
+                            arrivals?.markRead(id)
                         }
                 }
                 Connection.Check(
@@ -1562,7 +1576,10 @@ class ConnectionRepository(
             results.listFor(connectionId).associate { it.requestId to it.request }
         }
 
-    override suspend fun applyCache(state: ConnectionSyncState) = locked {
+    override suspend fun applyCache(state: ConnectionSyncState) =
+        applyCache(state, SyncDelivery.Cached)
+
+    override suspend fun applyCache(state: ConnectionSyncState, delivery: SyncDelivery) = locked {
         // A result holds the owner's decision, wallet outcome, and reviewed bytes. Sync may advance
         // only its copy of server state and then records that through the existing Activity path.
         state.requests.values
@@ -1582,9 +1599,20 @@ class ConnectionRepository(
                 .map { it.requestId }
                 .toSet()
         val visiblePending = state.pending.filterNot { request -> request.ref.requestId in settled }
+        when (delivery) {
+            SyncDelivery.Cached -> Unit
+            SyncDelivery.Event -> announceCreated(state.connectionId, visiblePending)
+            is SyncDelivery.Snapshot ->
+                announceCreated(
+                    state.connectionId,
+                    if (arrivals?.wasRead(state.connectionId) == true) visiblePending
+                    else visiblePending.filter { it.ref.requestId in delivery.live },
+                )
+        }
         _inbox.update {
             it.copy(pending = it.pending + (state.connectionId to visiblePending))
         }
+        if (delivery is SyncDelivery.Snapshot) arrivals?.markRead(state.connectionId)
         state.lastSuccessfulSync?.let { at ->
             store.get(state.connectionId)?.let { connection ->
                 store.put(
@@ -1595,6 +1623,23 @@ class ConnectionRepository(
             }
         }
         publish()
+    }
+
+    /**
+     * Marks the requests in [list] this phone was not already showing for [connectionId] as news,
+     * before the list is published (SEE-175). A request it already had — a repeated delivery, a
+     * status update — is not an arrival.
+     */
+    private fun announceCreated(connectionId: String, list: List<ActionRequest>) {
+        val ledger = arrivals ?: return
+        val shown =
+            _inbox.value.pending[connectionId].orEmpty().mapTo(HashSet()) { it.ref.requestId }
+        ledger.markLive(
+            list
+                .filter { it.ref.requestId !in shown }
+                .filter { it.ref.connectionId.isNotBlank() && it.ref.requestId.isNotBlank() }
+                .map { ReviewIdentity.Private(it.ref.connectionId, it.ref.requestId) }
+        )
     }
 
     override suspend fun recordFailure(connectionId: String, failure: CheckOutcome) {

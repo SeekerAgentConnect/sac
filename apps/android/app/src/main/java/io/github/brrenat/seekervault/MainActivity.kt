@@ -189,6 +189,7 @@ class MainActivity : ComponentActivity() {
                     operations,
                     startInLiveTest = intent.getBooleanExtra(EXTRA_LIVE_TEST, false),
                     positions = positions,
+                    arrivals = (application as SeekerVaultApplication).arrivals,
                 )
             }
         }
@@ -269,6 +270,8 @@ class MainActivity : ComponentActivity() {
             connections.onAppHidden()
             wallet.onAppHidden()
             (application as SeekerVaultApplication).onConfirmationsBackground()
+            // What is read on the way back is catching up, not news (SEE-175).
+            (application as SeekerVaultApplication).arrivals.onBackground()
         }
     }
 

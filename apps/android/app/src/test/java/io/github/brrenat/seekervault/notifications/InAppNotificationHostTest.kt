@@ -74,6 +74,8 @@ class InAppNotificationHostTest {
     private var waiting by mutableStateOf(emptyList<PendingItem>())
     private var connections by mutableStateOf(listOf(DIRECT, FEED))
     private var reviewOpen by mutableStateOf(emptySet<ReviewIdentity>())
+    // What reached the phone as news. Unless a test says otherwise, everything waiting did.
+    private var live by mutableStateOf<Set<ReviewIdentity>?>(null)
     private var opened: InAppNotificationTarget? = null
     private var underneathClicked = false
     private var root: android.view.View? = null
@@ -93,6 +95,7 @@ class InAppNotificationHostTest {
                             ready = ready,
                             connections = connections,
                             waiting = waiting,
+                            live = live ?: waiting.map { it.identity() }.toSet(),
                             reviewOpen = { it in reviewOpen },
                             onOpen = { opened = it },
                             modifier = Modifier.align(Alignment.TopCenter),
@@ -329,6 +332,81 @@ class InAppNotificationHostTest {
             .onNodeWithTag(InAppNotificationTag)
             .assertContentDescriptionEquals("Transfer requested, open request")
     }
+
+    @Test
+    fun `a feed's backlog fills the inbox without a banner, and the live item after it gets one`() {
+        host()
+
+        // A feed was just connected and its snapshot read: nothing in it arrived as news.
+        live = emptySet()
+        waiting = listOf(PendingItem.Signal(PREDICTION), PendingItem.Private(TRANSFER))
+        compose.waitForIdle()
+        compose.onNodeWithTag(InAppNotificationTag).assertDoesNotExist()
+
+        // Then something is published while the stream is open.
+        live = setOf(ReviewIdentity.Private(DIRECT.id, SIGNATURE_ID))
+        waiting =
+            listOf(
+                PendingItem.Signal(PREDICTION),
+                PendingItem.Private(TRANSFER),
+                PendingItem.Private(SIGNATURE),
+            )
+        compose.waitForIdle()
+        compose
+            .onNodeWithTag(InAppNotificationTag)
+            .assertContentDescriptionEquals("Transfer requested, open request")
+        compose.onNodeWithTag(InAppNotificationTag).performTouchInput { click() }
+        compose.waitForIdle()
+        assertEquals(
+            InAppNotificationTarget.Review(ReviewIdentity.Private(DIRECT.id, SIGNATURE_ID)),
+            opened,
+        )
+    }
+
+    @Test
+    fun `requests arriving together from one server are one banner that names it and opens the Inbox`() {
+        host()
+
+        waiting = listOf(PendingItem.Private(TRANSFER), PendingItem.Private(SIGNATURE))
+        compose.waitForIdle()
+
+        compose
+            .onNodeWithTag(InAppNotificationTag)
+            .assertContentDescriptionEquals("2 new requests, open inbox")
+        compose
+            .onNodeWithText("From Home sidecar · Open Inbox to review", useUnmergedTree = true)
+            .assertExists()
+
+        compose.onNodeWithTag(InAppNotificationTag).performTouchInput { click() }
+        compose.waitForIdle()
+        assertEquals(InAppNotificationTarget.Inbox, opened)
+    }
+
+    @Test
+    fun `a burst over a server and a feed says how many and from how many connections`() {
+        host()
+
+        waiting =
+            listOf(
+                PendingItem.Private(TRANSFER),
+                PendingItem.Signal(PREDICTION),
+                PendingItem.Private(SIGNATURE),
+            )
+        compose.waitForIdle()
+
+        compose
+            .onNodeWithTag(InAppNotificationTag)
+            .assertContentDescriptionEquals("3 new items to review, open inbox")
+        compose
+            .onNodeWithText("From 2 connections · Open Inbox to review", useUnmergedTree = true)
+            .assertExists()
+    }
+
+    private fun PendingItem.identity(): ReviewIdentity =
+        when (this) {
+            is PendingItem.Private -> ReviewIdentity.Private(connectionId, requestId)
+            is PendingItem.Signal -> ReviewIdentity.Signal(connectionId, requestId)
+        }
 
     private class FakeLifecycleOwner : LifecycleOwner {
         val registry = LifecycleRegistry.createUnsafe(this)
