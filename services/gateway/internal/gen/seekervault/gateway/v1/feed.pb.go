@@ -1409,6 +1409,260 @@ func (*SetFeedPushTargetResponse) Descriptor() ([]byte, []int) {
 	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{21}
 }
 
+type ListRecommendedFeedsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// How many feeds at most, 1 to 100. Zero means the gateway's own default.
+	PageSize uint32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Where the previous page ended, exactly as its `next_page_token` said, or empty for the first
+	// page. It is opaque; a phone never builds one.
+	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRecommendedFeedsRequest) Reset() {
+	*x = ListRecommendedFeedsRequest{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRecommendedFeedsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRecommendedFeedsRequest) ProtoMessage() {}
+
+func (x *ListRecommendedFeedsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRecommendedFeedsRequest.ProtoReflect.Descriptor instead.
+func (*ListRecommendedFeedsRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ListRecommendedFeedsRequest) GetPageSize() uint32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListRecommendedFeedsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListRecommendedFeedsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// In the catalog's order: by display name, compared without case, then by server ID. The order
+	// does not depend on who asks or when a feed was listed, so paging through it is deterministic.
+	Feeds []*RecommendedFeed `protobuf:"bytes,1,rep,name=feeds,proto3" json:"feeds,omitempty"`
+	// Where the next page starts, or empty on the last one. A feed listed or unlisted between two
+	// pages moves no feed that was already on either side of the boundary.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRecommendedFeedsResponse) Reset() {
+	*x = ListRecommendedFeedsResponse{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRecommendedFeedsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRecommendedFeedsResponse) ProtoMessage() {}
+
+func (x *ListRecommendedFeedsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRecommendedFeedsResponse.ProtoReflect.Descriptor instead.
+func (*ListRecommendedFeedsResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ListRecommendedFeedsResponse) GetFeeds() []*RecommendedFeed {
+	if x != nil {
+		return x.Feeds
+	}
+	return nil
+}
+
+func (x *ListRecommendedFeedsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+// RecommendedFeed is one feed in the Discover catalog: what its publisher's current manifest says
+// about it, the operator's public description, and the access policy the operator registered.
+//
+// Everything here is public onboarding metadata. There is no operator label or host, no publisher
+// credential or check-in, nothing about a grant or who holds one, and no feed content. A phone
+// builds the feed's reference from `gateway_url`, `server_id` and `access`, and still reads the
+// manifest itself before adding the feed.
+type RecommendedFeed struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The publisher's lasting ID, which is what a feed reference carries.
+	ServerId string `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	// This gateway's canonical origin, as the manifest names it.
+	GatewayUrl string `protobuf:"bytes,2,opt,name=gateway_url,json=gatewayUrl,proto3" json:"gateway_url,omitempty"`
+	// "server/<server_id>", as the manifest names it.
+	Channel string `protobuf:"bytes,3,opt,name=channel,proto3" json:"channel,omitempty"`
+	// The manifest's display name.
+	DisplayName string `protobuf:"bytes,4,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	// The operator's public description: plain text, at most 500 characters, and never markup.
+	Description string `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
+	// Who may read the feed, as the operator registered it — never as the manifest last claimed it.
+	// A restricted feed names the origin where its subscribers prove who they are.
+	Access *v1.FeedAccess `protobuf:"bytes,6,opt,name=access,proto3" json:"access,omitempty"`
+	// The Solana networks the manifest declares, in canonical order; empty when it declares none.
+	SupportedNetworks []v1.SolanaNetwork `protobuf:"varint,7,rep,packed,name=supported_networks,json=supportedNetworks,proto3,enum=seekervault.server.v1.SolanaNetwork" json:"supported_networks,omitempty"`
+	// The client plugins and contract ranges the feed's operations need.
+	RequiredPlugins []*v1.PluginRequirement `protobuf:"bytes,8,rep,name=required_plugins,json=requiredPlugins,proto3" json:"required_plugins,omitempty"`
+	// The environments the feed serves.
+	Environments []v1.ServerEnvironment `protobuf:"varint,9,rep,packed,name=environments,proto3,enum=seekervault.server.v1.ServerEnvironment" json:"environments,omitempty"`
+	// The manifest's protocol version and settings revision, so a phone can say a feed needs a newer
+	// app before it asks for the manifest.
+	ProtocolVersion  uint32 `protobuf:"varint,10,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
+	SettingsRevision uint64 `protobuf:"varint,11,opt,name=settings_revision,json=settingsRevision,proto3" json:"settings_revision,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *RecommendedFeed) Reset() {
+	*x = RecommendedFeed{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecommendedFeed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecommendedFeed) ProtoMessage() {}
+
+func (x *RecommendedFeed) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecommendedFeed.ProtoReflect.Descriptor instead.
+func (*RecommendedFeed) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *RecommendedFeed) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *RecommendedFeed) GetGatewayUrl() string {
+	if x != nil {
+		return x.GatewayUrl
+	}
+	return ""
+}
+
+func (x *RecommendedFeed) GetChannel() string {
+	if x != nil {
+		return x.Channel
+	}
+	return ""
+}
+
+func (x *RecommendedFeed) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *RecommendedFeed) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *RecommendedFeed) GetAccess() *v1.FeedAccess {
+	if x != nil {
+		return x.Access
+	}
+	return nil
+}
+
+func (x *RecommendedFeed) GetSupportedNetworks() []v1.SolanaNetwork {
+	if x != nil {
+		return x.SupportedNetworks
+	}
+	return nil
+}
+
+func (x *RecommendedFeed) GetRequiredPlugins() []*v1.PluginRequirement {
+	if x != nil {
+		return x.RequiredPlugins
+	}
+	return nil
+}
+
+func (x *RecommendedFeed) GetEnvironments() []v1.ServerEnvironment {
+	if x != nil {
+		return x.Environments
+	}
+	return nil
+}
+
+func (x *RecommendedFeed) GetProtocolVersion() uint32 {
+	if x != nil {
+		return x.ProtocolVersion
+	}
+	return 0
+}
+
+func (x *RecommendedFeed) GetSettingsRevision() uint64 {
+	if x != nil {
+		return x.SettingsRevision
+	}
+	return 0
+}
+
 var File_seekervault_gateway_v1_feed_proto protoreflect.FileDescriptor
 
 const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
@@ -1493,11 +1747,32 @@ const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
 	"\asession\x18\x02 \x01(\tR\asession\x12\x1f\n" +
 	"\vpush_target\x18\x03 \x01(\tR\n" +
 	"pushTarget\"\x1b\n" +
-	"\x19SetFeedPushTargetResponse*r\n" +
+	"\x19SetFeedPushTargetResponse\"Y\n" +
+	"\x1bListRecommendedFeedsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\rR\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"\x85\x01\n" +
+	"\x1cListRecommendedFeedsResponse\x12=\n" +
+	"\x05feeds\x18\x01 \x03(\v2'.seekervault.gateway.v1.RecommendedFeedR\x05feeds\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb9\x04\n" +
+	"\x0fRecommendedFeed\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1f\n" +
+	"\vgateway_url\x18\x02 \x01(\tR\n" +
+	"gatewayUrl\x12\x18\n" +
+	"\achannel\x18\x03 \x01(\tR\achannel\x12!\n" +
+	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\x12 \n" +
+	"\vdescription\x18\x05 \x01(\tR\vdescription\x129\n" +
+	"\x06access\x18\x06 \x01(\v2!.seekervault.server.v1.FeedAccessR\x06access\x12S\n" +
+	"\x12supported_networks\x18\a \x03(\x0e2$.seekervault.server.v1.SolanaNetworkR\x11supportedNetworks\x12S\n" +
+	"\x10required_plugins\x18\b \x03(\v2(.seekervault.server.v1.PluginRequirementR\x0frequiredPlugins\x12L\n" +
+	"\fenvironments\x18\t \x03(\x0e2(.seekervault.server.v1.ServerEnvironmentR\fenvironments\x12)\n" +
+	"\x10protocol_version\x18\n" +
+	" \x01(\rR\x0fprotocolVersion\x12+\n" +
+	"\x11settings_revision\x18\v \x01(\x04R\x10settingsRevision*r\n" +
 	"\x10FeedAvailability\x12!\n" +
 	"\x1dFEED_AVAILABILITY_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18FEED_AVAILABILITY_ONLINE\x10\x01\x12\x1d\n" +
-	"\x19FEED_AVAILABILITY_OFFLINE\x10\x022\xf7\a\n" +
+	"\x19FEED_AVAILABILITY_OFFLINE\x10\x022\xfb\b\n" +
 	"\vFeedService\x12x\n" +
 	"\x11GetServerManifest\x120.seekervault.gateway.v1.GetServerManifestRequest\x1a1.seekervault.gateway.v1.GetServerManifestResponse\x12i\n" +
 	"\fListRequests\x12+.seekervault.gateway.v1.ListRequestsRequest\x1a,.seekervault.gateway.v1.ListRequestsResponse\x12c\n" +
@@ -1508,7 +1783,8 @@ const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
 	"\x0fGetStreamTicket\x12..seekervault.gateway.v1.GetStreamTicketRequest\x1a/.seekervault.gateway.v1.GetStreamTicketResponse\x12l\n" +
 	"\rGetFeedTopics\x12,.seekervault.gateway.v1.GetFeedTopicsRequest\x1a-.seekervault.gateway.v1.GetFeedTopicsResponse\x12l\n" +
 	"\rGetFeedStatus\x12,.seekervault.gateway.v1.GetFeedStatusRequest\x1a-.seekervault.gateway.v1.GetFeedStatusResponse\x12x\n" +
-	"\x11SetFeedPushTarget\x120.seekervault.gateway.v1.SetFeedPushTargetRequest\x1a1.seekervault.gateway.v1.SetFeedPushTargetResponseB\x82\x02\n" +
+	"\x11SetFeedPushTarget\x120.seekervault.gateway.v1.SetFeedPushTargetRequest\x1a1.seekervault.gateway.v1.SetFeedPushTargetResponse\x12\x81\x01\n" +
+	"\x14ListRecommendedFeeds\x123.seekervault.gateway.v1.ListRecommendedFeedsRequest\x1a4.seekervault.gateway.v1.ListRecommendedFeedsResponseB\x82\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\tFeedProtoP\x01Z_github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (
@@ -1524,70 +1800,84 @@ func file_seekervault_gateway_v1_feed_proto_rawDescGZIP() []byte {
 }
 
 var file_seekervault_gateway_v1_feed_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_seekervault_gateway_v1_feed_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_seekervault_gateway_v1_feed_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_seekervault_gateway_v1_feed_proto_goTypes = []any{
-	(FeedAvailability)(0),             // 0: seekervault.gateway.v1.FeedAvailability
-	(*GetServerManifestRequest)(nil),  // 1: seekervault.gateway.v1.GetServerManifestRequest
-	(*GetServerManifestResponse)(nil), // 2: seekervault.gateway.v1.GetServerManifestResponse
-	(*ListRequestsRequest)(nil),       // 3: seekervault.gateway.v1.ListRequestsRequest
-	(*ListRequestsResponse)(nil),      // 4: seekervault.gateway.v1.ListRequestsResponse
-	(*GetRequestRequest)(nil),         // 5: seekervault.gateway.v1.GetRequestRequest
-	(*GetRequestResponse)(nil),        // 6: seekervault.gateway.v1.GetRequestResponse
-	(*ListProposalsRequest)(nil),      // 7: seekervault.gateway.v1.ListProposalsRequest
-	(*ListProposalsResponse)(nil),     // 8: seekervault.gateway.v1.ListProposalsResponse
-	(*GetProposalRequest)(nil),        // 9: seekervault.gateway.v1.GetProposalRequest
-	(*GetProposalResponse)(nil),       // 10: seekervault.gateway.v1.GetProposalResponse
-	(*GetStreamTicketRequest)(nil),    // 11: seekervault.gateway.v1.GetStreamTicketRequest
-	(*ChannelSession)(nil),            // 12: seekervault.gateway.v1.ChannelSession
-	(*GetStreamTicketResponse)(nil),   // 13: seekervault.gateway.v1.GetStreamTicketResponse
-	(*StreamChannel)(nil),             // 14: seekervault.gateway.v1.StreamChannel
-	(*GetFeedTopicsRequest)(nil),      // 15: seekervault.gateway.v1.GetFeedTopicsRequest
-	(*GetFeedTopicsResponse)(nil),     // 16: seekervault.gateway.v1.GetFeedTopicsResponse
-	(*FeedTopic)(nil),                 // 17: seekervault.gateway.v1.FeedTopic
-	(*GetFeedStatusRequest)(nil),      // 18: seekervault.gateway.v1.GetFeedStatusRequest
-	(*GetFeedStatusResponse)(nil),     // 19: seekervault.gateway.v1.GetFeedStatusResponse
-	(*FeedStatus)(nil),                // 20: seekervault.gateway.v1.FeedStatus
-	(*SetFeedPushTargetRequest)(nil),  // 21: seekervault.gateway.v1.SetFeedPushTargetRequest
-	(*SetFeedPushTargetResponse)(nil), // 22: seekervault.gateway.v1.SetFeedPushTargetResponse
-	(*v1.ServerManifest)(nil),         // 23: seekervault.server.v1.ServerManifest
-	(*v2.Request)(nil),                // 24: seekervault.request.v2.Request
-	(*v11.Proposal)(nil),              // 25: seekervault.proposal.v1.Proposal
+	(FeedAvailability)(0),                // 0: seekervault.gateway.v1.FeedAvailability
+	(*GetServerManifestRequest)(nil),     // 1: seekervault.gateway.v1.GetServerManifestRequest
+	(*GetServerManifestResponse)(nil),    // 2: seekervault.gateway.v1.GetServerManifestResponse
+	(*ListRequestsRequest)(nil),          // 3: seekervault.gateway.v1.ListRequestsRequest
+	(*ListRequestsResponse)(nil),         // 4: seekervault.gateway.v1.ListRequestsResponse
+	(*GetRequestRequest)(nil),            // 5: seekervault.gateway.v1.GetRequestRequest
+	(*GetRequestResponse)(nil),           // 6: seekervault.gateway.v1.GetRequestResponse
+	(*ListProposalsRequest)(nil),         // 7: seekervault.gateway.v1.ListProposalsRequest
+	(*ListProposalsResponse)(nil),        // 8: seekervault.gateway.v1.ListProposalsResponse
+	(*GetProposalRequest)(nil),           // 9: seekervault.gateway.v1.GetProposalRequest
+	(*GetProposalResponse)(nil),          // 10: seekervault.gateway.v1.GetProposalResponse
+	(*GetStreamTicketRequest)(nil),       // 11: seekervault.gateway.v1.GetStreamTicketRequest
+	(*ChannelSession)(nil),               // 12: seekervault.gateway.v1.ChannelSession
+	(*GetStreamTicketResponse)(nil),      // 13: seekervault.gateway.v1.GetStreamTicketResponse
+	(*StreamChannel)(nil),                // 14: seekervault.gateway.v1.StreamChannel
+	(*GetFeedTopicsRequest)(nil),         // 15: seekervault.gateway.v1.GetFeedTopicsRequest
+	(*GetFeedTopicsResponse)(nil),        // 16: seekervault.gateway.v1.GetFeedTopicsResponse
+	(*FeedTopic)(nil),                    // 17: seekervault.gateway.v1.FeedTopic
+	(*GetFeedStatusRequest)(nil),         // 18: seekervault.gateway.v1.GetFeedStatusRequest
+	(*GetFeedStatusResponse)(nil),        // 19: seekervault.gateway.v1.GetFeedStatusResponse
+	(*FeedStatus)(nil),                   // 20: seekervault.gateway.v1.FeedStatus
+	(*SetFeedPushTargetRequest)(nil),     // 21: seekervault.gateway.v1.SetFeedPushTargetRequest
+	(*SetFeedPushTargetResponse)(nil),    // 22: seekervault.gateway.v1.SetFeedPushTargetResponse
+	(*ListRecommendedFeedsRequest)(nil),  // 23: seekervault.gateway.v1.ListRecommendedFeedsRequest
+	(*ListRecommendedFeedsResponse)(nil), // 24: seekervault.gateway.v1.ListRecommendedFeedsResponse
+	(*RecommendedFeed)(nil),              // 25: seekervault.gateway.v1.RecommendedFeed
+	(*v1.ServerManifest)(nil),            // 26: seekervault.server.v1.ServerManifest
+	(*v2.Request)(nil),                   // 27: seekervault.request.v2.Request
+	(*v11.Proposal)(nil),                 // 28: seekervault.proposal.v1.Proposal
+	(*v1.FeedAccess)(nil),                // 29: seekervault.server.v1.FeedAccess
+	(v1.SolanaNetwork)(0),                // 30: seekervault.server.v1.SolanaNetwork
+	(*v1.PluginRequirement)(nil),         // 31: seekervault.server.v1.PluginRequirement
+	(v1.ServerEnvironment)(0),            // 32: seekervault.server.v1.ServerEnvironment
 }
 var file_seekervault_gateway_v1_feed_proto_depIdxs = []int32{
-	23, // 0: seekervault.gateway.v1.GetServerManifestResponse.manifest:type_name -> seekervault.server.v1.ServerManifest
-	24, // 1: seekervault.gateway.v1.ListRequestsResponse.requests:type_name -> seekervault.request.v2.Request
-	24, // 2: seekervault.gateway.v1.GetRequestResponse.request:type_name -> seekervault.request.v2.Request
-	25, // 3: seekervault.gateway.v1.ListProposalsResponse.proposals:type_name -> seekervault.proposal.v1.Proposal
-	25, // 4: seekervault.gateway.v1.GetProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
+	26, // 0: seekervault.gateway.v1.GetServerManifestResponse.manifest:type_name -> seekervault.server.v1.ServerManifest
+	27, // 1: seekervault.gateway.v1.ListRequestsResponse.requests:type_name -> seekervault.request.v2.Request
+	27, // 2: seekervault.gateway.v1.GetRequestResponse.request:type_name -> seekervault.request.v2.Request
+	28, // 3: seekervault.gateway.v1.ListProposalsResponse.proposals:type_name -> seekervault.proposal.v1.Proposal
+	28, // 4: seekervault.gateway.v1.GetProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
 	12, // 5: seekervault.gateway.v1.GetStreamTicketRequest.sessions:type_name -> seekervault.gateway.v1.ChannelSession
 	14, // 6: seekervault.gateway.v1.GetStreamTicketResponse.channels:type_name -> seekervault.gateway.v1.StreamChannel
 	17, // 7: seekervault.gateway.v1.GetFeedTopicsResponse.topics:type_name -> seekervault.gateway.v1.FeedTopic
 	12, // 8: seekervault.gateway.v1.GetFeedStatusRequest.sessions:type_name -> seekervault.gateway.v1.ChannelSession
 	20, // 9: seekervault.gateway.v1.GetFeedStatusResponse.statuses:type_name -> seekervault.gateway.v1.FeedStatus
 	0,  // 10: seekervault.gateway.v1.FeedStatus.availability:type_name -> seekervault.gateway.v1.FeedAvailability
-	1,  // 11: seekervault.gateway.v1.FeedService.GetServerManifest:input_type -> seekervault.gateway.v1.GetServerManifestRequest
-	3,  // 12: seekervault.gateway.v1.FeedService.ListRequests:input_type -> seekervault.gateway.v1.ListRequestsRequest
-	5,  // 13: seekervault.gateway.v1.FeedService.GetRequest:input_type -> seekervault.gateway.v1.GetRequestRequest
-	7,  // 14: seekervault.gateway.v1.FeedService.ListProposals:input_type -> seekervault.gateway.v1.ListProposalsRequest
-	9,  // 15: seekervault.gateway.v1.FeedService.GetProposal:input_type -> seekervault.gateway.v1.GetProposalRequest
-	11, // 16: seekervault.gateway.v1.FeedService.GetStreamTicket:input_type -> seekervault.gateway.v1.GetStreamTicketRequest
-	15, // 17: seekervault.gateway.v1.FeedService.GetFeedTopics:input_type -> seekervault.gateway.v1.GetFeedTopicsRequest
-	18, // 18: seekervault.gateway.v1.FeedService.GetFeedStatus:input_type -> seekervault.gateway.v1.GetFeedStatusRequest
-	21, // 19: seekervault.gateway.v1.FeedService.SetFeedPushTarget:input_type -> seekervault.gateway.v1.SetFeedPushTargetRequest
-	2,  // 20: seekervault.gateway.v1.FeedService.GetServerManifest:output_type -> seekervault.gateway.v1.GetServerManifestResponse
-	4,  // 21: seekervault.gateway.v1.FeedService.ListRequests:output_type -> seekervault.gateway.v1.ListRequestsResponse
-	6,  // 22: seekervault.gateway.v1.FeedService.GetRequest:output_type -> seekervault.gateway.v1.GetRequestResponse
-	8,  // 23: seekervault.gateway.v1.FeedService.ListProposals:output_type -> seekervault.gateway.v1.ListProposalsResponse
-	10, // 24: seekervault.gateway.v1.FeedService.GetProposal:output_type -> seekervault.gateway.v1.GetProposalResponse
-	13, // 25: seekervault.gateway.v1.FeedService.GetStreamTicket:output_type -> seekervault.gateway.v1.GetStreamTicketResponse
-	16, // 26: seekervault.gateway.v1.FeedService.GetFeedTopics:output_type -> seekervault.gateway.v1.GetFeedTopicsResponse
-	19, // 27: seekervault.gateway.v1.FeedService.GetFeedStatus:output_type -> seekervault.gateway.v1.GetFeedStatusResponse
-	22, // 28: seekervault.gateway.v1.FeedService.SetFeedPushTarget:output_type -> seekervault.gateway.v1.SetFeedPushTargetResponse
-	20, // [20:29] is the sub-list for method output_type
-	11, // [11:20] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	25, // 11: seekervault.gateway.v1.ListRecommendedFeedsResponse.feeds:type_name -> seekervault.gateway.v1.RecommendedFeed
+	29, // 12: seekervault.gateway.v1.RecommendedFeed.access:type_name -> seekervault.server.v1.FeedAccess
+	30, // 13: seekervault.gateway.v1.RecommendedFeed.supported_networks:type_name -> seekervault.server.v1.SolanaNetwork
+	31, // 14: seekervault.gateway.v1.RecommendedFeed.required_plugins:type_name -> seekervault.server.v1.PluginRequirement
+	32, // 15: seekervault.gateway.v1.RecommendedFeed.environments:type_name -> seekervault.server.v1.ServerEnvironment
+	1,  // 16: seekervault.gateway.v1.FeedService.GetServerManifest:input_type -> seekervault.gateway.v1.GetServerManifestRequest
+	3,  // 17: seekervault.gateway.v1.FeedService.ListRequests:input_type -> seekervault.gateway.v1.ListRequestsRequest
+	5,  // 18: seekervault.gateway.v1.FeedService.GetRequest:input_type -> seekervault.gateway.v1.GetRequestRequest
+	7,  // 19: seekervault.gateway.v1.FeedService.ListProposals:input_type -> seekervault.gateway.v1.ListProposalsRequest
+	9,  // 20: seekervault.gateway.v1.FeedService.GetProposal:input_type -> seekervault.gateway.v1.GetProposalRequest
+	11, // 21: seekervault.gateway.v1.FeedService.GetStreamTicket:input_type -> seekervault.gateway.v1.GetStreamTicketRequest
+	15, // 22: seekervault.gateway.v1.FeedService.GetFeedTopics:input_type -> seekervault.gateway.v1.GetFeedTopicsRequest
+	18, // 23: seekervault.gateway.v1.FeedService.GetFeedStatus:input_type -> seekervault.gateway.v1.GetFeedStatusRequest
+	21, // 24: seekervault.gateway.v1.FeedService.SetFeedPushTarget:input_type -> seekervault.gateway.v1.SetFeedPushTargetRequest
+	23, // 25: seekervault.gateway.v1.FeedService.ListRecommendedFeeds:input_type -> seekervault.gateway.v1.ListRecommendedFeedsRequest
+	2,  // 26: seekervault.gateway.v1.FeedService.GetServerManifest:output_type -> seekervault.gateway.v1.GetServerManifestResponse
+	4,  // 27: seekervault.gateway.v1.FeedService.ListRequests:output_type -> seekervault.gateway.v1.ListRequestsResponse
+	6,  // 28: seekervault.gateway.v1.FeedService.GetRequest:output_type -> seekervault.gateway.v1.GetRequestResponse
+	8,  // 29: seekervault.gateway.v1.FeedService.ListProposals:output_type -> seekervault.gateway.v1.ListProposalsResponse
+	10, // 30: seekervault.gateway.v1.FeedService.GetProposal:output_type -> seekervault.gateway.v1.GetProposalResponse
+	13, // 31: seekervault.gateway.v1.FeedService.GetStreamTicket:output_type -> seekervault.gateway.v1.GetStreamTicketResponse
+	16, // 32: seekervault.gateway.v1.FeedService.GetFeedTopics:output_type -> seekervault.gateway.v1.GetFeedTopicsResponse
+	19, // 33: seekervault.gateway.v1.FeedService.GetFeedStatus:output_type -> seekervault.gateway.v1.GetFeedStatusResponse
+	22, // 34: seekervault.gateway.v1.FeedService.SetFeedPushTarget:output_type -> seekervault.gateway.v1.SetFeedPushTargetResponse
+	24, // 35: seekervault.gateway.v1.FeedService.ListRecommendedFeeds:output_type -> seekervault.gateway.v1.ListRecommendedFeedsResponse
+	26, // [26:36] is the sub-list for method output_type
+	16, // [16:26] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_gateway_v1_feed_proto_init() }
@@ -1601,7 +1891,7 @@ func file_seekervault_gateway_v1_feed_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_gateway_v1_feed_proto_rawDesc), len(file_seekervault_gateway_v1_feed_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   22,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

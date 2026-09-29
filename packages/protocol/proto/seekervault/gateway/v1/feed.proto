@@ -106,6 +106,19 @@ service FeedService {
   // being live, and a hint that was already queued grants nothing: every read it prompts is checked
   // again.
   rpc SetFeedPushTarget(SetFeedPushTargetRequest) returns (SetFeedPushTargetResponse);
+  // The feeds this gateway's operator listed in the app's Discover catalog (SEE-176).
+  //
+  // It is how a phone that holds no feed reference yet finds one: a page of the feeds the operator
+  // opted in, each with what onboarding needs to build its reference and describe it before the
+  // owner chooses anything. Listing is the operator's choice and nothing else — it is independent
+  // of a feed's access policy, a listed restricted feed stays restricted, and nothing here admits
+  // anyone to anything: every item is onboarding metadata a manifest read would already answer.
+  //
+  // Like every read here, the answer is the same for everyone who asks, and asking changes
+  // nothing and records nothing. A phone that goes on to add a feed reads and validates its
+  // manifest as it would for a pasted reference, so a card that went stale between the two is
+  // caught there rather than believed.
+  rpc ListRecommendedFeeds(ListRecommendedFeedsRequest) returns (ListRecommendedFeedsResponse);
 }
 
 message GetServerManifestRequest {
@@ -334,3 +347,53 @@ message SetFeedPushTargetRequest {
 }
 
 message SetFeedPushTargetResponse {}
+
+message ListRecommendedFeedsRequest {
+  // How many feeds at most, 1 to 100. Zero means the gateway's own default.
+  uint32 page_size = 1;
+  // Where the previous page ended, exactly as its `next_page_token` said, or empty for the first
+  // page. It is opaque; a phone never builds one.
+  string page_token = 2;
+}
+
+message ListRecommendedFeedsResponse {
+  // In the catalog's order: by display name, compared without case, then by server ID. The order
+  // does not depend on who asks or when a feed was listed, so paging through it is deterministic.
+  repeated RecommendedFeed feeds = 1;
+  // Where the next page starts, or empty on the last one. A feed listed or unlisted between two
+  // pages moves no feed that was already on either side of the boundary.
+  string next_page_token = 2;
+}
+
+// RecommendedFeed is one feed in the Discover catalog: what its publisher's current manifest says
+// about it, the operator's public description, and the access policy the operator registered.
+//
+// Everything here is public onboarding metadata. There is no operator label or host, no publisher
+// credential or check-in, nothing about a grant or who holds one, and no feed content. A phone
+// builds the feed's reference from `gateway_url`, `server_id` and `access`, and still reads the
+// manifest itself before adding the feed.
+message RecommendedFeed {
+  // The publisher's lasting ID, which is what a feed reference carries.
+  string server_id = 1;
+  // This gateway's canonical origin, as the manifest names it.
+  string gateway_url = 2;
+  // "server/<server_id>", as the manifest names it.
+  string channel = 3;
+  // The manifest's display name.
+  string display_name = 4;
+  // The operator's public description: plain text, at most 500 characters, and never markup.
+  string description = 5;
+  // Who may read the feed, as the operator registered it — never as the manifest last claimed it.
+  // A restricted feed names the origin where its subscribers prove who they are.
+  seekervault.server.v1.FeedAccess access = 6;
+  // The Solana networks the manifest declares, in canonical order; empty when it declares none.
+  repeated seekervault.server.v1.SolanaNetwork supported_networks = 7;
+  // The client plugins and contract ranges the feed's operations need.
+  repeated seekervault.server.v1.PluginRequirement required_plugins = 8;
+  // The environments the feed serves.
+  repeated seekervault.server.v1.ServerEnvironment environments = 9;
+  // The manifest's protocol version and settings revision, so a phone can say a feed needs a newer
+  // app before it asks for the manifest.
+  uint32 protocol_version = 10;
+  uint64 settings_revision = 11;
+}
