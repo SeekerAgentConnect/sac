@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { SolanaNetwork } from "@seeker_agent_connect/server-sdk/protocol";
+
 import {
   ConfigError,
   DEFAULT_DATABASE_PATH,
@@ -395,6 +397,47 @@ describe("loadSidecarConfig", () => {
     });
     assert.equal(config.solanaRpcUrl, "https://api.devnet.solana.com/");
     assert.equal(config.solanaRpcTimeoutMs, 2500);
+  });
+
+  /**
+   * The networks the manifest declares (SEE-174). Nothing defaults to Mainnet, and the RPC endpoint
+   * is not read to guess one: a server declares what its operator said, or nothing.
+   */
+  it("declares no network unless SAC_SUPPORTED_NETWORKS says one", () => {
+    const networks = (env: Record<string, string>) =>
+      loadSidecarConfig({ ...validEnv, ...env }).supportedNetworks;
+    assert.equal(networks({}), undefined);
+    assert.equal(
+      networks({ SOLANA_RPC_URL: "https://rpc.example.com/?key=k" }),
+      undefined,
+    );
+    // Written in canonical order, whatever order the operator used.
+    assert.deepEqual(
+      networks({ SAC_SUPPORTED_NETWORKS: " devnet, mainnet " }),
+      [SolanaNetwork.MAINNET, SolanaNetwork.DEVNET],
+    );
+    assert.deepEqual(networks({ SAC_SUPPORTED_NETWORKS: "testnet" }), [
+      SolanaNetwork.TESTNET,
+    ]);
+    // Blank is unset, like every other optional variable here, and none says so explicitly.
+    assert.equal(networks({ SAC_SUPPORTED_NETWORKS: "  " }), undefined);
+    assert.deepEqual(networks({ SAC_SUPPORTED_NETWORKS: "none" }), []);
+  });
+
+  it("refuses an unknown or repeated network in SAC_SUPPORTED_NETWORKS", () => {
+    for (const [value, reason] of [
+      ["mainnet-beta", /SAC_SUPPORTED_NETWORKS names "mainnet-beta"/],
+      ["Mainnet", /SAC_SUPPORTED_NETWORKS names "Mainnet"/],
+      ["mainnet,devnet,mainnet", /names mainnet more than once/],
+      ["mainnet,,devnet", /empty entry/],
+    ] as const) {
+      const problems = problemsFor({
+        ...validEnv,
+        SAC_SUPPORTED_NETWORKS: value,
+      });
+      assert.equal(problems.length, 1, problems.join("\n"));
+      assert.match(problems[0] ?? "", reason);
+    }
   });
 
   it("configures FCM only for an explicit valid project ID", () => {

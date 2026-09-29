@@ -102,6 +102,31 @@ starts no integration. The provider interfaces have no signing or submission met
 MCP tokens and OAuth configuration belong to the MCP host. Paired-phone credentials stay in the
 SDK database and are accepted only by the phone API.
 
+## Declaring networks
+
+`supportedNetworks` is the list of Solana networks the server's manifest declares (SEE-174). The
+phone offers only wallets on those networks and signs only for them. It has **no default**: omitted
+or empty declares no network, which the phone never reads as Mainnet or as every network, and an
+up-to-date phone signs nothing for such a server. The example above queues only acknowledgements,
+so it rightly declares none; a server that asks the owner to sign passes what it runs against:
+
+```ts
+import { parseSupportedNetworks } from "@seeker_agent_connect/server-sdk";
+
+openDirectServer({
+  // …
+  supportedNetworks: parseSupportedNetworks(
+    process.env.SAC_SUPPORTED_NETWORKS ?? "", // e.g. "mainnet" or "mainnet,devnet"
+    "SAC_SUPPORTED_NETWORKS",
+  ),
+});
+```
+
+`parseSupportedNetworks` accepts `mainnet`, `devnet` and `testnet` (lowercase), or `none` alone,
+refuses unknown names, duplicates and empty entries, and returns canonical order. `openDirectServer` refuses an
+invalid list before opening anything. Changing the list moves the manifest's settings revision; an
+unchanged list, in any order, keeps it. Network is not environment: `production` is not Mainnet.
+
 ## Persistence and shutdown
 
 The database uses the existing direct-server schema and identity. Reopening the same file preserves

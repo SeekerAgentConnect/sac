@@ -69,6 +69,41 @@ a logger. Request/pairing limits, a clock and listener binding are explicit opti
 confirmation providers and content-free invalidation delivery are optional; omitting them adds no
 provider/Firebase dependency and starts no background work.
 
+### Supported networks (SEE-174)
+
+`OpenDirectServerOptions.supportedNetworks` is the list of `SolanaNetwork` values the direct
+manifest publishes as `direct.supported_networks` (inside the reference, so the reference stays the
+last thing serialized): the Solana networks this server's wallet operations are
+actually configured for. The phone offers only wallet profiles on those networks when a connection
+is set up, and signs nothing for a connection whose bound network isn't listed.
+
+- **There is no default.** Omitted or empty, the manifest declares no network. The phone reads that
+  as "no networks declared" — never as Mainnet, never as every network — and signs nothing for the
+  server until it declares one. A server whose requests never reach a wallet (informational or
+  acknowledgement-only) is exactly the server that declares nothing.
+- **Network is not environment.** The direct manifest's `production` environment says nothing about
+  Mainnet; a production server may run on Devnet.
+- **Validation is at open.** `SOLANA_NETWORK_UNSPECIFIED`, a value the contract doesn't name and a
+  duplicate each make `openDirectServer` throw before the database is opened. Order is not an error:
+  the manifest always lists networks in canonical order (Mainnet, Devnet, Testnet), so the same set
+  in another order is the same manifest and the same revision.
+- **Configuration helpers.** `parseSupportedNetworks(value, source)` reads a comma-separated
+  configuration value of the canonical names `mainnet`, `devnet` and `testnet` — lowercase, no
+  aliases such as `mainnet-beta` — refuses unknown names, duplicates and empty entries with an
+  error naming `source`, and returns a blank value or `none` (the Go templates' spelling) as an
+  empty list. `canonicalSupportedNetworks`,
+  `solanaNetworkName` and `SOLANA_NETWORK_NAMES` are exported with it; the enum is in `./protocol`.
+- **Revision.** The manifest fingerprint covers the whole message, so a changed list moves the
+  settings revision up by one on the next open and an unchanged one keeps it. An empty list is
+  absent from the fingerprinted JSON, so a server that still declares nothing keeps the revision it
+  had before the field existed.
+- **Wallet bindings are unchanged.** A connection still has one binding, publishing a new one still
+  cancels the PENDING wallet requests it no longer fits, and an action's wallet and network are
+  still checked against that binding. A binding on an undeclared network is stored rather than
+  refused — only a phone that predates the field publishes one, and refusing it would break that
+  phone without making anything safer, because the gate that matters is the updated phone's — and
+  the SDK logs a line naming the network and what the server declares.
+
 ## Errors, cancellation and resource lifetime
 
 Synchronous request validation and state failures remain `RequestFailure` with the existing

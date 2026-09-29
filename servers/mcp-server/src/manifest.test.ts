@@ -20,6 +20,7 @@ import {
   ConnectionMode,
   ServerEnvironment,
   ServerManifestSchema,
+  SolanaNetwork,
 } from "@seeker_agent_connect/server-sdk/protocol";
 import {
   manifestFingerprint,
@@ -47,6 +48,7 @@ const FIXTURE_CASES = [
   "feed",
   "foreign_channel",
   "max_revision",
+  "no_networks",
 ] as const;
 
 const URL_A = "https://vault.example.com";
@@ -95,6 +97,33 @@ describe("cross-runtime manifest fixtures", () => {
       readFileSync(new URL("max_revision.json", FIXTURES), "utf8"),
     );
     assert.equal(message.settingsRevision, 18_446_744_073_709_551_615n);
+  });
+
+  it("is what this server writes for the networks it declares, and for none", () => {
+    // The direct fixture declares Mainnet, and no_networks is the same manifest declaring nothing
+    // — which is also what every manifest from before SEE-174 reads as. The SDK's own manifest for
+    // the same settings has to be byte for byte the fixture, or a phone's tests would pin a
+    // document no server of ours publishes.
+    const fixture = (name: string) =>
+      new Uint8Array(readFileSync(new URL(`${name}.binpb`, FIXTURES)));
+    const settings = {
+      serverId: "9fda5035-f3b4-4ec3-a68a-5e6caa02397a",
+      url: URL_A,
+    };
+    assert.deepEqual(
+      toBinary(
+        ServerManifestSchema,
+        serverManifest(
+          { ...settings, supportedNetworks: [SolanaNetwork.MAINNET] },
+          3,
+        ),
+      ),
+      fixture("direct"),
+    );
+    assert.deepEqual(
+      toBinary(ServerManifestSchema, serverManifest(settings, 3)),
+      fixture("no_networks"),
+    );
   });
 });
 

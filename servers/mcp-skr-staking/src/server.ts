@@ -42,7 +42,10 @@ import {
   type DirectServer,
   type StakingProvider,
 } from "@seeker_agent_connect/server-sdk";
-import { Network } from "@seeker_agent_connect/server-sdk/protocol";
+import {
+  Network,
+  SolanaNetwork,
+} from "@seeker_agent_connect/server-sdk/protocol";
 import type { Config } from "./config.ts";
 import { UNUSED_LIVE_COMMAND_TIMEOUT_SECONDS } from "./config.ts";
 import { ChainUnavailable, SolanaRpc } from "./skr/chain.ts";
@@ -159,6 +162,11 @@ export async function startStakingServer(
   const direct = openDirectServer({
     databasePath: config.databasePath,
     publicOrigin: () => config.publicUrl ?? listeningUrl ?? "",
+    // Mainnet and nothing else (SEE-174), and that is a fact about this server rather than a
+    // default: the staking program is deployed on mainnet-beta only, and the line above has just
+    // refused to start against any other cluster. So there is no variable for it — one that could
+    // say "devnet" would advertise a network every request on it would fail on.
+    supportedNetworks: [SolanaNetwork.MAINNET],
     requestTtlSeconds: config.requestTtlSeconds,
     pendingLimit: config.pendingLimit,
     pairingTokenTtlSeconds: config.pairingTokenTtlSeconds,

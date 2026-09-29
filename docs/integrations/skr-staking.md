@@ -55,6 +55,14 @@ Until a phone is paired and has published a wallet, every tool answers that ther
 wallet. That is the same shape as the general server's pairing ([wiki/mcp-adapter.md](../wiki/mcp-adapter.md)),
 and the pairing code names this server's own origin — the one in `SKR_STAKING_PUBLIC_URL`.
 
+The server's manifest declares **Mainnet** as its one supported network (SEE-174), so an up-to-date
+phone offers only a Mainnet wallet profile when the owner connects it, and signs nothing for this
+server on any other network. There is nothing to configure: the program exists only on mainnet-beta
+and the server refuses to start against another cluster, so no setting could truthfully say
+anything else. If the owner's phone binds a devnet wallet anyway — only a phone older than SEE-174
+does — the binding is stored, the server logs that devnet is not a network it declares, and every
+tool refuses it as before.
+
 ## The tools
 
 ### `get_staking_status`
