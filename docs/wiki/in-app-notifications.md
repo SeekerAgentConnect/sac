@@ -12,6 +12,7 @@ telling, exactly as before.
 | `Request` | A paired server sent a request | primary | `notifications_active` | the request's own words | `New request · {server} · {detail}` |
 | `Signal` | A feed published a proposal | primary | `sensors` | the signal's own words | `New signal · {source} · {detail}` |
 | `Disconnected` | A paired server ended the pairing | tertiary | `link_off` | `{server} disconnected` | none |
+| `Request` / `Signal` (several) | Several arrived together (SEE-175) | primary | as above | `{n} new requests`, `{n} new signals` or `{n} new items to review` | `From {server} · Open Inbox to review` or `From {k} connections · Open Inbox to review` |
 
 The words are not new. They come out of `requestNotificationCopy` and `proposalNotificationCopy` —
 the very functions `notifications/NotificationAppearance.kt` builds a system notification from — so
@@ -44,12 +45,16 @@ and fades under a finger needs all of them.
 
 `:app`'s `notifications/` owns everything about *which* banner is visible:
 
-- `InAppNotificationQueue` — one banner at a time, later events FIFO behind it. A request or signal
+- `InAppNotificationQueue` — one banner at a time, later events FIFO behind it. Requests and
+  signals are coordinated rather than queued one per item (see
+  [Bursts and backlogs](#bursts-and-backlogs-see-175)). A request or signal
   is armed for six seconds when it reaches the front, never when it arrives, so a banner queued
   behind a long-lived one still gets its whole six seconds once it is seen. A disconnected banner is
   never armed at all: it holds the queue until the owner taps or swipes it. A dismissed note stays
   in the queue, marked `leaving`, for the 200ms its exit takes.
-- `InAppNotificationSource` — successive snapshots into arrivals, by set difference.
+- `InAppNotificationSource` — successive snapshots into arrivals: what is new to the session *and*
+  marked live by `ArrivalLedger`.
+- `ArrivalLedger` — app-scoped; the repositories mark which waiting items reached the phone as news.
 - `InAppNotifications` — the composable that joins the two, resolves the words, and renders the
   head of the queue. `SeekerVaultApp` mounts it as the last child of the root `Box` at a `zIndex`
   above `SeekerSheet`'s `10f + index`, so the banner is over the content and over the whole sheet
@@ -108,6 +113,60 @@ operationsState.loaded)`. A build with no operations holds no proposals, so ther
 to wait for. `OperationsUiState.loaded` is the repository's own flag rather than "the combine has
 emitted", for exactly the same reason: its first emission happens before the store has been read.
 
+## Bursts and backlogs (SEE-175)
+
+Set difference alone announced everything that appeared, and a lot appears that is not news:
+connecting a feed reads its whole backlog, coming back to the app reads what changed while it was
+away, and a burst of publications is many items at once. Two things stop that.
+
+### Only news is announced
+
+`notifications/ArrivalLedger` is written by the repositories **before** they publish, so a mark is
+always visible no later than the item it is about:
+
+| Delivery | Producer | News? |
+| --- | --- | --- |
+| Feed stream event (`FeedStreamEvent.Published`, not replayed) | `ProposalRepository.apply(…, Live)` | always, when it creates a proposal |
+| Feed history replayed when the stream opens (`replayed = true`) | `apply(…, Replayed)` | only if the feed was already read whole in this session |
+| Feed snapshot (`ProposalRepository.refresh`: stream open, push hint, manual, add-feed) | refresh | only if the feed was already read whole in this session (decided before the walk) |
+| Direct stream event (`SynchronizationRepository.applyEvent`) | `applyCache(…, SyncDelivery.Event)` | always, when it creates a pending request |
+| Direct snapshot (`synchronize`) | `applyCache(…, SyncDelivery.Snapshot(live))` | requests created by events buffered during the read; everything else only if already read this session |
+| Legacy fetch (`ConnectionRepository.fetch`) | fetch | only if already read this session |
+| Sync cache loaded from disk | `applyCache(…, SyncDelivery.Cached)` | never |
+
+"Created" means the phone did not hold it: a repeated delivery, a new revision or a status update is
+never an arrival. `MainActivity.onStop` (a real one, not a rotation) calls
+`ArrivalLedger.onBackground()`, which forgets which connections were read and every mark, so the
+first read after coming back is catching up again. There is no timer anywhere in this: a live item
+published during a feed's first snapshot arrives on the stream, or in the next read, and is marked
+either way.
+
+`InAppNotificationSource` keeps what it has seen for the whole foreground session, not just the last
+look, so an item that leaves the list and returns is not announced twice; items that appear unmarked
+become known silently. The inbox, its counts and unread state are untouched by all of this.
+
+### One banner per burst, with limits
+
+`InAppNotificationQueue.arrive` takes every request and signal that arrived in one look:
+
+- There is at most **one** incoming banner, visible or waiting. Arrivals merge into it, counted by
+  unique `ReviewIdentity` (connection, namespace and ID, so two servers' IDs cannot collide). One
+  item keeps its own words and opens its review; several become the aggregate row above and open the
+  Inbox (`InAppNotificationTarget.Inbox` → Inbox tab, Pending).
+- Its lifetime is `IncomingNotificationPolicy.LIFETIME_MS` (6 s) from when it becomes visible and is
+  **never extended** by merging.
+- When it leaves — timed out, swiped or tapped — a cooldown of `COOLDOWN_MS` (30 s) starts. What
+  arrives meanwhile is held and shown as **one** banner when it ends; what was answered or opened in
+  the meantime is dropped from it (`retainWaiting`). So under sustained traffic at most one incoming
+  banner appears per `6 s + 200 ms exit + 30 s` ≈ 36 s, and dismissing one never brings the same
+  burst back immediately.
+- At most `MOST_COUNTED` (99) items are counted or held; beyond that the banner says "99+".
+- Service messages and disconnections are never throttled, never merged, and are queued ahead of an
+  incoming banner nobody has seen yet.
+
+`IncomingNotificationQueueTest` pins these values and drives them under virtual time, including 90
+seconds of ten requests a second over three servers.
+
 ## Suppression and routing
 
 A request or signal whose review is already on screen raises no banner — the owner is looking at the
@@ -117,7 +176,7 @@ stack, and a disconnection is never suppressed.
 A tap dismisses the banner and then opens what it is about, by the same route a system
 notification's tap takes: back to a base destination the flow graph allows the destination to be
 pushed from, then push it. A request or signal opens its review; a disconnection opens Add
-connection, because pairing again is the only way back.
+connection, because pairing again is the only way back; a banner for several opens the Inbox.
 
 ## Accessibility
 
