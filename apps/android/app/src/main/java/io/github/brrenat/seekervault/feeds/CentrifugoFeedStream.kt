@@ -143,7 +143,7 @@ class CentrifugoFeedStream(httpClient: OkHttpClient) : FeedStream {
                     }
                 val replayed =
                     connect.subsMap.entries.flatMap { (channel, result) ->
-                        result.publicationsList.map { published(channel, it) }
+                        result.publicationsList.map { published(channel, it, replayed = true) }
                     }
                 listOf(FeedStreamEvent.Opened(opened)) + replayed
             }
@@ -169,12 +169,17 @@ class CentrifugoFeedStream(httpClient: OkHttpClient) : FeedStream {
      * document that was read. Bytes that are not one are reported rather than dropped: the channel
      * moved either way, and the caller reads the snapshot instead of assuming nothing happened.
      */
-    private fun published(channel: String, publication: Publication): FeedStreamEvent =
+    private fun published(
+        channel: String,
+        publication: Publication,
+        replayed: Boolean = false,
+    ): FeedStreamEvent =
         try {
             FeedStreamEvent.Published(
                 channel,
                 publication.offset,
                 FeedEvent.parseFrom(publication.data),
+                replayed,
             )
         } catch (e: InvalidProtocolBufferException) {
             FeedStreamEvent.Unreadable(channel, publication.offset)

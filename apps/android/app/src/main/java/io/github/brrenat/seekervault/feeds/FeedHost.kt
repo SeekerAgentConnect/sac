@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.feeds
 
 import io.github.brrenat.seekervault.connections.ConnectionRepository
+import io.github.brrenat.seekervault.connections.FeedDelivery
 import io.github.brrenat.seekervault.connections.FeedRefresh
 import io.github.brrenat.seekervault.connections.ProposalRepository
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
@@ -18,11 +19,22 @@ import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
  * more for having arrived quickly.**
  */
 interface FeedHost {
-    /** Applies one published proposal. */
-    suspend fun applyProposal(connectionId: String, message: WireProposal)
+    /**
+     * Applies one published proposal. [delivery] says whether it was published while the stream was
+     * open or replayed when it opened, which decides only whether it is news (SEE-175).
+     */
+    suspend fun applyProposal(
+        connectionId: String,
+        message: WireProposal,
+        delivery: FeedDelivery = FeedDelivery.Live,
+    )
 
     /** Applies one common request through the same local proposal lifecycle. */
-    suspend fun applyRequest(connectionId: String, message: WireRequest) {}
+    suspend fun applyRequest(
+        connectionId: String,
+        message: WireRequest,
+        delivery: FeedDelivery = FeedDelivery.Live,
+    ) {}
 
     /** Applies a publisher's settings. */
     suspend fun applySettings(connectionId: String, message: WireManifest)
@@ -48,12 +60,20 @@ class RepositoryFeedHost(
     private val connections: ConnectionRepository,
     private val proposals: ProposalRepository,
 ) : FeedHost {
-    override suspend fun applyProposal(connectionId: String, message: WireProposal) {
-        proposals.apply(connectionId, message)
+    override suspend fun applyProposal(
+        connectionId: String,
+        message: WireProposal,
+        delivery: FeedDelivery,
+    ) {
+        proposals.apply(connectionId, message, delivery)
     }
 
-    override suspend fun applyRequest(connectionId: String, message: WireRequest) {
-        proposals.apply(connectionId, message)
+    override suspend fun applyRequest(
+        connectionId: String,
+        message: WireRequest,
+        delivery: FeedDelivery,
+    ) {
+        proposals.apply(connectionId, message, delivery)
     }
 
     override suspend fun applySettings(connectionId: String, message: WireManifest) {

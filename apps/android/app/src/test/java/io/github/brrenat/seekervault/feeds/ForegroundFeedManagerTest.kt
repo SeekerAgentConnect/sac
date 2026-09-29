@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.feeds
 
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.connections.FeedDelivery
 import io.github.brrenat.seekervault.connections.GatewayException
 import io.github.brrenat.seekervault.feeds.storage.FeedCursorStore
 import io.github.brrenat.seekervault.gateway.v1.FeedEvent
@@ -121,6 +122,26 @@ class ForegroundFeedManagerTest {
         // The snapshot boundary is untouched: only a completed walk moves it, because only a walk
         // knows what it covered.
         assertEquals(5L, cursors.get(SERVER_A)?.sequence)
+    }
+
+    /**
+     * History the broker replays when the stream opens is applied like anything else, and said to
+     * be a replay: catching up is not news for the foreground banner (SEE-175). What is published
+     * while the stream is open is.
+     */
+    @Test
+    fun replayedHistoryIsAppliedAsAReplayAndWhatFollowsAsLive() = runTest {
+        cursors.put(FeedCursorStore.Progress(SERVER_A, FeedCursor(EPOCH, 41), sequence = 5))
+        manager(backgroundScope).onForeground()
+        runCurrent()
+
+        stream.open(recovered = true)
+        stream.publish(offset = 42, revision = 6, replayed = true)
+        stream.publish(offset = 43, revision = 7)
+        runCurrent()
+
+        assertEquals(listOf(FEED_A to 6L, FEED_A to 7L), host.proposals)
+        assertEquals(listOf(FeedDelivery.Replayed, FeedDelivery.Live), host.deliveries)
     }
 
     @Test
@@ -439,11 +460,17 @@ class ForegroundFeedManagerTest {
 
     private class Recorder : FeedHost {
         val proposals = mutableListOf<Pair<String, Long>>()
+        val deliveries = mutableListOf<FeedDelivery>()
         val settings = mutableListOf<Pair<String, Long>>()
         val read = mutableListOf<Pair<String, Long>>()
 
-        override suspend fun applyProposal(connectionId: String, message: WireProposal) {
+        override suspend fun applyProposal(
+            connectionId: String,
+            message: WireProposal,
+            delivery: FeedDelivery,
+        ) {
             proposals += connectionId to message.revision
+            deliveries += delivery
         }
 
         override suspend fun applySettings(connectionId: String, message: WireManifest) {
@@ -526,7 +553,12 @@ class ForegroundFeedManagerTest {
             )
         }
 
-        suspend fun publish(offset: Long, revision: Long, opening: Int = events.lastIndex) {
+        suspend fun publish(
+            offset: Long,
+            revision: Long,
+            opening: Int = events.lastIndex,
+            replayed: Boolean = false,
+        ) {
             deliver(
                 FeedStreamEvent.Published(
                     CHANNEL_A,
@@ -535,6 +567,7 @@ class ForegroundFeedManagerTest {
                         .setSequence(offset)
                         .setProposal(WireProposal.newBuilder().setRevision(revision).build())
                         .build(),
+                    replayed,
                 ),
                 opening,
             )

@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.feeds
 
 import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
+import io.github.brrenat.seekervault.connections.FeedDelivery
 import io.github.brrenat.seekervault.connections.GatewayException
 import io.github.brrenat.seekervault.connections.toOutcome
 import io.github.brrenat.seekervault.feeds.storage.FeedCursorStore
@@ -292,7 +293,11 @@ class ForegroundFeedManager(
                             closed = null
                             throw StreamEnded()
                         }
-                        apply(connection, event.event)
+                        apply(
+                            connection,
+                            event.event,
+                            if (event.replayed) FeedDelivery.Replayed else FeedDelivery.Live,
+                        )
                         epochs[event.streamChannel]?.let {
                             remember(connection.serverId, FeedCursor(it, event.offset))
                         }
@@ -364,10 +369,12 @@ class ForegroundFeedManager(
     }
 
     /** Applies one event's document through the phone's own path for that kind of document. */
-    private suspend fun apply(connection: Connection, event: FeedEvent) {
+    private suspend fun apply(connection: Connection, event: FeedEvent, delivery: FeedDelivery) {
         when (event.documentCase) {
-            FeedEvent.DocumentCase.PROPOSAL -> host.applyProposal(connection.id, event.proposal)
-            FeedEvent.DocumentCase.REQUEST -> host.applyRequest(connection.id, event.request)
+            FeedEvent.DocumentCase.PROPOSAL ->
+                host.applyProposal(connection.id, event.proposal, delivery)
+            FeedEvent.DocumentCase.REQUEST ->
+                host.applyRequest(connection.id, event.request, delivery)
             FeedEvent.DocumentCase.MANIFEST -> host.applySettings(connection.id, event.manifest)
             // An envelope from a later protocol. It is not read as an empty document: something
             // changed, and the snapshot is how this version finds out what.

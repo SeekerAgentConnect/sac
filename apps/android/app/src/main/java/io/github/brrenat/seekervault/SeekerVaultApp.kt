@@ -66,6 +66,7 @@ import io.github.brrenat.seekervault.inbox.pendingItems
 import io.github.brrenat.seekervault.inbox.rememberInboxViewState
 import io.github.brrenat.seekervault.live.LiveCommandRoute
 import io.github.brrenat.seekervault.live.LiveCommandViewModel
+import io.github.brrenat.seekervault.notifications.ArrivalLedger
 import io.github.brrenat.seekervault.notifications.InAppNotices
 import io.github.brrenat.seekervault.notifications.InAppNotificationTarget
 import io.github.brrenat.seekervault.notifications.InAppNotifications
@@ -128,6 +129,11 @@ fun SeekerVaultApp(
     operations: OperationViewModel? = null,
     startInLiveTest: Boolean = false,
     positions: PositionsViewModel? = null,
+    /**
+     * Which waiting items reached the phone as news (SEE-175). Without one nothing is marked, so no
+     * request or signal raises a banner; disconnections and service messages still do.
+     */
+    arrivals: ArrivalLedger? = null,
 ) {
     val navigator =
         rememberAppNavigator(
@@ -198,6 +204,9 @@ fun SeekerVaultApp(
     val historyState by history.state.collectAsStateWithLifecycle()
     val chainChecks by history.chainChecks.collectAsStateWithLifecycle()
     val walletState by wallet.state.collectAsStateWithLifecycle()
+    val liveArrivals by
+        remember(arrivals) { arrivals?.live ?: MutableStateFlow(emptySet<ReviewIdentity>()) }
+            .collectAsStateWithLifecycle()
     val policyState by policy.state.collectAsStateWithLifecycle()
     val globalPolicyState by globalPolicy.state.collectAsStateWithLifecycle()
     val notificationTap by notificationTaps.collectAsStateWithLifecycle()
@@ -751,6 +760,7 @@ fun SeekerVaultApp(
                 ready = state.fetched && (operations == null || operationsState.loaded),
                 connections = state.connections,
                 waiting = commonPending,
+                live = liveArrivals,
                 reviewOpen = { identity ->
                     // Read at the moment the banner would be raised, not at the last recomposition.
                     navigator.state.sheets.any { sheet ->
@@ -766,6 +776,11 @@ fun SeekerVaultApp(
                     when (target) {
                         is InAppNotificationTarget.Review -> navigator.openReview(target.identity)
                         is InAppNotificationTarget.PairAgain -> navigator.openAddConnection()
+                        // Several at once: the Inbox's pending list, where every one of them is.
+                        InAppNotificationTarget.Inbox -> {
+                            inboxView.reset()
+                            navigator.selectTab(AppScreen.Inbox)
+                        }
                         InAppNotificationTarget.Dismiss -> Unit
                     }
                 },

@@ -15,6 +15,11 @@ data class InAppNotificationSnapshot(
     val ready: Boolean,
     val waiting: Set<ReviewIdentity>,
     val disconnected: Set<String>,
+    /**
+     * The items delivered as news rather than as catching up ([ArrivalLedger.live]). Only these are
+     * ever announced; everything else in [waiting] is kept, counted and listed without a banner.
+     */
+    val live: Set<ReviewIdentity> = emptySet(),
 )
 
 /** Something that has just appeared and has not been announced in the app before. */
@@ -25,9 +30,19 @@ sealed interface InAppNotificationArrival {
 }
 
 /**
- * Successive snapshots into arrivals, by the same set difference the push path already uses to
- * decide what deserves a system notification (`sync/PushSynchronization`): what is in the new
- * snapshot and was not in the old one is new, and nothing else is.
+ * Successive snapshots into arrivals.
+ *
+ * Something waiting is announced once per foreground session, the first time it is seen, and only
+ * when it reached the phone as news ([InAppNotificationSnapshot.live]). Everything else that
+ * appears — a feed's first snapshot, the fetch after coming back, a replayed history — joins what
+ * is known without a word, so it cannot be announced later either (SEE-175). What is known is kept
+ * for the whole session rather than for one look, so an item that leaves the list and comes back —
+ * a status update, a refresh that briefly lost it, a duplicate delivery — is not news the second
+ * time.
+ *
+ * A disconnection is still the plain set difference the push path uses to decide what deserves a
+ * system notification (`sync/PushSynchronization`): what is in the new snapshot and was not in the
+ * old one is new, and nothing else is.
  *
  * The first ready snapshot after the app becomes visible is a baseline and announces nothing. That
  * is what keeps the app from replaying, as a burst of banners, everything that arrived while it was
@@ -37,34 +52,32 @@ sealed interface InAppNotificationArrival {
  */
 class InAppNotificationSource {
     private var seeded = false
-    private var waiting: Set<ReviewIdentity> = emptySet()
+    private val known = mutableSetOf<ReviewIdentity>()
     private var disconnected: Set<String> = emptySet()
 
     fun accept(snapshot: InAppNotificationSnapshot): List<InAppNotificationArrival> {
         if (!snapshot.ready) return emptyList()
         if (!seeded) {
-            remember(snapshot)
+            known += snapshot.waiting
+            disconnected = snapshot.disconnected
             seeded = true
             return emptyList()
         }
-        // Set subtraction keeps the receiver's order, and the waiting list arrives in the
-        // chronological order the inbox itself is sorted in, so a burst queues oldest first.
+        // Filtering keeps the waiting list's order, which is the chronological order the inbox
+        // itself is sorted in, so a burst is counted oldest first.
+        val fresh = snapshot.waiting.filterNot(known::contains)
+        known += fresh
         val arrivals =
-            (snapshot.waiting - waiting).map(InAppNotificationArrival::Waiting) +
+            fresh.filter(snapshot.live::contains).map(InAppNotificationArrival::Waiting) +
                 (snapshot.disconnected - disconnected).map(InAppNotificationArrival::Disconnected)
-        remember(snapshot)
+        disconnected = snapshot.disconnected
         return arrivals
     }
 
     /** The app has left the foreground. What happens while it is away belongs to the system. */
     fun reset() {
         seeded = false
-        waiting = emptySet()
+        known.clear()
         disconnected = emptySet()
-    }
-
-    private fun remember(snapshot: InAppNotificationSnapshot) {
-        waiting = snapshot.waiting
-        disconnected = snapshot.disconnected
     }
 }

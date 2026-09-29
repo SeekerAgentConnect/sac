@@ -225,6 +225,47 @@ class SynchronizationRepositoryTest {
         )
     }
 
+    /**
+     * A request an event created while the snapshot was being read happened during the read, so it
+     * is handed over as news; the snapshot's own requests are not. An event after it always is
+     * (SEE-175).
+     */
+    @Test
+    fun aRequestCreatedByAnEventBufferedDuringASnapshotIsHandedOverAsLive() = runTest {
+        host.add(A)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        transport.beforeSync = {
+            entered.complete(Unit)
+            release.await()
+        }
+        transport.pages[A] = ArrayDeque(listOf(snapshot(A, listOf(request(A_REQUEST) to 1))))
+        val repository = repository()
+        val generation = repository.beginStream(A)
+
+        val sync = async { repository.synchronize(A) }
+        entered.await()
+        runCurrent()
+        assertEquals(
+            EventApplyOutcome.Buffered,
+            repository.applyEvent(A, generation, changed(A, request(B_REQUEST), 1, "during")),
+        )
+        release.complete(Unit)
+        sync.await()
+
+        assertEquals(SyncDelivery.Snapshot(live = setOf(B_REQUEST)), host.deliveries[A])
+        assertEquals(
+            setOf(A_REQUEST, B_REQUEST),
+            host.applied.getValue(A).pending.map { it.ref.requestId }.toSet(),
+        )
+
+        assertEquals(
+            EventApplyOutcome.Applied,
+            repository.applyEvent(A, generation, changed(A, request(OLD_REQUEST), 1, "after")),
+        )
+        assertEquals(SyncDelivery.Event, host.deliveries[A])
+    }
+
     @Test
     fun recoverySyncFetchesOnlyTheRequestedActiveConnections() = runTest {
         host.add(A)
@@ -722,6 +763,7 @@ class SynchronizationRepositoryTest {
         val ids = linkedSetOf<String>()
         val accesses = mutableMapOf<String, SyncConnection>()
         val applied = mutableMapOf<String, ConnectionSyncState>()
+        val deliveries = mutableMapOf<String, SyncDelivery>()
         val retries = mutableMapOf<String, Int>()
         val local = mutableMapOf<String, List<LocalRequestState>>()
         val authoritative = mutableMapOf<String, Map<String, ActionRequest>>()
@@ -755,6 +797,11 @@ class SynchronizationRepositoryTest {
         override suspend fun applyCache(state: ConnectionSyncState) {
             beforeApplyCache(state)
             applied[state.connectionId] = state
+        }
+
+        override suspend fun applyCache(state: ConnectionSyncState, delivery: SyncDelivery) {
+            deliveries[state.connectionId] = delivery
+            applyCache(state)
         }
 
         override suspend fun recordFailure(connectionId: String, failure: CheckOutcome) {

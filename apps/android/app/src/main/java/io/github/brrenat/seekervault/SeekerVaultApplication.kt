@@ -43,6 +43,7 @@ import io.github.brrenat.seekervault.jupiter.HttpJupiterProvider
 import io.github.brrenat.seekervault.jupiter.JupiterExecutionProvider
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
+import io.github.brrenat.seekervault.notifications.ArrivalLedger
 import io.github.brrenat.seekervault.notifications.ProposalNotificationManager
 import io.github.brrenat.seekervault.notifications.ProposalRef
 import io.github.brrenat.seekervault.notifications.RequestNotificationManager
@@ -398,6 +399,12 @@ class SeekerVaultApplication : Application() {
     val proposalStore: ProposalStore by lazy { ProposalStore(File(filesDir, "proposals")) }
 
     /**
+     * Which waiting items reached the phone as news rather than as catching up (SEE-175). Both
+     * repositories write to it before they publish, and the foreground banner reads it.
+     */
+    val arrivals: ArrivalLedger by lazy { ArrivalLedger() }
+
+    /**
      * The phone's connections and their requests (docs/security.md#local-storage-and-recovery):
      * metadata and answers in `filesDir`, and credentials, encrypted, in `noBackupFilesDir`.
      */
@@ -432,6 +439,7 @@ class SeekerVaultApplication : Application() {
                 // Told what the wallet is handed and what it answered, and it follows the chain
                 // from there, independently of this connection (SEE-165).
                 tracking = confirmations,
+                arrivals = arrivals,
             )
         backgroundSync =
             BackgroundSyncScheduler.create(
@@ -573,6 +581,7 @@ class SeekerVaultApplication : Application() {
             history = activityLog,
             io = connectionIo,
             tracking = confirmations,
+            arrivals = arrivals,
         )
     }
 
