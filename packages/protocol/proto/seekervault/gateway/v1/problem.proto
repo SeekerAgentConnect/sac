@@ -170,6 +170,12 @@ enum GatewayProblem {
   GATEWAY_PROBLEM_GRANT_REVOKED = 53;
   // A grant whose identity, references, session digest or lifetime is not well formed.
   GATEWAY_PROBLEM_BAD_GRANT = 54;
+
+  // --- Supported networks (SEE-174) ------------------------------------------
+  // A manifest's supported_networks names SOLANA_NETWORK_UNSPECIFIED, a value this gateway does
+  // not know, or the same network twice. An empty list is not this: it is a feed whose proposals
+  // never reach a wallet, which is allowed (docs/wiki/server-manifests.md#supported-networks).
+  GATEWAY_PROBLEM_BAD_NETWORK = 55;
 }
 
 // GatewayErrorDetail is the Connect error detail on every FeedService and PublisherService error.

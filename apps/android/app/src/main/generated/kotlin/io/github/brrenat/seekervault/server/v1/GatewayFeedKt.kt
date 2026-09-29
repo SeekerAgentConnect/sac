@@ -139,7 +139,124 @@ public object GatewayFeedKt {
 
     public val GatewayFeedKt.Dsl.accessOrNull: io.github.brrenat.seekervault.server.v1.FeedAccess?
       get() = _builder.accessOrNull
-  }
+
+    /**
+     * An uninstantiable, behaviorless type to represent the field in
+     * generics.
+     */
+    @kotlin.OptIn(com.google.protobuf.kotlin.OnlyForUseByGeneratedProtoCode::class)
+    public class SupportedNetworksProxy private constructor() : com.google.protobuf.kotlin.DslProxy()
+    /**
+     * ```
+     * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+     * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+     * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+     * repeated value.
+     * ```
+     *
+     * `repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];`
+     */
+     public val supportedNetworks: com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.server.v1.SolanaNetwork, SupportedNetworksProxy>
+      @kotlin.jvm.JvmSynthetic
+  get() = com.google.protobuf.kotlin.DslList(
+        _builder.supportedNetworksList
+      )
+    /**
+     * ```
+     * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+     * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+     * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+     * repeated value.
+     * ```
+     *
+     * `repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];`
+     * @param value The supportedNetworks to add.
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("addSupportedNetworks")
+    public fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.server.v1.SolanaNetwork, SupportedNetworksProxy>.add(value: io.github.brrenat.seekervault.server.v1.SolanaNetwork) {
+      _builder.addSupportedNetworks(value)
+    }/**
+     * ```
+     * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+     * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+     * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+     * repeated value.
+     * ```
+     *
+     * `repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];`
+     * @param value The supportedNetworks to add.
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("plusAssignSupportedNetworks")
+    @Suppress("NOTHING_TO_INLINE")
+    public inline operator fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.server.v1.SolanaNetwork, SupportedNetworksProxy>.plusAssign(value: io.github.brrenat.seekervault.server.v1.SolanaNetwork) {
+      add(value)
+    }/**
+     * ```
+     * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+     * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+     * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+     * repeated value.
+     * ```
+     *
+     * `repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];`
+     * @param values The supportedNetworks to add.
+     * @throws IllegalArgumentException if UNRECOGNIZED is provided.
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("addAllSupportedNetworks")
+    public fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.server.v1.SolanaNetwork, SupportedNetworksProxy>.addAll(values: kotlin.collections.Iterable<io.github.brrenat.seekervault.server.v1.SolanaNetwork>) {
+      _builder.addAllSupportedNetworks(values)
+    }/**
+     * ```
+     * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+     * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+     * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+     * repeated value.
+     * ```
+     *
+     * `repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];`
+     * @param values The supportedNetworks to add.
+     * @throws IllegalArgumentException if UNRECOGNIZED is provided.
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("plusAssignAllSupportedNetworks")
+    @Suppress("NOTHING_TO_INLINE")
+    public inline operator fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.server.v1.SolanaNetwork, SupportedNetworksProxy>.plusAssign(values: kotlin.collections.Iterable<io.github.brrenat.seekervault.server.v1.SolanaNetwork>) {
+      addAll(values)
+    }/**
+     * ```
+     * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+     * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+     * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+     * repeated value.
+     * ```
+     *
+     * `repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];`
+     * @param index The index to set the value at.
+     * @param value The supportedNetworks to set.
+     * @throws IllegalArgumentException if UNRECOGNIZED is provided.
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("setSupportedNetworks")
+    public operator fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.server.v1.SolanaNetwork, SupportedNetworksProxy>.set(index: kotlin.Int, value: io.github.brrenat.seekervault.server.v1.SolanaNetwork) {
+      _builder.setSupportedNetworks(index, value)
+    }/**
+     * ```
+     * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+     * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+     * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+     * repeated value.
+     * ```
+     *
+     * `repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];`
+     */
+    @kotlin.jvm.JvmSynthetic
+@kotlin.jvm.JvmName("clearSupportedNetworks")
+    public fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.server.v1.SolanaNetwork, SupportedNetworksProxy>.clear() {
+      _builder.clearSupportedNetworks()
+    }}
 }
 public inline fun io.github.brrenat.seekervault.server.v1.GatewayFeed.copy(block: `io.github.brrenat.seekervault.server.v1`.GatewayFeedKt.Dsl.() -> kotlin.Unit): io.github.brrenat.seekervault.server.v1.GatewayFeed =
   `io.github.brrenat.seekervault.server.v1`.GatewayFeedKt.Dsl._create(this.toBuilder()).apply { block() }._build()

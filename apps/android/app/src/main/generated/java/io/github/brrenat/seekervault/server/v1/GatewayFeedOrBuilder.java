@@ -80,4 +80,68 @@ public interface GatewayFeedOrBuilder extends
    * @return The access.
    */
   io.github.brrenat.seekervault.server.v1.FeedAccess getAccess();
+
+  /**
+   * <pre>
+   * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+   * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+   * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+   * repeated value.
+   * </pre>
+   *
+   * <code>repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];</code>
+   * @return A list containing the supportedNetworks.
+   */
+  java.util.List<io.github.brrenat.seekervault.server.v1.SolanaNetwork> getSupportedNetworksList();
+  /**
+   * <pre>
+   * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+   * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+   * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+   * repeated value.
+   * </pre>
+   *
+   * <code>repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];</code>
+   * @return The count of supportedNetworks.
+   */
+  int getSupportedNetworksCount();
+  /**
+   * <pre>
+   * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+   * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+   * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+   * repeated value.
+   * </pre>
+   *
+   * <code>repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];</code>
+   * @param index The index of the element to return.
+   * @return The supportedNetworks at the given index.
+   */
+  io.github.brrenat.seekervault.server.v1.SolanaNetwork getSupportedNetworks(int index);
+  /**
+   * <pre>
+   * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+   * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+   * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+   * repeated value.
+   * </pre>
+   *
+   * <code>repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];</code>
+   * @return A list containing the enum numeric values on the wire for supportedNetworks.
+   */
+  java.util.List<java.lang.Integer>
+  getSupportedNetworksValueList();
+  /**
+   * <pre>
+   * The Solana networks this feed's proposals execute on (SEE-174). The same field, with the same
+   * rules, as DirectServer.supported_networks. The gateway carries it from the publisher's own
+   * manifest, normalized to ascending order, and refuses a list with an unspecified, unknown or
+   * repeated value.
+   * </pre>
+   *
+   * <code>repeated .seekervault.server.v1.SolanaNetwork supported_networks = 4 [json_name = "supportedNetworks"];</code>
+   * @param index The index of the value to return.
+   * @return The enum numeric value on the wire of supportedNetworks at the given index.
+   */
+  int getSupportedNetworksValue(int index);
 }

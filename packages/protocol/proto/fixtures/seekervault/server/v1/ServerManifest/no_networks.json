@@ -4,8 +4,7 @@
   "settingsRevision": "3",
   "mode": "CONNECTION_MODE_DIRECT",
   "direct": {
-    "url": "https://vault.example.com",
-    "supportedNetworks": ["SOLANA_NETWORK_MAINNET"]
+    "url": "https://vault.example.com"
   },
   "environments": ["SERVER_ENVIRONMENT_PRODUCTION"]
 }

@@ -414,6 +414,17 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_BAD_GRANT = 54;</code>
    */
   GATEWAY_PROBLEM_BAD_GRANT(54),
+  /**
+   * <pre>
+   * --- Supported networks (SEE-174) ------------------------------------------
+   * A manifest's supported_networks names SOLANA_NETWORK_UNSPECIFIED, a value this gateway does
+   * not know, or the same network twice. An empty list is not this: it is a feed whose proposals
+   * never reach a wallet, which is allowed (docs/wiki/server-manifests.md#supported-networks).
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_BAD_NETWORK = 55;</code>
+   */
+  GATEWAY_PROBLEM_BAD_NETWORK(55),
   UNRECOGNIZED(-1),
   ;
 
@@ -815,6 +826,17 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_BAD_GRANT = 54;</code>
    */
   public static final int GATEWAY_PROBLEM_BAD_GRANT_VALUE = 54;
+  /**
+   * <pre>
+   * --- Supported networks (SEE-174) ------------------------------------------
+   * A manifest's supported_networks names SOLANA_NETWORK_UNSPECIFIED, a value this gateway does
+   * not know, or the same network twice. An empty list is not this: it is a feed whose proposals
+   * never reach a wallet, which is allowed (docs/wiki/server-manifests.md#supported-networks).
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_BAD_NETWORK = 55;</code>
+   */
+  public static final int GATEWAY_PROBLEM_BAD_NETWORK_VALUE = 55;
 
 
   @java.lang.Override
@@ -880,6 +902,7 @@ public enum GatewayProblem
       case 52: return GATEWAY_PROBLEM_NO_SUCH_GRANT;
       case 53: return GATEWAY_PROBLEM_GRANT_REVOKED;
       case 54: return GATEWAY_PROBLEM_BAD_GRANT;
+      case 55: return GATEWAY_PROBLEM_BAD_NETWORK;
       default: return null;
     }
   }
