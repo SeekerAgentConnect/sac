@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 
 /**
  * A full-height destination. Tabs are peers; [HistoryDetail] returns to Inbox on Back,
@@ -117,6 +118,16 @@ sealed interface AppSheet {
         }
     }
 
+    /** Choosing one saved wallet for the connection detail directly beneath it (SEE-178). */
+    data class ConnectionWallet(val connectionId: String) : AppSheet {
+        init {
+            requireRouteId("connectionId", connectionId)
+        }
+    }
+
+    /** Adding a wallet from the Wallet tab or from a connection's wallet picker (SEE-178). */
+    data class AddWallet(val presetNetwork: WalletNetwork? = null) : AppSheet
+
     /**
      * One Discover card's details (SEE-176), over the Discover tab and nowhere else. It is the
      * catalog's own identity — the gateway origin and the server ID — never a connection: opening
@@ -224,6 +235,11 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
     fun openConnectionDetail(connectionId: String): Boolean =
         push(AppSheet.ConnectionDetail(connectionId))
 
+    fun openConnectionWallet(connectionId: String): Boolean =
+        push(AppSheet.ConnectionWallet(connectionId))
+
+    fun openAddWallet(network: WalletNetwork? = null): Boolean = push(AppSheet.AddWallet(network))
+
     fun openConnectionRules(connectionId: String): Boolean =
         push(AppSheet.ConnectionRules(connectionId))
 
@@ -312,6 +328,12 @@ private fun NavigationState.canPush(sheet: AppSheet): Boolean =
         // Over Home, or over Discover for a feed already added (SEE-176).
         is AppSheet.ConnectionDetail ->
             sheets.isEmpty() && (screen == AppScreen.Home || screen == AppScreen.Discover)
+        is AppSheet.ConnectionWallet ->
+            sheets.size == 1 &&
+                (sheets.single() as? AppSheet.ConnectionDetail)?.connectionId == sheet.connectionId
+        is AppSheet.AddWallet ->
+            (sheets.isEmpty() && screen == AppScreen.Wallet) ||
+                (sheets.size == 2 && sheets.last() is AppSheet.ConnectionWallet)
         is AppSheet.CatalogDetail -> sheets.isEmpty() && screen == AppScreen.Discover
         is AppSheet.OwnerInput ->
             sheets.size == 1 &&
@@ -378,6 +400,15 @@ internal fun encodeNavigationState(state: NavigationState): List<String> = build
                 add(SHEET_DETAIL)
                 add(sheet.connectionId)
             }
+            is AppSheet.ConnectionWallet -> {
+                add(SHEET_CONNECTION_WALLET)
+                add(sheet.connectionId)
+            }
+            is AppSheet.AddWallet -> {
+                add(SHEET_ADD_WALLET)
+                add(if (sheet.presetNetwork == null) ABSENT else PRESENT)
+                sheet.presetNetwork?.let { add(it.name) }
+            }
             is AppSheet.CatalogDetail -> {
                 add(SHEET_CATALOG)
                 add(sheet.gatewayUrl)
@@ -425,6 +456,15 @@ internal fun decodeNavigationState(saved: List<String>): NavigationState? = runC
                 SHEET_OWNER_INPUT -> AppSheet.OwnerInput(cursor.nextIdentity())
                 SHEET_POSITION_SALE -> AppSheet.PositionSale(cursor.nextIdentity())
                 SHEET_DETAIL -> AppSheet.ConnectionDetail(cursor.next())
+                SHEET_CONNECTION_WALLET -> AppSheet.ConnectionWallet(cursor.next())
+                SHEET_ADD_WALLET ->
+                    AppSheet.AddWallet(
+                        when (cursor.next()) {
+                            ABSENT -> null
+                            PRESENT -> enumValueOf(cursor.next())
+                            else -> error("Unknown optional route value")
+                        }
+                    )
                 SHEET_CATALOG -> AppSheet.CatalogDetail(cursor.next(), cursor.next())
                 SHEET_RULES -> AppSheet.ConnectionRules(cursor.next())
                 SHEET_GLOBAL_RULES -> AppSheet.GlobalRules
@@ -520,6 +560,8 @@ private const val SHEET_HANDOFF = "wallet_handoff"
 private const val SHEET_OWNER_INPUT = "owner_input"
 private const val SHEET_POSITION_SALE = "position_sale"
 private const val SHEET_DETAIL = "connection_detail"
+private const val SHEET_CONNECTION_WALLET = "connection_wallet"
+private const val SHEET_ADD_WALLET = "add_wallet"
 private const val SHEET_CATALOG = "catalog_detail"
 private const val SHEET_RULES = "connection_rules"
 private const val SHEET_GLOBAL_RULES = "global_rules"

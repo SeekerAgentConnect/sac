@@ -20,6 +20,9 @@
     <string name="wallet_connected_summary_account">Connected %1$s · %2$s · account %3$s</string>
     <string name="wallet_app_label">Wallet app</string>
     <string name="wallet_app_explanation">This phone has more than one wallet app. Pick the one to connect: approvals will open it directly, and never ask you to choose again.</string>
+    <string name="wallet_app_sheet_explanation">Approvals open this app directly, without asking again.</string>
+    <string name="wallet_app_generic">wallet</string>
+    <string name="wallet_continue_in">Continue in %1$s</string>
     <string name="wallet_security_explanation">This app never sees your seed phrase or keys. It asks the wallet you already use, and keeps only the address you pick.</string>
 
     <string name="wallet_field_address">Address</string>
@@ -49,15 +52,18 @@
     <string name="wallet_problem_failed">The wallet couldn\'t complete the request.</string>
 
     <!-- Wallet profiles (SEE-174): several saved wallets, one chosen per connection. -->
-    <string name="wallet_profiles_title">Wallets</string>
+    <string name="wallet_profiles_title">Wallet</string>
+    <string name="wallet_profiles_saved">Saved wallets</string>
     <string name="wallet_profiles_none_title">No wallets saved</string>
     <string name="wallet_profiles_none_text">Add the wallet accounts you want connections to use. Each connection signs with the one you choose for it, on the network its server supports. This app never sees your seed phrase or keys.</string>
     <string name="wallet_profiles_add_title">Add a wallet</string>
     <string name="wallet_profiles_add_explanation">Your wallet asks which account to authorize. Adding the same account on another network makes a separate profile.</string>
     <string name="wallet_profiles_add">Add wallet</string>
-    <string name="wallet_profiles_add_for">Add wallet for %1$s</string>
+    <string name="wallet_profiles_add_for">Add a %1$s wallet</string>
     <string name="wallet_profile_summary">%1$s · %2$s</string>
     <string name="wallet_profile_summary_app">%1$s · %2$s · %3$s</string>
+    <string name="wallet_profile_added">Added %1$s</string>
+    <string name="wallet_profile_used_by_names">Used by %1$s</string>
     <string name="wallet_profile_unnamed">Wallet account</string>
     <string name="wallet_profile_unknown_app">Wallet app not recorded</string>
     <plurals name="wallet_profile_used_by">
@@ -69,6 +75,7 @@
     <string name="wallet_profile_rename">Rename</string>
     <string name="wallet_profile_reconnect">Reconnect</string>
     <string name="wallet_profile_remove">Remove</string>
+    <string name="wallet_copy_address">Copy wallet address</string>
     <string name="wallet_profile_rename_title">Rename wallet</string>
     <string name="wallet_profile_remove_title">Remove %1$s?</string>
     <string name="wallet_profile_remove_unused">No connection uses this wallet. It is removed from this phone only.</string>
@@ -88,6 +95,10 @@
     <string name="connection_wallet_state_unsupported">This server no longer supports %1$s. Choose a wallet on %2$s — the connection isn\'t moved for you.</string>
     <string name="connection_wallet_state_pending">Telling the server about this wallet. Nothing is signed until it confirms.</string>
     <string name="connection_wallet_picker_title">Wallet for %1$s</string>
+    <string name="connection_wallet_picker_uses">This server uses %1$s</string>
+    <string name="connection_wallet_picker_no_network_title">No network declared</string>
+    <string name="connection_wallet_picker_opens_in">Opens in %1$s</string>
+    <string name="connection_wallet_picker_blocked">%1$s only · switch it on the Wallet tab</string>
     <string name="connection_wallet_picker_networks">This server supports %1$s. Only wallets on those networks are shown.</string>
     <string name="connection_wallet_picker_no_networks">This server hasn\'t declared any Solana network. You can still choose a wallet — a restricted feed proves who you are with it — but nothing is signed until the server declares one.</string>
     <string name="connection_wallet_picker_none">No saved wallet is on a network this server supports.</string>

@@ -35,9 +35,10 @@ on one Solana network — Mainnet, Devnet or Testnet:
   again refreshes that profile rather than adding a duplicate, and every connection that uses it
   keeps using it.
 
-The **Wallets** screen lists them, each with its network, the wallet app it lives in, the account's
-name in that app (or your own name for it), and how many connections use it. There is no "active"
-wallet: a profile does nothing until a connection is given it
+The **Wallet** tab lists them as cards, each with its network, account name and connection usage.
+Tap a card to expand it; opening one closes the previous card and reveals the full address, wallet
+app, date, and profile actions. There is no "active" wallet: a profile does nothing until a
+connection is given it
 ([One wallet per connection](#one-wallet-per-connection)). How the phone stores and checks all of
 this is in [`../wiki/wallet-profiles.md`](../wiki/wallet-profiles.md).
 
@@ -57,12 +58,12 @@ This saves a wallet profile. It doesn't give it to any connection yet.
 
 1. Open the app. The wallet row at the top of **Connections** opens **Wallets**; tap it. With one
    profile saved the row shows its wallet app and address; with several it counts them.
-2. Under **Add a wallet**, pick the **network**: Mainnet, Devnet, or Testnet. A profile keeps its
+2. Tap **Add wallet**. In the bottom sheet, pick the **network**: Mainnet, Devnet, or Testnet. A profile keeps its
    network for good; to use the same account on another network, add it again for that network.
 3. If the phone has more than one wallet app, pick **which one** under **Wallet app**. The list is
    what the phone reports as installed. With only one wallet app there is nothing to pick, and the
    app uses it.
-4. Tap **Add wallet**. The wallet you picked opens and asks which account to authorize — every time,
+4. Tap **Continue in &lt;wallet app&gt;**. The wallet you picked opens and asks which account to authorize — every time,
    even if it authorized one before, so you can add a second account from the same wallet. Approve.
 5. Back in the app, each account the wallet authorized is listed as a profile, with its network,
    wallet app and address.
@@ -96,17 +97,19 @@ Every connection — a paired sidecar or a feed — signs with **one** profile, 
 nothing else. Two connections can use two different wallets at the same time, and several can share
 one.
 
-**Choosing it.** Right after you add a connection, the app opens its **Wallet** picker. It lists only
-the profiles on a Solana network the server supports, and says which networks those are. Pick one and
-tap **Use this wallet**. If none fits, **Add wallet for Mainnet** (or whichever network the server
-needs) adds one with the network already filled in, and it is offered straight away. Cancelling
-leaves every profile and connection as it was; you can choose later.
+**Choosing it.** Right after you add a connection, the app opens its modal **Wallet** picker. Every
+saved profile remains visible. Profiles on a network the server does not support are disabled and
+explain why; choose a compatible one to enable **Use this wallet**. **Add a Mainnet wallet** (or the
+server's declared network) opens the same add-wallet sheet with that network already selected. A
+server that declared no network shows an orange explanation, allows any profile for its restricted
+feed access proof, and still cannot sign until it declares a network. Cancelling leaves every
+profile and connection as it was; you can choose later.
 
 **Seeing it.** The connection's page has a **Wallet** row showing the profile it uses, with the full
 address, the wallet app and the network. Reviews and the wallet handoff name the same wallet app.
 
 **Changing it** is the deliberate **Wallet** row on the connection's page, and it uses the same
-filtered picker. The picker says what changing will do before you commit — see
+picker. Wallet-app selection belongs only to the add-wallet sheet. See
 [Change the wallet or the network](#change-the-wallet-or-the-network).
 
 What the connection's Wallet row can say:

@@ -85,6 +85,7 @@ data class SeekerExtraTypography(
     val amount: TextStyle,
     val screenTitle: TextStyle,
     val identifier: TextStyle,
+    val walletAddress: TextStyle,
 )
 
 internal val SeekerExtraTypographyTokens =
@@ -93,4 +94,5 @@ internal val SeekerExtraTypographyTokens =
         amount = style(18.sp, 21.6.sp),
         screenTitle = style(20.sp, 24.sp),
         identifier = style(13.sp, 15.6.sp, family = RobotoMono),
+        walletAddress = style(12.sp, 18.sp, family = RobotoMono),
     )

@@ -87,12 +87,10 @@ class WalletActivityTest {
     /** Adds [WALLET] on Devnet from the Wallets tab, the way the owner does, and returns it. */
     private fun addOnTheWalletsTab(token: String = SECRET): WalletProfile {
         compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
+        compose.onNodeWithTag(WalletTags.ADD).tap()
         adapter.answerConnected(WALLET, authToken = token, chains = listOf("solana:devnet"))
-        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).tap()
-        compose
-            .onNodeWithTag(WalletTags.CONNECT)
-            .performScrollTo()
-            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).performClick()
+        compose.onNodeWithTag(WalletTags.CONNECT).performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
         return app.walletRepository.profiles.value.single()
     }
@@ -131,11 +129,13 @@ class WalletActivityTest {
         val profile = addOnTheWalletsTab()
 
         assertEquals(WALLET to WalletNetwork.Devnet, profile.address to profile.network)
+        compose.onNodeWithText(WALLET, useUnmergedTree = true).assertExists()
         compose
-            .onNodeWithTag(WalletTags.profile(profile.id))
-            .assertTextContains(WALLET)
-            .assertTextContains(app.getString(R.string.wallet_network_devnet), substring = true)
-            .assertTextContains(app.getString(R.string.wallet_profile_unused), substring = true)
+            .onNodeWithText(app.getString(R.string.wallet_network_devnet), useUnmergedTree = true)
+            .assertExists()
+        compose
+            .onNodeWithText(app.getString(R.string.wallet_profile_unused), useUnmergedTree = true)
+            .assertExists()
         // Saved, and nobody's: the connection has no wallet until the owner chooses one for it,
         // and its server has only ever heard "no wallet".
         assertNull(app.connectionRepository.connection(connection.id)?.walletProfileId)
@@ -145,13 +145,13 @@ class WalletActivityTest {
         assertTrue(gateway.sent.none { (_, secret) -> secret == SECRET })
 
         // Back on Home the banner names the one saved wallet, and a restart keeps it.
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
+        compose.onNodeWithText("Home").performClick()
         compose
             .onNodeWithTag(ConnectionsTags.WALLET)
             .assertTextContains(WALLET.take(4), substring = true)
         scenario?.recreate()
         compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
-        compose.onNodeWithTag(WalletTags.profile(profile.id)).assertTextContains(WALLET)
+        compose.onNodeWithText(WALLET, useUnmergedTree = true).assertExists()
     }
 
     @Test
@@ -160,7 +160,7 @@ class WalletActivityTest {
         val second = pair(other, OTHER_URL)
         launch()
         val profile = addOnTheWalletsTab()
-        compose.onNodeWithTag(ConnectionsTags.BACK).performClick()
+        compose.onNodeWithText("Home").performClick()
 
         compose
             .onNodeWithTag(ConnectionsTags.item(first.id))
@@ -170,8 +170,12 @@ class WalletActivityTest {
             .onNodeWithTag(ConnectionsTags.WALLET_ROW)
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
-        compose.onNodeWithTag(WalletTags.choice(profile.id)).performClick()
-        compose.onNodeWithTag(WalletTags.PICKER_USE).performClick()
+        compose
+            .onNodeWithTag(WalletTags.choice(profile.id))
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose
+            .onNodeWithTag(WalletTags.PICKER_USE)
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
 
         assertEquals(profile.id, app.connectionRepository.connection(first.id)?.walletProfileId)
@@ -256,18 +260,16 @@ class WalletActivityTest {
     fun saysWhyNothingHappenedWhenNoWalletIsInstalled() {
         launch()
         compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
+        compose.onNodeWithTag(WalletTags.ADD).tap()
         adapter.answer(WalletResult.NoWallet)
+        compose.onNodeWithTag(WalletTags.CONNECT).performSemanticsAction(SemanticsActions.OnClick)
         compose
-            .onNodeWithTag(WalletTags.CONNECT)
-            .performScrollTo()
-            .performSemanticsAction(SemanticsActions.OnClick)
-        compose
-            .onNodeWithTag(WalletTags.PROBLEM)
+            .onNodeWithTag(WalletTags.ADD_PROBLEM, useUnmergedTree = true)
             .assertTextContains(app.getString(R.string.wallet_problem_no_wallet))
         // Nothing was saved, and adding is still offered.
         assertEquals(emptyList<WalletProfile>(), app.walletRepository.profiles.value)
-        compose.onNodeWithTag(WalletTags.STATUS).assertExists()
-        compose.onNodeWithTag(WalletTags.CONNECT).assertExists()
+        compose.onNodeWithTag(WalletTags.STATUS, useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag(WalletTags.CONNECT, useUnmergedTree = true).assertExists()
     }
 
     private companion object {

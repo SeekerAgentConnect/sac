@@ -2,20 +2,26 @@ package io.github.brrenat.seekervault.wallet
 
 import android.content.ClipData
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.brrenat.seekervault.R
@@ -23,25 +29,22 @@ import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.RenameDialog
 import io.github.brrenat.seekervault.connections.labelProblem
+import io.github.brrenat.seekervault.designsystem.AddWalletButton
+import io.github.brrenat.seekervault.designsystem.AddWalletSheet
 import io.github.brrenat.seekervault.designsystem.EmptyState
 import io.github.brrenat.seekervault.designsystem.EmptyStateScreen
 import io.github.brrenat.seekervault.designsystem.NoticeCard
 import io.github.brrenat.seekervault.designsystem.NoticeCardKind
-import io.github.brrenat.seekervault.designsystem.RadioRow
-import io.github.brrenat.seekervault.designsystem.RadioRowState
 import io.github.brrenat.seekervault.designsystem.ScreenCaption
 import io.github.brrenat.seekervault.designsystem.ScreenDestination
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.ScreenScaffold
 import io.github.brrenat.seekervault.designsystem.ScreenScrollBody
-import io.github.brrenat.seekervault.designsystem.SectionHeader
-import io.github.brrenat.seekervault.designsystem.SectionHeaderTrailing
-import io.github.brrenat.seekervault.designsystem.SeekerButton
-import io.github.brrenat.seekervault.designsystem.SeekerButtonSize
-import io.github.brrenat.seekervault.designsystem.SeekerButtonVariant
-import io.github.brrenat.seekervault.designsystem.WalletBanner
-import io.github.brrenat.seekervault.designsystem.WalletBannerVariant
+import io.github.brrenat.seekervault.designsystem.WalletAppRowModel
+import io.github.brrenat.seekervault.designsystem.WalletProfileCard
+import io.github.brrenat.seekervault.designsystem.WalletProfileCardModel
 import io.github.brrenat.seekervault.designsystem.WalletPublishWarning
+import io.github.brrenat.seekervault.designsystem.WalletSegmentModel
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.ui.SeekerButtonRole
 import io.github.brrenat.seekervault.ui.SolidDialog
@@ -57,7 +60,7 @@ data class WalletScreenState(
     val profiles: List<WalletScreenProfile> = emptyList(),
     /** Shown when there are none. */
     val empty: WalletEmptyState? = null,
-    val add: WalletAddState,
+    val expandedProfileId: String? = null,
     val publishWarning: WalletPublishWarningState? = null,
     val explanation: String? = null,
     val problem: String? = null,
@@ -74,8 +77,10 @@ data class WalletScreenProfile(
     /** The owner's name for it, or the account's own. */
     val name: String,
     val address: String,
-    /** The network and the wallet app, told apart from the account's name. */
-    val statusText: String,
+    val shortAddress: String,
+    val network: String,
+    val walletApp: String,
+    val added: String,
     /** Which connections use it, or that none does. */
     val usage: String,
     /** Why it can't sign now, when it can't. */
@@ -97,6 +102,8 @@ data class WalletAddState(
     val networkTitle: String,
     val networks: List<WalletNetworkOption>,
     val connectLabel: String,
+    val cancelLabel: String,
+    val problem: String? = null,
     /** False while the owner still has a wallet app to pick, so nothing opens Android's chooser. */
     val canConnect: Boolean = true,
 )
@@ -120,9 +127,8 @@ data class WalletPublishWarningState(
 
 /** Every interaction emitted by the stateless [WalletScreen]. */
 data class WalletScreenCallbacks(
-    val onChooseWalletApp: (String) -> Unit,
-    val onChooseNetwork: (WalletNetwork) -> Unit,
-    val onConnect: () -> Unit,
+    val onAddWallet: () -> Unit,
+    val onToggleProfile: (String) -> Unit,
     val onPublishAgain: () -> Unit,
     val onBack: () -> Unit,
     val navigation: ScreenNavigationCallbacks,
@@ -140,20 +146,28 @@ data class WalletScreenCallbacks(
 @Composable
 fun WalletRoute(
     viewModel: WalletViewModel,
+    onAddWallet: () -> Unit,
     onBack: () -> Unit,
     navigationCallbacks: ScreenNavigationCallbacks,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var expandedProfileId by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.profiles) {
+        if (expandedProfileId !in state.profiles.map { it.id }) {
+            expandedProfileId = state.profiles.firstOrNull()?.id
+        }
+    }
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     WalletScreen(
-        state = walletScreenState(state),
+        state = walletScreenState(state).copy(expandedProfileId = expandedProfileId),
         callbacks =
             WalletScreenCallbacks(
-                onChooseWalletApp = viewModel::chooseWalletApp,
-                onChooseNetwork = viewModel::chooseNetwork,
-                onConnect = { viewModel.connect() },
+                onAddWallet = onAddWallet,
+                onToggleProfile = { id ->
+                    expandedProfileId = if (expandedProfileId == id) null else id
+                },
                 onPublishAgain = viewModel::publishAgain,
                 onBack = onBack,
                 navigation = navigationCallbacks,
@@ -176,6 +190,48 @@ fun WalletRoute(
     )
 }
 
+/** The add-wallet sheet; adding still delegates to the existing wallet ViewModel and repository. */
+@Composable
+fun WalletAddSheetScreen(
+    state: WalletUiState,
+    onChooseWalletApp: (String) -> Unit,
+    onChooseNetwork: (WalletNetwork) -> Unit,
+    onConnect: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val add = walletAddState(state)
+    AddWalletSheet(
+        title = add.title,
+        explanation = add.explanation,
+        networkTitle = add.networkTitle,
+        networks =
+            add.networks.map {
+                WalletSegmentModel(it.network.name, it.label, it.selected)
+            },
+        walletAppTitle = add.appTitle,
+        walletAppExplanation = add.appExplanation,
+        apps = add.apps.map { WalletAppRowModel(it.packageName, it.label, it.selected) },
+        continueLabel = add.connectLabel,
+        cancelLabel = add.cancelLabel,
+        problem = add.problem,
+        interactionEnabled = !state.busy,
+        canContinue = !state.busy && add.canConnect,
+        onChooseNetwork = { onChooseNetwork(WalletNetwork.valueOf(it)) },
+        onChooseApp = onChooseWalletApp,
+        onContinue = onConnect,
+        onCancel = onCancel,
+        modifier = modifier.testTag(WalletTags.ADD_SHEET),
+        networkModifier = { network ->
+            Modifier.testTag(WalletTags.network(WalletNetwork.valueOf(network)))
+        },
+        appModifier = { packageName -> Modifier.testTag(WalletTags.app(packageName)) },
+        problemModifier = Modifier.testTag(WalletTags.ADD_PROBLEM),
+        continueModifier = Modifier.testTag(WalletTags.CONNECT),
+        cancelModifier = Modifier.testTag(ConnectionsTags.DIALOG_DISMISS),
+    )
+}
+
 /** Wallets, composed entirely from the shared design-system library. */
 @Composable
 fun WalletScreen(
@@ -187,21 +243,59 @@ fun WalletScreen(
         title = state.title,
         selectedDestination = ScreenDestination.Wallet,
         navigationCallbacks = callbacks.navigation,
-        onBack = callbacks.onBack,
-        backButtonModifier = Modifier.testTag(ConnectionsTags.BACK),
+        includeDiscover = false,
         modifier = modifier,
     ) {
         ScreenScrollBody {
-            state.empty?.let { empty ->
-                EmptyState(
-                    screen = EmptyStateScreen.Inbox,
-                    title = empty.title,
-                    body = empty.body,
+            Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md)) {
+                Text(
+                    text = stringResource(R.string.wallet_profiles_saved),
                     modifier =
-                        Modifier.testTag(WalletTags.STATUS).semantics(mergeDescendants = true) {},
+                        Modifier.padding(
+                            horizontal = SeekerTheme.spacing.xs,
+                            vertical = SeekerTheme.spacing.xs,
+                        ),
+                    color = SeekerTheme.colors.primaryText,
+                    style = MaterialTheme.typography.titleSmall,
                 )
+                state.empty?.let { empty ->
+                    EmptyState(
+                        screen = EmptyStateScreen.Inbox,
+                        title = empty.title,
+                        body = empty.body,
+                        modifier =
+                            Modifier.testTag(WalletTags.STATUS).semantics(
+                                mergeDescendants = true
+                            ) {},
+                    )
+                }
+                state.profiles.forEach { profile ->
+                    ProfileCard(
+                        profile = profile,
+                        expanded = state.expandedProfileId == profile.id,
+                        busy = state.busy,
+                        callbacks = callbacks,
+                    )
+                    if (profile.warning != null && state.expandedProfileId == profile.id) {
+                        NoticeCard(
+                            kind = NoticeCardKind.StaleRules,
+                            message = profile.warning,
+                            modifier =
+                                Modifier.testTag(WalletTags.profileWarning(profile.id)).semantics(
+                                    mergeDescendants = true
+                                ) {},
+                        )
+                    }
+                }
+                Spacer(Modifier)
+                AddWalletButton(
+                    label = stringResource(R.string.wallet_profiles_add),
+                    onClick = callbacks.onAddWallet,
+                    modifier = Modifier.testTag(WalletTags.ADD),
+                )
+                Spacer(Modifier.height(SeekerTheme.spacing.xs))
+                state.explanation?.let { explanation -> ScreenCaption(text = explanation) }
             }
-            state.profiles.forEach { profile -> ProfileCard(profile, state.busy, callbacks) }
             state.problem?.let { problem ->
                 NoticeCard(
                     kind = NoticeCardKind.StaleRules,
@@ -223,8 +317,6 @@ fun WalletScreen(
                         ) {},
                 )
             }
-            AddWallet(state.add, state.busy, callbacks)
-            state.explanation?.let { explanation -> ScreenCaption(text = explanation) }
         }
     }
     state.renaming?.let { (id, current) ->
@@ -250,97 +342,70 @@ fun WalletScreen(
 @Composable
 private fun ProfileCard(
     profile: WalletScreenProfile,
+    expanded: Boolean,
     busy: Boolean,
     callbacks: WalletScreenCallbacks,
 ) {
-    WalletBanner(
-        walletName = profile.name,
-        address = profile.address,
-        statusText = "${profile.statusText}\n${profile.usage}",
-        variant = WalletBannerVariant.Expanded,
+    WalletProfileCard(
+        model =
+            WalletProfileCardModel(
+                name = profile.name,
+                shortAddress = profile.shortAddress,
+                address = profile.address,
+                network = profile.network,
+                usage = profile.usage,
+                added = profile.added,
+                walletApp = profile.walletApp,
+                renameLabel = profile.renameLabel,
+                reconnectLabel = profile.reconnectLabel,
+                removeLabel = profile.removeLabel,
+            ),
+        expanded = expanded,
+        enabled = !busy,
+        copyContentDescription = stringResource(R.string.wallet_copy_address),
+        onToggle = { callbacks.onToggleProfile(profile.id) },
         onCopyAddress = { callbacks.onCopyAddress(profile.address) },
-        modifier =
-            Modifier.testTag(WalletTags.profile(profile.id)).semantics(mergeDescendants = true) {},
+        onRename = { callbacks.onRename(profile.id) },
+        onReconnect = { callbacks.onReconnect(profile.id) },
+        onRemove = { callbacks.onRemove(profile.id) },
+        modifier = Modifier.testTag(WalletTags.profile(profile.id)),
+        renameModifier = Modifier.testTag(WalletTags.rename(profile.id)),
+        reconnectModifier = Modifier.testTag(WalletTags.reconnect(profile.id)),
+        removeModifier = Modifier.testTag(WalletTags.remove(profile.id)),
     )
-    profile.warning?.let { warning ->
-        NoticeCard(
-            kind = NoticeCardKind.StaleRules,
-            message = warning,
-            modifier =
-                Modifier.testTag(WalletTags.profileWarning(profile.id)).semantics(
-                    mergeDescendants = true
-                ) {},
-        )
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
-    ) {
-        SeekerButton(
-            label = profile.renameLabel,
-            onClick = { callbacks.onRename(profile.id) },
-            variant = SeekerButtonVariant.Tonal,
-            size = SeekerButtonSize.Md,
-            enabled = !busy,
-            modifier = Modifier.weight(1f).testTag(WalletTags.rename(profile.id)),
-        )
-        SeekerButton(
-            label = profile.reconnectLabel,
-            onClick = { callbacks.onReconnect(profile.id) },
-            variant = SeekerButtonVariant.Tonal,
-            size = SeekerButtonSize.Md,
-            enabled = !busy,
-            modifier = Modifier.weight(1f).testTag(WalletTags.reconnect(profile.id)),
-        )
-        SeekerButton(
-            label = profile.removeLabel,
-            onClick = { callbacks.onRemove(profile.id) },
-            variant = SeekerButtonVariant.Error,
-            size = SeekerButtonSize.Md,
-            enabled = !busy,
-            modifier = Modifier.weight(1f).testTag(WalletTags.remove(profile.id)),
-        )
-    }
 }
 
 @Composable
-private fun AddWallet(add: WalletAddState, busy: Boolean, callbacks: WalletScreenCallbacks) {
-    SectionHeader(title = add.title, trailing = SectionHeaderTrailing.None)
-    ScreenCaption(text = add.explanation)
-    if (add.apps.isNotEmpty()) {
-        SectionHeader(title = add.appTitle, trailing = SectionHeaderTrailing.None)
-        ScreenCaption(text = add.appExplanation)
-        add.apps.forEach { app ->
-            RadioRow(
-                label = app.label,
-                state = if (app.selected) RadioRowState.On else RadioRowState.Off,
-                onClick = { if (!busy) callbacks.onChooseWalletApp(app.packageName) },
-                modifier =
-                    Modifier.testTag(WalletTags.app(app.packageName)).let {
-                        if (busy) it.semantics { disabled() } else it
-                    },
-            )
-        }
-    }
-    SectionHeader(title = add.networkTitle, trailing = SectionHeaderTrailing.None)
-    add.networks.forEach { network ->
-        RadioRow(
-            label = network.label,
-            state = if (network.selected) RadioRowState.On else RadioRowState.Off,
-            onClick = { if (!busy) callbacks.onChooseNetwork(network.network) },
-            modifier =
-                Modifier.testTag(WalletTags.network(network.network)).let {
-                    if (busy) it.semantics { disabled() } else it
-                },
-        )
-    }
-    SeekerButton(
-        label = add.connectLabel,
-        onClick = callbacks.onConnect,
-        variant = SeekerButtonVariant.Filled,
-        size = SeekerButtonSize.Md,
-        enabled = !busy && add.canConnect,
-        modifier = Modifier.fillMaxWidth().testTag(WalletTags.CONNECT),
+internal fun walletAddState(state: WalletUiState): WalletAddState {
+    val installed = state.apps.orEmpty()
+    val selected = state.chosen ?: installed.singleOrNull()
+    val walletName = selected?.label ?: stringResource(R.string.wallet_app_generic)
+    return WalletAddState(
+        title = stringResource(R.string.wallet_profiles_add_title),
+        explanation = stringResource(R.string.wallet_profiles_add_explanation),
+        appTitle = stringResource(R.string.wallet_app_label),
+        appExplanation = stringResource(R.string.wallet_app_sheet_explanation),
+        apps =
+            installed.map { app ->
+                WalletAppOption(
+                    packageName = app.packageName,
+                    label = app.label,
+                    selected = app == selected,
+                )
+            },
+        networkTitle = stringResource(R.string.wallet_network_label),
+        networks =
+            WalletNetwork.entries.map {
+                WalletNetworkOption(
+                    network = it,
+                    label = networkText(it),
+                    selected = it == state.network,
+                )
+            },
+        connectLabel = stringResource(R.string.wallet_continue_in, walletName),
+        cancelLabel = stringResource(R.string.cancel),
+        problem = state.problem?.let { problemText(it, state.detail) },
+        canConnect = state.canConnect,
     )
 }
 
@@ -360,40 +425,6 @@ internal fun walletScreenState(state: WalletUiState): WalletScreenState {
             } else {
                 null
             },
-        add =
-            WalletAddState(
-                title =
-                    if (state.connecting) stringResource(R.string.wallet_connecting)
-                    else stringResource(R.string.wallet_profiles_add_title),
-                explanation = stringResource(R.string.wallet_profiles_add_explanation),
-                appTitle = stringResource(R.string.wallet_app_label),
-                appExplanation = stringResource(R.string.wallet_app_explanation),
-                // Nothing to choose when this phone has one wallet app, or couldn't list any: a
-                // single answer needs no question, and a list of none asks nothing.
-                apps =
-                    state.apps
-                        .orEmpty()
-                        .takeIf { it.size > 1 }
-                        .orEmpty()
-                        .map { app ->
-                            WalletAppOption(
-                                packageName = app.packageName,
-                                label = app.label,
-                                selected = app == state.chosen,
-                            )
-                        },
-                networkTitle = stringResource(R.string.wallet_network_label),
-                networks =
-                    WalletNetwork.entries.map {
-                        WalletNetworkOption(
-                            network = it,
-                            label = networkText(it),
-                            selected = it == state.network,
-                        )
-                    },
-                connectLabel = stringResource(R.string.wallet_profiles_add),
-                canConnect = state.canConnect,
-            ),
         publishWarning = state.unpublished.takeIf { it.isNotEmpty() }?.let { publishWarning(it) },
         explanation = stringResource(R.string.wallet_security_explanation),
         problem = state.problem?.let { problemText(it, state.detail) },
@@ -423,24 +454,34 @@ internal fun walletScreenState(state: WalletUiState): WalletScreenState {
     )
 }
 
+private fun shortAddress(address: String): String =
+    if (address.length <= ShortAddressVisibleCharacters * 2) address
+    else
+        address.take(ShortAddressVisibleCharacters) +
+            "…" +
+            address.takeLast(ShortAddressVisibleCharacters)
+
 @Composable
 private fun profileState(profile: WalletProfile, users: List<Connection>): WalletScreenProfile =
     WalletScreenProfile(
         id = profile.id,
         name = profileName(profile),
         address = profile.address,
-        // The network first, because two profiles of one address differ by nothing else, and the
-        // wallet app apart from the account's name (SEE-159).
-        statusText =
+        shortAddress = shortAddress(profile.address),
+        network = networkText(profile.network),
+        walletApp = profile.walletApp ?: stringResource(R.string.wallet_profile_unknown_app),
+        added =
             stringResource(
-                R.string.wallet_profile_summary_app,
-                networkText(profile.network),
-                profile.walletApp ?: stringResource(R.string.wallet_profile_unknown_app),
+                R.string.wallet_profile_added,
                 walletTimeFormatter.format(profile.connectedAt),
             ),
         usage =
             if (users.isEmpty()) stringResource(R.string.wallet_profile_unused)
-            else pluralStringResource(R.plurals.wallet_profile_used_by, users.size, users.size),
+            else
+                stringResource(
+                    R.string.wallet_profile_used_by_names,
+                    users.joinToString { it.label },
+                ),
         warning =
             when {
                 !profile.authorized -> stringResource(R.string.wallet_profile_needs_reconnect)
@@ -474,6 +515,8 @@ private fun publishWarning(connections: List<Connection>): WalletPublishWarningS
 
 private val walletTimeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).withZone(ZoneId.systemDefault())
+
+private const val ShortAddressVisibleCharacters = 4
 
 /**
  * Confirms removing a profile, naming the connections that use it (SEE-174). Nothing is chosen in

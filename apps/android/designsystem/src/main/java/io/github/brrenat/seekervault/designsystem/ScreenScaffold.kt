@@ -59,6 +59,7 @@ fun ScreenScaffold(
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
     backButtonModifier: Modifier = Modifier,
+    includeDiscover: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     Box(modifier = modifier.fillMaxSize().background(SeekerTheme.colors.surface0)) {
@@ -74,6 +75,7 @@ fun ScreenScaffold(
         ScreenNavigationBar(
             selected = selectedDestination,
             callbacks = navigationCallbacks,
+            includeDiscover = includeDiscover,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
@@ -170,6 +172,7 @@ fun ScreenNavigationBar(
     selected: ScreenDestination?,
     callbacks: ScreenNavigationCallbacks,
     modifier: Modifier = Modifier,
+    includeDiscover: Boolean = true,
 ) {
     Row(
         modifier =
@@ -195,14 +198,16 @@ fun ScreenNavigationBar(
             onClick = callbacks.onInbox,
             modifier = Modifier.weight(1f),
         )
-        ScreenNavigationItem(
-            destination = ScreenDestination.Discover,
-            label = "Discover",
-            icon = Icons.Outlined.Explore,
-            selected = selected,
-            onClick = callbacks.onDiscover,
-            modifier = Modifier.weight(1f),
-        )
+        if (includeDiscover) {
+            ScreenNavigationItem(
+                destination = ScreenDestination.Discover,
+                label = "Discover",
+                icon = Icons.Outlined.Explore,
+                selected = selected,
+                onClick = callbacks.onDiscover,
+                modifier = Modifier.weight(1f),
+            )
+        }
         ScreenNavigationItem(
             destination = ScreenDestination.Wallet,
             label = "Wallet",

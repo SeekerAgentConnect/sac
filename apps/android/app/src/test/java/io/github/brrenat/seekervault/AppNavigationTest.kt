@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault
 
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -235,6 +236,42 @@ class AppNavigationTest {
             )
 
         assertEquals(state, decodeNavigationState(encodeNavigationState(state)))
+    }
+
+    @Test
+    fun walletSheetsOpenOnlyFromTheirDesignedParentsAndRoundTrip() {
+        val navigator = AppNavigator()
+
+        assertFalse(navigator.openAddWallet())
+        assertFalse(navigator.openConnectionWallet(CONNECTION))
+
+        assertTrue(navigator.selectTab(AppScreen.Wallet))
+        assertTrue(navigator.openAddWallet())
+        assertEquals(
+            navigator.state,
+            decodeNavigationState(encodeNavigationState(navigator.state)),
+        )
+
+        assertTrue(navigator.selectTab(AppScreen.Home))
+        assertTrue(navigator.openConnectionDetail(CONNECTION))
+        assertFalse(navigator.openConnectionWallet(OTHER_CONNECTION))
+        assertTrue(navigator.openConnectionWallet(CONNECTION))
+        assertTrue(navigator.openAddWallet(WalletNetwork.Devnet))
+        assertEquals(
+            NavigationState(
+                AppScreen.Home,
+                listOf(
+                    AppSheet.ConnectionDetail(CONNECTION),
+                    AppSheet.ConnectionWallet(CONNECTION),
+                    AppSheet.AddWallet(WalletNetwork.Devnet),
+                ),
+            ),
+            navigator.state,
+        )
+        assertEquals(
+            navigator.state,
+            decodeNavigationState(encodeNavigationState(navigator.state)),
+        )
     }
 
     @Test

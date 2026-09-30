@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -48,6 +49,7 @@ import io.github.brrenat.seekervault.designsystem.HistoryDetailLink
 import io.github.brrenat.seekervault.designsystem.InboxTab
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.SheetMotion
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.discover.CatalogAction
 import io.github.brrenat.seekervault.discover.DiscoverCallbacks
 import io.github.brrenat.seekervault.discover.DiscoverRoute
@@ -109,6 +111,7 @@ import io.github.brrenat.seekervault.servers.feedAccess
 import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.ui.SeekerSheet
 import io.github.brrenat.seekervault.ui.SheetInputBarrier
+import io.github.brrenat.seekervault.wallet.WalletAddSheetScreen
 import io.github.brrenat.seekervault.wallet.WalletRoute
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 import java.time.Instant
@@ -472,6 +475,7 @@ fun SeekerVaultApp(
                 AppScreen.Wallet ->
                     WalletRoute(
                         viewModel = wallet,
+                        onAddWallet = { navigator.openAddWallet() },
                         onBack = { selectTabAfterSheets(AppScreen.Home) },
                         navigationCallbacks = screenNavigationCallbacks,
                         modifier = rootModifier,
@@ -578,6 +582,7 @@ fun SeekerVaultApp(
                             if (connection.retirement == null) {
                                 wallet.beginSetup(connection.id)
                                 navigator.openConnectionDetail(connection.id)
+                                navigator.openConnectionWallet(connection.id)
                             }
                         },
                         modifier = rootModifier,
@@ -595,6 +600,15 @@ fun SeekerVaultApp(
                         if (index >= visibleCount) sheets.lastIndex - index
                         else (visibleCount - 1 - index).coerceAtLeast(0)
                     SeekerSheet(
+                        modifier =
+                            if (
+                                sheetRoute is AppSheet.ConnectionWallet ||
+                                    sheetRoute is AppSheet.AddWallet
+                            ) {
+                                Modifier.background(SeekerTheme.colors.dim)
+                            } else {
+                                Modifier
+                            },
                         index = index,
                         back = back,
                         motionKey = sheetRoute,
@@ -654,6 +668,9 @@ fun SeekerVaultApp(
                                             navigator.openAddConnection()
                                         }
                                     },
+                                    onWallet = {
+                                        navigator.openConnectionWallet(activeRoute.connectionId)
+                                    },
                                     overrideCount =
                                         policyState.overrideCount(activeRoute.connectionId),
                                     operationRefreshing =
@@ -667,6 +684,69 @@ fun SeekerVaultApp(
                                         policy.open(activeRoute.connectionId)
                                     }
                                 }
+                            }
+                            is AppSheet.ConnectionWallet -> {
+                                val connection =
+                                    state.connections.firstOrNull {
+                                        it.id == activeRoute.connectionId
+                                    }
+                                if (connection == null) {
+                                    LaunchedEffect(activeRoute, state.loaded) {
+                                        if (state.loaded && active) pop()
+                                    }
+                                } else {
+                                    val restricted =
+                                        connection.server.manifest?.feedAccess is
+                                            FeedAccess.Restricted
+                                    ConnectionWalletPicker(
+                                        connection = connection,
+                                        wallet = walletState,
+                                        onUse = { profileId ->
+                                            wallet.bind(connection.id, profileId) {
+                                                if (restricted) {
+                                                    connections.afterWalletBound(connection.id)
+                                                }
+                                                wallet.endSetup()
+                                                pop()
+                                            }
+                                        },
+                                        onAdd = navigator::openAddWallet,
+                                        onDismiss = {
+                                            wallet.endSetup()
+                                            pop()
+                                        },
+                                    )
+                                }
+                            }
+                            is AppSheet.AddWallet -> {
+                                var connectStarted by
+                                    remember(activeRoute) { mutableStateOf(false) }
+                                LaunchedEffect(activeRoute) {
+                                    wallet.beginAdd(activeRoute.presetNetwork)
+                                }
+                                LaunchedEffect(
+                                    connectStarted,
+                                    walletState.connecting,
+                                    walletState.added,
+                                ) {
+                                    if (
+                                        connectStarted &&
+                                            !walletState.connecting &&
+                                            walletState.added.isNotEmpty()
+                                    ) {
+                                        pop()
+                                    }
+                                }
+                                WalletAddSheetScreen(
+                                    state = walletState,
+                                    onChooseWalletApp = wallet::chooseWalletApp,
+                                    onChooseNetwork = wallet::chooseNetwork,
+                                    onConnect = {
+                                        connectStarted = true
+                                        wallet.connect()
+                                    },
+                                    onCancel = pop,
+                                )
                             }
                             is AppSheet.ConnectionRules -> {
                                 val id = activeRoute.connectionId
@@ -1252,6 +1332,7 @@ private fun ConnectionDetailsRoute(
     onRules: () -> Unit,
     onInbox: () -> Unit,
     onPairDirect: () -> Unit,
+    onWallet: () -> Unit,
     overrideCount: Int,
     operationRefreshing: Boolean = false,
     onOperationRefresh: () -> Unit = {},
@@ -1263,7 +1344,6 @@ private fun ConnectionDetailsRoute(
     }
     val access = state.access[id]
     val restricted = connection.server.manifest?.feedAccess is FeedAccess.Restricted
-    var picking by rememberSaveable(id) { mutableStateOf(false) }
     // Opening a restricted feed asks the publisher where this phone stands, signed with the
     // device key (SEE-156). It never opens the wallet: only the owner asking does that.
     LaunchedEffect(id) {
@@ -1307,7 +1387,7 @@ private fun ConnectionDetailsRoute(
         access = access,
         walletRow = connectionWalletRow(walletState.readiness[id]),
         walletFacts = connectionWalletFacts(walletState.readiness[id]),
-        onWallet = { picking = true },
+        onWallet = onWallet,
     )
     // What binding came to — how many requests a direct server cancelled, or that it couldn't be
     // told — said once, on this connection's own sheet.
@@ -1319,28 +1399,6 @@ private fun ConnectionDetailsRoute(
             noticeText?.let(notices::show)
             wallet.bindingShown()
         }
-    }
-    if (picking || walletState.setup == id) {
-        ConnectionWalletPicker(
-            connection = connection,
-            wallet = walletState,
-            onUse = { profileId ->
-                wallet.bind(id, profileId) {
-                    // A restricted feed proves its reader with the wallet it is bound to, so a new
-                    // binding asks for access with it; access proven with another address doesn't
-                    // carry over (SEE-156, SEE-174).
-                    if (restricted) viewModel.afterWalletBound(id)
-                }
-                picking = false
-                wallet.endSetup()
-            },
-            onAdd = { network -> wallet.connect(network) },
-            onChooseWalletApp = wallet::chooseWalletApp,
-            onDismiss = {
-                picking = false
-                wallet.endSetup()
-            },
-        )
     }
 }
 
