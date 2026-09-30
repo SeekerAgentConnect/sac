@@ -31,3 +31,57 @@ Build a subscription-based prediction server that turns a user's own prompt, wri
 - Provide a complete walkthrough covering subscribing, writing a prompt, receiving the first proposals, editing the prompt, expiry and renewal.
 
 Prompt interpretation, market selection and subscription management belong to the prediction server; the gateway delivers the resulting feed and enforces access.
+
+## Trader community outreach
+
+Run advertising and outreach in trading communities to attract traders who will publish signals and connect their own communities to the app.
+
+- Reach traders where they already share calls: trading channels, groups and social accounts.
+- Explain how to run a feed, publish signals and invite followers who approve each trade on their own device.
+- Help community owners bring their existing audience into the app as subscribers of their feed.
+
+## Telegram bot adapter
+
+Build an adapter that lets a Telegram bot act as a feed server and publish events to the app.
+
+- Turn messages and commands posted through the bot into feed events on a channel the publisher owns.
+- Map a Telegram channel or group to a feed so an existing audience can subscribe in the app.
+- Keep the publisher's bot token and configuration on the publisher's own infrastructure.
+
+## Discord bot adapter
+
+Build the same adapter for Discord bots, so a Discord server can publish its events as a feed.
+
+- Turn bot messages and slash commands into feed events.
+- Map Discord channels to feeds and reuse the publishing path of the Telegram adapter.
+
+## Legal review of Jupiter predictions
+
+Review the legal status of placing prediction-market orders through Jupiter and prepare the app's legal documents.
+
+- Assess which jurisdictions allow prediction-market participation and where it must be restricted.
+- Prepare terms of use, a privacy policy and risk disclosures covering signals, swaps and predictions.
+- Show the relevant notices in the app before a user places a prediction order.
+
+## Support for more wallets
+
+Add support for wallets beyond the current Mobile Wallet Adapter and Seed Vault Wallet setup.
+
+- Let the user connect and choose between several wallet apps.
+- Keep the same review and approval flow on the device whichever wallet signs.
+
+## Automatic approval by rules
+
+Let the owner approve matching requests automatically according to rules they define.
+
+- Approve a request without manual review only when it matches an explicit rule the owner has enabled.
+- Bound automatic approvals with limits such as amount, asset, counterparty, feed and time window.
+- Record every automatic approval in the activity history with the rule that allowed it, and let the owner pause automation at any time.
+
+## Flexible type-safe rules with Jev and an LLM
+
+Make rules more expressive by describing them in a type-safe rule language (Jev) with LLM assistance.
+
+- Let the owner describe a rule in plain language and have an LLM draft it in the typed rule language.
+- Type-check each rule against the request schema before it can be saved, so an invalid rule is refused rather than guessed.
+- Show the compiled rule to the owner for confirmation; the LLM drafts rules but never approves requests.
