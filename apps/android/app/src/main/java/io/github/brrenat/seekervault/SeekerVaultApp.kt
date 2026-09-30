@@ -5,6 +5,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -42,10 +43,19 @@ import io.github.brrenat.seekervault.connections.connectionWalletFacts
 import io.github.brrenat.seekervault.connections.connectionWalletRow
 import io.github.brrenat.seekervault.connections.signMessage
 import io.github.brrenat.seekervault.connections.sourceColour
+import io.github.brrenat.seekervault.designsystem.CatalogDetailSheet
 import io.github.brrenat.seekervault.designsystem.HistoryDetailLink
 import io.github.brrenat.seekervault.designsystem.InboxTab
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.SheetMotion
+import io.github.brrenat.seekervault.discover.CatalogAction
+import io.github.brrenat.seekervault.discover.DiscoverCallbacks
+import io.github.brrenat.seekervault.discover.DiscoverRoute
+import io.github.brrenat.seekervault.discover.DiscoverScreen
+import io.github.brrenat.seekervault.discover.DiscoverUiState
+import io.github.brrenat.seekervault.discover.DiscoverViewModel
+import io.github.brrenat.seekervault.discover.catalogCardState
+import io.github.brrenat.seekervault.discover.catalogDetailState
 import io.github.brrenat.seekervault.history.HistoryDetailRoute
 import io.github.brrenat.seekervault.history.PositionSaleRoute
 import io.github.brrenat.seekervault.history.holdingFor
@@ -94,6 +104,7 @@ import io.github.brrenat.seekervault.positions.PositionsState
 import io.github.brrenat.seekervault.positions.PositionsViewModel
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedAccess
+import io.github.brrenat.seekervault.servers.FeedReferences
 import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.servers.feedAccess
 import io.github.brrenat.seekervault.servers.manifest
@@ -135,6 +146,13 @@ fun SeekerVaultApp(
      * request or signal raises a banner; disconnections and service messages still do.
      */
     arrivals: ArrivalLedger? = null,
+    /**
+     * The Discover tab's catalog (SEE-176). Without one the tab says this build has no catalog
+     * configured, which is also what a build with no discovery origin says.
+     */
+    discover: DiscoverViewModel? = null,
+    /** The gateway origin [discover] reads from, for what the tab says when it can't reach it. */
+    discoveryUrl: String = "",
 ) {
     val navigator =
         rememberAppNavigator(
@@ -145,6 +163,9 @@ fun SeekerVaultApp(
     // Kept here rather than in the Inbox, so a record's details and Back return to the same tab,
     // source filter and History scroll offset (SEE-161).
     val inboxView = rememberInboxViewState()
+    // Kept here for the same reason: a card's details, and a Connect that goes to Add connection
+    // and comes back, return to the same place in the catalog (SEE-176).
+    val discoverScroll = rememberScrollState()
     val openHistoryDetail: (ReviewIdentity) -> Unit = { identity ->
         inboxView.tab = InboxTab.History
         navigator.openHistoryDetail(identity)
@@ -337,7 +358,31 @@ fun SeekerVaultApp(
             },
             onWallet = { selectTabAfterSheets(AppScreen.Wallet) },
             onActivity = { selectTabAfterSheets(AppScreen.Activity) },
+            onDiscover = { selectTabAfterSheets(AppScreen.Discover) },
         )
+    // A Discover card's button (SEE-176). Connect and Request access are the normal Add connection
+    // flow with the reference prefilled — its confirmation, its manifest check, then the wallet
+    // picker on the connection's own sheet — and Open is the connection this phone already holds.
+    // Nothing here adds, signs or requests anything by itself. From a card's details, the details
+    // sheet leaves the stack first: both destinations open from the tab itself, never over a sheet.
+    val catalogAction: (CatalogAction) -> Unit = { action ->
+        val fromTab: (() -> Unit) -> Unit = { then ->
+            dismissSheetsThen(0) {
+                while (navigator.state.sheets.isNotEmpty()) navigator.back()
+                then()
+            }
+        }
+        when (action) {
+            is CatalogAction.Onboard ->
+                fromTab {
+                    if (navigator.openCatalogConnect()) {
+                        connections.onCode(FeedReferences.format(action.feed.reference))
+                    }
+                }
+            is CatalogAction.Open -> fromTab { navigator.openConnectionDetail(action.connectionId) }
+            CatalogAction.None -> Unit
+        }
+    }
 
     LaunchedEffect(pendingKeys, policyState.stored, globalPolicyState.stored) {
         pendingKeys.forEach(inbox::review)
@@ -371,6 +416,7 @@ fun SeekerVaultApp(
                                 onWallet = screenNavigationCallbacks.onWallet,
                                 onGlobalRules = navigator::openGlobalRules,
                                 onActivity = screenNavigationCallbacks.onActivity,
+                                onDiscover = screenNavigationCallbacks.onDiscover,
                                 onOpenPending = { item ->
                                     navigator.openReview(
                                         when (item) {
@@ -390,6 +436,39 @@ fun SeekerVaultApp(
                             ),
                         modifier = rootModifier,
                     )
+                }
+                AppScreen.Discover -> {
+                    val callbacks =
+                        DiscoverCallbacks(
+                            onOpenFeed = { feed ->
+                                navigator.openCatalogDetail(feed.gatewayUrl, feed.serverId)
+                            },
+                            onAction = catalogAction,
+                            onRefresh = { discover?.refresh() },
+                            onRetry = { discover?.retry() },
+                            onLoadMore = { discover?.loadMore() },
+                            onBack = { selectTabAfterSheets(AppScreen.Home) },
+                            navigation = screenNavigationCallbacks,
+                        )
+                    if (discover != null) {
+                        DiscoverRoute(
+                            viewModel = discover,
+                            connections = state,
+                            gatewayUrl = discoveryUrl,
+                            scrollState = discoverScroll,
+                            callbacks = callbacks,
+                            modifier = rootModifier,
+                        )
+                    } else {
+                        DiscoverScreen(
+                            state = DiscoverUiState(configured = false),
+                            standing = { feed -> catalogCardState(feed, state) },
+                            gatewayUrl = discoveryUrl,
+                            scrollState = discoverScroll,
+                            callbacks = callbacks,
+                            modifier = rootModifier,
+                        )
+                    }
                 }
                 AppScreen.Wallet ->
                     WalletRoute(
@@ -484,15 +563,19 @@ fun SeekerVaultApp(
                         },
                         onOpenProvider = { url -> openDestination(historyContext, url, url) },
                     )
-                AppScreen.AddConnection ->
+                is AppScreen.AddConnection ->
                     AddConnectionRoute(
                         viewModel = connections,
                         onBack = navigator::back,
                         // A new connection chooses its wallet next, on its own detail sheet
                         // (SEE-174): the pairing code is already spent and the manifest read, so
-                        // the picker knows which networks to offer.
+                        // the picker knows which networks to offer. It opens over the tab Add
+                        // connection came from, so a feed added from Discover returns there.
                         onAdded = { connection ->
-                            navigator.selectTab(AppScreen.Home)
+                            navigator.selectTab(
+                                (navigation.screen as? AppScreen.AddConnection)?.from
+                                    ?: AppScreen.Home
+                            )
                             if (connection.retirement == null) {
                                 wallet.beginSetup(connection.id)
                                 navigator.openConnectionDetail(connection.id)
@@ -529,6 +612,28 @@ fun SeekerVaultApp(
                         aboveKeyboard = sheetRoute is AppSheet.OwnerInput,
                     ) {
                         when (val activeRoute = sheetRoute) {
+                            is AppSheet.CatalogDetail -> {
+                                val discoverState =
+                                    discover?.state?.collectAsStateWithLifecycle()?.value
+                                val feed =
+                                    discoverState?.feeds?.firstOrNull {
+                                        it.gatewayUrl == activeRoute.gatewayUrl &&
+                                            it.serverId == activeRoute.serverId
+                                    }
+                                if (feed == null) {
+                                    // Left the catalog in a refresh since it was opened: there
+                                    // is nothing current to show, so the sheet goes.
+                                    LaunchedEffect(activeRoute) { if (active) pop() }
+                                } else {
+                                    CatalogDetailSheet(
+                                        state = catalogDetailState(feed, state),
+                                        onClose = pop,
+                                        onAction = {
+                                            catalogAction(catalogCardState(feed, state).action)
+                                        },
+                                    )
+                                }
+                            }
                             is AppSheet.ConnectionDetail -> {
                                 ConnectionDetailsRoute(
                                     viewModel = connections,

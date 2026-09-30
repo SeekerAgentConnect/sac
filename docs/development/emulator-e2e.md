@@ -58,6 +58,11 @@ scripts/emulator.sh install   # installs and launches the debug APK
 scripts/emulator.sh ui        # what is on screen now
 ```
 
+The Discover tab (SEE-176) reads its catalog from `seekervault.discoveryUrl`, which defaults to the
+same relay URL, so this build shows the deployed gateway's recommended feeds. Point it elsewhere by
+passing `-Pseekervault.discoveryUrl=<origin>` through to `build` (for a local gateway, a debug build
+accepts `http://127.0.0.1:<port>` over `adb reverse`).
+
 A cold build takes about 5 minutes and a boot about 1 minute. After changing app code, run `build`
 and `install` again; `install -r` keeps the app's data and pairings. To start from nothing, run
 `adb uninstall io.github.brrenat.seekervault`.

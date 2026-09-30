@@ -39,7 +39,10 @@ if (firebaseConfigured) {
 // default**, on purpose and in two senses: a checkout reaches no cluster, so no check here ever
 // quietly depends on somebody else's public endpoint; and it is the application's own setting,
 // never a publisher's, so nothing a server sends can point the phone at an endpoint of the server's
-// choosing. Set it for a build that wants prediction orders:
+// choosing. The complete URL is compiled into BuildConfig and is extractable from every APK. Use
+// only a public endpoint or a client key deliberately distributed with suitable quota and abuse
+// limits; if a provider requires a secret key, do not put that endpoint here. Set it for a build
+// that wants prediction orders:
 //
 //   apps/android/gradlew -p apps/android :app:assembleDebug -Pseekervault.solanaRpc=https://…
 val solanaRpc = (providers.gradleProperty("seekervault.solanaRpc").orNull ?: "").trim()
@@ -175,6 +178,17 @@ if (swapFeeBps > 0) {
     }
 }
 
+// The gateway whose Discover catalog this build shows (SEE-176, docs/wiki/discover.md). An origin,
+// and a public one: the catalog is the operator's list of feeds anyone may browse, and adding one
+// still reads and validates that feed's manifest like a pasted reference. Unset, it is the relay's
+// gateway, which is the gateway this build already trusts; with neither, the Discover tab says the
+// build has no catalog configured and nothing else changes.
+//
+//   apps/android/gradlew -p apps/android :app:assembleDebug \
+//     -Pseekervault.discoveryUrl=https://feeds.example.com
+val discoveryUrl =
+    (providers.gradleProperty("seekervault.discoveryUrl").orNull ?: relayUrl).trim().trimEnd('/')
+
 android {
     namespace = "io.github.brrenat.seekervault"
     compileSdk = 37
@@ -188,8 +202,8 @@ android {
         // Lets the UI omit an irrelevant permission prompt from Firebase-off deployments.
         // It contains configuration presence only, never a Firebase identifier or credential.
         buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
-        // A read-only endpoint, or the empty string. It is not a credential and it is not a
-        // secret: it is an address the owner's phone reads public account data from.
+        // A read-only endpoint, or the empty string. This is extractable client configuration,
+        // never a secret: it is an address the owner's phone reads public account data from.
         buildConfigField("String", "SOLANA_RPC", "\"$solanaRpc\"")
         // The same, per cluster, for following sent transactions (SEE-165). Read-only addresses
         // like the one above; only their hosts are ever stored.
@@ -213,6 +227,8 @@ android {
             "SWAP_FEE_ACCOUNTS",
             "\"${if (swapFeeBps > 0) swapFeeAccounts.joinToString(",") { "${it.first}=${it.second}" } else ""}\"",
         )
+        // The gateway origin the Discover tab reads its catalog from, or "" for none (SEE-176).
+        buildConfigField("String", "DISCOVERY_URL", "\"$discoveryUrl\"")
         // src/androidTest: the device round trip, run by `pnpm test:hello --device`.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

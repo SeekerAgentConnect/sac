@@ -320,10 +320,11 @@ jobs:
     # The app, built by hand from a chosen commit (SEE-173). It publishes nothing: the unsigned
     # release APK is a workflow artifact for the owner to sign and distribute. Its only
     # configuration is public — the SAC swap fee's rate and receiving accounts come from repository
-    # *variables*, never secrets, and are empty (no fee) unless the owner sets them. The Solana
-    # endpoint the phone verifies the fee accounts through can carry a provider key, so it is a
-    # secret; a fee build without one fails at configuration time rather than shipping a fee that
-    # can never be charged. docs/development/swap-fee-config.md
+    # *variables*, never secrets, and are empty (no fee) unless the owner sets them. The complete
+    # Solana endpoint is also a repository variable because BuildConfig embeds it in the APK: use
+    # only a public endpoint or a client key intentionally distributed with suitable limits, never
+    # a provider key that must remain secret. A fee build without an endpoint fails at configuration
+    # time rather than shipping a fee that can never be charged. docs/development/swap-fee-config.md
     name: Android APK
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.component == 'android'
     runs-on: ubuntu-24.04
@@ -332,7 +333,7 @@ jobs:
       SEEKERVAULT_SWAP_FEE_BPS: ${{ vars.SEEKERVAULT_SWAP_FEE_BPS }}
       SEEKERVAULT_SWAP_FEE_OWNER: ${{ vars.SEEKERVAULT_SWAP_FEE_OWNER }}
       SEEKERVAULT_SWAP_FEE_ACCOUNTS: ${{ vars.SEEKERVAULT_SWAP_FEE_ACCOUNTS }}
-      SOLANA_RPC: ${{ secrets.SEEKERVAULT_SOLANA_RPC }}
+      SOLANA_RPC: ${{ vars.SEEKERVAULT_SOLANA_RPC }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

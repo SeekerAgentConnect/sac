@@ -10,6 +10,8 @@ import (
 	"context"
 	"errors"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/proposal/v1"
 	requestv2 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/request/v2"
@@ -111,6 +113,59 @@ type FeedStore interface {
 	// publisher's host, so a registration that has never checked in and one whose process stopped
 	// are the same answer.
 	PublisherLastSeen(context.Context, string) (time.Time, error)
+	// Listed is every registration the operator put in the Discover catalog that could be shown
+	// there (SEE-176): listed, enabled for publishing, with a public description and a manifest.
+	// It is bounded by MostListed, read fresh on every call, and ordered by server ID; the caller
+	// decides what a usable manifest is and orders the catalog itself.
+	Listed(context.Context) ([]ListedFeed, error)
+}
+
+// --- the Discover catalog (SEE-176) --------------------------------------------
+
+// MostListed is the most registrations one catalog read considers. A gateway's catalog is what its
+// operator chose to list by hand, so this is a bound on one read's work rather than a size anyone
+// is expected to reach.
+const MostListed = 1000
+
+// MaxDescriptionRunes is how long a public description may be. It is a paragraph for a card and a
+// detail sheet, not a document.
+const MaxDescriptionRunes = 500
+
+// Listing is how a registered feed appears in the app's Discover catalog.
+//
+// Recommended is the operator's opt-in, and the zero value is unlisted. Description is the public,
+// plain-text paragraph the catalog shows under the feed's name; it is separate from the operator's
+// label and host, which are never served to anyone. Neither moves who may read the feed: a listed
+// restricted feed is still restricted, and unlisting a feed revokes nothing and invalidates no
+// reference anyone already holds.
+type Listing struct {
+	Recommended bool
+	Description string
+}
+
+// Valid says whether a listing can be stored: a description of at most MaxDescriptionRunes of
+// valid UTF-8, with no control character but a line break. An empty description is valid — it is
+// a listing that is not yet complete, and the catalog leaves it out until it is.
+func (l Listing) Valid() bool {
+	if !utf8.ValidString(l.Description) || utf8.RuneCountInString(l.Description) > MaxDescriptionRunes {
+		return false
+	}
+	for _, r := range l.Description {
+		if r != '\n' && (unicode.IsControl(r) || r == ' ' || r == ' ') {
+			return false
+		}
+	}
+	return true
+}
+
+// ListedFeed is one catalog candidate as the store holds it: the registration's own listing and
+// access, and the manifest its publisher last published. It carries nothing else about the
+// registration — no label, no host, no credential and no grant.
+type ListedFeed struct {
+	ServerID    string
+	Description string
+	Access      Access
+	Manifest    *serverv1.ServerManifest
 }
 
 // PresenceStore records that a publisher's server is running (SEE-150).
@@ -200,6 +255,9 @@ type Publisher struct {
 	// Grants how many of its grants are live right now. A count and never a list of anyone.
 	Access Access
 	Grants int
+	// Listing is whether the app's Discover catalog shows this feed, and what it says about it
+	// there (SEE-176). It is the operator's, like Access, and nothing a publisher publishes moves it.
+	Listing Listing
 }
 
 type Credential struct {
@@ -246,6 +304,9 @@ type Registration struct {
 	// Access is the feed's access policy. The zero value is public, which is what every
 	// registration made before SEE-156 is.
 	Access Access
+	// Listing is the feed's place in the app's Discover catalog. The zero value is unlisted, which
+	// is what every registration made before SEE-176 is.
+	Listing Listing
 }
 
 var (
@@ -278,6 +339,10 @@ type PublisherAdminStore interface {
 	// they are (SEE-156). Moving a feed between policies moves its stream name too, so a listener
 	// admitted under the old policy stops receiving anything on the name it holds.
 	SetAccess(context.Context, string, Access) error
+	// SetListing is the operator choosing whether the app's Discover catalog shows a feed, and
+	// what its public description says (SEE-176). It changes nothing about who may read the feed:
+	// no policy, no epoch, no grant and no credential moves.
+	SetListing(context.Context, string, Listing) error
 	// Grants lists one publisher's grants, newest first, for the operator's view: opaque
 	// references and instants, never a session and never a push target.
 	Grants(context.Context, string) ([]Grant, error)

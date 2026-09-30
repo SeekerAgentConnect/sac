@@ -8,8 +8,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 
 /**
- * A full-height destination. Tabs are peers; [HistoryDetail] returns to Inbox on Back and the other
- * screens return to [Home].
+ * A full-height destination. Tabs are peers; [HistoryDetail] returns to Inbox on Back,
+ * [AddConnection] to the tab it was opened from, and the other screens to [Home].
  */
 sealed interface AppScreen {
     sealed interface Tab : AppScreen
@@ -18,11 +18,24 @@ sealed interface AppScreen {
 
     data object Inbox : Tab
 
+    /** The feed catalog a configured gateway recommends (SEE-176). */
+    data object Discover : Tab
+
     data object Wallet : Tab
 
     data object Activity : Tab
 
-    data object AddConnection : AppScreen
+    /**
+     * Pairing or adding a feed. [from] is the tab it returns to: Home's FAB, or a Discover card's
+     * Connect / Request access with the feed's reference prefilled (SEE-176).
+     */
+    data class AddConnection(val from: Tab = Home) : AppScreen {
+        init {
+            require(from == Home || from == Discover) {
+                "Add connection opens from Home or Discover"
+            }
+        }
+    }
 
     /**
      * The read-only record behind one Inbox History row (SEE-161). A full page rather than a sheet,
@@ -104,6 +117,18 @@ sealed interface AppSheet {
         }
     }
 
+    /**
+     * One Discover card's details (SEE-176), over the Discover tab and nowhere else. It is the
+     * catalog's own identity — the gateway origin and the server ID — never a connection: opening
+     * it adds nothing.
+     */
+    data class CatalogDetail(val gatewayUrl: String, val serverId: String) : AppSheet {
+        init {
+            requireRouteId("gatewayUrl", gatewayUrl)
+            requireRouteId("serverId", serverId)
+        }
+    }
+
     data class ConnectionRules(val connectionId: String) : AppSheet {
         init {
             requireRouteId("connectionId", connectionId)
@@ -154,11 +179,24 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
     /** Peer-tab navigation replaces the base and closes every sheet. */
     fun selectTab(tab: AppScreen.Tab): Boolean = replace(NavigationState(tab))
 
-    /** Home's FAB is the only in-app entry to Add connection. */
+    /** Home's FAB opens Add connection, which returns to Home. */
     fun openAddConnection(): Boolean {
         if (state.screen != AppScreen.Home || state.sheets.isNotEmpty()) return false
-        return replace(NavigationState(AppScreen.AddConnection))
+        return replace(NavigationState(AppScreen.AddConnection()))
     }
+
+    /**
+     * A Discover card's Connect or Request access (SEE-176): the same Add connection screen, which
+     * returns to Discover. From the tab itself, never over a sheet.
+     */
+    fun openCatalogConnect(): Boolean {
+        if (state.screen != AppScreen.Discover || state.sheets.isNotEmpty()) return false
+        return replace(NavigationState(AppScreen.AddConnection(from = AppScreen.Discover)))
+    }
+
+    /** A Discover card's details (SEE-176). */
+    fun openCatalogDetail(gatewayUrl: String, serverId: String): Boolean =
+        push(AppSheet.CatalogDetail(gatewayUrl, serverId))
 
     /**
      * A History row, or a notification about an item that has since closed (SEE-161). From Inbox
@@ -231,6 +269,8 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
         when {
             state.sheets.isNotEmpty() -> replace(state.copy(sheets = state.sheets.dropLast(1)))
             state.screen is AppScreen.HistoryDetail -> replace(NavigationState(AppScreen.Inbox))
+            state.screen is AppScreen.AddConnection ->
+                replace(NavigationState((state.screen as AppScreen.AddConnection).from))
             state.screen !is AppScreen.Tab -> replace(NavigationState())
             else -> false
         }
@@ -269,7 +309,10 @@ private fun NavigationState.canPush(sheet: AppSheet): Boolean =
         is AppSheet.WalletHandoff ->
             sheets.size == 1 &&
                 (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity
-        is AppSheet.ConnectionDetail -> sheets.isEmpty() && screen == AppScreen.Home
+        // Over Home, or over Discover for a feed already added (SEE-176).
+        is AppSheet.ConnectionDetail ->
+            sheets.isEmpty() && (screen == AppScreen.Home || screen == AppScreen.Discover)
+        is AppSheet.CatalogDetail -> sheets.isEmpty() && screen == AppScreen.Discover
         is AppSheet.OwnerInput ->
             sheets.size == 1 &&
                 (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity
@@ -335,6 +378,11 @@ internal fun encodeNavigationState(state: NavigationState): List<String> = build
                 add(SHEET_DETAIL)
                 add(sheet.connectionId)
             }
+            is AppSheet.CatalogDetail -> {
+                add(SHEET_CATALOG)
+                add(sheet.gatewayUrl)
+                add(sheet.serverId)
+            }
             is AppSheet.ConnectionRules -> {
                 add(SHEET_RULES)
                 add(sheet.connectionId)
@@ -377,6 +425,7 @@ internal fun decodeNavigationState(saved: List<String>): NavigationState? = runC
                 SHEET_OWNER_INPUT -> AppSheet.OwnerInput(cursor.nextIdentity())
                 SHEET_POSITION_SALE -> AppSheet.PositionSale(cursor.nextIdentity())
                 SHEET_DETAIL -> AppSheet.ConnectionDetail(cursor.next())
+                SHEET_CATALOG -> AppSheet.CatalogDetail(cursor.next(), cursor.next())
                 SHEET_RULES -> AppSheet.ConnectionRules(cursor.next())
                 SHEET_GLOBAL_RULES -> AppSheet.GlobalRules
                 SHEET_ASSET -> {
@@ -415,9 +464,11 @@ private fun AppScreen.savedTag(): String =
     when (this) {
         AppScreen.Home -> SCREEN_HOME
         AppScreen.Inbox -> SCREEN_INBOX
+        AppScreen.Discover -> SCREEN_DISCOVER
         AppScreen.Wallet -> SCREEN_WALLET
         AppScreen.Activity -> SCREEN_ACTIVITY
-        AppScreen.AddConnection -> SCREEN_ADD_CONNECTION
+        is AppScreen.AddConnection ->
+            if (from == AppScreen.Discover) SCREEN_ADD_FROM_DISCOVER else SCREEN_ADD_CONNECTION
         AppScreen.LiveTest -> SCREEN_LIVE_TEST
         is AppScreen.HistoryDetail -> SCREEN_HISTORY_DETAIL
     }
@@ -426,9 +477,11 @@ private fun String.restoredScreen(): AppScreen =
     when (this) {
         SCREEN_HOME -> AppScreen.Home
         SCREEN_INBOX -> AppScreen.Inbox
+        SCREEN_DISCOVER -> AppScreen.Discover
         SCREEN_WALLET -> AppScreen.Wallet
         SCREEN_ACTIVITY -> AppScreen.Activity
-        SCREEN_ADD_CONNECTION -> AppScreen.AddConnection
+        SCREEN_ADD_CONNECTION -> AppScreen.AddConnection()
+        SCREEN_ADD_FROM_DISCOVER -> AppScreen.AddConnection(from = AppScreen.Discover)
         SCREEN_LIVE_TEST -> AppScreen.LiveTest
         else -> error("Unknown saved screen")
     }
@@ -455,9 +508,11 @@ private class SavedCursor(private val values: List<String>) {
 private const val SAVE_VERSION = "1"
 private const val SCREEN_HOME = "home"
 private const val SCREEN_INBOX = "inbox"
+private const val SCREEN_DISCOVER = "discover"
 private const val SCREEN_WALLET = "wallet"
 private const val SCREEN_ACTIVITY = "activity"
 private const val SCREEN_ADD_CONNECTION = "add_connection"
+private const val SCREEN_ADD_FROM_DISCOVER = "add_connection_discover"
 private const val SCREEN_LIVE_TEST = "live_test"
 private const val SCREEN_HISTORY_DETAIL = "history_detail"
 private const val SHEET_REVIEW = "review"
@@ -465,6 +520,7 @@ private const val SHEET_HANDOFF = "wallet_handoff"
 private const val SHEET_OWNER_INPUT = "owner_input"
 private const val SHEET_POSITION_SALE = "position_sale"
 private const val SHEET_DETAIL = "connection_detail"
+private const val SHEET_CATALOG = "catalog_detail"
 private const val SHEET_RULES = "connection_rules"
 private const val SHEET_GLOBAL_RULES = "global_rules"
 private const val SHEET_ASSET = "asset_editor"

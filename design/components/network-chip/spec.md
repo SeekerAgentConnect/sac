@@ -13,7 +13,7 @@ Theme tokens and stock Compose layout/text primitives are always allowed. The de
 ## Kotlin API
 
 ```kotlin
-enum class NetworkChipNetwork { Devnet, Mainnet }
+enum class NetworkChipNetwork { Devnet, Mainnet, Testnet }
 
 @Composable
 fun NetworkChip(
@@ -22,7 +22,9 @@ fun NetworkChip(
 )
 ```
 
-`network` maps to `NetworkChipNetwork`.
+`network` maps to `NetworkChipNetwork`. `Testnet` (SEE-176, for the networks a Discover card lists)
+is a hand-written addition: it is the neutral chip with the text "Solana testnet", exactly like the
+captured Devnet and Mainnet chips.
 
 ## Captured variants
 

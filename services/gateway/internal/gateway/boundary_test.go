@@ -375,6 +375,18 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			// routing data kept against that grant and dropped with it — the one thing a hint to a
 			// device instead of a topic cannot do without.
 			"channel", "session", "push_target",
+			// The Discover catalog (SEE-176): a page size and token, a page of feeds and the next
+			// token, and each feed as public onboarding metadata — its identity, where it is, its
+			// name, the operator's public description, the registered access policy and what the
+			// manifest says it needs. Every one of them a manifest read already answers, bar the
+			// description, which the operator wrote to be read by anyone. Nothing here is about a
+			// reader, a grant, a credential or the operator's own notes, and the answer is the
+			// same for every caller.
+			"page_size", "page_token",
+			"feeds", "next_page_token",
+			"server_id", "gateway_url", "channel", "display_name", "description", "access",
+			"supported_networks", "required_plugins", "environments", "protocol_version",
+			"settings_revision",
 		},
 		// What a subscriber receives (SEE-91): a sequence the gateway counted and a document a
 		// publisher published. A field here would be a field every listener on the channel sees.
@@ -565,6 +577,7 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 		gatewayv1connect.FeedServiceGetStreamTicketProcedure,
 		gatewayv1connect.FeedServiceGetFeedTopicsProcedure,
 		gatewayv1connect.FeedServiceGetFeedStatusProcedure,
+		gatewayv1connect.FeedServiceListRecommendedFeedsProcedure,
 	}
 	retiredProcedures := []string{
 		"/seekervault.gateway.v1.InvitationService/ResolveInvitation",

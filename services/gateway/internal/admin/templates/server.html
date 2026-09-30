@@ -21,6 +21,8 @@
     <div><dt>Published name</dt><dd>{{if $p.DisplayName}}{{$p.DisplayName}}
         <span class="sub block">from its manifest, {{instant $p.ManifestAt}}</span>
         {{else}}<span class="sub">no manifest received</span>{{end}}</dd></div>
+    <div><dt>App recommendations</dt><dd><span class="pill {{if $p.Listed}}good{{else}}neutral{{end}}">{{if $p.Listed}}shown{{else}}not shown{{end}}</span>
+        <span class="sub block">{{$p.ListingSentence}}</span></dd></div>
     <div><dt>Registered</dt><dd>{{instant $p.Created}}</dd></div>
     <div><dt>State</dt><dd>
         <span class="pill {{if $p.Working}}good{{else}}warn{{end}}">{{$p.Credentials}}</span>
@@ -100,6 +102,32 @@
   </form>
 </section>
 {{end}}
+
+<section class="section-block" aria-labelledby="listing-title">
+  <h2 id="listing-title">App recommendations</h2>
+  <form method="post" action="{{at "/servers/"}}{{$p.ServerID}}/listing" class="card form-card">
+    <input type="hidden" name="csrf" value="{{$c}}">
+    <p class="hint">Currently: {{$p.ListingSentence}}</p>
+    <label class="switch-row compact">
+      <span><strong>Show in app recommendations</strong><small>Lists this feed in the app's
+      Discover tab, with its published name and the description below. This is separate from who
+      may read it: a restricted feed stays restricted and is shown with Request access. Turning it
+      off removes the listing only — existing subscriptions and feed links keep working.</small></span>
+      <input type="checkbox" name="recommended" value="on" {{if $p.Listing.Recommended}}checked{{end}}
+             {{if not $p.Publishing}}disabled{{end}}>
+      <span class="switch-control" aria-hidden="true"></span>
+    </label>
+    <div class="field">
+      <label for="listing-description">Public description</label>
+      <textarea id="listing-description" name="description" maxlength="500" rows="4"
+                placeholder="What readers get from this feed">{{$p.Listing.Description}}</textarea>
+      <p class="hint">Plain text, at most 500 characters, shown to anyone browsing the catalog. It
+      is not your label and is never combined with the host. The name shown is the one the
+      publisher's manifest gives; a listing appears only once both exist.</p>
+    </div>
+    <button type="submit" class="button primary">Save recommendation</button>
+  </form>
+</section>
 
 <section class="section-block" aria-labelledby="credentials-title">
   <h2 id="credentials-title">Credentials</h2>

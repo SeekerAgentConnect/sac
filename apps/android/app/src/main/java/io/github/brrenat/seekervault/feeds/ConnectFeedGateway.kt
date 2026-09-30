@@ -15,10 +15,12 @@ import io.github.brrenat.seekervault.connections.FeedManifest
 import io.github.brrenat.seekervault.connections.FeedSnapshot
 import io.github.brrenat.seekervault.connections.GatewayException
 import io.github.brrenat.seekervault.connections.ProposalFeed
+import io.github.brrenat.seekervault.discover.FeedCatalog
 import io.github.brrenat.seekervault.gateway.v1.FeedAvailability as WireAvailability
 import io.github.brrenat.seekervault.gateway.v1.FeedServiceClient
 import io.github.brrenat.seekervault.gateway.v1.GatewayErrorDetail
 import io.github.brrenat.seekervault.gateway.v1.GatewayProblem
+import io.github.brrenat.seekervault.gateway.v1.ListRecommendedFeedsResponse
 import io.github.brrenat.seekervault.gateway.v1.channelSession
 import io.github.brrenat.seekervault.gateway.v1.getFeedStatusRequest
 import io.github.brrenat.seekervault.gateway.v1.getFeedTopicsRequest
@@ -26,6 +28,7 @@ import io.github.brrenat.seekervault.gateway.v1.getProposalRequest
 import io.github.brrenat.seekervault.gateway.v1.getServerManifestRequest
 import io.github.brrenat.seekervault.gateway.v1.getStreamTicketRequest
 import io.github.brrenat.seekervault.gateway.v1.listProposalsRequest
+import io.github.brrenat.seekervault.gateway.v1.listRecommendedFeedsRequest
 import io.github.brrenat.seekervault.gateway.v1.listRequestsRequest
 import io.github.brrenat.seekervault.gateway.v1.setFeedPushTargetRequest
 import io.github.brrenat.seekervault.proposal.v1.Proposal
@@ -71,7 +74,26 @@ class ConnectFeedGateway(
      * before the other (SeekerVaultApplication).
      */
     private val sessions: () -> FeedSessions = { FeedSessions.None },
-) : FeedGateway, ProposalFeed, FeedTickets, FeedTopics, FeedStatuses {
+) : FeedGateway, ProposalFeed, FeedTickets, FeedTopics, FeedStatuses, FeedCatalog {
+
+    /**
+     * One page of the gateway's Discover catalog (SEE-176). Unauthenticated and the same for every
+     * phone, like the manifest: it carries no session, because listing a restricted feed opens
+     * nothing and the catalog says nothing a manifest read would not.
+     */
+    override suspend fun recommended(
+        gatewayUrl: String,
+        pageSize: Int,
+        pageToken: String,
+    ): ListRecommendedFeedsResponse =
+        call(gatewayUrl) {
+            it.listRecommendedFeeds(
+                listRecommendedFeedsRequest {
+                    this.pageSize = pageSize
+                    this.pageToken = pageToken
+                }
+            )
+        }
 
     override suspend fun resolve(reference: FeedReference, knownRevision: Long): FeedManifest {
         val answer =

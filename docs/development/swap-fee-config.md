@@ -8,10 +8,14 @@ the phone does with the setting is in [integrations/jupiter.md](../integrations/
 
 ## What an APK carries
 
-A rate and public addresses — nothing else. Never put a seed phrase, a private key or a Jupiter API
-key in these settings: the APK is readable by anyone who has it. The fee is credited by the swap
-program to token accounts you created beforehand; neither the app nor the owner's users can create
-or fund them, and the user is never charged for setting them up.
+A rate, public addresses, and the complete Solana RPC URL used to read those addresses — all
+extractable client configuration. Anyone with the APK can recover them. Use only a public endpoint
+or a provider key deliberately intended for distribution in a client, with appropriate quota and
+abuse limits. If the provider requires a key to remain secret, do not embed that endpoint in the
+APK. Never put a seed phrase, private signing key or secret Jupiter/RPC credential in these
+settings. The fee is credited by the swap program to token accounts you created beforehand;
+neither the app nor the owner's users can create or fund them, and the user is never charged for
+setting them up.
 
 Feed publishers, direct servers, QR codes and Jupiter's own answers cannot change the rate or the
 recipient. The phone reads them from `BuildConfig` only.
@@ -23,7 +27,7 @@ recipient. The phone reads them from `BuildConfig` only.
 | `seekervault.swapFee.bps` | `SEEKERVAULT_SWAP_FEE_BPS` | `0` | Whole basis points of the swap's output: `0`–`100` (1%). `20` = 0.2%. `0` turns the fee off. |
 | `seekervault.swapFee.owner` | `SEEKERVAULT_SWAP_FEE_OWNER` | empty | The public wallet address that owns every receiving token account. |
 | `seekervault.swapFee.accounts` | `SEEKERVAULT_SWAP_FEE_ACCOUNTS` | empty | Comma-separated `<mint>=<token account>` pairs: the account that receives the fee **in that mint**. |
-| `seekervault.solanaRpc` | — | empty | The app's read-only Solana endpoint. **Required when the rate is not zero**: the phone reads each fee account through it before using it. |
+| `seekervault.solanaRpc` | — | empty | The app's read-only Solana endpoint. **Required when the rate is not zero**: the phone reads each fee account through it before using it. The full URL is embedded in and extractable from the APK; use only a public endpoint or an intentionally client-distributed, appropriately limited key. |
 
 **Precedence.** A Gradle property (`-P…`, `gradle.properties`, or `ORG_GRADLE_PROJECT_…`) wins over
 its environment variable; an empty value counts as unset.
@@ -96,17 +100,53 @@ apps/android/gradlew -p apps/android :app:assembleRelease -Pseekervault.swapFee.
 ```
 
 `BuildConfig.SWAP_FEE_BPS`, `SWAP_FEE_OWNER` and `SWAP_FEE_ACCOUNTS` carry the validated, normalized
-values (owner and accounts are empty whenever the rate is 0).
+values (owner and accounts are empty whenever the rate is 0). `BuildConfig.SOLANA_RPC` carries the
+complete RPC URL, including any query or path key, so treating that URL as a CI secret does not keep
+it secret from APK recipients.
 
 **CI.** `.github/workflows/release.yml` builds the unsigned release APK on a manual dispatch with
 `component: android`. It reads `SEEKERVAULT_SWAP_FEE_BPS`, `SEEKERVAULT_SWAP_FEE_OWNER` and
 `SEEKERVAULT_SWAP_FEE_ACCOUNTS` from **repository variables** (public values, not secrets; unset means
-no fee) and the Solana endpoint from the `SEEKERVAULT_SOLANA_RPC` **secret**, because an RPC URL can
-carry a provider key. It records the fee configuration in the run summary and uploads the APK as an
-artifact; it publishes nothing and signs nothing.
+no fee) and the Solana endpoint from the `SEEKERVAULT_SOLANA_RPC` **repository variable**. That
+endpoint is extractable from the artifact: set it only to a public endpoint or a client key that is
+intended for distribution and has suitable limits. Do not put a provider key that must remain
+secret there. The workflow records the fee configuration in the run summary and uploads the APK as
+an artifact; it publishes nothing and signs nothing.
 
 `pnpm check:swap-fee-build` (run in CI's Android job) proves the default, both ways of configuring a
 fee, the precedence, and every refusal above, by generating `BuildConfig` only.
+
+## Sign, verify and install the release APK
+
+`assembleRelease` and the manual CI workflow deliberately produce an **unsigned** APK. Use the
+same protected release keystore for every update to an installed app. Do not commit the keystore or
+its passwords. With Android SDK Build Tools and `adb` installed, sign the locally built artifact
+like this; `apksigner` prompts for the keystore/key passwords rather than exposing them in the
+command line:
+
+```bash
+export ANDROID_SDK_ROOT=/path/to/Android/Sdk
+export SAC_RELEASE_KEYSTORE=/path/to/sac-release.jks
+export SAC_RELEASE_KEY_ALIAS=sac-release
+
+BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+UNSIGNED=apps/android/app/build/outputs/apk/release/app-release-unsigned.apk
+ALIGNED=apps/android/app/build/outputs/apk/release/app-release-aligned.apk
+SIGNED=apps/android/app/build/outputs/apk/release/app-release-signed.apk
+
+"$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+"$BUILD_TOOLS/apksigner" sign \
+  --ks "$SAC_RELEASE_KEYSTORE" \
+  --ks-key-alias "$SAC_RELEASE_KEY_ALIAS" \
+  --out "$SIGNED" \
+  "$ALIGNED"
+"$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$SIGNED"
+adb install --replace "$SIGNED"
+```
+
+For a downloaded workflow artifact, set `UNSIGNED` to the downloaded `.apk`; the remaining steps
+are identical. An unsigned release artifact is not installable as the normal app and must not be
+called a distributable release.
 
 ## What the user sees
 
@@ -121,7 +161,8 @@ labelled **estimated at review**.
 
 Automated checks never spend anything. To confirm a fee is actually credited, the owner can:
 
-1. Build a fee APK as above for a small rate (e.g. `20`) with a USDC account, and install it.
+1. Build a fee APK as above for a small rate (e.g. `20`) with a USDC account, then complete the
+   signing, signature-verification and `adb install` steps above.
 2. Note the fee account's balance: `spl-token balance --address <FEE_USDC_ACCOUNT>`.
 3. From a separate wallet holding a little SOL, act on a SOL → USDC swap signal for a small amount.
    On the review, record the rate, the estimated fee and the recipient; approve and sign.

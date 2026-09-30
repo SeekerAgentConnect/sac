@@ -6,7 +6,9 @@
 - **Kotlin name:** `NavigationItem`
 - **Allowed dependencies:** none
 
-One destination in the four-item bottom navigation.
+One destination in the five-item bottom navigation: Home, Inbox, Discover, Wallet, Activity. Discover
+(SEE-176) is a hand-written addition to the Stage 7.2 export, which captured four items; each item
+keeps the captured measurements and shares the bar's width equally.
 
 Theme tokens and stock Compose layout/text primitives are always allowed. The dependency list above is exhaustive for other design components.
 
@@ -37,6 +39,10 @@ fun NavigationItem(
 ## Builder note
 
 > nav(on) + ind(on). One of four in the bottom bar; the pill behind the icon is the only selected state.
+
+Since SEE-176 the bar holds five items (Discover uses the Material Outlined `Explore` icon). The
+captured item is unchanged; only the count, and so each item's share of the width, differs from the
+export.
 
 The HTML files are the exact-value specification. Use the PNGs only for side-by-side comparison; CSS px map to Compose dp and font px map to sp.
 

@@ -3,10 +3,14 @@
 The Android app has one typed navigation state in `AppNavigation.kt`. It separates the current
 full-height screen from the ordered sheet stack:
 
-- `AppScreen.Home`, `Inbox`, `Wallet`, and `Activity` are peer tabs. Choosing a tab replaces the
-  base destination and clears open sheets.
-- `AppScreen.AddConnection` is a full-height screen reached from Home's FAB. Back and a successful
-  pairing return to Home.
+- `AppScreen.Home`, `Inbox`, `Discover`, `Wallet`, and `Activity` are peer tabs. Choosing a tab
+  replaces the base destination and clears open sheets. Discover (SEE-176, [Discover](discover.md))
+  is the gateway's feed catalog.
+- `AppScreen.AddConnection(from)` is a full-height screen reached from Home's FAB (`from = Home`) or
+  from a Discover card's **Connect** / **Request access** (`from = Discover`, with the feed's
+  reference prefilled). Back and a successful add return to that tab.
+- `AppSheet.CatalogDetail(gatewayUrl, serverId)` is a Discover card's details, over Discover only.
+  `AppSheet.ConnectionDetail` opens over Home or over Discover.
 - `AppScreen.HistoryDetail(identity)` is the read-only record behind an Inbox History row
   (SEE-161, [history details](history-details.md)). It opens from Inbox with no sheets, or in place
   of a review that turned out to be about a closed item. It has no bottom navigation, nothing is

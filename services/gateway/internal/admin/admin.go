@@ -168,6 +168,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET "+at+"/servers/{server}", s.guarded(s.showServer))
 	mux.HandleFunc("POST "+at+"/servers/{server}/capabilities", s.guarded(s.setCapabilities))
 	mux.HandleFunc("POST "+at+"/servers/{server}/access", s.guarded(s.setAccess))
+	mux.HandleFunc("POST "+at+"/servers/{server}/listing", s.guarded(s.setListing))
 	mux.HandleFunc("POST "+at+"/servers/{server}/rotate", s.guarded(s.rotateCredential))
 	mux.HandleFunc("POST "+at+"/servers/{server}/revoke", s.guarded(s.revokeCredential))
 	mux.HandleFunc("POST "+at+"/servers/{server}/forget", s.guarded(s.forgetServer))
@@ -632,6 +633,65 @@ func (s *Server) setAccess(writer http.ResponseWriter, request *http.Request, at
 	}
 }
 
+// setListing is feed-gatewayctl listing on this page (SEE-176): the operator choosing whether the
+// app's Discover catalog shows a feed, and editing the public description it is shown with.
+//
+// Unlike a change of access it moves nothing a reader holds — no stream name, no grant, no
+// credential — so it needs no confirmation: unlisting a feed takes it out of the next catalog read
+// and leaves every subscription and every reference exactly as they were.
+func (s *Server) setListing(writer http.ResponseWriter, request *http.Request, at *visit) {
+	serverID := request.PathValue("server")
+	if !rules.IsID(serverID) {
+		s.notFound(writer)
+		return
+	}
+	description, err := Description(request.PostFormValue("description"))
+	if err != nil {
+		s.back(writer, request, at, serverID, strings.ToUpper(err.Error()[:1])+err.Error()[1:]+".", true)
+		return
+	}
+	listing := storage.Listing{
+		Recommended: request.PostFormValue("recommended") != "",
+		Description: description,
+	}
+	held, err := s.options.Store.Publisher(request.Context(), serverID)
+	if err != nil {
+		s.failed(writer, "read publisher", err)
+		return
+	}
+	if held == nil {
+		s.notFound(writer)
+		return
+	}
+	if listing.Recommended && !held.Publishing {
+		s.back(writer, request, at, serverID, "Only a feed can be shown in app recommendations. "+
+			"Enable publishing for this server first.", true)
+		return
+	}
+	err = s.options.Store.SetListing(request.Context(), serverID, listing)
+	switch {
+	case errors.Is(err, storage.ErrNoPublisher):
+		s.record("listing", serverID, "refused: no such publisher")
+		s.notFound(writer)
+	case err != nil:
+		s.record("listing", serverID, "failed")
+		s.failed(writer, "set listing", err)
+	default:
+		s.record("listing", serverID, fmt.Sprintf("recommended=%t", listing.Recommended))
+		s.back(writer, request, at, serverID, listingNotice(listing), false)
+	}
+}
+
+// listingNotice says what just changed, and what it did not change.
+func listingNotice(listing storage.Listing) string {
+	if listing.Recommended {
+		return "This feed is listed in app recommendations from the next catalog read, once its " +
+			"metadata is complete. Who may read it has not changed."
+	}
+	return "This feed is not listed in app recommendations from the next catalog read. Existing " +
+		"subscriptions and feed links keep working."
+}
+
 // accessNotice says what just changed and what the publisher has to do about it, in the words
 // feed-gatewayctl access prints.
 func accessNotice(access storage.Access) string {
@@ -660,6 +720,7 @@ func registrationOf(publisher storage.Publisher) storage.Registration {
 		Publishing: publisher.Publishing,
 		Relaying:   publisher.Relaying,
 		Access:     publisher.Access,
+		Listing:    publisher.Listing,
 	}
 }
 

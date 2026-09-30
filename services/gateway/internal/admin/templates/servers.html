@@ -27,6 +27,7 @@
           <td><span class="pill neutral">{{.Capabilities}}</span></td>
           <td><span class="pill {{if .Working}}good{{else}}warn{{end}}">{{.Credentials}}</span></td>
           <td>{{if .Publishing}}<span class="sub">{{.Published}}</span><code class="id block">{{.Channel}}</code>
+              {{if .Listed}}<span class="sub block">shown in app recommendations</span>{{else if .Listing.Recommended}}<span class="sub block">listed, metadata incomplete</span>{{end}}
               {{else}}<span class="sub">not a feed publisher</span>{{end}}</td>
           <td><span class="sub">{{.Relayed}}</span></td>
           <td><span class="sub nowrap">{{instant .Created}}</span></td>
@@ -100,6 +101,23 @@
         <p class="hint">Where a phone proves which wallet it holds: the publisher's
         <code>PUBLISHER_AUTH_ORIGIN</code>, character for character. HTTPS, no path. It is the one
         address a phone will send a wallet proof to.</p>
+      </fieldset>
+
+      <fieldset class="form-section">
+        <legend>App recommendations</legend>
+        <label class="switch-row">
+          <span><strong>Show in app recommendations</strong><small>Lists the feed in the app's
+          Discover tab once the publisher has published a manifest. Off by default. It does not
+          change who may read the feed: a restricted feed is listed with Request access, and
+          approval stays with the publisher.</small></span>
+          <input type="checkbox" name="recommended" value="on" {{if .Form.Recommended}}checked{{end}}>
+          <span class="switch-control" aria-hidden="true"></span>
+        </label>
+        <label for="description">Public description <span class="sub">(needed to be shown)</span></label>
+        <textarea id="description" name="description" maxlength="500" rows="3"
+                  placeholder="What readers get from this feed">{{.Form.Description}}</textarea>
+        <p class="hint">Plain text, at most 500 characters, shown to anyone browsing the catalog.
+        It is separate from the label below, which is never served.</p>
       </fieldset>
 
       <div class="form-section fields">
