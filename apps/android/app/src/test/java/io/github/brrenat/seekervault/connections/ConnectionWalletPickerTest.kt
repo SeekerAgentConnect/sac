@@ -1,14 +1,18 @@
 package io.github.brrenat.seekervault.connections
 
 import android.content.Context
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -106,14 +110,36 @@ class ConnectionWalletPickerTest {
         compose.onNodeWithText(context.getString(R.string.wallet_app_label)).assertDoesNotExist()
     }
 
-    private fun show(networks: Set<WalletNetwork>) {
+    @Test
+    fun manyWalletsScrollWhileTheActionsStayReachable() {
+        val profiles =
+            List(12) { index ->
+                DEV.copy(
+                    id = "dev-$index",
+                    address = DEV.address.dropLast(2) + index.toString().padStart(2, '0'),
+                    accountLabel = "Dev wallet $index",
+                )
+            }
+        show(setOf(WalletNetwork.Devnet), profiles)
+
+        compose.onNodeWithTag(ConnectionsTags.DIALOG_DISMISS).assertIsDisplayed()
+        compose.onNodeWithTag(WalletTags.PICKER_USE).assertIsDisplayed()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag(WalletTags.PICKER_ADD))
+        compose.onNodeWithTag(WalletTags.PICKER_ADD).assertIsDisplayed().performClick()
+        assertEquals(listOf(WalletNetwork.Devnet), added)
+    }
+
+    private fun show(
+        networks: Set<WalletNetwork>,
+        profiles: List<WalletProfile> = listOf(MAIN, DEV),
+    ) {
         compose.setContent {
             SeekerTheme(darkTheme = true) {
                 ConnectionWalletPicker(
                     connection = connection(networks),
                     wallet =
                         WalletUiState(
-                            profiles = listOf(MAIN, DEV),
+                            profiles = profiles,
                             apps =
                                 listOf(
                                     InstalledWallet("test.wallet.a", PICKER_ONLY_APP_A),

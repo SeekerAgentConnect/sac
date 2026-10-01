@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,8 +20,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
@@ -586,7 +589,10 @@ fun ConnectionWalletPickerSheet(
         }
         Spacer(Modifier.height(SeekerTheme.spacing.xl))
         Column(
-            modifier = Modifier.padding(horizontal = SeekerTheme.spacing.xl),
+            modifier =
+                Modifier.weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = SeekerTheme.spacing.xl),
             verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
         ) {
             rows.forEach { row ->
@@ -597,6 +603,7 @@ fun ConnectionWalletPickerSheet(
                 )
             }
             AddWalletRow(addLabel, onAdd, addModifier)
+            Spacer(Modifier.height(SeekerTheme.spacing.xxs))
         }
         WalletPickerActions(
             cancelLabel = cancelLabel,
@@ -789,7 +796,7 @@ private fun WalletPickerActions(
             Modifier.fillMaxWidth()
                 .padding(
                     start = SeekerTheme.spacing.xxxl,
-                    top = SeekerTheme.spacing.xxxl,
+                    top = SeekerTheme.spacing.xxxl - SeekerTheme.spacing.xxs,
                     end = SeekerTheme.spacing.xxxl,
                     bottom = SeekerTheme.spacing.huge,
                 ),
@@ -816,7 +823,7 @@ private fun WalletPickerActions(
 @Composable
 private fun WalletSheetSurface(
     modifier: Modifier,
-    content: @Composable () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
         modifier =

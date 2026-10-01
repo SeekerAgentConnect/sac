@@ -24,6 +24,9 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
     /** Every route the phone aimed an interaction at, in order, connect and signing alike. */
     val routes = mutableListOf<WalletRouting?>()
 
+    /** Runs after a connection is recorded and before it answers, so tests can hold it open. */
+    var beforeConnecting: suspend () -> Unit = {}
+
     /**
      * The wallet app that issued each authorization, by token. A connect that offers a token to any
      * other app is refused as a real wallet refuses it: Mobile Wallet Adapter scopes a token to the
@@ -87,6 +90,7 @@ class FakeWalletAdapter(private var next: () -> WalletResult = { WalletResult.No
     ): WalletResult {
         connects += network to authToken
         routes += route
+        beforeConnecting()
         val issuer = authToken?.let(issuers::get)
         if (issuer != null && route?.packageName != null && issuer != route.packageName) {
             return WalletResult.AuthorizationExpired

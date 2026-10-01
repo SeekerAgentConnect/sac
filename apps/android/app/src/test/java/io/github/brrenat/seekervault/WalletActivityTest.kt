@@ -4,6 +4,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -28,6 +29,7 @@ import io.github.brrenat.seekervault.wallet.WalletNetwork
 import io.github.brrenat.seekervault.wallet.WalletProfile
 import io.github.brrenat.seekervault.wallet.WalletResult
 import io.github.brrenat.seekervault.wallet.WalletTags
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -189,6 +191,80 @@ class WalletActivityTest {
         )
         assertEquals(profile.selected(), app.walletRepository.walletFor(first.id))
         assertNull(app.walletRepository.walletFor(second.id))
+    }
+
+    @Test
+    fun completedBindingDoesNotDismissAReplacementSheet() {
+        val connection = pair()
+        launch()
+        val profile = addOnTheWalletsTab()
+        compose.onNodeWithText("Home").performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.item(connection.id))
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose
+            .onNodeWithTag(ConnectionsTags.WALLET_ROW)
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose
+            .onNodeWithTag(WalletTags.choice(profile.id))
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        val publishing = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.beforePublishWallet = {
+            publishing.complete(Unit)
+            release.await()
+        }
+        compose
+            .onNodeWithTag(WalletTags.PICKER_USE)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitUntil { publishing.isCompleted }
+
+        compose
+            .onNodeWithTag(ConnectionsTags.DIALOG_DISMISS)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitUntil {
+            compose.onAllNodesWithTag(WalletTags.PICKER).fetchSemanticsNodes().isEmpty()
+        }
+        compose.onNodeWithTag(ConnectionsTags.WALLET_ROW).assertExists()
+
+        release.complete(Unit)
+        compose.waitForIdle()
+
+        // The delayed callback belongs to the dismissed picker, not to its detail sheet.
+        compose.onNodeWithTag(ConnectionsTags.WALLET_ROW).assertExists()
+        assertEquals(
+            profile.id,
+            app.connectionRepository.connection(connection.id)?.walletProfileId,
+        )
+    }
+
+    @Test
+    fun rotationKeepsAnInFlightAddAndClosesItsRestoredSheetOnSuccess() {
+        launch()
+        compose.onNodeWithTag(ConnectionsTags.WALLET).performClick()
+        compose.onNodeWithTag(WalletTags.ADD).tap()
+        adapter.answerConnected(WALLET, authToken = SECRET, chains = listOf("solana:devnet"))
+        val connecting = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        adapter.beforeConnecting = {
+            connecting.complete(Unit)
+            release.await()
+        }
+        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).performClick()
+        compose.onNodeWithTag(WalletTags.CONNECT).performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitUntil { connecting.isCompleted }
+
+        scenario?.recreate()
+        compose.onNodeWithTag(WalletTags.CONNECT).assertExists()
+        release.complete(Unit)
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(WalletTags.CONNECT).assertDoesNotExist()
+        compose.onNodeWithText(WALLET, useUnmergedTree = true).assertExists()
+        assertEquals(1, adapter.connects.size)
     }
 
     @Test

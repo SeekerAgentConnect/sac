@@ -707,7 +707,12 @@ fun SeekerVaultApp(
                                                     connections.afterWalletBound(connection.id)
                                                 }
                                                 wallet.endSetup()
-                                                pop()
+                                                if (
+                                                    navigator.state.sheets.lastOrNull() ===
+                                                        activeRoute
+                                                ) {
+                                                    pop()
+                                                }
                                             }
                                         },
                                         onAdd = navigator::openAddWallet,
@@ -720,9 +725,11 @@ fun SeekerVaultApp(
                             }
                             is AppSheet.AddWallet -> {
                                 var connectStarted by
-                                    remember(activeRoute) { mutableStateOf(false) }
-                                LaunchedEffect(activeRoute) {
-                                    wallet.beginAdd(activeRoute.presetNetwork)
+                                    rememberSaveable(activeRoute) { mutableStateOf(false) }
+                                LaunchedEffect(activeRoute, connectStarted) {
+                                    if (!connectStarted) {
+                                        wallet.beginAdd(activeRoute.presetNetwork)
+                                    }
                                 }
                                 LaunchedEffect(
                                     connectStarted,
