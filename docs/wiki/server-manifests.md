@@ -190,6 +190,19 @@ server-update state until the server publishes a new revision with its networks.
 that receives a wallet binding on a network it doesn't declare — which only an older phone sends —
 stores it as before and logs the mismatch.
 
+Deploy **the gateway before its publishers**, and let its rollout finish first. A gateway older than
+SEE-174 drops `feed.supported_networks` while it rebuilds the feed reference, so a publisher that
+publishes to it during a rolling deployment is answered `unchanged` against what it already held
+and records that revision as confirmed: the networks never arrive (SEE-179, `docs/testing/see-179.md`).
+Publisher support recovers from that on its next start. A start always sends the manifest again,
+and when the gateway refuses it with `stale_revision` or `revision_conflict` it names the revision
+it holds (`GatewayErrorDetail.held_revision`); the publisher then publishes at that revision (which
+the gateway answers `unchanged` when it already holds these settings) and, if the gateway holds
+something else there, at the next one. The same catch-up is what lets a publisher whose database
+did not survive a redeployment — every App Platform restart without a volume — move its manifest
+forward instead of being refused for ever. Phones pick the new revision up like any other settings
+change.
+
 ## What the owner is told
 
 [`servers/ServerSupport.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/servers/ServerSupport.kt), in the order the states are reported:

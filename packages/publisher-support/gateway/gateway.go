@@ -68,6 +68,10 @@ type Refusal struct {
 	Detail string
 	// Whether retrying the identical document could succeed.
 	Permanent bool
+	// The revision the gateway holds, for a stale revision and a revision conflict
+	// (GatewayErrorDetail.held_revision); zero when it did not say. It is the one number a
+	// publisher that lost its own state needs to catch up with (publish.Drainer.PassManifest).
+	Held uint64
 }
 
 func (r *Refusal) Error() string { return r.Problem + ": " + r.Detail }
@@ -352,20 +356,20 @@ func classify(err error) *Refusal {
 		// message is the transport's, and it names an address rather than a credential.
 		return &Refusal{Problem: "unreachable", Detail: err.Error(), Permanent: false}
 	}
-	problem := problemOf(connectErr)
+	problem, held := problemOf(connectErr)
 	switch connectErr.Code() {
 	case connect.CodeUnavailable, connect.CodeAborted, connect.CodeInternal,
 		connect.CodeUnknown, connect.CodeDeadlineExceeded, connect.CodeResourceExhausted:
-		return &Refusal{Problem: problem, Detail: connectErr.Message(), Permanent: false}
+		return &Refusal{Problem: problem, Detail: connectErr.Message(), Permanent: false, Held: held}
 	default:
-		return &Refusal{Problem: problem, Detail: connectErr.Message(), Permanent: true}
+		return &Refusal{Problem: problem, Detail: connectErr.Message(), Permanent: true, Held: held}
 	}
 }
 
-// problemOf is the gateway's own problem code for a refusal, from the GatewayErrorDetail it
-// carries. A refusal with no detail — a proxy's 503, say — is named by its Connect code instead, so
-// every failure has one word an operator can search for.
-func problemOf(err *connect.Error) string {
+// problemOf is the gateway's own problem code for a refusal, and the revision it holds, from the
+// GatewayErrorDetail it carries. A refusal with no detail — a proxy's 503, say — is named by its
+// Connect code instead, so every failure has one word an operator can search for.
+func problemOf(err *connect.Error) (string, uint64) {
 	for _, detail := range err.Details() {
 		value, decodeErr := detail.Value()
 		if decodeErr != nil {
@@ -373,10 +377,10 @@ func problemOf(err *connect.Error) string {
 		}
 		if problem, ok := value.(*gatewayv1.GatewayErrorDetail); ok {
 			return strings.ToLower(strings.TrimPrefix(problem.GetProblem().String(),
-				"GATEWAY_PROBLEM_"))
+				"GATEWAY_PROBLEM_")), problem.GetHeldRevision()
 		}
 	}
-	return err.Code().String()
+	return err.Code().String(), 0
 }
 
 // Backoff is the delay before a publication is tried again: doubling from a second to a minute,

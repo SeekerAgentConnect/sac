@@ -297,6 +297,116 @@ func TestAManifestTheGatewayRefusesStopsAndSaysWhy(t *testing.T) {
 	}
 }
 
+// A publisher whose database did not survive a redeployment starts again at revision 1 while the
+// gateway holds a later one with other settings — the demos on App Platform, whose networks a
+// pre-SEE-174 gateway had dropped (SEE-179). The gateway names what it holds, and the manifest is
+// published at it and then past it rather than refused for ever.
+func TestAPublisherThatLostItsStateCatchesUpWithTheGateway(t *testing.T) {
+	answers := []error{
+		publishertest.Holding(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_STALE_REVISION,
+			"settings_revision", 3),
+		publishertest.Holding(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT,
+			"settings_revision", 3),
+	}
+	fake := &publishertest.FakeGateway{Refuse: func(procedure string) error {
+		if procedure != "PublishManifest" || len(answers) == 0 {
+			return nil
+		}
+		next := answers[0]
+		answers = answers[1:]
+		return next
+	}}
+	drain, documents := drainer(t, fake, fixed(now))
+	ctx := context.Background()
+	if _, err := documents.ManifestRevision(ctx, "fingerprint-a", now); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := drain.Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if attempts := fake.Tried("PublishManifest"); attempts != 3 {
+		t.Fatalf("the manifest was published %d times", attempts)
+	}
+	if len(fake.Manifests) != 1 || fake.Manifests[0].GetSettingsRevision() != 4 {
+		t.Fatalf("the gateway took %v", fake.Manifests)
+	}
+	revision, state, err := documents.Manifest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revision != 4 || state.ConfirmedRevision != 4 || state.Problem != "" {
+		t.Fatalf("revision %d, %+v", revision, state)
+	}
+}
+
+// When the gateway already holds these settings at its later revision, catching up is publishing
+// at that revision, which it answers without a new revision every subscriber would re-read.
+func TestCatchingUpWithTheSameSettingsAdoptsTheHeldRevision(t *testing.T) {
+	answered := false
+	fake := &publishertest.FakeGateway{Refuse: func(procedure string) error {
+		if procedure != "PublishManifest" || answered {
+			return nil
+		}
+		answered = true
+		return publishertest.Holding(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_STALE_REVISION,
+			"settings_revision", 3)
+	}}
+	drain, documents := drainer(t, fake, fixed(now))
+	ctx := context.Background()
+	if _, err := documents.ManifestRevision(ctx, "fingerprint-a", now); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := drain.Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	revision, state, err := documents.Manifest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revision != 3 || state.ConfirmedRevision != 3 {
+		t.Fatalf("revision %d, %+v", revision, state)
+	}
+}
+
+// A conflict a higher revision cannot answer — the gateway holds another mode — is still refused,
+// after one attempt to catch up rather than a loop.
+func TestAConflictARevisionCannotAnswerIsStillRefused(t *testing.T) {
+	fake := &publishertest.FakeGateway{Refuse: func(procedure string) error {
+		if procedure != "PublishManifest" {
+			return nil
+		}
+		return publishertest.Holding(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_REVISION_CONFLICT,
+			"mode", 1)
+	}}
+	drain, documents := drainer(t, fake, fixed(now))
+	ctx := context.Background()
+	if _, err := documents.ManifestRevision(ctx, "fingerprint-a", now); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := drain.Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if attempts := fake.Tried("PublishManifest"); attempts != 2 {
+		t.Fatalf("the manifest was published %d times", attempts)
+	}
+	_, state, err := documents.Manifest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Problem != "revision_conflict" {
+		t.Fatalf("%+v", state)
+	}
+	if _, err := drain.Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if attempts := fake.Tried("PublishManifest"); attempts != 2 {
+		t.Fatalf("a refused manifest was published again: %d attempts", attempts)
+	}
+}
+
 // A signal withdrawn before anything was published is settled here rather than retried: there is
 // nothing at the gateway to take back, nobody ever read it, and the record says so in words.
 func TestAWithdrawalOfSomethingNeverPublishedIsSettled(t *testing.T) {

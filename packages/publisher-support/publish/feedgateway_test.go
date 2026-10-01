@@ -13,6 +13,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/gateway"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/manifest"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publishertest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/store"
@@ -193,5 +194,86 @@ func TestGatewayRefusesAManifestForAnotherGateway(t *testing.T) {
 	}
 	if refusal.Problem != "other_gateway" || !refusal.Permanent {
 		t.Fatalf("%+v", refusal)
+	}
+}
+
+// The demos' outage (SEE-179), against the real gateway: the gateway holds revision 1 of the
+// manifest with no Solana networks — what a pre-SEE-174 gateway confirmed — and the publisher
+// starts again with a fresh database, so it is at revision 1 too, now declaring Mainnet. The gateway
+// refuses the same revision with other content and names what it holds; the publisher publishes
+// past it, and the manifest a phone reads declares the network.
+func TestGatewayServesTheNetworksOfAPublisherThatLostItsState(t *testing.T) {
+	binary := os.Getenv("SEEKERVAULT_FEED_GATEWAY")
+	if binary == "" {
+		t.Skip("set SEEKERVAULT_FEED_GATEWAY to a built feed-gateway binary to run this")
+	}
+	running := publishertest.RunGateway(t, binary, "a publisher redeployed without its database")
+	client, err := gateway.New(gateway.Options{
+		URL:        running.PublishTo,
+		Credential: running.Credential,
+		Timeout:    10 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	before := manifest.Settings{
+		ServerID:    publishertest.ServerID,
+		GatewayURL:  running.Origin,
+		Environment: "production",
+		Requirement: signals.Swap{}.Requirement(),
+		DisplayName: "Copy trading desk",
+	}
+	if _, err := client.Manifest(ctx, manifest.Document(before, 1)); err != nil {
+		t.Fatal(err)
+	}
+
+	after := before
+	after.Networks = []network.Network{network.Mainnet}
+	documents, err := store.Open(filepath.Join(running.Directory, "redeployed.db"), store.Stamp{
+		ServerID:    after.ServerID,
+		Environment: after.Environment.String(),
+		GatewayURL:  after.GatewayURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = documents.Close() }()
+	if revision, err := documents.ManifestRevision(ctx, manifest.Fingerprint(after),
+		time.Now()); err != nil || revision != 1 {
+		t.Fatalf("a fresh database starts at revision %d (%v)", revision, err)
+	}
+	drain := NewDrainer(Plan{
+		Documents: documents,
+		Gateway:   client,
+		ServerID:  after.ServerID,
+		Manifest: func(at uint64) *serverv1.ServerManifest {
+			return manifest.Document(after, at)
+		},
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Now: time.Now,
+	})
+	if _, err := drain.PassManifest(ctx); err != nil {
+		t.Fatal(err)
+	}
+	revision, state, err := documents.Manifest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revision != 2 || state.ConfirmedRevision != 2 || state.Problem != "" {
+		t.Fatalf("revision %d, %+v", revision, state)
+	}
+
+	status, served := publishertest.Read(t, running.Origin, "GetServerManifest",
+		map[string]any{"serverId": publishertest.ServerID})
+	if status != 200 || !strings.Contains(served, `"settingsRevision":"2"`) ||
+		!strings.Contains(served, "SOLANA_NETWORK_MAINNET") {
+		t.Fatalf("the gateway serves %d: %s", status, served)
+	}
+	// And the catalog a phone's Discover tab reads says the same.
+	if status, listed := publishertest.Read(t, running.Origin, "ListRecommendedFeeds",
+		map[string]any{}); status == 200 && strings.Contains(listed, publishertest.ServerID) &&
+		!strings.Contains(listed, "SOLANA_NETWORK_MAINNET") {
+		t.Fatalf("the catalog lists the feed without its network: %s", listed)
 	}
 }
