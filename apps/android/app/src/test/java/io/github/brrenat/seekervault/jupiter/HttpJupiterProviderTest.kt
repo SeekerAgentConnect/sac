@@ -12,6 +12,7 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -132,6 +133,8 @@ class HttpJupiterProviderTest {
         assertEquals("/swap/v1/swap", checkNotNull(asked.url).encodedPath)
         val body = JSONObject(checkNotNull(asked.body).utf8())
         assertEquals(OWNER, body.getString("userPublicKey"))
+        // A build with no service fee names no fee account (SEE-173).
+        assertFalse(body.has("feeAccount"))
         assertTrue(body.getBoolean("asLegacyTransaction"))
         assertTrue(body.getBoolean("wrapAndUnwrapSol"))
         assertTrue(body.getBoolean("useSharedAccounts"))
@@ -166,6 +169,94 @@ class HttpJupiterProviderTest {
             val failed = failure { quote(terms, amount, 50) }
             assertEquals(what, JupiterProblem.Unusable, failed.problem)
         }
+    }
+
+    @Test
+    fun theBuildsOwnFeeIsAskedForAndTheQuotesFeeIsHeldToIt() {
+        // Metis's own arithmetic, from a live answer on 2026-09-29: a route output of 11 893 202,
+        // a 20 bps fee of 23 786, and 11 869 416 quoted to the owner (SEE-173).
+        answer(
+            quoteBody(
+                outAmount = "11869416",
+                threshold = "11810069",
+                platformFee = """{"amount":"23786","feeBps":20}""",
+            )
+        )
+
+        val read = runBlocking { withTimeout(30_000) { provider().quote(terms, amount, 50, 20) } }
+
+        val url = checkNotNull(server.takeRequest().url)
+        assertEquals("20", url.queryParameter("platformFeeBps"))
+        assertEquals(20, read.platformFeeBps)
+        assertEquals(23_786UL, read.platformFeeAmount)
+        // Net of the fee, as the provider quoted it.
+        assertEquals(11_869_416UL, read.outAmount)
+        assertEquals(11_810_069UL, read.minimumOut)
+    }
+
+    @Test
+    fun aQuoteWithoutAFeeNeverAsksForOne() {
+        answer(quoteBody())
+        quote()
+        assertNull(checkNotNull(server.takeRequest().url).queryParameter("platformFeeBps"))
+    }
+
+    @Test
+    fun aFeeThatIsNotTheOneAskedForIsRefused() {
+        val cases =
+            listOf(
+                "no fee applied" to quoteBody(outAmount = "11869416", threshold = "11810069"),
+                "another rate" to
+                    quoteBody(
+                        outAmount = "11869416",
+                        threshold = "11810069",
+                        platformFee = """{"amount":"23786","feeBps":25}""",
+                    ),
+                // One unit off the provider's own formula: the estimate shown would not be the
+                // rate's, so it is not shown at all.
+                "a fee that is not the rate" to
+                    quoteBody(
+                        outAmount = "11869416",
+                        threshold = "11810069",
+                        platformFee = """{"amount":"23787","feeBps":20}""",
+                    ),
+                "a fee that is not base units" to
+                    quoteBody(
+                        outAmount = "11869416",
+                        threshold = "11810069",
+                        platformFee = """{"amount":"23.7","feeBps":20}""",
+                    ),
+            )
+        for ((what, body) in cases) {
+            answer(body)
+            val failed = failure { quote(terms, amount, 50, 20) }
+            assertEquals(what, JupiterProblem.Unusable, failed.problem)
+        }
+    }
+
+    @Test
+    fun theBuildCarriesTheVerifiedFeeAccountAndOnlyWithAFeeQuote() {
+        answer(
+            quoteBody(
+                outAmount = "11869416",
+                threshold = "11810069",
+                platformFee = """{"amount":"23786","feeBps":20}""",
+            )
+        )
+        answer(swapBody())
+        val read = runBlocking { withTimeout(30_000) { provider().quote(terms, amount, 50, 20) } }
+
+        runBlocking { withTimeout(30_000) { provider().build(read, OWNER, FEE_ACCOUNT_SOL) } }
+
+        server.takeRequest()
+        val body = JSONObject(checkNotNull(server.takeRequest().body).utf8())
+        assertEquals(FEE_ACCOUNT_SOL, body.getString("feeAccount"))
+        // A fee quote without its account, or an account without a fee quote, is never sent.
+        assertEquals(JupiterProblem.Unusable, failure { build(read, OWNER, null) }.problem)
+        assertEquals(
+            JupiterProblem.Unusable,
+            failure { build(read.copy(platformFeeBps = 0), OWNER, FEE_ACCOUNT_SOL) }.problem,
+        )
     }
 
     @Test

@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.jupiter
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import java.io.IOException
+import java.math.BigInteger
 import java.util.Base64
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -39,11 +40,22 @@ import org.json.JSONObject
  * ([JupiterProblem.RateLimited] is reported as itself and never retried in a loop).
  */
 interface JupiterProvider {
-    /** What the market offers for exactly [amount] base units of [terms]'s input mint. */
-    suspend fun quote(terms: SwapPayload, amount: ULong, slippageBps: Int): JupiterQuote
+    /**
+     * What the market offers for exactly [amount] base units of [terms]'s input mint, net of a
+     * [platformFeeBps] SAC service fee on the output when this build charges one (SEE-173).
+     */
+    suspend fun quote(
+        terms: SwapPayload,
+        amount: ULong,
+        slippageBps: Int,
+        platformFeeBps: Int = 0,
+    ): JupiterQuote
 
-    /** The transaction that would take [quote], built for [wallet] to sign. */
-    suspend fun build(quote: JupiterQuote, wallet: String): JupiterSwap
+    /**
+     * The transaction that would take [quote], built for [wallet] to sign, crediting the quote's
+     * fee to [feeAccount] — which is given exactly when the quote carries one.
+     */
+    suspend fun build(quote: JupiterQuote, wallet: String, feeAccount: String? = null): JupiterSwap
 }
 
 /**
@@ -69,6 +81,17 @@ data class JupiterQuote(
     /** How many hops the route takes. One, because that is what this plugin asks for. */
     val legs: Int,
     val raw: String,
+    /**
+     * The SAC service fee the quote was made with, in basis points of the route's output: `0`
+     * unless this build asked for one (SEE-173). The fee comes out of the output, so [outAmount]
+     * and [minimumOut] are already net of it.
+     */
+    val platformFeeBps: Int = 0,
+    /**
+     * The provider's estimate of that fee, in the output mint's base units. An estimate: the
+     * program takes its share of what the route actually produces, which the chain decides.
+     */
+    val platformFeeAmount: ULong = 0UL,
 )
 
 /** The transaction the provider built, and what it said about building it. */
@@ -137,7 +160,12 @@ class HttpJupiterProvider(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : JupiterProvider {
 
-    override suspend fun quote(terms: SwapPayload, amount: ULong, slippageBps: Int): JupiterQuote {
+    override suspend fun quote(
+        terms: SwapPayload,
+        amount: ULong,
+        slippageBps: Int,
+        platformFeeBps: Int,
+    ): JupiterQuote {
         val url =
             endpoint.trimEnd('/') +
                 "/swap/v1/quote" +
@@ -150,13 +178,25 @@ class HttpJupiterProvider(
                 // anyone agreed to.
                 "&swapMode=ExactIn" +
                 "&onlyDirectRoutes=true" +
-                "&asLegacyTransaction=true"
+                "&asLegacyTransaction=true" +
+                // The build's own fee and nobody else's: the rate comes from BuildConfig through
+                // SwapFeePolicy, and a signal has no field that reaches this line (SEE-173).
+                (if (platformFeeBps > 0) "&platformFeeBps=$platformFeeBps" else "")
         val body = fetch(Request.Builder().url(url).get().build())
         val answer = parse(body)
-        return readQuote(answer, terms, amount, slippageBps, body)
+        return readQuote(answer, terms, amount, slippageBps, platformFeeBps, body)
     }
 
-    override suspend fun build(quote: JupiterQuote, wallet: String): JupiterSwap {
+    override suspend fun build(
+        quote: JupiterQuote,
+        wallet: String,
+        feeAccount: String?,
+    ): JupiterSwap {
+        // A fee quote without its account would be a transaction that fails; an account without a
+        // fee quote would be a fee nobody was shown. Neither is built.
+        if ((quote.platformFeeBps > 0) != (feeAccount != null)) {
+            throw JupiterException(JupiterProblem.Unusable, "a fee without its account")
+        }
         val request =
             JSONObject().apply {
                 // The quote goes back exactly as it arrived: the offer the owner is being shown is
@@ -171,6 +211,8 @@ class HttpJupiterProvider(
                 // This is what makes the provider simulate. A build that already failed once is
                 // not something to put in front of someone as ready to sign.
                 put("dynamicComputeUnitLimit", true)
+                // The verified receiving account for the quote's fee, and only then (SEE-173).
+                feeAccount?.let { put("feeAccount", it) }
             }
         val call =
             Request.Builder()
@@ -221,6 +263,7 @@ class HttpJupiterProvider(
         terms: SwapPayload,
         amount: ULong,
         slippageBps: Int,
+        platformFeeBps: Int,
         raw: String,
     ): JupiterQuote {
         // Everything here is a check that the provider answered the question that was asked. It is
@@ -243,11 +286,10 @@ class HttpJupiterProvider(
         if (slippage != slippageBps) {
             throw JupiterException(JupiterProblem.Unusable, "another slippage")
         }
-        // A platform fee would be a cut taken out of the owner's output by whoever asked for it.
-        // This plugin asks for none, so one appearing means this is not the request that was made.
-        if (!answer.isNull("platformFee")) {
-            throw JupiterException(JupiterProblem.Unusable, "a platform fee was added")
-        }
+        // A platform fee is a cut of the owner's output. The only one this plugin accepts is the
+        // one it asked for — the build's own, at the build's own rate — and one appearing when none
+        // was asked for, or at another rate, means this is not the request that was made (SEE-173).
+        val feeAmount = readFee(answer, platformFeeBps, outAmount)
         if (legs != 1) throw JupiterException(JupiterProblem.Unusable, "not a single hop")
         if (outAmount == 0UL || minimumOut == 0UL || minimumOut > outAmount) {
             throw JupiterException(JupiterProblem.Unusable, "an output that is not one")
@@ -261,7 +303,40 @@ class HttpJupiterProvider(
             slippageBps = slippage,
             legs = legs,
             raw = raw,
+            platformFeeBps = platformFeeBps,
+            platformFeeAmount = feeAmount,
         )
+    }
+
+    /**
+     * The quote's fee, checked against the rate that was asked for.
+     *
+     * For an exact-input swap Metis takes the fee from the route's output: it quotes `outAmount`
+     * net of it, and states the fee as `floor(gross × bps / 10 000)` where gross is `outAmount`
+     * plus the fee. That relation is checked exactly, so the estimate the owner is shown is the
+     * provider's own arithmetic and not a number it merely asserted.
+     */
+    private fun readFee(answer: JSONObject, requestedBps: Int, outAmount: ULong): ULong {
+        if (requestedBps == 0) {
+            if (!answer.isNull("platformFee")) {
+                throw JupiterException(JupiterProblem.Unusable, "a platform fee was added")
+            }
+            return 0UL
+        }
+        val fee =
+            answer.optJSONObject("platformFee")
+                ?: throw JupiterException(JupiterProblem.Unusable, "the fee was not applied")
+        if (fee.number("feeBps") != requestedBps) {
+            throw JupiterException(JupiterProblem.Unusable, "another fee rate")
+        }
+        val amount = fee.baseUnits("amount")
+        // In arbitrary precision: a large-supply token's gross times the rate can exceed 64 bits.
+        val gross = BigInteger(outAmount.toString()) + BigInteger(amount.toString())
+        val expected = gross * BigInteger.valueOf(requestedBps.toLong()) / BPS
+        if (expected != BigInteger(amount.toString())) {
+            throw JupiterException(JupiterProblem.Unusable, "a fee that is not the rate")
+        }
+        return amount
     }
 
     private fun readSwap(answer: JSONObject): JupiterSwap {
@@ -316,6 +391,7 @@ class HttpJupiterProvider(
 
     private companion object {
         val JSON = "application/json".toMediaType()
+        val BPS: BigInteger = BigInteger.valueOf(10_000)
     }
 }
 

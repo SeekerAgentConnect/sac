@@ -15,6 +15,7 @@ import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import io.github.brrenat.seekervault.plugins.actions.message
 import io.github.brrenat.seekervault.plugins.actions.swapChoiceFrom
 import io.github.brrenat.seekervault.plugins.actions.swapInputs
+import io.github.brrenat.seekervault.solana.SolanaAccounts
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
@@ -60,6 +61,10 @@ internal class JupiterSwapAction(
     private val api: JupiterProvider,
     private val capability: ActionCapability,
     private val now: () -> Instant,
+    /** The build's SAC service fee (SEE-173). Off unless the APK was built with one. */
+    private val fee: SwapFeePolicy = SwapFeePolicy.Off,
+    /** Where a configured fee account is verified before it is used. The app's own endpoint. */
+    private val chain: SolanaAccounts? = null,
 ) {
 
     // What was offered for the bytes that were built, keyed by those exact bytes. It is the only
@@ -88,20 +93,26 @@ internal class JupiterSwapAction(
                 is SwapChoiceResult.Invalid ->
                     throw PluginFailure(read.problem.code, read.problem.message)
             }
+        // The fee is decided before anything is quoted, from the build's policy and the chain,
+        // and then bound to the bytes with the quote: nothing later can change it (SEE-173).
+        val decided =
+            if (fee.enabled && chain != null) decideSwapFee(fee, payload.outputMint, chain)
+            else SwapFee.Disabled
+        val charged = decided as? SwapFee.Charged
         val quote =
             try {
-                api.quote(payload, chosen.amount, chosen.slippageBps)
+                api.quote(payload, chosen.amount, chosen.slippageBps, decided.chargedBps)
             } catch (e: JupiterException) {
                 throw e.asFailure()
             }
         val built =
             try {
-                api.build(quote, wallet.address)
+                api.build(quote, wallet.address, charged?.account)
             } catch (e: JupiterException) {
                 throw e.asFailure()
             }
         val version = preparations.incrementAndGet()
-        offers.remember(built.transaction, quote)
+        offers.remember(built.transaction, SwapOffer(quote, decided))
         return PreparedOperation(
             transaction = built.transaction,
             version = version,
@@ -128,7 +139,7 @@ internal class JupiterSwapAction(
                         prepared.version,
                     )
             }
-        val quote =
+        val offer =
             offers.forBytes(prepared.transaction)
                 ?: return nothing(
                     PluginFinding(NO_OFFER, R.string.jupiter_finding_no_offer),
@@ -137,10 +148,11 @@ internal class JupiterSwapAction(
         return inspectSwap(
             terms = payload,
             choice = chosen,
-            quote = quote,
+            quote = offer.quote,
             wallet = operation.wallet,
             transaction = prepared.transaction,
             version = prepared.version,
+            fee = offer.fee,
         )
     }
 
@@ -191,14 +203,17 @@ internal fun JupiterException.asFailure(): PluginFailure =
  * offer is prepared again, which is exactly what should happen to an offer nobody can vouch for.
  */
 private class Offers(private val most: Int = 4) {
-    private val held = LinkedHashMap<ByteString, JupiterQuote>()
+    private val held = LinkedHashMap<ByteString, SwapOffer>()
 
-    fun remember(bytes: ByteString, quote: JupiterQuote) =
+    fun remember(bytes: ByteString, offer: SwapOffer) =
         synchronized(held) {
             held.remove(bytes)
-            held[bytes] = quote
+            held[bytes] = offer
             while (held.size > most) held.remove(held.keys.first())
         }
 
-    fun forBytes(bytes: ByteString): JupiterQuote? = synchronized(held) { held[bytes] }
+    fun forBytes(bytes: ByteString): SwapOffer? = synchronized(held) { held[bytes] }
 }
+
+/** The quote the owner is shown, and the fee decided for it before it was made (SEE-173). */
+private data class SwapOffer(val quote: JupiterQuote, val fee: SwapFee)

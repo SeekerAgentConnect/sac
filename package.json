@@ -27,6 +27,7 @@
     "check:prediction": "pnpm run check:demo-prediction",
     "check:deployments": "node scripts/check-deployments.mjs",
     "design:capture": "npm --prefix design/tools run capture --",
+    "check:swap-fee-build": "bash scripts/check-swap-fee-build.sh",
     "check:android": "apps/android/gradlew -p apps/android spotlessCheck checkDesignSystemLiterals :designsystem:verifyRoborazziDebug :app:verifyRoborazziDebug :designsystem:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest",
     "check:format": "prettier --check . && buf format packages/protocol --diff --exit-code",
     "check:generated": "node scripts/generate.mjs --check",

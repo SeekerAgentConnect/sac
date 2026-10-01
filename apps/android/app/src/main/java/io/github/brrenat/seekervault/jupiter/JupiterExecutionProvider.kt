@@ -21,6 +21,7 @@ import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.PositionManagement
 import io.github.brrenat.seekervault.plugins.PreparedOperation
+import io.github.brrenat.seekervault.plugins.ProviderAbout
 import io.github.brrenat.seekervault.plugins.ProviderCapabilities
 import io.github.brrenat.seekervault.plugins.SWAP_ACTION
 import io.github.brrenat.seekervault.plugins.SWAP_SCHEMA_VERSION
@@ -50,12 +51,17 @@ class JupiterExecutionProvider(
     swapApi: JupiterProvider,
     predictionApi: JupiterPrediction,
     chain: SolanaAccounts,
+    /**
+     * The SAC service fee this APK was built with (SEE-173, docs/development/swap-fee-config.md).
+     * The application passes it from `BuildConfig`; nothing a feed or a server sends can.
+     */
+    private val swapFee: SwapFeePolicy = SwapFeePolicy.Off,
     now: () -> Instant = Instant::now,
 ) : ExecutionProvider {
 
     override val capabilities: ProviderCapabilities = JUPITER_CAPABILITIES
 
-    private val swap = JupiterSwapAction(swapApi, SWAP_CAPABILITY, now)
+    private val swap = JupiterSwapAction(swapApi, SWAP_CAPABILITY, now, swapFee, chain)
 
     private val prediction =
         JupiterPredictionAction(predictionApi, chain, PREDICTION_BUY_CAPABILITY, now)
@@ -96,6 +102,12 @@ class JupiterExecutionProvider(
             is ActionPayload.Swap -> swap.inspect(operation, payload.payload, choice, prepared)
             is ActionPayload.PredictionBuy ->
                 prediction.inspect(operation, payload.payload, choice, prepared)
+        }
+
+    override fun about(operation: ActionOperation): ProviderAbout =
+        when (operation.payload) {
+            is ActionPayload.Swap -> swapAbout(swapFee)
+            is ActionPayload.PredictionBuy -> PREDICTION_ABOUT
         }
 
     override fun destinations(

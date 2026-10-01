@@ -51,6 +51,12 @@ data class ActionInspection(
      * ([io.github.brrenat.seekervault.activity.ReviewedOperation.references]).
      */
     val references: List<PluginReference> = emptyList(),
+    /**
+     * Who routes or places this operation and what service fee, if any, the bytes carry (SEE-173),
+     * under [ReceiptKey]s. Core pins it into the execution binding when the owner approves, so
+     * History says what they approved rather than what a provider says today.
+     */
+    val receipt: List<PluginReference> = emptyList(),
 ) {
     /**
      * Whether this preparation may be put in front of the owner to approve. Only bytes the plugin

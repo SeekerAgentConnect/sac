@@ -42,6 +42,7 @@ import io.github.brrenat.seekervault.feeds.storage.FeedCursorStore
 import io.github.brrenat.seekervault.jupiter.HttpJupiterPrediction
 import io.github.brrenat.seekervault.jupiter.HttpJupiterProvider
 import io.github.brrenat.seekervault.jupiter.JupiterExecutionProvider
+import io.github.brrenat.seekervault.jupiter.SwapFeePolicy
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import io.github.brrenat.seekervault.notifications.ArrivalLedger
@@ -239,6 +240,14 @@ class SeekerVaultApplication : Application() {
                 swapApi = HttpJupiterProvider(httpClient),
                 predictionApi = HttpJupiterPrediction(httpClient),
                 chain = solanaAccounts(),
+                // The build's SAC service fee, off unless this APK was built with one (SEE-173,
+                // docs/development/swap-fee-config.md). Public addresses and a rate, nothing else.
+                swapFee =
+                    SwapFeePolicy.fromBuild(
+                        BuildConfig.SWAP_FEE_BPS,
+                        BuildConfig.SWAP_FEE_OWNER,
+                        BuildConfig.SWAP_FEE_ACCOUNTS,
+                    ),
             )
         )
     }

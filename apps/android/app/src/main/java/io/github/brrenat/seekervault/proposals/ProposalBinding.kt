@@ -5,6 +5,7 @@ import io.github.brrenat.seekervault.plugins.ActionId
 import io.github.brrenat.seekervault.plugins.ExecutionProviderId
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.ProviderResolution
 import io.github.brrenat.seekervault.plugins.SUPPORTED_PROVIDER_CONTRACTS
@@ -83,6 +84,12 @@ data class ExecutionBinding(
      * a transfer's blockhash window does (SAW-046).
      */
     val expiresAtEpochSeconds: Long? = null,
+    /**
+     * What the owner was shown about who carries this out and what service fee the bytes carry
+     * (SEE-173, [io.github.brrenat.seekervault.plugins.ReceiptKey]). Display and evidence only:
+     * nothing gates on it, and a binding written before it existed has none.
+     */
+    val receipt: List<PluginReference> = emptyList(),
 )
 
 /**

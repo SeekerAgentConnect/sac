@@ -161,7 +161,8 @@ fun OperationReview.toPredictionSheet(
         terms = if (choosable || inspection != null) termsOf(resources) else null,
         dailySpend = assessment?.let { dailySpendOf(it, sandbox, resources) },
         infoBlocks =
-            listOf(ReviewSheetInfoBlock(resources.getString(R.string.prediction_review_check))),
+            listOf(ReviewSheetInfoBlock(resources.getString(R.string.prediction_review_check))) +
+                aboutBlocks(resources),
         factRows = factsOf(terms, source, wallet, resources),
         note =
             proposal.note.takeIf(String::isNotBlank)?.let {
@@ -450,6 +451,11 @@ private fun OperationReview.factsOf(
         )
 
     plain(R.string.prediction_fact_from, source.name)
+    // The venue the order is placed on, named as its provider requires (SEE-173). It is not the
+    // feed's publisher, and it is not the market's own source below.
+    about?.let {
+        add(ReviewSheetFactRow(resources.getString(it.role), it.name.substringBefore(" · ")))
+    }
     val read = terms != null
     if (terms != null) {
         terms.marketProvider.takeIf(String::isNotBlank)?.let {
@@ -482,6 +488,17 @@ private fun OperationReview.factsOf(
     // Where the market is on the provider's own site or app, as history shows it once an order is
     // placed (SEE-157), so the owner can look before approving too.
     destinations.forEach {
+        add(
+            ReviewSheetFactRow(
+                label = resources.getString(it.label),
+                value = resources.getString(R.string.prediction_fact_open),
+                valueStyle = FactRowValueStyle.Link,
+                link = it.url,
+            )
+        )
+    }
+    // The provider's official pages: how it works, its terms, its privacy policy (SEE-173).
+    about?.links?.forEach {
         add(
             ReviewSheetFactRow(
                 label = resources.getString(it.label),
@@ -533,6 +550,21 @@ private val KnownTerms =
         PredictionTermNames.LEAST_DEPOSIT,
         PredictionTermNames.MOST_DEPOSIT,
     )
+
+/**
+ * What the provider says the owner should know before committing — real funds on mainnet, its fees,
+ * where it is available, and what an order is and is not — as info blocks under the one that says
+ * what this phone checks (SEE-173).
+ */
+private fun OperationReview.aboutBlocks(resources: Resources): List<ReviewSheetInfoBlock> {
+    val about = about ?: return emptyList()
+    return about.notes.mapIndexed { index, note ->
+        ReviewSheetInfoBlock(
+            body = resources.getString(note.text, *note.args.toTypedArray()),
+            title = about.name.takeIf { index == 0 },
+        )
+    } + ReviewSheetInfoBlock(resources.getString(R.string.operation_about_signer))
+}
 
 /** The execution provider as a name, from its identifier. */
 private fun OperationReview.providerName(): String =

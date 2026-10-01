@@ -35,6 +35,7 @@ import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.receiptRows
 import io.github.brrenat.seekervault.policy.AmountEntry
 import io.github.brrenat.seekervault.policy.readAmount
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
@@ -158,6 +159,19 @@ fun ProposalReviewScreen(
                                     onOpenLink = onOpenLink,
                                 )
                             }
+                            // Who routed it and the service fee it carried, as approved (SEE-173).
+                            // Kept with the binding, so it is what the owner saw and not what
+                            // anybody says today.
+                            val receipt = receiptRows(executed.binding.receipt)
+                            if (receipt.isNotEmpty()) {
+                                Column(
+                                    Modifier.fillMaxWidth().testTag(OperationTags.RECEIPT),
+                                    verticalArrangement =
+                                        Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
+                                ) {
+                                    receipt.forEach { (name, value) -> Fact(name, value) }
+                                }
+                            }
                             review.destinations.forEach {
                                 Link(stringResource(it.label), it.url, it.deepLink, onOpenLink)
                             }
@@ -197,7 +211,7 @@ fun ProposalReviewScreen(
                     ) {
                         // Carried and not interpreted: which key means what is the plugin's, and
                         // this shows the publisher's own names and values as they were written.
-                        proposal.values.forEach { Pair(it.key, it.text) }
+                        proposal.values.forEach { Fact(it.key, it.text) }
                         Text(
                             stringResource(
                                 R.string.operation_expires,
@@ -210,6 +224,34 @@ fun ProposalReviewScreen(
                 }
                 review.form.problem?.let {
                     Banner(stringResource(it.message), OperationTags.FAILURE)
+                }
+                // Who routes or places this, named as the provider requires, with what to know
+                // before committing and where to read more (SEE-173). The publisher is someone
+                // else, and the wallet that signs is someone else again.
+                review.about?.let { about ->
+                    Section(R.string.operation_about) {
+                        Column(
+                            Modifier.fillMaxWidth().testTag(OperationTags.ABOUT),
+                            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
+                        ) {
+                            Pair(stringResource(about.role), about.name)
+                            about.notes.forEach { note ->
+                                Text(
+                                    stringResource(note.text, *note.args.toTypedArray()),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(
+                                stringResource(R.string.operation_about_signer),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            about.links.forEach {
+                                Link(stringResource(it.label), it.url, it.deepLink, onOpenLink)
+                            }
+                        }
+                    }
                 }
                 // What the execution provider says about this action right now, read when the
                 // review opened (SEE-145). It is the venue's own words about its own market, shown
@@ -316,7 +358,7 @@ fun ProposalReviewScreen(
                                 }
                             }
                             // What else the bytes said, in the plugin's own words and values.
-                            inspection.details.forEach { Pair(stringResource(it.label), it.value) }
+                            inspection.details.forEach { Fact(stringResource(it.label), it.value) }
                             wallet?.let {
                                 Pair(
                                     stringResource(R.string.operation_fact_network),
@@ -587,6 +629,16 @@ private fun Address(name: String, value: String) {
         )
         Identifier(value, Modifier.weight(2f))
     }
+}
+
+/**
+ * A labelled value, laid out as an identifier when it is one: an account address cannot share a
+ * line with its label and still be read whole (SEE-173's fee recipient is one).
+ */
+@Composable
+private fun Fact(name: String, value: String) {
+    if (value.length >= 32 && value.none(Char::isWhitespace)) Address(name, value)
+    else Pair(name, value)
 }
 
 @Composable

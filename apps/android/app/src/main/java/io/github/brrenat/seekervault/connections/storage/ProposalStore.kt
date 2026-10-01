@@ -10,6 +10,7 @@ import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
+import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.actionOf
 import io.github.brrenat.seekervault.plugins.actions.Instrument
 import io.github.brrenat.seekervault.plugins.isPluginId
@@ -408,6 +409,20 @@ class ProposalStore(private val dir: File) {
                     Base64.getEncoder().encodeToString(binding.contentHash.toByteArray()),
                 )
                 .putOpt("expiresAt", binding.expiresAtEpochSeconds)
+                // Additive (SEE-173): an older build ignores it, and a record without it reads as
+                // one with nothing to say about routing or fees.
+                .putOpt(
+                    "receipt",
+                    binding.receipt
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { receipt ->
+                            JSONArray().apply {
+                                receipt.forEach {
+                                    put(JSONObject().put("key", it.key).put("value", it.value))
+                                }
+                            }
+                        },
+                )
 
         fun decodeBinding(json: JSONObject): ExecutionBinding {
             // The bundled-plugin name a row written before SEE-145 carries, when it carries one.
@@ -462,6 +477,15 @@ class ProposalStore(private val dir: File) {
                     ByteString.copyFrom(Base64.getDecoder().decode(json.getString("contentHash"))),
                 expiresAtEpochSeconds =
                     if (json.has("expiresAt")) json.getLong("expiresAt") else null,
+                receipt =
+                    json.optJSONArray("receipt")?.let { array ->
+                        (0 until array.length()).mapNotNull { index ->
+                            val entry = array.optJSONObject(index) ?: return@mapNotNull null
+                            val key = entry.optString("key")
+                            if (key.isEmpty()) null
+                            else PluginReference(key, entry.optString("value"))
+                        }
+                    } ?: emptyList(),
             )
         }
 

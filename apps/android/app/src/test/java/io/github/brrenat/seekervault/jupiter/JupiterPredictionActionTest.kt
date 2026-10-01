@@ -79,9 +79,10 @@ class JupiterPredictionActionTest {
             terms: io.github.brrenat.seekervault.plugins.actions.SwapPayload,
             amount: ULong,
             slippageBps: Int,
+            platformFeeBps: Int,
         ) = throw AssertionError("a prediction asked for a swap quote")
 
-        override suspend fun build(quote: JupiterQuote, wallet: String) =
+        override suspend fun build(quote: JupiterQuote, wallet: String, feeAccount: String?) =
             throw AssertionError("a prediction asked for a swap build")
     }
 

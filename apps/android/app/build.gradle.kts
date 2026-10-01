@@ -1,3 +1,5 @@
+import java.math.BigInteger
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -37,7 +39,10 @@ if (firebaseConfigured) {
 // default**, on purpose and in two senses: a checkout reaches no cluster, so no check here ever
 // quietly depends on somebody else's public endpoint; and it is the application's own setting,
 // never a publisher's, so nothing a server sends can point the phone at an endpoint of the server's
-// choosing. Set it for a build that wants prediction orders:
+// choosing. The complete URL is compiled into BuildConfig and is extractable from every APK. Use
+// only a public endpoint or a client key deliberately distributed with suitable quota and abuse
+// limits; if a provider requires a secret key, do not put that endpoint here. Set it for a build
+// that wants prediction orders:
 //
 //   apps/android/gradlew -p apps/android :app:assembleDebug -Pseekervault.solanaRpc=https://…
 val solanaRpc = (providers.gradleProperty("seekervault.solanaRpc").orNull ?: "").trim()
@@ -67,6 +72,112 @@ fun clusterRpc(cluster: String) =
 //     -Pseekervault.relayUrl=https://feeds.example.com
 val relayUrl = (providers.gradleProperty("seekervault.relayUrl").orNull ?: "").trim().trimEnd('/')
 
+// The SAC service fee on swaps (SEE-173, docs/development/swap-fee-config.md). **Off by default**:
+// a build nobody configured charges nothing, and needs nothing set. An operator who wants one sets
+// three public values — a rate, the wallet that owns the receiving token accounts, and one
+// receiving token account per output mint — as Gradle properties or, for CI, environment
+// variables. A property wins over its environment variable; an empty value counts as unset.
+//
+//   apps/android/gradlew -p apps/android :app:assembleRelease \
+//     -Pseekervault.solanaRpc=https://… \
+//     -Pseekervault.swapFee.bps=20 \
+//     -Pseekervault.swapFee.owner=<fee wallet public key> \
+//     -Pseekervault.swapFee.accounts=<mint>=<token account>,<mint>=<token account>
+//
+// Nothing here is a secret and nothing secret may go here: the APK carries public addresses and a
+// rate, never a key. The values are checked below, at configuration time, so a malformed or
+// incomplete setting fails the build instead of shipping an APK that charges something nobody
+// meant. The phone then verifies each account on chain before it is ever used.
+fun swapFeeSetting(property: String, variable: String): String =
+    providers.gradleProperty(property).orNull?.trim()?.takeIf(String::isNotEmpty)
+        ?: providers.environmentVariable(variable).orNull?.trim()?.takeIf(String::isNotEmpty)
+        ?: ""
+
+val swapFeeBpsText = swapFeeSetting("seekervault.swapFee.bps", "SEEKERVAULT_SWAP_FEE_BPS")
+val swapFeeOwner = swapFeeSetting("seekervault.swapFee.owner", "SEEKERVAULT_SWAP_FEE_OWNER")
+val swapFeeAccountsText =
+    swapFeeSetting("seekervault.swapFee.accounts", "SEEKERVAULT_SWAP_FEE_ACCOUNTS")
+
+// The same bound the app enforces (jupiter/SwapFee.kt `MOST_SWAP_FEE_BPS`): one percent. The
+// program's own field would take 255; this keeps a typo from becoming a 2.55% cut.
+val mostSwapFeeBps = 100
+
+/** Whether [text] is a base58 Solana public key: exactly 32 bytes once decoded. */
+fun isSolanaAddress(text: String): Boolean {
+    val alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    if (text.isEmpty() || text.any { it !in alphabet }) return false
+    var value = BigInteger.ZERO
+    for (char in text) {
+        value =
+            value.multiply(BigInteger.valueOf(58)) +
+                BigInteger.valueOf(alphabet.indexOf(char).toLong())
+    }
+    val body = value.toByteArray().dropWhile { it == 0.toByte() }.size
+    val leading = text.takeWhile { it == '1' }.length
+    return body + leading == 32
+}
+
+fun swapFeeProblem(message: String): Nothing =
+    throw GradleException(
+        "Invalid SAC swap fee configuration: $message " + "(docs/development/swap-fee-config.md)"
+    )
+
+val swapFeeBps: Int =
+    if (swapFeeBpsText.isEmpty()) 0
+    else
+        swapFeeBpsText.toIntOrNull()?.takeIf { it in 0..mostSwapFeeBps }
+            ?: swapFeeProblem(
+                "seekervault.swapFee.bps must be a whole number of basis points from 0 to " +
+                    "$mostSwapFeeBps, not \"$swapFeeBpsText\""
+            )
+
+val swapFeeAccounts: List<Pair<String, String>> =
+    swapFeeAccountsText.split(',').map(String::trim).filter(String::isNotEmpty).map { entry ->
+        val parts = entry.split('=', limit = 2).map(String::trim)
+        if (parts.size != 2 || !isSolanaAddress(parts[0]) || !isSolanaAddress(parts[1])) {
+            swapFeeProblem(
+                "each seekervault.swapFee.accounts entry must be <mint>=<token account>, " +
+                    "both base58 public keys, not \"$entry\""
+            )
+        }
+        parts[0] to parts[1]
+    }
+
+// Validated whenever anything is set, so a half-finished setting is caught even with the rate at
+// zero; enforced as complete only when the rate is not.
+if (swapFeeOwner.isNotEmpty() && !isSolanaAddress(swapFeeOwner)) {
+    swapFeeProblem("seekervault.swapFee.owner must be a base58 public key")
+}
+
+if (swapFeeAccounts.map { it.first }.toSet().size != swapFeeAccounts.size) {
+    swapFeeProblem("seekervault.swapFee.accounts names the same mint twice")
+}
+
+swapFeeAccounts.forEach { (mint, account) ->
+    if (account == swapFeeOwner) {
+        swapFeeProblem(
+            "the account for $mint is the owner wallet itself; a fee is received by a token " +
+                "account for that mint, not by a wallet address"
+        )
+    }
+    if (account == mint) swapFeeProblem("the account for $mint is the mint itself")
+}
+
+if (swapFeeBps > 0) {
+    if (swapFeeOwner.isEmpty()) {
+        swapFeeProblem("a nonzero rate needs seekervault.swapFee.owner")
+    }
+    if (swapFeeAccounts.isEmpty()) {
+        swapFeeProblem("a nonzero rate needs at least one seekervault.swapFee.accounts entry")
+    }
+    // The phone reads each account from the chain before it charges anything to it, through the
+    // app's own endpoint. Without one it would never charge, so a fee build without it is a
+    // mistake worth stopping here.
+    if (solanaRpc.isEmpty()) {
+        swapFeeProblem("a nonzero rate needs seekervault.solanaRpc to verify the fee accounts")
+    }
+}
+
 // The gateway whose Discover catalog this build shows (SEE-176, docs/wiki/discover.md). An origin,
 // and a public one: the catalog is the operator's list of feeds anyone may browse, and adding one
 // still reads and validates that feed's manifest like a pasted reference. Unset, it is the relay's
@@ -91,8 +202,8 @@ android {
         // Lets the UI omit an irrelevant permission prompt from Firebase-off deployments.
         // It contains configuration presence only, never a Firebase identifier or credential.
         buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
-        // A read-only endpoint, or the empty string. It is not a credential and it is not a
-        // secret: it is an address the owner's phone reads public account data from.
+        // A read-only endpoint, or the empty string. This is extractable client configuration,
+        // never a secret: it is an address the owner's phone reads public account data from.
         buildConfigField("String", "SOLANA_RPC", "\"$solanaRpc\"")
         // The same, per cluster, for following sent transactions (SEE-165). Read-only addresses
         // like the one above; only their hosts are ever stored.
@@ -103,6 +214,19 @@ android {
         // is an origin, not a credential: what it grants is nothing until the owner's phone
         // authorizes a server at it, one direct connection at a time.
         buildConfigField("String", "RELAY_URL", "\"$relayUrl\"")
+        // The SAC service fee on swaps (SEE-173): a rate and public addresses, or 0 and nothing.
+        // Written normalized, so the app reads exactly what was validated above.
+        buildConfigField("int", "SWAP_FEE_BPS", swapFeeBps.toString())
+        buildConfigField(
+            "String",
+            "SWAP_FEE_OWNER",
+            "\"${if (swapFeeBps > 0) swapFeeOwner else ""}\"",
+        )
+        buildConfigField(
+            "String",
+            "SWAP_FEE_ACCOUNTS",
+            "\"${if (swapFeeBps > 0) swapFeeAccounts.joinToString(",") { "${it.first}=${it.second}" } else ""}\"",
+        )
         // The gateway origin the Discover tab reads its catalog from, or "" for none (SEE-176).
         buildConfigField("String", "DISCOVERY_URL", "\"$discoveryUrl\"")
         // src/androidTest: the device round trip, run by `pnpm test:hello --device`.
@@ -213,7 +337,15 @@ tasks.withType<Test>().configureEach {
     // run reaches nothing and spends nothing. A property Gradle was given does not reach a test on
     // its own, and a test that silently skipped because of that would be worse than one that
     // fails.
-    for (name in listOf("seekervault.centrifugo", "seekervault.redis", "seekervault.jupiter")) {
+    // `seekervault.screenshots` names a directory the SEE-173 attribution screens are saved to
+    // (AttributionScreensTest, docs/testing/see-173.md); unset, nothing is written.
+    for (name in
+        listOf(
+            "seekervault.centrifugo",
+            "seekervault.redis",
+            "seekervault.jupiter",
+            "seekervault.screenshots",
+        )) {
         providers.systemProperty(name).orNull?.let { systemProperty(name, it) }
     }
     inputs

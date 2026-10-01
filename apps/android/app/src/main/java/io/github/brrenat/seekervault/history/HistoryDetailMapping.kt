@@ -25,6 +25,8 @@ import io.github.brrenat.seekervault.designsystem.HistoryDetailTimelineEntry
 import io.github.brrenat.seekervault.designsystem.HistoryDetailTransaction
 import io.github.brrenat.seekervault.inbox.inboxTitle
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.receiptRows
+import io.github.brrenat.seekervault.proposals.ExecutionBinding
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -493,6 +495,22 @@ private fun Action.network(): Network? =
  * The page for a signal this phone closed. [choice] is the owner's recorded choice, already put
  * into words by the caller from the provider's compiled form; nothing about it is recomputed.
  */
+/**
+ * Who routed or placed the operation and the service fee it carried, as the owner approved them
+ * (SEE-173). Read off the binding, so it is what was reviewed and never today's policy. A fee is
+ * stated as the estimate it was — the chain decides the amount actually taken — and addresses are
+ * laid out in full, on their own line.
+ */
+private fun receiptRows(binding: ExecutionBinding): List<HistoryDetailRow> =
+    receiptRows(binding.receipt).map { (label, value) ->
+        HistoryDetailRow(
+            label,
+            value,
+            if (value.length > 32 && ' ' !in value) HistoryDetailRowLayout.Block
+            else HistoryDetailRowLayout.Inline,
+        )
+    }
+
 fun signalHistoryDetail(
     record: ProposalRecord,
     standing: ProposalStanding,
@@ -602,7 +620,7 @@ fun signalHistoryDetail(
                                 "Decision",
                                 if (sandbox) "Approved (simulation)" else "Approved",
                             )
-                        ) + choice,
+                        ) + choice + receiptRows(execution.binding),
                 )
             standing is ProposalStanding.Dismissed ->
                 HistoryDetailResponse.Sent(

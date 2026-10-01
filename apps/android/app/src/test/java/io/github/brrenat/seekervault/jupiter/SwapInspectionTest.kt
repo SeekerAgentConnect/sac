@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.jupiter
 
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.plugins.actions.SwapChoice
 import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import io.github.brrenat.seekervault.plugins.actions.WRAPPED_SOL
@@ -356,13 +357,19 @@ class SwapInspectionTest {
         val inspection = inspect(swapTransaction(terms, amount, quote))
 
         val values = inspection.details.map { it.value }
+        // Who routes it, named as the provider requires (SEE-173).
+        assertEquals(SWAP_ROUTING_NAME, values[0])
+        assertEquals(R.string.jupiter_fact_routing, inspection.details[0].label)
         // The floor, the offer, and how far apart they may be — all read out of the instruction.
-        assertEquals("0.098505 SOL", values[0])
-        assertEquals("0.099 SOL", values[1])
-        assertEquals("0.5%", values[2])
+        assertEquals("0.098505 SOL", values[1])
+        assertEquals("0.099 SOL", values[2])
+        assertEquals("0.5%", values[3])
+        // A build with no service fee says so, rather than saying nothing (SEE-173).
+        assertEquals("0%", values[4])
+        assertEquals(R.string.jupiter_fact_service_fee_none, inspection.details[4].label)
         // What the transaction will cost to be picked up: the limit times the price, in SOL.
-        assertEquals("0.000099999", values[3])
+        assertEquals("0.000099999", values[5])
         // And nothing about a new account, because this transaction creates none.
-        assertEquals(4, values.size)
+        assertEquals(6, values.size)
     }
 }
