@@ -58,6 +58,10 @@ type Market struct {
 	FirstSeenAt   time.Time
 	LastSeenAt    time.Time
 	LastCheckedAt time.Time
+	// Whether an operator published this market by name (SEE-177). A cycle's selection never
+	// retires a pinned market to make room or to rebalance coverage: an operator who named a market
+	// asked for that one. Only the source ending it, or a later operator choice, takes it back.
+	Pinned bool
 }
 
 // Key is the idempotency key a market's signal is created with: the venue, the identifier and the
@@ -101,13 +105,86 @@ type Cycle struct {
 	Created   int
 	Updated   int
 	Cancelled int
-	// Markets asked about directly, and candidates left for the next cycle because this template
-	// is already holding as many proposals as it will.
+	// Markets asked about directly, and eligible events left without a proposal because this
+	// template is already holding as many as it will.
 	Checked int
 	Skipped int
 	// Why each considered market was not a candidate, counted by reason. It is the answer to "my
 	// filters match nothing and I do not know which one did it".
 	Reasons map[string]int
+	// How the candidates became the proposals held: one per event, chosen for coverage (SEE-177).
+	Selection Selection
+}
+
+// Selection is what a cycle chose and why: how many candidate markets there were, how many distinct
+// events they belong to, how many events hold a proposal afterwards, and which of the configured
+// buckets — the categories and keywords an operator asked for — those events cover (SEE-177).
+//
+// It answers "why is my keyword not on the feed": a bucket is uncovered either because nothing the
+// walk read matched it, or because the feed had no room left for it.
+type Selection struct {
+	// Candidate markets, the distinct events they belong to, and the events holding an open
+	// proposal once the cycle is done.
+	Candidates int
+	Events     int
+	Selected   int
+	// Proposals this cycle withdrew because of the selection rather than the source, by reason:
+	// a second proposal for one event, one dropped to cover a missing bucket, one no longer
+	// eligible and replaced, or one over the ceiling.
+	Retired map[string]int
+	// Every configured bucket, in the order it was configured.
+	Buckets []Bucket
+}
+
+// Bucket is one configured category or keyword and how the selection covered it.
+type Bucket struct {
+	// "category" or "keyword", and the bucket's normalized value.
+	Kind string
+	Name string
+	// Eligible events matching it, and how many of the held events match it.
+	Eligible int
+	Selected int
+	// Why it is uncovered, when it is: see [NoCandidate], [NotReached] and [NoRoom].
+	Uncovered string
+}
+
+// The reasons a bucket is not covered.
+const (
+	// Nothing within the configured pages matched it: the provider has no eligible event for it.
+	NoCandidate = "no_eligible_candidate"
+	// Nothing matched it, but the walk stopped early, so the pages it did not read might have.
+	NotReached = "walk_incomplete"
+	// Eligible events match it, but every slot is held by an event covering something else.
+	NoRoom = "capacity_limit"
+)
+
+// Describe is a selection as an answer reads it.
+func (s Selection) Describe() map[string]any {
+	covered, uncovered := []map[string]any{}, []map[string]any{}
+	for _, bucket := range s.Buckets {
+		one := map[string]any{
+			"kind": bucket.Kind, "name": bucket.Name,
+			"eligible": bucket.Eligible, "selected": bucket.Selected,
+		}
+		if bucket.Uncovered == "" {
+			covered = append(covered, one)
+			continue
+		}
+		one["reason"] = bucket.Uncovered
+		uncovered = append(uncovered, one)
+	}
+	retired := map[string]int{}
+	for reason, count := range s.Retired {
+		retired[reason] = count
+	}
+	return map[string]any{
+		"candidates": s.Candidates,
+		"events":     s.Events,
+		"selected":   s.Selected,
+		"retired":    retired,
+		"covered":    covered,
+		"uncovered":  uncovered,
+	}
 }
 
 // The three outcomes.
@@ -154,6 +231,7 @@ func (c Cycle) Describe() map[string]any {
 		reasons[reason] = count
 	}
 	described["skipped_because"] = reasons
+	described["selection"] = c.Selection.Describe()
 	return described
 }
 

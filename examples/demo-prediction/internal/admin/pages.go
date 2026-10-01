@@ -62,6 +62,7 @@ type homeView struct {
 	Environment string
 	Query       Query
 	Signals     []Item
+	Coverage    *Coverage
 	Markets     []Market
 	Searched    bool
 }

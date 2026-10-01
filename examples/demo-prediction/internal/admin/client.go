@@ -143,6 +143,82 @@ func (a *API) defaults() Query {
 	return query
 }
 
+// Coverage is what the last discovery cycle chose, as the home page shows it (SEE-177): how many
+// candidate markets and distinct events the walk found, how many events hold an entry, and which
+// configured categories and keywords those entries cover.
+type Coverage struct {
+	Cycle      int
+	Candidates int
+	Events     int
+	Selected   int
+	Covered    []CoverageBucket
+	Uncovered  []CoverageBucket
+}
+
+// CoverageBucket is one configured category or keyword.
+type CoverageBucket struct {
+	Kind     string
+	Name     string
+	Eligible int
+	Selected int
+	Reason   string
+}
+
+// reasons are the selection's uncovered-bucket codes in an operator's words.
+var reasons = map[string]string{
+	"no_eligible_candidate": "no eligible market in the pages read",
+	"walk_incomplete":       "the walk stopped early",
+	"capacity_limit":        "no slot left",
+}
+
+// coverage reads the last cycle's selection. A template that has not finished a cycle yet, or an
+// API that cannot be read, has none, and the page says nothing rather than something wrong.
+func (a *API) coverage() *Coverage {
+	status, body, err := a.call(http.MethodGet, "/v1/discovery", "", nil)
+	if err != nil || status != http.StatusOK {
+		return nil
+	}
+	type bucket struct {
+		Kind     string `json:"kind"`
+		Name     string `json:"name"`
+		Eligible int    `json:"eligible"`
+		Selected int    `json:"selected"`
+		Reason   string `json:"reason"`
+	}
+	var read struct {
+		Cycle struct {
+			Number    int `json:"number"`
+			Selection *struct {
+				Candidates int      `json:"candidates"`
+				Events     int      `json:"events"`
+				Selected   int      `json:"selected"`
+				Covered    []bucket `json:"covered"`
+				Uncovered  []bucket `json:"uncovered"`
+			} `json:"selection"`
+		} `json:"last_cycle"`
+	}
+	if err := json.Unmarshal(body, &read); err != nil || read.Cycle.Number == 0 ||
+		read.Cycle.Selection == nil {
+		return nil
+	}
+	selection := read.Cycle.Selection
+	shown := &Coverage{Cycle: read.Cycle.Number, Candidates: selection.Candidates,
+		Events: selection.Events, Selected: selection.Selected}
+	for _, one := range selection.Covered {
+		shown.Covered = append(shown.Covered, CoverageBucket{Kind: one.Kind, Name: one.Name,
+			Eligible: one.Eligible, Selected: one.Selected})
+	}
+	for _, one := range selection.Uncovered {
+		reason := reasons[one.Reason]
+		if reason == "" {
+			reason = one.Reason
+		}
+		shown.Uncovered = append(shown.Uncovered, CoverageBucket{Kind: one.Kind, Name: one.Name,
+			Eligible: one.Eligible, Reason: reason})
+	}
+	return shown
+}
+
 func (a *API) list() ([]Item, error) {
 	status, body, err := a.call(http.MethodGet, "/v1/requests", "", nil)
 	if err != nil {
@@ -248,20 +324,6 @@ func (a *API) selectMarket(id string) (Market, error) {
 		return Market{}, err
 	}
 	return Market{MarketID: read.MarketID, Title: read.Title, State: read.State}, nil
-}
-
-func (a *API) retry(id string) (Item, error) {
-	if !signals.IsID(id) {
-		return Item{}, fmt.Errorf("that is not a signal ID")
-	}
-	status, body, err := a.call(http.MethodPost, "/v1/requests/"+id+"/retry", "", nil)
-	if err != nil {
-		return Item{}, err
-	}
-	if status < 200 || status > 299 {
-		return Item{}, decodeError(status, body)
-	}
-	return decodeItem(body)
 }
 
 func (a *API) call(method, path, key string, body []byte) (int, []byte, error) {

@@ -176,8 +176,8 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 	// counted rather than searched past.
 	page := `"https://jup.ag/prediction/fed-decision-in-october"`
 	for _, expected := range []string{
-		`"` + signals.ProviderDeepLink + `":` + page,
-		`"` + signals.ProviderWebURL + `":` + page,
+		`{"key":"` + signals.ProviderDeepLink + `","text":` + page + `}`,
+		`{"key":"` + signals.ProviderWebURL + `","text":` + page + `}`,
 	} {
 		if !strings.Contains(first, expected) {
 			t.Fatalf("the document a phone reads does not carry %q:\n%s", expected, first)

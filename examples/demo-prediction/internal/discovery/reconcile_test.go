@@ -233,8 +233,12 @@ func TestARealListingBecomesProposals(t *testing.T) {
 		t.Fatalf("%d events", cycle.Events)
 	case cycle.Considered != 10:
 		t.Fatalf("%d markets considered: the two events carry five each", cycle.Considered)
-	case cycle.Matched != 10 || cycle.Created != 10:
-		t.Fatalf("matched %d, created %d", cycle.Matched, cycle.Created)
+	case cycle.Matched != 10:
+		t.Fatalf("matched %d", cycle.Matched)
+	// One proposal per event: the ten markets are two questions (SEE-177).
+	case cycle.Created != 2 || cycle.Selection.Events != 2 || cycle.Selection.Selected != 2:
+		t.Fatalf("created %d of %d events, selected %d", cycle.Created, cycle.Selection.Events,
+			cycle.Selection.Selected)
 	case held.woken != 1:
 		t.Fatalf("the drainer was woken %d times", held.woken)
 	}
@@ -245,13 +249,17 @@ func TestARealListingBecomesProposals(t *testing.T) {
 	}
 
 	tracked := held.tracked()
-	if len(tracked) != 10 {
+	if len(tracked) != 2 {
 		t.Fatalf("%d markets tracked", len(tracked))
 	}
 	// Soonest to close first, which is the order they were published in and the order they are
-	// read back in: the Bank of Japan markets close tomorrow, the Fed's in October.
+	// read back in: the Bank of Japan markets close tomorrow, the Fed's in October. Each event is
+	// represented by its soonest-closing market, the lowest identifier among equals.
 	first := tracked[0]
 	switch {
+	case first.Market.MarketID != "POLY-2589853" || tracked[1].Market.MarketID != "POLY-2589810":
+		t.Fatalf("the representatives are %s and %s", first.Market.MarketID,
+			tracked[1].Market.MarketID)
 	case first.Market.EventID != "POLY-606452":
 		t.Fatalf("the first market is %s of %s", first.Market.MarketID, first.Market.EventID)
 	case first.Market.State != "open":
@@ -856,10 +864,13 @@ func TestAnEmptyListingIsNotAnError(t *testing.T) {
 // ones closing soonest — the ones a subscriber has the least time to act on.
 func TestTheCeilingBoundsWhatIsHeld(t *testing.T) {
 	soon := market("POLY-SOON", noon.Add(2*time.Hour))
+	soon.EventID = "POLY-1"
 	later := market("POLY-LATER", noon.Add(48*time.Hour))
+	later.EventID = "POLY-2"
 	latest := market("POLY-LATEST", noon.Add(96*time.Hour))
+	latest.EventID = "POLY-3"
 	provider := &source{
-		events: listing(event("POLY-606422", latest, soon, later)),
+		events: listing(event("POLY-3", latest), event("POLY-1", soon), event("POLY-2", later)),
 		market: func(id string) (jupiter.Market, error) {
 			return market(id, noon.Add(96*time.Hour)), nil
 		},
@@ -895,14 +906,17 @@ func TestTheCeilingBoundsWhatIsHeld(t *testing.T) {
 // ask about in one cycle works through them rather than asking about the same one for ever.
 func TestTheDirectChecksAreBoundedAndTakeTurns(t *testing.T) {
 	first := market("POLY-1", noon.Add(72*time.Hour))
+	first.EventID = "POLY-E1"
 	second := market("POLY-2", noon.Add(73*time.Hour))
+	second.EventID = "POLY-E2"
 	listed := true
 	provider := &source{
 		events: func(query jupiter.Query) (jupiter.Page, error) {
 			if query.Start > 0 || !listed {
 				return jupiter.Page{}, nil
 			}
-			return jupiter.Page{Events: []jupiter.Event{event("POLY-606422", first, second)}}, nil
+			return jupiter.Page{Events: []jupiter.Event{event("POLY-E1", first),
+				event("POLY-E2", second)}}, nil
 		},
 		market: func(id string) (jupiter.Market, error) {
 			return market(id, noon.Add(72*time.Hour)), nil
