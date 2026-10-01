@@ -19,6 +19,39 @@ and stake in SAC.</p>
   <div class="qr-box">{{.ReferenceQR}}</div>
 </section>
 
+{{with .Coverage}}
+<section class="section-block" aria-labelledby="coverage-title">
+  <div class="section-head">
+    <h2 id="coverage-title">Feed coverage</h2>
+  </div>
+  <p class="hint">Cycle {{.Cycle}}: {{.Candidates}} eligible markets in {{.Events}} distinct events;
+  {{.Selected}} on the feed, one entry per event.</p>
+  <div class="table-card">
+    <div class="table-scroll">
+      <table class="list">
+        <thead><tr><th>Category or keyword</th><th>On the feed</th><th>Eligible events</th></tr></thead>
+        <tbody>
+        {{range .Covered}}
+          <tr>
+            <td><span class="cell-title">{{.Name}}</span><span class="sub block">{{.Kind}}</span></td>
+            <td><span class="pill good">{{.Selected}}</span></td>
+            <td><span class="sub">{{.Eligible}}</span></td>
+          </tr>
+        {{end}}
+        {{range .Uncovered}}
+          <tr>
+            <td><span class="cell-title">{{.Name}}</span><span class="sub block">{{.Kind}}</span></td>
+            <td><span class="pill warn">not covered</span><span class="sub block">{{.Reason}}</span></td>
+            <td><span class="sub">{{.Eligible}}</span></td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{{end}}
+
 <section class="section-block" aria-labelledby="published-title">
   <div class="section-head">
     <h2 id="published-title">Published on this feed</h2>
@@ -32,7 +65,7 @@ and stake in SAC.</p>
   <div class="table-card">
     <div class="table-scroll">
       <table class="list">
-        <thead><tr><th>Market</th><th>State</th><th>Publication</th><th>Expires</th><th></th></tr></thead>
+        <thead><tr><th>Market</th><th>State</th><th>Publication</th><th>Expires</th></tr></thead>
         <tbody>
         {{range .Signals}}
           <tr>
@@ -48,11 +81,6 @@ and stake in SAC.</p>
               {{if .Problem}}<span class="sub block">{{.Problem}}: {{.Detail}}</span>{{end}}
             </td>
             <td><span class="sub nowrap">{{.ExpiresAt}}</span></td>
-            <td>
-              <div class="row-actions">
-                <form method="post" action="{{$.Path}}/signals/{{.ID}}/retry"><button class="button secondary small" type="submit" data-busy="Retrying…">Retry</button></form>
-              </div>
-            </td>
           </tr>
         {{end}}
         </tbody>

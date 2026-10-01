@@ -198,17 +198,17 @@ half is this demo's alone.
 | `PREDICTION_PROVIDER_TIMEOUT_SECONDS` | no | `15` | How long one call to the provider may take (1–120) |
 | `PREDICTION_CALL_GAP_MS` | no | `2100` | Least time between two provider calls |
 | `PREDICTION_SOURCE` | no | `polymarket` | The venue: `polymarket`, `kalshi` or `bisonfi` |
-| `PREDICTION_CATEGORIES` | no | — | The provider's buckets, comma-separated; one listing walk each |
+| `PREDICTION_CATEGORIES` | no | — | The provider's buckets, comma-separated; one listing walk each, and each a coverage bucket for the selection |
 | `PREDICTION_FILTER` | no | — | The provider's own named filter: `new`, `live`, `trending`, `upcoming` |
 | `PREDICTION_TAGS` | no | — | The event's own tags, whole and case-insensitive |
-| `PREDICTION_KEYWORDS` | no | — | Case-insensitive substrings of title, bucket, subcategory, tags |
+| `PREDICTION_KEYWORDS` | no | — | Case-insensitive substrings of title, bucket, subcategory, tags; each a coverage bucket for the selection |
 | `PREDICTION_STATE` | no | `open` | `any` also publishes closed markets — **sandbox only**, refused in production |
 | `PREDICTION_LEAST_CLOSE_IN_MINUTES` | no | `60` | How soon a market may close and still be published |
 | `PREDICTION_MOST_CLOSE_IN_MINUTES` | no | `43200` | How far ahead it may close |
 | `PREDICTION_LIFETIME_HOURS` | no | `168` | Expiry for a market with no close time, from when it was first seen |
 | `PREDICTION_POLL_SECONDS` | no | `300` | How often a cycle runs (30–86400) |
 | `PREDICTION_PAGE_SIZE` / `PREDICTION_MOST_PAGES` | no | `25` / `4` | Events per call, calls per bucket |
-| `PREDICTION_MOST_OPEN` | no | `25` | Proposals held open at once; the soonest to close win |
+| `PREDICTION_MOST_OPEN` | no | `25` | Proposals held open at once, one per event; chosen to cover every configured category and keyword first ([selection](../../docs/wiki/prediction-template.md#selection-one-entry-per-event-chosen-for-coverage-see-177)) |
 | `PREDICTION_MOST_CHECKS` | no | `20` | Tracked markets asked about directly per cycle |
 | `PREDICTION_DEPOSIT_MINT` | no | USDC | The deposit token: USDC or JupUSD, and nothing else |
 | `PREDICTION_LEAST_DEPOSIT` / `PREDICTION_MOST_DEPOSIT` | no | provider minimum / none | The bounds every signal carries, in base units |
@@ -285,9 +285,13 @@ docker compose run --rm ctl create --in 2h   # 403 written_by_discovery
 
 ### The admin UI
 
-`cmd/prediction-admin` is a password-gated HTML client of the same `/v1` API (SEE-138). It lists
-signals already published to subscribers, searches the provider listing with typed filters, and
-asks discovery to publish a selected market. It is a client, not a second writer: `POST /v1/requests`
+`cmd/prediction-admin` is a password-gated HTML client of the same `/v1` API (SEE-138). It shows
+the last cycle's **Feed coverage** — which configured categories and keywords the feed covers, and
+why any is not (SEE-177) — lists signals already published to subscribers with their state and
+publication status, searches the provider listing with typed filters, and asks discovery to publish
+a selected market (which then replaces any other entry for its event, and is never retired by a
+cycle). It has no Retry button: a publication the gateway could not take is retried by the
+publisher's own backoff, and `ctl retry <id>` stays the operator's tool for a refusal since fixed. It is a client, not a second writer: `POST /v1/requests`
 stays 403. Side and stake stay on the phone. App Platform serves it at `/trader`; Compose starts it
 only with `--profile admin`. It uses the feed gateway's admin look, from its own copies of the
 stylesheet, script and fonts in `internal/admin/assets/` (the templates are in
@@ -308,7 +312,9 @@ poll that finds the same markets publishes nothing — the gateway answers `unch
 document, so a retry or a restart notifies nobody.
 
 An update happens when the provider's own description of a market moves; a withdrawal happens when
-the source ends it. Both are this demo's doing, not a caller's. `ctl retry <id>` exists for the one
+the source ends it, or when the selection gives an event's slot to another (one entry per event,
+coverage first — see the wiki's
+[selection](../../docs/wiki/prediction-template.md#selection-one-entry-per-event-chosen-for-coverage-see-177)). Both are this demo's doing, not a caller's. `ctl retry <id>` exists for the one
 thing that *is* an operator's: a publication the gateway refused for a reason that has since been
 fixed.
 

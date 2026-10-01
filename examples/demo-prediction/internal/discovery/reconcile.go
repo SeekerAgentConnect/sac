@@ -148,8 +148,22 @@ func (r *Reconciler) Run(ctx context.Context) {
 		default:
 			r.log.Info("a discovery cycle finished", "cycle", cycle.Number,
 				"outcome", cycle.Outcome, "considered", cycle.Considered,
-				"matched", cycle.Matched, "created", cycle.Created, "updated", cycle.Updated,
-				"cancelled", cycle.Cancelled, "checked", cycle.Checked, "skipped", cycle.Skipped)
+				"matched", cycle.Matched, "events", cycle.Selection.Events,
+				"selected", cycle.Selection.Selected, "created", cycle.Created,
+				"updated", cycle.Updated, "cancelled", cycle.Cancelled, "checked", cycle.Checked,
+				"skipped", cycle.Skipped)
+			covered, uncovered := []string{}, []string{}
+			for _, bucket := range cycle.Selection.Buckets {
+				name := bucket.Kind + ":" + bucket.Name
+				if bucket.Uncovered == "" {
+					covered = append(covered, name)
+					continue
+				}
+				uncovered = append(uncovered, name+" ("+bucket.Uncovered+")")
+			}
+			r.log.Info("the feed's coverage", "cycle", cycle.Number,
+				"covered", strings.Join(covered, ", "), "uncovered", strings.Join(uncovered, ", "),
+				"retired", cycle.Selection.Retired)
 		}
 		select {
 		case <-ctx.Done():
@@ -179,14 +193,13 @@ func (r *Reconciler) Pass(ctx context.Context) (markets.Cycle, error) {
 		return cycle, err
 	}
 	held := make(map[string]markets.Tracked, len(tracked))
-	open := 0
 	for _, one := range tracked {
 		held[one.Market.Provider+"/"+one.Market.MarketID] = one
-		if one.Record.Signal.Status == signals.Open {
-			open++
-		}
 	}
 
+	// The whole pool first, then the choice: the walk reads every page it is allowed to before
+	// anything is published, so which events hold the slots is decided over everything eligible
+	// rather than over whatever the first page happened to list (see [Filters.choose]).
 	found, fault, err := r.collect(ctx, r.filters, &cycle, now, 0)
 	if err != nil {
 		return cycle, err
@@ -196,42 +209,63 @@ func (r *Reconciler) Pass(ctx context.Context) (markets.Cycle, error) {
 	}
 	cycle.Matched = len(found)
 	ordered(found)
+	chosen := r.filters.choose(found, tracked, now, fault == nil)
+	cycle.Skipped = chosen.skipped
 
 	seen := make(map[string]bool, len(found))
-	changed := false
 	for _, one := range found {
-		name := one.market.Provider + "/" + one.market.MarketID
-		seen[name] = true
-		existing, tracking := held[name]
-		// A withdrawal is final, so a market whose last proposal was withdrawn is published again
-		// as a new one rather than revived (markets.Market.Generation).
+		seen[one.market.Provider+"/"+one.market.MarketID] = true
+	}
+	changed := false
+	selected := len(chosen.refresh) + len(chosen.unseen)
+	for _, gone := range chosen.retire {
+		seen[gone.row.Market.Provider+"/"+gone.row.Market.MarketID] = true
+		ended, err := r.retire(ctx, &cycle, gone, now)
+		if err != nil {
+			return cycle, err
+		}
+		changed = changed || ended
+	}
+	for _, one := range chosen.refresh {
+		moved, err := r.refresh(ctx, &cycle, one.one, one.tracked, now)
+		if err != nil {
+			return cycle, err
+		}
+		changed = changed || moved
+	}
+	for _, one := range chosen.publish {
+		existing, tracking := held[one.market.Provider+"/"+one.market.MarketID]
 		if tracking && existing.Record.Signal.Status == signals.Open {
+			// Its proposal expired and the market came back with a later close: the same proposal
+			// is brought up to date rather than a second one minted.
 			moved, err := r.refresh(ctx, &cycle, one, existing, now)
 			if err != nil {
 				return cycle, err
 			}
 			changed = changed || moved
+			selected++
 			continue
 		}
-		if open >= r.filters.MostOpen {
-			cycle.Skipped++
-			continue
-		}
+		// A withdrawal is final, so a market whose last proposal was withdrawn is published again
+		// as a new one rather than revived (markets.Market.Generation).
 		published, err := r.discover(ctx, &cycle, one, existing.Market, tracking, now)
 		if err != nil {
 			return cycle, err
 		}
 		if published {
 			changed = true
-			open++
+			selected++
 		}
 	}
 
+	cancelled := cycle.Cancelled
 	ended, err := r.absent(ctx, &cycle, held, seen, now)
 	if err != nil {
 		return cycle, err
 	}
 	changed = changed || ended
+	cycle.Selection = chosen.selection
+	cycle.Selection.Selected = selected - (cycle.Cancelled - cancelled)
 
 	cycle.FinishedAt = r.now().UTC().Truncate(time.Second)
 	recorded, err := r.documents.Recorded(ctx, cycle)
@@ -316,6 +350,8 @@ func (r *Reconciler) collect(ctx context.Context, filters Filters, cycle *market
 type candidate struct {
 	event  jupiter.Event
 	market jupiter.Market
+	// Whether an operator named this market (see [Reconciler.Select]).
+	pinned bool
 }
 
 // named fills in what a market inside an event leaves implicit. A provider that stops repeating
@@ -349,6 +385,7 @@ func (r *Reconciler) discover(
 		FirstSeenAt: now,
 		Generation:  1,
 		ProposalID:  r.newID(),
+		Pinned:      one.pinned,
 	}, now)
 	if tracking {
 		row.Generation = previous.Generation + 1
@@ -487,6 +524,29 @@ func (r *Reconciler) absent(
 	return changed, nil
 }
 
+// retire withdraws a held proposal the selection no longer gives a slot. The market is not ended
+// — its row keeps what the provider last said — and a phone that acted on the proposal keeps its own
+// record of that either way; a withdrawn proposal only stops being offered (docs/security.md).
+func (r *Reconciler) retire(
+	ctx context.Context,
+	cycle *markets.Cycle,
+	gone retirement,
+	now time.Time,
+) (bool, error) {
+	market := gone.row.Market
+	_, withdrawn, err := r.documents.Withdraw(ctx, market.Provider, market.MarketID,
+		market.State, now)
+	if err != nil {
+		return false, err
+	}
+	if withdrawn {
+		cycle.Cancelled++
+		r.log.Info("a market's proposal is withdrawn by the selection", "market", market.MarketID,
+			"event", market.EventID, "signal", market.ProposalID, "reason", gone.reason)
+	}
+	return withdrawn, nil
+}
+
 func (r *Reconciler) withdraw(
 	ctx context.Context,
 	cycle *markets.Cycle,
@@ -521,6 +581,7 @@ func (r *Reconciler) row(one candidate, previous markets.Market, now time.Time) 
 		FirstSeenAt:   previous.FirstSeenAt,
 		LastSeenAt:    now,
 		LastCheckedAt: previous.LastCheckedAt,
+		Pinned:        previous.Pinned || one.pinned,
 	}
 	if one.market.CloseTime > 0 {
 		row.CloseAt = time.Unix(one.market.CloseTime, 0).UTC()

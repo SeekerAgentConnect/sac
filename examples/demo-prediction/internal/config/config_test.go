@@ -131,10 +131,10 @@ func TestAPredictionDeploymentDeclaresMainnetAndOnlyMainnet(t *testing.T) {
 func TestEveryFilterIsRead(t *testing.T) {
 	_, held := loadPredicting(t, predicting(map[string]string{
 		"PREDICTION_SOURCE":                   "Kalshi",
-		"PREDICTION_CATEGORIES":               "Crypto, economics ,",
+		"PREDICTION_CATEGORIES":               "Crypto, economics ,crypto",
 		"PREDICTION_FILTER":                   "Trending",
 		"PREDICTION_TAGS":                     "BTC,fed-rates",
-		"PREDICTION_KEYWORDS":                 "Bitcoin, Ethereum",
+		"PREDICTION_KEYWORDS":                 "Bitcoin, Ethereum, bitcoin,  BITCOIN ",
 		"PREDICTION_STATE":                    "any",
 		"PREDICTION_LEAST_CLOSE_IN_MINUTES":   "30",
 		"PREDICTION_MOST_CLOSE_IN_MINUTES":    "1440",
@@ -158,7 +158,7 @@ func TestEveryFilterIsRead(t *testing.T) {
 		t.Fatalf("venue %q: it is compared with the provider's own set, lower case",
 			held.Filters.Source)
 	case strings.Join(held.Filters.Categories, ",") != "crypto,economics":
-		t.Fatalf("buckets %v: lower case, and an empty item is not a bucket",
+		t.Fatalf("buckets %v: lower case, once each, and an empty item is not a bucket",
 			held.Filters.Categories)
 	case held.Filters.Filter != "trending":
 		t.Fatalf("filter %q", held.Filters.Filter)
@@ -166,7 +166,7 @@ func TestEveryFilterIsRead(t *testing.T) {
 		t.Fatalf("tags %v", held.Filters.Tags)
 	case strings.Join(held.Filters.Keywords, ",") != "Bitcoin,Ethereum":
 		// Keywords keep their case, because the match lowers both sides and an operator reading
-		// the status answer should see what they wrote.
+		// the status answer should see what they wrote — but each is held once (SEE-177).
 		t.Fatalf("keywords %v", held.Filters.Keywords)
 	case !held.Filters.Closed:
 		t.Fatal("PREDICTION_STATE=any was not read")

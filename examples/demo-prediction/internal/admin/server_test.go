@@ -50,6 +50,35 @@ func TestOperatorsLogInAndSeeTheFeedReference(t *testing.T) {
 	}
 }
 
+// The published list shows each entry's state and publication without a Retry: recovering a
+// publication is the publisher's own backoff, and `ctl retry` for the operator (SEE-177).
+func TestTheHomeShowsCoverageAndNoRetry(t *testing.T) {
+	ui, _ := startUI(t, nil)
+	logged := login(t, ui, "judge1", "secret")
+	home := get(t, ui, logged, "/trader")
+	for _, expected := range []string{
+		"Feed coverage",
+		"Cycle 7: 41 eligible markets in 12 distinct events;",
+		"8 on the feed, one entry per event.",
+		"openai",
+		"zcash",
+		"no eligible market in the pages read",
+		`<span class="pill good">published</span>`,
+	} {
+		if !strings.Contains(home.body, expected) {
+			t.Fatalf("the home page does not show %q:\n%s", expected, home.body)
+		}
+	}
+	if strings.Contains(home.body, "Retry") || strings.Contains(home.body, "/retry") {
+		t.Fatalf("the home page still offers a Retry:\n%s", home.body)
+	}
+	retried := post(t, ui, logged, "/trader/signals/8c9d0e1f-2a3b-4c5d-8e6f-7a8b9c0d1e2f/retry",
+		url.Values{})
+	if retried.status == http.StatusSeeOther || retried.status == http.StatusOK {
+		t.Fatalf("the retry route still answers %d", retried.status)
+	}
+}
+
 func TestTheHomeReferenceIsAlsoShownAsAScannableQRCode(t *testing.T) {
 	ui, _ := startUI(t, nil)
 	logged := login(t, ui, "judge1", "secret")
@@ -298,6 +327,16 @@ func (s *stubAPI) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		_ = json.NewEncoder(writer).Encode(map[string]any{
 			"filters": map[string]any{"source": "polymarket", "categories": []string{"crypto"}},
 			"markets": []any{},
+			"last_cycle": map[string]any{
+				"number": 7,
+				"selection": map[string]any{
+					"candidates": 41, "events": 12, "selected": 8,
+					"covered": []any{map[string]any{"kind": "keyword", "name": "openai",
+						"eligible": 6, "selected": 2}},
+					"uncovered": []any{map[string]any{"kind": "keyword", "name": "zcash",
+						"eligible": 0, "selected": 0, "reason": "no_eligible_candidate"}},
+				},
+			},
 		})
 	case request.URL.Path == "/v1/discovery/markets":
 		_ = json.NewEncoder(writer).Encode(map[string]any{

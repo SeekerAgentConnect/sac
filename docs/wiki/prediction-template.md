@@ -2,7 +2,8 @@
 
 The second publisher template, built on the same shared library as the first: a Go service in
 [`examples/demo-prediction/`](../../examples/demo-prediction) that **discovers** Jupiter Prediction markets, applies
-the filters its operator configured, and publishes one proposal per market that matches. Every
+the filters its operator configured, and publishes one proposal per **event** it selects — chosen so
+the configured categories and keywords are all represented (see [Selection](#selection-one-entry-per-event-chosen-for-coverage-see-177)). Every
 subscribed phone reads the same document; each owner then chooses a side and a stake on their own
 device and places the order through the bundled `jupiter.prediction` plugin (SEE-94). To deploy one
 rather than understand it, follow
@@ -123,13 +124,13 @@ records carry.
 | Setting | Where it is applied | Exactly what it means |
 | --- | --- | --- |
 | `PREDICTION_SOURCE` | the provider (`provider=`) | the venue whose markets it aggregates: `polymarket` (default), `kalshi`, `bisonfi` |
-| `PREDICTION_CATEGORIES` | the provider (`category=`) | one listing walk per bucket; empty means one walk with no bucket. `all` matches every bucket |
+| `PREDICTION_CATEGORIES` | the provider (`category=`) | one listing walk per bucket; empty means one walk with no bucket. `all` matches every bucket. Each bucket is also a **coverage bucket** for the selection; repeats are dropped |
 | `PREDICTION_FILTER` | the provider (`filter=`) | its own named filters: `new` (created in the last 24 hours), `live` (begun), `trending` (recent trade activity), `upcoming` (not begun) |
 | `PREDICTION_TAGS` | here | the event's own tags, compared **whole** and case-insensitively. A tag is a token the provider assigns (`nfl`, `fed-rates`), so half of one is not a match. Any one matching is enough |
-| `PREDICTION_KEYWORDS` | here | a **case-insensitive substring** of the event's title, bucket, subcategory and tags together with the market's own title. Any one matching is enough. A substring deliberately: `eth` finds "Ethereum", and it also finds "Bethesda" |
+| `PREDICTION_KEYWORDS` | here | a **case-insensitive substring** of the event's title, bucket, subcategory and tags together with the market's own title, compared after Unicode (NFKC), case and whitespace normalization. Any one matching is enough. A substring deliberately: `eth` finds "Ethereum", and it also finds "Bethesda". Each keyword is also a **coverage bucket**; one that normalizes to an earlier one is dropped |
 | `PREDICTION_STATE` | here | `open` (default): only markets the provider would take an order for. `any`: also closed, cancelled and settled ones — **sandbox only** |
 | `PREDICTION_LEAST_CLOSE_IN_MINUTES` / `PREDICTION_MOST_CLOSE_IN_MINUTES` | here | the market's own close time has to be that far away, inclusive at both edges. A market with **no** close time cannot be judged against a window, so it is skipped whenever one is set |
-| `PREDICTION_MOST_OPEN` | here | how many proposals to hold open at once. When more markets match, the ones published are the ones **closing soonest** |
+| `PREDICTION_MOST_OPEN` | here | how many proposals to hold open at once — **one per event**, so this is how many events the feed shows. When more events match, the ones published are chosen for coverage first, then variety, then the soonest to close ([Selection](#selection-one-entry-per-event-chosen-for-coverage-see-177)) |
 
 Three rules are not filters and are not configurable, because a market that broke one is a market no
 phone could act on:
@@ -152,6 +153,87 @@ $ publishctl discovery | jq '.last_cycle.skipped_because'
 }
 ```
 
+## Selection: one entry per event, chosen for coverage (SEE-177)
+
+A provider's *event* is one question; its *markets* are the outcomes. "OpenAI's valuation end of
+September 2026?" (`POLY-798787`) lists one market per valuation range — `POLY-3350393` ($600–$700B),
+`POLY-3350396` ($900B–$1.00T), `POLY-3350399` ($1.20–$1.30T) — and a feed that published each of them
+spent three of its slots on one question. So a cycle collects every eligible market within its page
+bounds first, groups them by event, and only then chooses.
+
+**How the filters combine.** An event's markets are read from one walk per configured category
+(categories are alternatives: crypto *or* tech). Each market then has to pass every other rule:
+the tags (any one of them), the keywords (any one of them), the state and the close-time window. So
+with `PREDICTION_CATEGORIES=crypto,tech` and eight keywords, a market is eligible when its event is in
+crypto or tech **and** at least one keyword appears in its text. The categories and keywords are then
+used a second time, as **coverage buckets**: an event *covers* its own category and every keyword its
+eligible markets mention. An event in several buckets is one event that counts toward each.
+
+**One event, one entry.** Markets are grouped by venue and the provider's event identifier. Without
+an identifier the event's title stands in, normalized only for Unicode, case and spacing — dates,
+prices and qualifiers are kept, so "…end of September 2026?" and "…end of December 2026?" stay two
+events — and without either the market is an event of its own. An event is published as one
+**representative** market: the one it already has, or else its soonest-closing market, the lowest
+identifier among equals. The proposal is that market's: its terms carry its `market_id`, and its
+title names the outcome (`OpenAI’s valuation end of September 2026? · $600–$700B`), so what an owner
+reviews is exactly what they would trade.
+
+**Coverage first.** With *N* = `PREDICTION_MOST_OPEN` slots, a cycle:
+
+1. keeps every event that already holds a proposal and is still eligible (an operator's own choice,
+   from the admin page, is kept whatever happens);
+2. adds the event covering the most buckets nothing chosen covers yet, the soonest to close among
+   equals, until every bucket some eligible event covers is covered or the slots run out. With no
+   slot left, a held event whose every bucket another chosen event also covers gives its slot up to
+   an event covering a missing bucket — which strictly widens coverage, so it settles in the same
+   cycle and the next cycle over the same listing changes nothing;
+3. fills any remaining slots with further distinct events, the ones whose buckets are least
+   represented first. Coverage is not a one-per-bucket cap;
+4. keeps a held event the walk no longer finds eligible — it closes within the window's near edge,
+   left the pages read, or no longer matches — only if no eligible event wanted its slot.
+
+A bucket no eligible event covers stays uncovered: nothing is fabricated, no filter is relaxed, and
+no second outcome of a covered event fills the gap. An expired proposal holds no slot.
+
+**What it never does on a failed walk.** A provider that rate-limits or fails half way leaves a
+`partial` cycle, and nothing is concluded from the pages it did not read: no held proposal is
+rebalanced or replaced. The one exception is a second open proposal for one event, which the store
+alone proves.
+
+**What is withdrawn, and why.** A held proposal the selection gives up is withdrawn like any other —
+a phone shows it as withdrawn, in its history, with any approval, transaction link or position it
+holds untouched — and counted by reason: `duplicate_event` (a second proposal for one event, such as
+a feed published before SEE-177 holding one per market), `rebalanced`, `replaced` and
+`over_ceiling` (a lowered ceiling). Each is logged with the market, the event and the reason.
+
+**Diagnostics.** Every cycle records its selection, which `GET /v1/discovery`, `publishctl discovery`
+and the admin page's **Feed coverage** table read back:
+
+```console
+$ publishctl discovery | jq '.last_cycle.selection'
+{
+  "candidates": 578,
+  "events": 149,
+  "selected": 8,
+  "retired": {},
+  "covered": [
+    { "kind": "category", "name": "crypto", "eligible": 16, "selected": 3 },
+    { "kind": "keyword", "name": "zcash", "eligible": 1, "selected": 1 },
+    …
+  ],
+  "uncovered": [
+    { "kind": "keyword", "name": "seeker", "eligible": 0, "selected": 0,
+      "reason": "no_eligible_candidate" }
+  ]
+}
+```
+
+An uncovered bucket's reason is `no_eligible_candidate` (nothing within the pages read matched it),
+`walk_incomplete` (nothing matched, but the walk stopped early) or `capacity_limit` (eligible events
+match it, but every slot covers something else). The `discovery cycle finished` and `the feed's
+coverage` log lines say the same. A live run with the reported demo configuration is recorded in
+[`docs/testing/see-177.md`](../testing/see-177.md).
+
 ## Reconciliation: what keeps a proposal in step with its market
 
 A cycle reads the listing, then asks about the markets it is tracking that the listing did not carry.
@@ -161,17 +243,19 @@ A cycle reads the listing, then asks about the markets it is tracking that the l
 | the market is in the listing and unchanged | nothing at all: no revision, no publication, no phone woken |
 | its close time, title or bucket moved | the statement moves, the revision moves once, and every subscriber re-reads it |
 
-The published request title is the provider's event and market text, not an app-added
-category or venue prefix. A multi-market event is `event · market` (for example
-`Fed Decision in October? · 25 bps increase`) so each binary market is distinct on the
-phone. The provider name stays in the card footer.
-| a matching market is not tracked yet | a proposal is published for it, unless the ceiling is reached |
+| a matching market is not tracked yet | a proposal is published for it if its event is [selected](#selection-one-entry-per-event-chosen-for-coverage-see-177) and holds none yet |
+| another market of an event that already holds a proposal | nothing; a second **open** proposal for one event is withdrawn (`duplicate_event`) |
 | it is **missing from the listing** | it is asked about directly, and only the answer decides |
 | …and the provider says closed, cancelled or settled | the proposal is withdrawn |
 | …and the provider has no such market | the proposal is withdrawn |
-| …and the provider says it is still open | **nothing happens.** It left a filter, not the market |
+| …and the provider says it is still open | **nothing happens.** It left a filter, not the market — unless an eligible event needs its slot (`replaced`) |
 | …and the provider cannot be reached | **nothing happens**, and the cycle is recorded as partial |
 | the market closed and later re-opened | a **new** proposal, at the next generation |
+
+The published request title is the provider's event and market text, not an app-added
+category or venue prefix. A multi-market event is `event · market` (for example
+`Fed Decision in October? · 25 bps increase`), so the card names the outcome its event is
+represented by. The provider name stays in the card footer.
 
 **Absence is not closure.** A market missing from a filtered listing may have closed, or may simply
 have stopped trending, moved out of the close-time window, or fallen off the pages a cycle read. A
@@ -179,7 +263,9 @@ template that withdrew on absence would take back statements for reasons no subs
 `trending` market that drifts in and out would publish and withdraw itself for ever.
 
 **A filter is discovery, not withdrawal.** A market that no longer matches but is still open keeps
-its proposal until the source itself ends it, or until it expires.
+its proposal until the source itself ends it, until it expires, or — since SEE-177 — until a complete
+walk finds an eligible event that wants its slot. A feed of eight slots that a stale market could hold
+for months would never show what its filters now ask for.
 
 **An outage withdraws nothing.** This is the rule the direct check exists for: if the provider is
 down, rate limiting, or refusing this deployment's key, nothing is concluded about any market. The

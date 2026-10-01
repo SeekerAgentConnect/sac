@@ -68,7 +68,9 @@ func (r *Reconciler) Search(ctx context.Context, query Filters) ([]Preview, erro
 // unless the source itself ends the market — absence from the filtered listing is not closure.
 //
 // It bypasses MostOpen: an operator who named a market asked for that one, not for the next
-// soonest-to-close among the current filter.
+// soonest-to-close among the current filter. The market is pinned, so no cycle's selection retires
+// it, and it becomes its event's one proposal: any other open proposal for the same event is
+// withdrawn, because an event holds one slot (SEE-177).
 func (r *Reconciler) Select(ctx context.Context, marketID string) (markets.Tracked, error) {
 	if !signals.IsMarketID(marketID) {
 		return markets.Tracked{}, fmt.Errorf("that is not a market ID")
@@ -94,7 +96,7 @@ func (r *Reconciler) Select(ctx context.Context, marketID string) (markets.Track
 		SourceURL: "",
 		Markets:   []jupiter.Market{market},
 	}
-	one := candidate{event: event, market: market}
+	one := candidate{event: event, market: market, pinned: true}
 
 	tracked, err := r.documents.Markets(ctx)
 	if err != nil {
@@ -113,7 +115,7 @@ func (r *Reconciler) Select(ctx context.Context, marketID string) (markets.Track
 		if err != nil {
 			return markets.Tracked{}, err
 		}
-		changed = moved
+		changed = moved || !existing.Market.Pinned
 	} else {
 		published, err := r.discover(ctx, &cycle, one, existing.Market, tracking, now)
 		if err != nil {
@@ -126,6 +128,18 @@ func (r *Reconciler) Select(ctx context.Context, marketID string) (markets.Track
 			return markets.Tracked{}, fmt.Errorf("that market was not published")
 		}
 		changed = true
+	}
+	for _, other := range tracked {
+		if other.Market.Provider != market.Provider || other.Market.MarketID == market.MarketID ||
+			other.Market.EventID == "" || other.Market.EventID != market.EventID ||
+			other.Record.Signal.Status != signals.Open {
+			continue
+		}
+		ended, err := r.retire(ctx, &cycle, retirement{row: other, reason: Replaced}, now)
+		if err != nil {
+			return markets.Tracked{}, err
+		}
+		changed = changed || ended
 	}
 	if changed {
 		r.wake()

@@ -469,6 +469,7 @@ func (s *Server) tracking(one markets.Tracked) map[string]any {
 		"title":       one.Market.Title,
 		"state":       one.Market.State,
 		"generation":  one.Market.Generation,
+		"pinned":      one.Market.Pinned,
 		"source_url":  one.Market.SourceURL,
 		"signal":      s.view(one.Record.Signal),
 		"publication": publicationOf(one.Record.Publication, one.Record.Signal.Revision),

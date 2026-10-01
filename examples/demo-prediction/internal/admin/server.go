@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/limit"
-	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
 const (
@@ -101,7 +100,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST "+s.path+"/login", s.login)
 	mux.HandleFunc("POST "+s.path+"/logout", s.logout)
 	mux.HandleFunc("POST "+s.path+"/select", s.selectMarket)
-	mux.HandleFunc("POST "+s.path+"/signals/{id}/retry", s.retry)
 	mux.HandleFunc("GET "+s.path+"/assets/{file}", s.asset)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		request.Body = http.MaxBytesReader(writer, request.Body, MostBodyBytes)
@@ -226,27 +224,6 @@ func (s *Server) selectMarket(writer http.ResponseWriter, request *http.Request)
 	s.redirectOK(writer, request, "published")
 }
 
-func (s *Server) retry(writer http.ResponseWriter, request *http.Request) {
-	name, authed := s.guard(writer, request)
-	if !authed {
-		return
-	}
-	if !s.mutates.Allow("mutate:" + name) {
-		s.redirectErr(writer, request, "too many retry attempts; try later")
-		return
-	}
-	id := request.PathValue("id")
-	if !signals.IsID(id) {
-		s.redirectErr(writer, request, "that is not a signal ID")
-		return
-	}
-	if _, err := s.api.retry(id); err != nil {
-		s.redirectErr(writer, request, err.Error())
-		return
-	}
-	s.redirectOK(writer, request, "retrying publication")
-}
-
 func (s *Server) guard(writer http.ResponseWriter, request *http.Request) (string, bool) {
 	if !s.sameOrigin(request) {
 		s.refuse(writer, http.StatusForbidden, "that request did not come from this page")
@@ -289,6 +266,7 @@ func (s *Server) renderHome(writer http.ResponseWriter, request *http.Request, n
 		query = s.api.defaults()
 		query = mergeQuery(query, queryFrom(request))
 	}
+	coverage := s.api.coverage()
 	searched := request.URL.Query().Get("search") != ""
 	var markets []Market
 	if searched {
@@ -307,6 +285,7 @@ func (s *Server) renderHome(writer http.ResponseWriter, request *http.Request, n
 		Environment: feed.Environment,
 		Query:       query,
 		Signals:     items,
+		Coverage:    coverage,
 		Markets:     markets,
 		Searched:    searched,
 	})

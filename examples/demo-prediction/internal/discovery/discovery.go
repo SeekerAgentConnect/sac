@@ -2,8 +2,10 @@
 // docs/wiki/prediction-template.md).
 //
 // The Prediction template does not wait to be told what to publish. It walks the provider's
-// listing, applies the filters its operator configured, and publishes one proposal per market that
-// matches — then keeps each of those in step with the source until it closes. Nothing about a
+// listing, applies the filters its operator configured, groups the markets that match by the event
+// they belong to, and publishes one proposal per event it selects — choosing events so the configured
+// categories and keywords are all represented (select.go, SEE-177) — then keeps each of those in step
+// with the source until it closes. Nothing about a
 // subscriber reaches this package either: it reads public markets and writes this publisher's own
 // documents, and the choice of a side and a stake happens on each owner's phone (docs/security.md).
 //
@@ -76,8 +78,8 @@ type Filters struct {
 	// How much of the listing one cycle reads: events per call, and calls per bucket.
 	PageSize  int
 	MostPages int
-	// How many proposals this template will keep open at once, and how many markets it will ask
-	// about directly in one cycle. Both are this template's own restraint rather than a limit of
+	// How many proposals this template will keep open at once — one per event, so this is also how
+	// many events the feed shows — and how many markets it will ask about directly in one cycle. Both are this template's own restraint rather than a limit of
 	// the protocol: a phone walks a feed in pages of fifty and a person reads a list.
 	MostOpen   int
 	MostChecks int
@@ -212,16 +214,17 @@ func (f Filters) Expiry(market jupiter.Market, first time.Time) time.Time {
 }
 
 // haystack is the text a keyword is matched against: everything the records carry that a person
-// would call a description, and nothing else.
+// would call a description, and nothing else — in the [Normalize] form a keyword is compared in, so
+// a doubled space or a full-width letter in a title does not hide a match.
 func haystack(event jupiter.Event, market jupiter.Market) string {
 	parts := []string{event.Title, event.Category, event.Subcategory, market.Title}
 	parts = append(parts, event.Tags...)
-	return strings.ToLower(strings.Join(parts, " "))
+	return Normalize(strings.Join(parts, " "))
 }
 
 func mentioned(text string, keywords []string) bool {
 	for _, keyword := range keywords {
-		if keyword != "" && strings.Contains(text, strings.ToLower(keyword)) {
+		if wanted := Normalize(keyword); wanted != "" && strings.Contains(text, wanted) {
 			return true
 		}
 	}
@@ -319,13 +322,12 @@ func isBoundary(text string, at int) bool {
 	return at >= len(text) || text[at]&0xc0 != 0x80
 }
 
-// candidates puts the markets a cycle matched in the order they are published in: the soonest to
-// close first, and the identifier as the tie-break.
+// ordered puts markets in their stable order: the soonest to close first, and the identifier as the
+// tie-break.
 //
-// The order matters because of [Filters.MostOpen]. When more markets match than this template will
-// hold proposals for, the ones it takes are the ones closing soonest — which are the ones a
-// subscriber has the least time to act on — and the choice is the same on every cycle rather than
-// whatever order the provider happened to answer in.
+// It decides which market represents an event, and — through each event's soonest market — which
+// of two events that add the same coverage is chosen first (select.go). Either way the choice is the
+// same on every cycle rather than whatever order the provider happened to answer in.
 func ordered(found []candidate) {
 	sort.SliceStable(found, func(first, second int) bool {
 		left, right := found[first], found[second]

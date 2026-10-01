@@ -112,11 +112,13 @@ func LoadPrediction(lookup support.Lookup) (*support.Config, *Prediction, []stri
 			"one call every two seconds")) * time.Millisecond
 
 	held.Filters = discovery.Filters{
-		Source:     strings.ToLower(read.Text("PREDICTION_SOURCE", DefaultSource)),
-		Categories: lowered(read.List("PREDICTION_CATEGORIES")),
+		Source: strings.ToLower(read.Text("PREDICTION_SOURCE", DefaultSource)),
+		// Categories and keywords are coverage buckets as well as filters (SEE-177), so each is
+		// held once: "OpenAI, openai" is one keyword, kept as first written.
+		Categories: distinct(lowered(read.List("PREDICTION_CATEGORIES"))),
 		Filter:     strings.ToLower(read.Text("PREDICTION_FILTER", "")),
 		Tags:       lowered(read.List("PREDICTION_TAGS")),
-		Keywords:   read.List("PREDICTION_KEYWORDS"),
+		Keywords:   distinct(read.List("PREDICTION_KEYWORDS")),
 	}
 	if !jupiter.Sources[held.Filters.Source] {
 		read.Note("PREDICTION_SOURCE must be one of %s: it is the venue whose markets the "+
@@ -247,6 +249,26 @@ func units(read *support.Reader, name string, fallback uint64) uint64 {
 		return fallback
 	}
 	return value
+}
+
+// distinct drops every item that compares equal to an earlier one in the form discovery compares
+// them in (discovery.Normalize), keeping the first spelling. Validation still reads each item as
+// written, so a keyword with a line break in it is refused rather than folded into a space.
+func distinct(items []string) []string {
+	if items == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	kept := make([]string, 0, len(items))
+	for _, one := range items {
+		key := discovery.Normalize(one)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		kept = append(kept, one)
+	}
+	return kept
 }
 
 func lowered(items []string) []string {
