@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/gateway"
@@ -22,6 +23,7 @@ type Documents interface {
 	ManifestPublished(ctx context.Context, revision uint64) error
 	ManifestDeferred(ctx context.Context, due time.Time, detail string) error
 	ManifestRefused(ctx context.Context, problem, detail string) error
+	ManifestCatchUp(ctx context.Context, revision uint64, now time.Time) (uint64, error)
 	Due(ctx context.Context, now time.Time, limit int) ([]signals.Record, error)
 	Published(ctx context.Context, id string, revision uint64, detail string) error
 	Deferred(ctx context.Context, id string, due time.Time, detail string) error
@@ -177,6 +179,29 @@ func (d *Drainer) PassManifest(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	status, err := d.gateway.Manifest(ctx, d.manifest(revision))
+	// A gateway that holds a revision this publisher does not — its database did not survive a
+	// redeployment, or an older gateway confirmed a document without a field it did not know yet —
+	// says which, and the manifest is published again above it (SEE-179). Twice at most: once at
+	// the held revision, which the gateway answers `UNCHANGED` when it already holds these
+	// settings, and once past it when it holds something else.
+	for caughtUp := 0; err != nil && caughtUp < 2; caughtUp++ {
+		var refusal *gateway.Refusal
+		if !errors.As(err, &refusal) {
+			break
+		}
+		next, ok := catchUp(refusal, revision)
+		if !ok {
+			break
+		}
+		d.log.Warn("the gateway holds another revision of the manifest; catching up with it",
+			"revision", revision, "held", refusal.Held, "next", next, "problem", refusal.Problem)
+		moved, storeErr := d.documents.ManifestCatchUp(ctx, next, d.now())
+		if storeErr != nil {
+			return false, storeErr
+		}
+		revision = moved
+		status, err = d.gateway.Manifest(ctx, d.manifest(revision))
+	}
 	if err != nil {
 		var refusal *gateway.Refusal
 		if !errors.As(err, &refusal) {
@@ -198,6 +223,24 @@ func (d *Drainer) PassManifest(ctx context.Context) (bool, error) {
 	// answered "stored".
 	d.log.Info("the manifest is published", "revision", revision, "status", string(status))
 	return status == gateway.Stored, d.documents.ManifestPublished(ctx, revision)
+}
+
+// catchUp is the revision to publish the manifest at after the gateway refused this one and named
+// the revision it holds, or false when the refusal is not one a higher revision can answer.
+//
+// The manifest is this publisher's own description of itself, built from the settings it runs
+// with, so publishing it above what the gateway holds is what the protocol asks of a publisher
+// that lost its state (GatewayErrorDetail.held_revision). The gateway still enforces everything
+// else: a different environment or mode is refused whatever the revision.
+func catchUp(refusal *gateway.Refusal, revision uint64) (uint64, bool) {
+	switch {
+	case refusal.Problem == "stale_revision" && refusal.Held > revision:
+		return refusal.Held, true
+	case refusal.Problem == "revision_conflict" && refusal.Held >= revision &&
+		refusal.Held < math.MaxUint64:
+		return refusal.Held + 1, true
+	}
+	return 0, false
 }
 
 // One publishes one signal and records what the gateway said. A refusal comes back as a [gateway.Refusal]

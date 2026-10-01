@@ -533,15 +533,61 @@ func TestTheManifestRevisionMovesOnlyWhenTheSettingsDo(t *testing.T) {
 		t.Fatalf("confirmed %d", state.ConfirmedRevision)
 	}
 	// A confirmation for a revision the manifest is no longer at confirms nothing, as for a
-	// signal.
+	// signal. (A start clears the earlier one too: it sends the manifest again, SEE-179.)
 	if _, err := documents.ManifestRevision(ctx, "fingerprint-c", now); err != nil {
 		t.Fatal(err)
 	}
 	if err := documents.ManifestPublished(ctx, 2); err != nil {
 		t.Fatal(err)
 	}
-	if _, state, _ := documents.Manifest(ctx); state.ConfirmedRevision != 2 {
+	if _, state, _ := documents.Manifest(ctx); state.ConfirmedRevision != 0 {
 		t.Fatalf("confirmed %d while the manifest is at 3", state.ConfirmedRevision)
+	}
+}
+
+// A start sends the manifest again even at a revision the gateway confirmed, so a gateway that
+// holds something else says so (SEE-179); and catching up with what a gateway holds only ever
+// moves the revision forward.
+func TestAStartRepublishesTheManifestAndCatchingUpMovesForward(t *testing.T) {
+	documents, err := Open(filepath.Join(t.TempDir(), "publisher.db"), stamp())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = documents.Close() }()
+	ctx := context.Background()
+	if _, err := documents.ManifestRevision(ctx, "fingerprint-a", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := documents.ManifestPublished(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := documents.ManifestRevision(ctx, "fingerprint-a", now); err != nil {
+		t.Fatal(err)
+	}
+	if revision, state, _ := documents.Manifest(ctx); revision != 1 || state.ConfirmedRevision != 0 {
+		t.Fatalf("revision %d, %+v", revision, state)
+	}
+
+	if err := documents.ManifestRefused(ctx, "revision_conflict", "settings_revision"); err != nil {
+		t.Fatal(err)
+	}
+	if revision, err := documents.ManifestCatchUp(ctx, 5, now); err != nil || revision != 5 {
+		t.Fatalf("caught up to %d (%v)", revision, err)
+	}
+	revision, state, err := documents.Manifest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revision != 5 || state.Problem != "" || state.Attempts != 0 {
+		t.Fatalf("revision %d, %+v", revision, state)
+	}
+	if revision, err := documents.ManifestCatchUp(ctx, 2, now); err != nil || revision != 5 {
+		t.Fatalf("a lower revision moved the manifest to %d (%v)", revision, err)
+	}
+	// The settings did not change, so a restart keeps the revision it caught up to.
+	if revision, err := documents.ManifestRevision(ctx, "fingerprint-a", now); err != nil ||
+		revision != 5 {
+		t.Fatalf("a restart moved the manifest to %d (%v)", revision, err)
 	}
 }
 

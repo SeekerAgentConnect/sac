@@ -392,9 +392,11 @@ func (s *Store) migrate(ctx context.Context, stamp Stamp) error {
 //
 // The publication state is reset either way, because this is called once per start and a start is
 // a deliberate act: whatever a previous process was refused, the operator who restarted this one is
-// entitled to have it tried again. There is no such reset for a signal — a refused signal is
-// retried when somebody asks (`POST /v1/signals/<id>/retry`), so that a restart loop cannot
-// become a publication loop.
+// entitled to have it tried again. That includes a confirmation: a start sends the manifest once
+// more, so a gateway that holds something else at this revision says so now (SEE-179) rather than
+// never, and one that holds exactly this answers `UNCHANGED`. There is no such reset for a signal
+// — a refused signal is retried when somebody asks (`POST /v1/signals/<id>/retry`), so that a
+// restart loop cannot become a publication loop.
 func (s *Store) ManifestRevision(ctx context.Context, fingerprint string, now time.Time) (uint64, error) {
 	transaction, err := s.writer.BeginTx(ctx, nil)
 	if err != nil {
@@ -423,12 +425,39 @@ func (s *Store) ManifestRevision(ctx context.Context, fingerprint string, now ti
 		revision++
 	}
 	if _, err := transaction.ExecContext(ctx,
-		`UPDATE manifest SET revision = ?, fingerprint = ?, attempts = 0, due_at_ms = ?,
-		                     problem = '', detail = ''
+		`UPDATE manifest SET revision = ?, fingerprint = ?, confirmed_revision = 0, attempts = 0,
+		                     due_at_ms = ?, problem = '', detail = ''
 		 WHERE id = 1`, revision, fingerprint, milliseconds(now)); err != nil {
 		return 0, err
 	}
 	return revision, transaction.Commit()
+}
+
+// ManifestCatchUp moves the manifest to a revision the gateway told this publisher about, and
+// returns the revision it is at afterwards (SEE-179).
+//
+// A publisher whose database did not survive a redeployment starts again at revision 1 while the
+// gateway still holds a higher one, or the same one with other content; the gateway refuses both
+// and names what it holds (`held_revision`) so the publisher can catch up. The revision only ever
+// moves forward, the fingerprint stays the settings this process runs with, and the publication
+// state is reset so the next attempt is due at once.
+func (s *Store) ManifestCatchUp(ctx context.Context, revision uint64, now time.Time) (uint64, error) {
+	transaction, err := s.writer.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if _, err := transaction.ExecContext(ctx,
+		`UPDATE manifest SET revision = ?, attempts = 0, due_at_ms = ?, problem = '', detail = ''
+		 WHERE id = 1 AND revision < ?`, revision, milliseconds(now), revision); err != nil {
+		return 0, err
+	}
+	var held uint64
+	if err := transaction.QueryRowContext(ctx,
+		`SELECT revision FROM manifest WHERE id = 1`).Scan(&held); err != nil {
+		return 0, err
+	}
+	return held, transaction.Commit()
 }
 
 // Manifest is the revision the manifest is at and what the gateway has confirmed about it.

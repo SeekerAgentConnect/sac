@@ -276,6 +276,21 @@ func Problem(kind gatewayv1.GatewayProblem, code connect.Code, field string) *co
 	return failure
 }
 
+// Holding is [Problem] for a refusal that also names the revision the gateway holds, which is how
+// the gateway answers a stale revision and a revision conflict (GatewayErrorDetail.held_revision).
+func Holding(kind gatewayv1.GatewayProblem, field string, held uint64) *connect.Error {
+	failure := connect.NewError(connect.CodeFailedPrecondition, errors.New(strings.ToLower(
+		strings.TrimPrefix(kind.String(), "GATEWAY_PROBLEM_"))+" ("+field+")"))
+	if detail, err := connect.NewErrorDetail(&gatewayv1.GatewayErrorDetail{
+		Problem:      kind,
+		Field:        field,
+		HeldRevision: held,
+	}); err == nil {
+		failure.AddDetail(detail)
+	}
+	return failure
+}
+
 // Serve serves the fake through the generated handler and returns the running server.
 //
 // It stops short of building a publication client on purpose: the client is the support library's

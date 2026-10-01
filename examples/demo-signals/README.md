@@ -277,6 +277,40 @@ The complete request/answer/status-code contract for a strategy system is
 shaped like this, including a worked example of where publication ends and each owner's own
 execution begins.
 
+### Checking the declared network
+
+This demo publishes `jupiter.swap` signals, and Jupiter swaps exist only on Solana Mainnet, so it
+declares **Mainnet**. It does that with `PUBLISHER_SUPPORTED_NETWORKS` unset; set `mainnet` to say
+so explicitly. `devnet` and `testnet` are refused at startup. It cannot honestly be declared
+Devnet: no swap it proposes can land there. Its `sandbox` environment is a different setting. It
+means the phone simulates the swap against Mainnet data and signs nothing
+([`docs/wiki/environments.md`](../../docs/wiki/environments.md)). A Devnet feed would need a
+template whose operation runs on Devnet.
+
+Check what the gateway serves — the manifest every phone reads — with no credential at all:
+
+```sh
+curl -sS -X POST "$PUBLISHER_GATEWAY_URL/seekervault.gateway.v1.FeedService/GetServerManifest" \
+  -H 'Content-Type: application/json' -d "{\"serverId\":\"$PUBLISHER_SERVER_ID\"}"
+```
+
+The answer must contain `"supportedNetworks":["SOLANA_NETWORK_MAINNET"]` inside `feed`. Without it
+the app shows the feed with no network declared, offers no wallet for it and signs nothing.
+
+If it is missing while this demo's `PUBLISHER_SUPPORTED_NETWORKS` is unset or `mainnet`, the
+gateway confirmed an earlier revision without the field. That happens when a publisher published to
+a gateway older than SEE-174, for example during a rolling deployment of both (SEE-179). Deploy or
+upgrade the gateway first, wait until its rollout has finished, then restart this demo
+(`docker compose restart copytrading`, or redeploy the App Platform component). On start the demo
+sends its manifest again. If the gateway holds another document at that revision, it answers with
+the revision it holds, and the demo publishes the next one; the log line is `the gateway holds
+another revision of the manifest; catching up with it`, followed by `the manifest is published`
+with `"status":"stored"`. Run the `curl` again to confirm.
+
+Phones that already hold the feed need no reconnecting. A new revision reaches them on the feed's
+stream while the app is open, or on its next snapshot, and the connection's network and wallet
+picker follow it. A phone that never opens the app keeps its old copy until it does.
+
 ### The trader UI
 
 `cmd/copytrading-admin` is a password-gated HTML client of the same `/v1` API (SEE-126). It is a
