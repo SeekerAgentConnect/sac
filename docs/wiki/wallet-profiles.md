@@ -109,6 +109,11 @@ many profiles there are, one wallet handoff runs at a time.
 
 Cancelling in the wallet app, or a wallet that doesn't answer, changes no profile and no connection.
 
+The Wallet tab presents profiles as cards. One card may be expanded at a time to reveal its full
+address, copy action, connection usage, wallet app, date, and Rename/Reconnect/Remove actions. **Add
+wallet** opens a bottom sheet; network and wallet app are chosen there, never in a connection's
+picker.
+
 ### Authorization scope
 
 A wallet that refuses an authorization (`AuthorizationExpired`) marks **every profile using that
@@ -136,13 +141,19 @@ store (format 7) persists it with the manifest's supported networks.
 - A **feed** is told nothing. Its binding is a local execution setting: no saved wallet is ever
   published to a publisher or the gateway.
 
-The picker ([`connections/ConnectionWallet.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/connections/ConnectionWallet.kt))
-applies the same filter: it offers only profiles on a declared network, offers **Add wallet for
-&lt;network&gt;** prefilled with the network the server needs when none fits, and explains before
-the owner commits what changing a direct server's or a feed's wallet does. It opens by itself right
-after a connection is added — the pairing code is already spent and the manifest already read, so
-it knows which networks to offer — and from the connection's detail sheet, whose **Wallet** row
-shows the bound profile, with the full address, the wallet app and the network as separate facts.
+The modal picker
+([`connections/ConnectionWallet.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/connections/ConnectionWallet.kt))
+shows every saved profile. When the server declares networks, incompatible profiles remain visible
+but disabled and explain that their network must be changed on the Wallet tab. **Use this wallet**
+stays disabled until the owner selects a compatible profile. **Add a &lt;network&gt; wallet** opens the
+shared add-wallet sheet with a single declared network preselected. When the server declares no
+network, an orange notice explains the limitation, every profile is selectable for an access
+proof, and the action reads **Add a wallet**; signing remains gated by readiness.
+
+The picker contains no wallet-app choice. It opens by itself right after a connection is added —
+the pairing code is already spent and the manifest already read — and from the connection detail's
+**Wallet** row, which shows the bound profile's full address, wallet app, and network as separate
+facts.
 
 ### Readiness
 
@@ -267,9 +278,9 @@ with its networks.
 | `wallet/Wallet.kt` | `WalletProfile`, `SelectedWallet`, `WalletNetwork` |
 | `wallet/storage/WalletStore.kt` | The sealed `wallet-profiles` record and the migration |
 | `wallet/WalletRepository.kt` | Profiles, binding, readiness, publication, signing |
-| `wallet/WalletScreen.kt`, `wallet/WalletViewModel.kt` | The Wallets screen |
+| `wallet/WalletScreen.kt`, `wallet/WalletViewModel.kt` | The collapsible Wallet tab and add-wallet sheet mapping |
 | `connections/ConnectionWallets.kt` | What the wallet repository may ask of the connections |
-| `connections/ConnectionWallet.kt` | The detail sheet's Wallet row and the picker |
+| `connections/ConnectionWallet.kt` | The detail sheet's Wallet row and modal picker |
 | `connections/ConnectionRepository.kt` | `setWalletProfile`, `adoptLegacyWallet`, `clearWalletProfile`, `publishWalletCancelling` |
 | `access/FeedAccessManager.kt` | Restricted-feed access by each feed's own wallet |
 | `operations/OperationViewModel.kt`, `inbox/InboxViewModel.kt` | Feed and direct reviews resolving the connection's wallet |

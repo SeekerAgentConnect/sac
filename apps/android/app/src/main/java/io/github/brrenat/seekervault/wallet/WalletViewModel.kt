@@ -179,6 +179,19 @@ class WalletViewModel(
         _state.update { it.copy(network = network, problem = null, detail = null) }
     }
 
+    /** Opens a fresh add-wallet presentation, optionally preset by a server's network. */
+    fun beginAdd(network: WalletNetwork? = null) {
+        if (_state.value.busy) return
+        _state.update {
+            it.copy(
+                network = network ?: it.network,
+                added = emptyList(),
+                problem = null,
+                detail = null,
+            )
+        }
+    }
+
     /**
      * Asks the wallet for a fresh authorization on [network] — the chosen one by default, or the
      * one a connection's picker asked for — and saves the accounts it authorizes. Cancelling in the

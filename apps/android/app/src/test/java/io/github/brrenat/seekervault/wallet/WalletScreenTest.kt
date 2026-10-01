@@ -1,16 +1,22 @@
 package io.github.brrenat.seekervault.wallet
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsNotSelected
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -30,30 +36,39 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 /**
- * The Wallets screen on Robolectric (SEE-174): every saved profile with its network and wallet app,
- * who uses it, what can be done to it, and the form that adds another.
+ * The Wallet screen on Robolectric (SEE-178): collapsible saved profiles and the separate sheet
+ * that adds another.
  */
 @RunWith(AndroidJUnit4::class)
+@Config(qualifiers = "w390dp-h844dp-xxhdpi")
 class WalletScreenTest {
     @get:Rule val compose = createComposeRule()
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val actions = mutableListOf<String>()
 
-    private fun show(state: WalletUiState) = compose.setContent {
+    private fun show(
+        state: WalletUiState,
+        initiallyExpanded: String? = state.profiles.firstOrNull()?.id,
+    ) = compose.setContent {
         SeekerTheme {
+            var expanded by remember { mutableStateOf(initiallyExpanded) }
             WalletScreen(
-                state = walletScreenState(state),
+                state = walletScreenState(state).copy(expandedProfileId = expanded),
                 callbacks =
                     WalletScreenCallbacks(
-                        onChooseWalletApp = { actions += "app:$it" },
-                        onChooseNetwork = { actions += "network:${it.name}" },
-                        onConnect = { actions += "connect" },
+                        onAddWallet = { actions += "add" },
+                        onToggleProfile = { id ->
+                            actions += "toggle:$id"
+                            expanded = if (expanded == id) null else id
+                        },
                         onPublishAgain = { actions += "again" },
                         onBack = { actions += "back" },
                         navigation = NAVIGATION,
+                        onCopyAddress = { actions += "copy:$it" },
                         onRename = { actions += "rename:$it" },
                         onSaveName = { id, label -> actions += "save:$id:$label" },
                         onCancelRename = { actions += "cancelRename" },
@@ -66,6 +81,18 @@ class WalletScreenTest {
         }
     }
 
+    private fun showAddSheet(state: WalletUiState) = compose.setContent {
+        SeekerTheme {
+            WalletAddSheetScreen(
+                state = state,
+                onChooseWalletApp = { actions += "app:$it" },
+                onChooseNetwork = { actions += "network:${it.name}" },
+                onConnect = { actions += "connect" },
+                onCancel = { actions += "cancel" },
+            )
+        }
+    }
+
     /**
      * Scrolls [this] into view and clicks it through its semantics. A touch would land on whatever
      * is drawn over it — the bottom navigation covers the end of the scrolled body — and click that
@@ -74,59 +101,105 @@ class WalletScreenTest {
     private fun SemanticsNodeInteraction.tap() =
         performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
 
+    private fun profileText(id: String, text: String, substring: Boolean = false) =
+        compose.onNode(
+            hasText(text, substring = substring) and
+                hasAnyAncestor(hasTestTag(WalletTags.profile(id))),
+            useUnmergedTree = true,
+        )
+
     @Test
-    fun offersTheNetworksAndAddingWhenNoWalletIsSaved() {
+    fun offersAddWalletWhenNoWalletIsSaved() {
         show(WalletUiState(loaded = true, connections = listOf(HOME)))
         compose
             .onNodeWithTag(WalletTags.STATUS)
             .assertTextContains(context.getString(R.string.wallet_profiles_none_title))
-        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Mainnet)).assertIsSelected()
-        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).assertIsNotSelected()
-        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Testnet)).assertIsNotSelected()
-        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).tap()
-        compose
-            .onNodeWithTag(WalletTags.CONNECT)
-            .performScrollTo()
-            .performSemanticsAction(SemanticsActions.OnClick)
-        assertEquals(listOf("network:Devnet", "connect"), actions)
+        compose.onNodeWithText(context.getString(R.string.wallet_profiles_saved)).assertExists()
+        compose.onNodeWithTag(WalletTags.ADD).tap()
+        assertEquals(listOf("add"), actions)
     }
 
     @Test
-    fun marksTheNetworkTheOwnerIsAddingOn() {
-        show(WalletUiState(loaded = true, network = WalletNetwork.Testnet))
-        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Testnet)).assertIsSelected()
-        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Mainnet)).assertIsNotSelected()
+    fun addSheetOffersEveryNetworkAndDelegatesTheOwnersChoice() {
+        showAddSheet(WalletUiState(loaded = true, apps = listOf(SEEKER)))
+
+        compose.onNodeWithTag(WalletTags.ADD_SHEET).assertExists()
+        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Mainnet)).assertExists()
+        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).performClick()
+        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Testnet)).performClick()
+
+        assertEquals(listOf("network:Devnet", "network:Testnet"), actions)
     }
 
     @Test
     fun showsEachProfileWithItsNetworkAndWalletAppApartFromTheAccountLabel() {
-        show(WalletUiState(loaded = true, profiles = listOf(MAIN, DEV), connections = listOf(HOME)))
+        show(
+            WalletUiState(loaded = true, profiles = listOf(MAIN, DEV), connections = listOf(HOME)),
+            initiallyExpanded = DEV.id,
+        )
 
         // No empty state once something is saved.
         compose.onNodeWithTag(WalletTags.STATUS).assertDoesNotExist()
         // The card is named after the account, and says which network and which wallet app it is
         // in separately (SEE-159): "Account 1" is the account, not the wallet.
-        val main = compose.onNodeWithTag(WalletTags.profile(MAIN.id))
-        main.assertTextContains("Account 1")
-        main.assertTextContains(WALLET)
-        main.assertTextContains(
-            context.getString(R.string.wallet_network_mainnet),
-            substring = true,
-        )
-        main.assertTextContains(SEEKER.label, substring = true)
-        main.assert(!hasText(context.getString(R.string.wallet_network_devnet), substring = true))
+        compose.onNodeWithTag(WalletTags.profile(MAIN.id)).assertExists()
+        profileText(MAIN.id, "Account 1").assertExists()
+        profileText(MAIN.id, short(WALLET)).assertExists()
+        profileText(MAIN.id, context.getString(R.string.wallet_network_mainnet)).assertExists()
+        profileText(MAIN.id, SEEKER.label, substring = true).assertDoesNotExist()
+        profileText(
+                MAIN.id,
+                context.getString(R.string.wallet_network_devnet),
+                substring = true,
+            )
+            .assertDoesNotExist()
 
         // The same address on another network is a card of its own, and one whose wallet app was
         // never learned says so rather than borrowing another's.
-        val dev = compose.onNodeWithTag(WalletTags.profile(DEV.id)).performScrollTo()
-        dev.assertTextContains(WALLET)
-        dev.assertTextContains(context.getString(R.string.wallet_network_devnet), substring = true)
-        dev.assertTextContains(
-            context.getString(R.string.wallet_profile_unknown_app),
-            substring = true,
-        )
-        dev.assert(!hasText(SEEKER.label, substring = true))
-        dev.assertTextContains(context.getString(R.string.wallet_profile_unnamed))
+        compose.onNodeWithTag(WalletTags.profile(DEV.id)).performScrollTo().assertExists()
+        profileText(DEV.id, WALLET).assertExists()
+        profileText(DEV.id, context.getString(R.string.wallet_network_devnet)).assertExists()
+        profileText(
+                DEV.id,
+                context.getString(R.string.wallet_profile_unknown_app),
+                substring = true,
+            )
+            .assertExists()
+        profileText(DEV.id, SEEKER.label, substring = true).assertDoesNotExist()
+        profileText(DEV.id, context.getString(R.string.wallet_profile_unnamed)).assertExists()
+    }
+
+    @Test
+    fun openingOneWalletCardClosesTheOther() {
+        show(WalletUiState(loaded = true, profiles = listOf(MAIN, DEV)))
+
+        compose.onNodeWithTag(WalletTags.rename(MAIN.id)).assertExists()
+        compose.onNodeWithTag(WalletTags.rename(DEV.id)).assertDoesNotExist()
+
+        compose
+            .onNode(
+                hasText(context.getString(R.string.wallet_profile_unnamed)) and
+                    hasClickAction() and
+                    hasAnyAncestor(hasTestTag(WalletTags.profile(DEV.id)))
+            )
+            .performClick()
+        compose.mainClock.advanceTimeBy(250)
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(WalletTags.rename(MAIN.id)).assertDoesNotExist()
+        compose.onNodeWithTag(WalletTags.rename(DEV.id)).assertExists()
+        assertEquals(listOf("toggle:${DEV.id}"), actions)
+    }
+
+    @Test
+    fun expandedCardCopiesItsFullAddressWithAnAccessibleAction() {
+        show(WalletUiState(loaded = true, profiles = listOf(MAIN)))
+
+        compose
+            .onNodeWithContentDescription(context.getString(R.string.wallet_copy_address))
+            .performClick()
+
+        assertEquals(listOf("copy:$WALLET"), actions)
     }
 
     @Test
@@ -143,32 +216,26 @@ class WalletScreenTest {
             )
         )
 
-        compose
-            .onNodeWithTag(WalletTags.profile(MAIN.id))
-            .assertTextContains(
-                context.resources.getQuantityString(R.plurals.wallet_profile_used_by, 2, 2),
-                substring = true,
+        profileText(
+                MAIN.id,
+                context.getString(R.string.wallet_profile_used_by_names, "Home Mac, Office"),
             )
-        compose
-            .onNodeWithTag(WalletTags.profile(DEV.id))
-            .performScrollTo()
-            .assertTextContains(
-                context.getString(R.string.wallet_profile_unused),
-                substring = true,
-            )
+            .assertExists()
+        compose.onNodeWithTag(WalletTags.profile(DEV.id)).performScrollTo()
+        profileText(DEV.id, context.getString(R.string.wallet_profile_unused)).assertExists()
     }
 
     @Test
     fun offersRenameReconnectAndRemoveForEachProfile() {
-        show(WalletUiState(loaded = true, profiles = listOf(MAIN, DEV)))
+        show(WalletUiState(loaded = true, profiles = listOf(MAIN, DEV)), DEV.id)
 
         compose.onNodeWithTag(WalletTags.rename(DEV.id)).tap()
         compose.onNodeWithTag(WalletTags.reconnect(DEV.id)).tap()
-        compose.onNodeWithTag(WalletTags.remove(MAIN.id)).tap()
+        compose.onNodeWithTag(WalletTags.remove(DEV.id)).tap()
 
         // Each button acts on its own profile, never on its neighbour.
         assertEquals(
-            listOf("rename:${DEV.id}", "reconnect:${DEV.id}", "remove:${MAIN.id}"),
+            listOf("rename:${DEV.id}", "reconnect:${DEV.id}", "remove:${DEV.id}"),
             actions,
         )
     }
@@ -208,7 +275,6 @@ class WalletScreenTest {
                 context.getString(R.string.wallet_profile_remove_used, "Home Mac, Office")
             )
             .assertExists()
-        compose.onNodeWithText("Cloud", substring = true).assertDoesNotExist()
         compose.onNodeWithTag(WalletTags.REMOVE_CONFIRM).performClick()
         assertEquals(listOf("confirmRemove"), actions)
     }
@@ -227,7 +293,9 @@ class WalletScreenTest {
         compose
             .onNodeWithText(context.getString(R.string.wallet_profile_remove_unused))
             .assertExists()
-        compose.onNodeWithTag(ConnectionsTags.DIALOG_DISMISS).performClick()
+        compose
+            .onNodeWithTag(ConnectionsTags.DIALOG_DISMISS)
+            .performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(listOf("cancelRemove"), actions)
     }
 
@@ -322,24 +390,32 @@ class WalletScreenTest {
     @Test
     fun disablesTheButtonsWhileTheWalletIsBusy() {
         show(WalletUiState(loaded = true, profiles = listOf(MAIN), connecting = true))
-        compose.onNodeWithText(context.getString(R.string.wallet_connecting)).assertExists()
-        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).assertIsNotEnabled()
         compose.onNodeWithTag(WalletTags.rename(MAIN.id)).assertIsNotEnabled()
         compose.onNodeWithTag(WalletTags.reconnect(MAIN.id)).assertIsNotEnabled()
         compose.onNodeWithTag(WalletTags.remove(MAIN.id)).assertIsNotEnabled()
     }
 
     @Test
+    fun addSheetDisablesItsChoicesAndContinueWhileTheWalletIsBusy() {
+        showAddSheet(WalletUiState(loaded = true, apps = listOf(SEEKER), connecting = true))
+
+        compose.onNodeWithTag(WalletTags.CONNECT).assertIsNotEnabled()
+        compose.onNodeWithTag(WalletTags.network(WalletNetwork.Devnet)).assertIsNotEnabled()
+        compose.onNodeWithTag(WalletTags.app(SEEKER.packageName)).assertIsNotEnabled()
+    }
+
+    @Test
     fun disablesTheProfileButtonsWhileOneIsBeingWorkedOn() {
-        show(WalletUiState(loaded = true, profiles = listOf(MAIN, DEV), working = MAIN.id))
+        show(
+            WalletUiState(loaded = true, profiles = listOf(MAIN, DEV), working = MAIN.id),
+            initiallyExpanded = DEV.id,
+        )
         compose.onNodeWithTag(WalletTags.remove(DEV.id)).performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().assertIsNotEnabled()
     }
 
     @Test
     fun offersTheInstalledWalletAppsWhenThereIsMoreThanOne() {
-        show(
+        showAddSheet(
             WalletUiState(
                 loaded = true,
                 apps = listOf(SEEKER, OTHER),
@@ -347,16 +423,16 @@ class WalletScreenTest {
             )
         )
 
-        compose.onNodeWithTag(WalletTags.app(SEEKER.packageName)).assertIsNotSelected()
-        compose.onNodeWithTag(WalletTags.app(OTHER.packageName)).tap()
+        compose.onNodeWithTag(WalletTags.app(SEEKER.packageName)).assertExists()
+        compose.onNodeWithTag(WalletTags.app(OTHER.packageName)).performClick()
         // Adding waits for the pick, so nothing goes out able to open Android's chooser.
-        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag(WalletTags.CONNECT).assertIsNotEnabled()
         assertEquals(listOf("app:${OTHER.packageName}"), actions)
     }
 
     @Test
     fun showsThePickAndLetsTheOwnerAddOnceOneIsMade() {
-        show(
+        showAddSheet(
             WalletUiState(
                 loaded = true,
                 apps = listOf(SEEKER, OTHER),
@@ -365,25 +441,38 @@ class WalletScreenTest {
             )
         )
 
-        compose.onNodeWithTag(WalletTags.app(SEEKER.packageName)).assertIsSelected()
-        compose.onNodeWithTag(WalletTags.app(OTHER.packageName)).assertIsNotSelected()
-        compose
-            .onNodeWithTag(WalletTags.CONNECT)
-            .performScrollTo()
-            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithTag(WalletTags.app(SEEKER.packageName)).assertExists()
+        compose.onNodeWithTag(WalletTags.app(OTHER.packageName)).assertExists()
+        compose.onNodeWithTag(WalletTags.CONNECT).performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(listOf("connect"), actions)
     }
 
     @Test
-    fun asksNothingWhenThisPhoneHasOneWalletApp() {
-        show(WalletUiState(loaded = true, apps = listOf(SEEKER), connections = listOf(HOME)))
+    fun selectsTheOnlyWalletAppAndNamesItInTheContinueButton() {
+        showAddSheet(
+            WalletUiState(loaded = true, apps = listOf(SEEKER), connections = listOf(HOME))
+        )
 
-        compose.onNodeWithTag(WalletTags.app(SEEKER.packageName)).assertDoesNotExist()
-        compose.onNodeWithTag(WalletTags.CONNECT).performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag(WalletTags.app(SEEKER.packageName)).assertExists()
+        compose
+            .onNodeWithTag(WalletTags.CONNECT)
+            .assertTextContains(context.getString(R.string.wallet_continue_in, SEEKER.label))
+            .assertIsEnabled()
+    }
+
+    @Test
+    fun addSheetCancelLeavesWithoutConnecting() {
+        showAddSheet(WalletUiState(loaded = true, apps = listOf(SEEKER)))
+
+        compose.onNodeWithTag(ConnectionsTags.DIALOG_DISMISS).performClick()
+
+        assertEquals(listOf("cancel"), actions)
     }
 
     private companion object {
         const val WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
+
+        fun short(address: String) = address.take(4) + "…" + address.takeLast(4)
 
         val SEEKER = InstalledWallet("com.example.seekerwallet", "Seeker Wallet")
         val OTHER = InstalledWallet("com.example.otherwallet", "Other Wallet")

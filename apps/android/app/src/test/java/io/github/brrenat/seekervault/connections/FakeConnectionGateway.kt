@@ -435,6 +435,8 @@ class FakeConnectionGateway : ConnectionGateway {
     var beforeSubmit: suspend () -> Unit = {}
     /** Runs before a status check answers, so a test can hold one open (SAW-022). */
     var beforeCheck: suspend () -> Unit = {}
+    /** Runs before a wallet publication is applied, so a test can hold a binding open. */
+    var beforePublishWallet: suspend () -> Unit = {}
 
     /**
      * Runs after ListPending reads its page and before it returns it, to hold a page going stale.
@@ -580,6 +582,7 @@ class FakeConnectionGateway : ConnectionGateway {
     ): List<String> {
         val server = reach(serverUrl, credential)
         val id = authenticated(server, credential, connectionId)
+        beforePublishWallet()
         published += serverUrl to binding
         server.publications++
         if (binding == server.wallet) return emptyList()

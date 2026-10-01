@@ -1,11 +1,5 @@
 package io.github.brrenat.seekervault.connections
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,15 +13,10 @@ import androidx.compose.ui.res.stringResource
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailFact
 import io.github.brrenat.seekervault.designsystem.ConnectionDetailRules
+import io.github.brrenat.seekervault.designsystem.ConnectionWalletPickerSheet
 import io.github.brrenat.seekervault.designsystem.FactRowValueStyle
-import io.github.brrenat.seekervault.designsystem.RadioRow
-import io.github.brrenat.seekervault.designsystem.RadioRowState
-import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
-import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.designsystem.WalletPickerRowModel
 import io.github.brrenat.seekervault.servers.manifest
-import io.github.brrenat.seekervault.ui.SeekerButton
-import io.github.brrenat.seekervault.ui.SeekerButtonRole
-import io.github.brrenat.seekervault.ui.SolidDialog
 import io.github.brrenat.seekervault.wallet.BindOutcome
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import io.github.brrenat.seekervault.wallet.WalletProfile
@@ -35,7 +24,6 @@ import io.github.brrenat.seekervault.wallet.WalletReadiness
 import io.github.brrenat.seekervault.wallet.WalletTags
 import io.github.brrenat.seekervault.wallet.WalletUiState
 import io.github.brrenat.seekervault.wallet.networkText
-import io.github.brrenat.seekervault.wallet.problemText
 import io.github.brrenat.seekervault.wallet.profileName
 
 /**
@@ -143,148 +131,89 @@ private fun networksText(networks: Set<WalletNetwork>): String =
     WalletNetwork.entries.filter { it in networks }.map { networkText(it) }.joinToString(" / ")
 
 /**
- * Choosing the wallet one connection signs with (SEE-174): the same list, with the same network
- * filter, whether the connection was just added or the owner is changing it. Only compatible
- * profiles are offered; with none, the owner adds one for the network the server needs without
- * leaving, and the one they added is offered at once. Nothing changes until they choose Use this
- * wallet, and cancelling — here or in the wallet app — leaves every profile and connection as it
- * was.
+ * Choosing the wallet one connection signs with (SEE-174, SEE-178). Every saved profile stays
+ * visible so the owner can understand what exists, while profiles on another declared network are
+ * disabled. Adding opens the shared add-wallet sheet, preset to a single declared network, and the
+ * newly added compatible profile is selected when this sheet returns. Nothing changes until the
+ * owner chooses Use this wallet.
  */
 @Composable
 fun ConnectionWalletPicker(
     connection: Connection,
     wallet: WalletUiState,
     onUse: (String) -> Unit,
-    onAdd: (WalletNetwork) -> Unit,
-    onChooseWalletApp: (String) -> Unit,
+    onAdd: (WalletNetwork?) -> Unit,
     onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val offered = compatibleProfiles(connection, wallet.profiles)
     val supported = connection.server.manifest?.supportedNetworks.orEmpty()
-    var chosen by
-        rememberSaveable(connection.id) {
-            mutableStateOf(
-                connection.walletProfileId?.takeIf { id -> offered.any { it.id == id } }
-                    ?: offered.singleOrNull()?.id
-            )
-        }
+    var chosen by rememberSaveable(connection.id) { mutableStateOf<String?>(null) }
     // A profile the owner just added for this connection is the one they meant.
     LaunchedEffect(wallet.added) {
-        wallet.added.firstOrNull { id -> offered.any { it.id == id } }?.let { chosen = it }
+        wallet.added
+            .firstOrNull { id ->
+                wallet.profiles.any { profile ->
+                    profile.id == id && (supported.isEmpty() || profile.network in supported)
+                }
+            }
+            ?.let { chosen = it }
     }
     val busy = wallet.busy
-    SolidDialog(
+    val declared = supported.takeIf { it.isNotEmpty() }?.let { networksText(it) }
+    ConnectionWalletPickerSheet(
         title = stringResource(R.string.connection_wallet_picker_title, connection.label),
-        modifier = Modifier.testTag(WalletTags.PICKER),
-        body = {
-            Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8)) {
-                Text(
-                    if (supported.isEmpty()) {
-                        stringResource(R.string.connection_wallet_picker_no_networks)
-                    } else {
-                        stringResource(
-                            R.string.connection_wallet_picker_networks,
-                            networksText(supported),
-                        )
-                    },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                offered.forEach { profile ->
-                    RadioRow(
-                        label =
-                            listOfNotNull(
-                                    profileName(profile),
+        declaredNetwork = declared,
+        declaredNetworkLabel =
+            declared?.let { stringResource(R.string.connection_wallet_picker_uses, it) },
+        noNetworkTitle = stringResource(R.string.connection_wallet_picker_no_network_title),
+        noNetworkMessage = stringResource(R.string.connection_wallet_picker_no_networks),
+        rows =
+            wallet.profiles.map { profile ->
+                val selectable = supported.isEmpty() || profile.network in supported
+                WalletPickerRowModel(
+                    id = profile.id,
+                    name = profileName(profile),
+                    shortAddress =
+                        profile.address.take(ShortAddressLength) +
+                            "…" +
+                            profile.address.takeLast(ShortAddressLength),
+                    network = networkText(profile.network),
+                    note =
+                        when {
+                            supported.isEmpty() -> null
+                            !selectable ->
+                                stringResource(
+                                    R.string.connection_wallet_picker_blocked,
                                     networkText(profile.network),
-                                    profile.walletApp,
-                                    profile.address.take(4) + "…" + profile.address.takeLast(4),
                                 )
-                                .joinToString(" · "),
-                        state = if (profile.id == chosen) RadioRowState.On else RadioRowState.Off,
-                        onClick = { if (!busy) chosen = profile.id },
-                        modifier = Modifier.testTag(WalletTags.choice(profile.id)),
-                    )
-                }
-                if (offered.isEmpty()) {
-                    Text(
-                        stringResource(R.string.connection_wallet_picker_none),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                val apps = wallet.apps.orEmpty()
-                if (apps.size > 1) {
-                    Text(
-                        stringResource(R.string.wallet_app_label),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                    apps.forEach { app ->
-                        RadioRow(
-                            label = app.label,
-                            state =
-                                if (app == wallet.chosen) RadioRowState.On else RadioRowState.Off,
-                            onClick = { if (!busy) onChooseWalletApp(app.packageName) },
-                            modifier = Modifier.testTag(WalletTags.app(app.packageName)),
-                        )
-                    }
-                }
-                // One button per network the server needs, prefilled; a server that declared
-                // none gets the network the owner last chose on the Wallets screen.
-                val networks =
-                    WalletNetwork.entries
-                        .filter { it in supported }
-                        .ifEmpty {
-                            listOf(wallet.network)
-                        }
-                networks.forEach { network ->
-                    SeekerButton(
-                        text =
-                            stringResource(R.string.wallet_profiles_add_for, networkText(network)),
-                        onClick = { onAdd(network) },
-                        role = SeekerButtonRole.Neutral,
-                        enabled = !busy && wallet.canConnect,
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .testTag("${WalletTags.PICKER_ADD}:${network.name}"),
-                    )
-                }
-                if (connection.walletProfileId != null) {
-                    Text(
-                        stringResource(
-                            if (connection.mode == ConnectionMode.Direct) {
-                                R.string.connection_wallet_picker_direct
-                            } else {
-                                R.string.connection_wallet_picker_feed
-                            }
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                wallet.problem?.let {
-                    Text(problemText(it, wallet.detail), color = MaterialTheme.colorScheme.error)
-                }
-            }
-        },
-        actions = {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
-            ) {
-                SeekerButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = onDismiss,
-                    role = SeekerButtonRole.Neutral,
-                    modifier = Modifier.weight(1f).testTag(ConnectionsTags.DIALOG_DISMISS),
+                            else ->
+                                stringResource(
+                                    R.string.connection_wallet_picker_opens_in,
+                                    profile.walletApp
+                                        ?: stringResource(R.string.wallet_profile_unknown_app),
+                                )
+                        },
+                    selected = profile.id == chosen,
+                    selectable = selectable && !busy,
                 )
-                SeekerButton(
-                    text = stringResource(R.string.connection_wallet_use),
-                    onClick = { chosen?.let(onUse) },
-                    enabled =
-                        !busy &&
-                            chosen != null &&
-                            (chosen != connection.walletProfileId ||
-                                connection.walletProfileId == null),
-                    modifier = Modifier.weight(1f).testTag(WalletTags.PICKER_USE),
-                )
-            }
-        },
+            },
+        addLabel =
+            supported.singleOrNull()?.let {
+                stringResource(R.string.wallet_profiles_add_for, networkText(it))
+            } ?: stringResource(R.string.wallet_profiles_add_title),
+        cancelLabel = stringResource(R.string.cancel),
+        useLabel = stringResource(R.string.connection_wallet_use),
+        canUse = !busy && chosen != null,
+        onChoose = { chosen = it },
+        onAdd = { onAdd(supported.singleOrNull()) },
+        onCancel = onDismiss,
+        onUse = { chosen?.let(onUse) },
+        modifier = modifier.testTag(WalletTags.PICKER),
+        rowModifier = { Modifier.testTag(WalletTags.choice(it)) },
+        addModifier = Modifier.testTag(WalletTags.PICKER_ADD),
+        cancelModifier = Modifier.testTag(ConnectionsTags.DIALOG_DISMISS),
+        useModifier = Modifier.testTag(WalletTags.PICKER_USE),
     )
 }
+
+private const val ShortAddressLength = 4
