@@ -498,3 +498,11 @@
   `PolicyEvaluator` reads the real clock for "today", so a record dated at the fixture clock is a
   different day and silently counts nothing. Date such records `Instant.now()` or build an evaluator
   with the test clock.
+- **The fee payer is not whoever spends** (PR #102 review). A gasless Jupiter order's fee payer is
+  the provider's sponsor; attributing spending to `decoded.feePayer` put the owner's deposit in the
+  sponsor's scope. Name the verified funding owner in inspected facts, and test with the real
+  gasless capture, not only self-funded synthetic orders.
+- **Exclude by the durable fact, not by the outcome that may never be written** (PR #102 review).
+  A sandbox execution can die between "begun" and "Simulated"; the restart rewrites it Unknown.
+  Exclude rehearsals by the environment pinned in the binding, and add a restart case for each
+  two-step write.
