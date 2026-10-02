@@ -9,6 +9,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
@@ -16,6 +18,7 @@ import io.github.brrenat.seekervault.WalletHandoffScreen
 import io.github.brrenat.seekervault.designsystem.HistoryDetailCallbacks
 import io.github.brrenat.seekervault.designsystem.HistoryDetailResponse
 import io.github.brrenat.seekervault.designsystem.HistoryDetailScreen
+import io.github.brrenat.seekervault.designsystem.ReviewSheetTags
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.history.HistoryDetailClock
 import io.github.brrenat.seekervault.history.signalHistoryDetail
@@ -323,18 +326,16 @@ class AttributionScreensTest {
                 ZoneId.of("UTC"),
                 Locale.US,
             )
-        assertEquals(
-            "Jupiter Prediction",
-            sheet.factRows.single { it.label == "Prediction market" }.value,
-        )
-        val blocks = sheet.infoBlocks.joinToString("\n") { it.body }
+        // The required name stays in view on the sub-line; the rest is one tap away (SEE-180).
+        assertTrue(sheet.subline, sheet.subline.startsWith(PREDICTION_VENUE_NAME))
+        val facts = sheet.factRows + sheet.sections.flatMap { it.factRows }
+        assertEquals("Jupiter Prediction", facts.single { it.label == "Prediction market" }.value)
+        val blocks = sheet.sections.flatMap { it.infoBlocks }.joinToString("\n") { it.body }
         assertTrue(blocks.contains("Solana mainnet, with real funds"))
         assertTrue(blocks.contains("United States and South Korea"))
         assertTrue(blocks.contains("cannot be cancelled for a refund"))
         assertTrue(blocks.contains("SAC adds no fee"))
-        assertTrue(
-            sheet.factRows.any { it.link == "https://developers.jup.ag/docs/legal/terms-of-use" }
-        )
+        assertTrue(facts.any { it.link == "https://developers.jup.ag/docs/legal/terms-of-use" })
 
         show {
             PredictionReviewScreen(
@@ -352,6 +353,10 @@ class AttributionScreensTest {
                 onOpenLink = { _, _ -> },
             )
         }
+        compose
+            .onNodeWithTag(ReviewSheetTags.section(PredictionReviewSections.PROVIDER))
+            .performScrollTo()
+            .performClick()
         present(PREDICTION_VENUE_NAME)
         capture("prediction-review-attribution")
     }

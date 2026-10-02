@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -11,6 +14,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +23,8 @@ import io.github.brrenat.seekervault.designsystem.NetworkChipNetwork
 import io.github.brrenat.seekervault.designsystem.OwnerInputCardState
 import io.github.brrenat.seekervault.designsystem.ReviewSheetHeaderChip
 import io.github.brrenat.seekervault.designsystem.ReviewSheetState
+import io.github.brrenat.seekervault.designsystem.ReviewSheetTags
+import io.github.brrenat.seekervault.designsystem.ScopeChipSource
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.jupiter.EVENT_ID
@@ -32,6 +38,8 @@ import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFact
+import io.github.brrenat.seekervault.plugins.PluginFailureCodes
+import io.github.brrenat.seekervault.plugins.PluginFinding
 import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.PreparedOperation
 import io.github.brrenat.seekervault.plugins.actions.ActionPayload
@@ -41,13 +49,21 @@ import io.github.brrenat.seekervault.plugins.actions.PredictionPayloadResult
 import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
 import io.github.brrenat.seekervault.plugins.actions.predictionBuyInputs
 import io.github.brrenat.seekervault.plugins.actions.predictionPayloadFrom
+import io.github.brrenat.seekervault.policy.Allowlist
+import io.github.brrenat.seekervault.policy.GlobalPolicy
 import io.github.brrenat.seekervault.policy.PolicyAction
+import io.github.brrenat.seekervault.policy.PolicyAsset
 import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.policy.RequestFacts
+import io.github.brrenat.seekervault.policy.evaluate
 import io.github.brrenat.seekervault.policy.noPolicy
+import io.github.brrenat.seekervault.policy.resolveEffectivePolicy
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.proposal
+import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.reviews.ReviewVerdict
+import io.github.brrenat.seekervault.reviews.reviewVerdict
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
@@ -116,6 +132,9 @@ class PredictionReviewTest {
         environment: PluginEnvironment = PluginEnvironment.Production,
         assessment: RequestAssessment? = noRules(),
         acknowledged: Boolean = false,
+        failure: OperationFailure? = null,
+        preparing: Boolean = false,
+        inspection: ActionInspection? = if (prepared) inspection() else null,
     ): OperationReview =
         OperationReview(
             connectionId = CONNECTION,
@@ -143,9 +162,11 @@ class PredictionReviewTest {
                         expiresAtEpochSeconds,
                     )
                 else null,
-            inspection = if (prepared) inspection() else null,
+            inspection = inspection,
             assessment = assessment,
             acknowledged = acknowledged,
+            failure = failure,
+            preparing = preparing,
         )
 
     private fun inspection() =
@@ -233,36 +254,39 @@ class PredictionReviewTest {
     @Test
     fun theSublineAndTheNoteSayTimesInLocalTimeAndNeverAsIso() {
         val state = sheet()
-        // Whichever space the platform's pattern puts before AM/PM, the words are these.
+        // Whichever space the platform's pattern puts before AM/PM, the words are these. The
+        // market's identifier is metadata, kept with the technical details (SEE-180).
         assertEquals(
-            "Jupiter Prediction, market $MARKET_ID, closing Oct 2, 10:05 PM. " +
-                "The side and the stake are yours.",
+            "Jupiter Prediction · closes Oct 2, 10:05 PM",
             state.subline.replace('\u202F', ' '),
         )
-        val note = checkNotNull(state.note).body
-        assertFalse(note, Regex("""\d{4}-\d{2}-\d{2}T""").containsMatchIn(note))
-        assertTrue(note, note.replace('\u202F', ' ').contains("closing Oct 2, 10:05 PM."))
-        assertEquals("The publisher’s note · not verified", state.note?.label)
+        assertFalse(state.subline.contains(MARKET_ID))
+        val note = checkNotNull(state.section(PredictionReviewSections.ABOUT).note)
+        assertFalse(note.body, Regex("""\d{4}-\d{2}-\d{2}T""").containsMatchIn(note.body))
+        assertTrue(note.body, note.body.replace('\u202F', ' ').contains("closing Oct 2, 10:05 PM."))
+        assertEquals("The publisher’s note · not verified", note.label)
         assertEquals("Oct 2, 2026, 10:05 PM", state.expiry.replace('\u202F', ' '))
     }
 
     @Test
     fun noLabelIsASnakeCaseKeyAndNoAmountIsInBaseUnits() {
         val state = sheet(review(choice = chosen, prepared = true))
-        val labels = state.factRows.map { it.label } + state.terms!!.rows.map { it.label }
+        val facts = state.allFacts()
+        val labels = facts.map { it.label } + state.terms!!.rows.map { it.label }
         labels.forEach { assertFalse(it, it.contains('_')) }
-        val values = state.factRows.map { it.value } + state.terms!!.rows.map { it.value }
+        val values = facts.map { it.value } + state.terms!!.rows.map { it.value }
         assertFalse(values.toString(), "5000000" in values)
-        assertEquals("5 USDC", state.factRows.single { it.label == "Least deposit" }.value)
-        assertEquals("Polymarket", state.factRows.single { it.label == "Provider" }.value)
-        assertEquals("prediction.buy", state.factRows.single { it.label == "Action" }.value)
-        assertEquals(EVENT_ID, state.factRows.single { it.label == "Event" }.value)
-        assertEquals("6", state.factRows.single { it.label == "Asset decimals" }.value)
+        assertEquals("5 USDC", facts.single { it.label == "Least deposit" }.value)
+        // The market's own source, named as that rather than as the provider (SEE-180).
+        assertEquals("Polymarket", facts.single { it.label == "Market source" }.value)
+        assertEquals("prediction.buy", facts.single { it.label == "Action" }.value)
+        assertEquals(EVENT_ID, facts.single { it.label == "Event" }.value)
+        assertEquals("6", facts.single { it.label == "Asset decimals" }.value)
         // The market appears once, although the transaction names it again as a reference.
-        assertEquals(1, state.factRows.count { it.value == MARKET_ID })
+        assertEquals(1, facts.count { it.value == MARKET_ID })
         // Two roles, one account: both are shown.
-        assertEquals(ORDER.middle(), state.factRows.single { it.label == "Received by" }.value)
-        assertEquals(ORDER.middle(), state.factRows.single { it.label == "Order account" }.value)
+        assertEquals(ORDER.middle(), facts.single { it.label == "Received by" }.value)
+        assertEquals(ORDER.middle(), facts.single { it.label == "Order account" }.value)
     }
 
     @Test
@@ -278,12 +302,13 @@ class PredictionReviewTest {
     fun beforeAQuoteTheTermsCardSaysWhatOneWillShow() {
         val terms = sheet().terms!!
         assertTrue(terms.rows.isEmpty())
-        assertTrue(terms.emptyText!!.startsWith("Choose a side and a stake"))
+        assertEquals("Choose a side and an amount to get a quote.", terms.emptyText)
+        assertEquals("Quote", terms.title)
     }
 
     @Test
     fun addressesAreMonoAndCutAtTheMiddleAndTheIdentifiersCopyInFull() {
-        val facts = sheet(review(choice = chosen, prepared = true)).factRows
+        val facts = sheet(review(choice = chosen, prepared = true)).allFacts()
         val mint = facts.single { it.label == "Asset mint" }
         assertEquals(USDC_MINT.take(8) + "…" + USDC_MINT.takeLast(8), mint.value)
         assertEquals(FactRowValueStyle.Mono, mint.valueStyle)
@@ -303,8 +328,8 @@ class PredictionReviewTest {
     @Test
     fun noRulesIsAWarningThatNamesItsRuleAndAsksForTheTick() {
         val state = sheet(review(choice = chosen, prepared = true))
-        assertEquals("Outside rules · no rules set", state.verdict.heading)
-        val warning = state.verdict.warnings.single()
+        assertEquals("Outside rules · no rules set", state.verdict?.heading)
+        val warning = state.verdict!!.warnings.single()
         assertEquals(
             "This connection has no transaction rules yet. You are approving this request manually.",
             warning.message,
@@ -332,8 +357,8 @@ class PredictionReviewTest {
         val everything =
             listOf(live, sandbox).flatMap { state ->
                 listOf(state.title, state.headline, state.subline, state.footerCaption) +
-                    state.factRows.map { it.label } +
-                    state.infoBlocks.map { it.body }
+                    state.allFacts().map { it.label } +
+                    state.sections.flatMap { section -> section.infoBlocks.map { it.body } }
             }
         everything.forEach { assertFalse(it, it.contains("swap", ignoreCase = true)) }
     }
@@ -433,6 +458,339 @@ class PredictionReviewTest {
             ),
             used,
         )
+    }
+
+    // SEE-180: preparation and verification states.
+
+    private fun ReviewSheetState.allFacts() = factRows + sections.flatMap { it.factRows }
+
+    private fun ReviewSheetState.section(key: String) = sections.single { it.key == key }
+
+    /** The owner's one global rule: predictions are an allowed action. */
+    private fun globalRule(
+        facts: RequestFacts,
+        actions: Set<PolicyAction> = setOf(PolicyAction.Prediction),
+    ): RequestAssessment {
+        val policy =
+            resolveEffectivePolicy(
+                CONNECTION,
+                GlobalPolicy(actions = Allowlist(actions), updatedAt = now),
+                null,
+            )
+        return RequestAssessment(decision = evaluate(policy, facts), facts = facts, at = now)
+    }
+
+    private val unread =
+        RequestFacts.unread(CONNECTION, PolicyAction.Prediction, PREDICTION_PROPOSAL)
+
+    private fun readFacts(fullyRead: Boolean = true) =
+        RequestFacts(
+            connectionId = CONNECTION,
+            requestId = PREDICTION_PROPOSAL,
+            wallet = PAYER,
+            action = PolicyAction.Prediction,
+            movesValue = true,
+            asset = PolicyAsset(Network.NETWORK_MAINNET, USDC_MINT),
+            recipient = ORDER,
+            programs = emptyList(),
+            amount = 5_000_000UL,
+            decimals = 6,
+            fullyRead = fullyRead,
+            preparedVersion = 1,
+        )
+
+    private val insufficient =
+        OperationFailure(
+            PluginFailureCodes.INSUFFICIENT_FUNDS,
+            io.github.brrenat.seekervault.R.string.jupiter_failure_insufficient_funds,
+            "Insufficient funds",
+        )
+
+    /** Bytes with an instruction this phone does not read. */
+    private fun unreadable() =
+        inspection()
+            .copy(
+                verdict = Verdict.Unverified,
+                findings =
+                    listOf(
+                        PluginFinding(
+                            "unrecognized_instruction",
+                            io.github.brrenat.seekervault.R.string.jupiter_finding_unrecognized,
+                            invalidates = false,
+                        )
+                    ),
+            )
+
+    @Test
+    fun beforeAnythingIsPreparedThereIsNoVerificationWarningNoRuleChipAndNoTick() {
+        val assessment = globalRule(unread)
+        // The evaluation itself stays conservative: it is not allowed, for want of a transaction.
+        assertEquals(PolicyReason.RequestUnverified, assessment.decision.reason)
+        // Read for the card and for the tile alike, that is not a warning yet.
+        assertEquals(ReviewVerdict.Pending, assessment.decision.reviewVerdict(prepared = false))
+
+        for (choice in listOf(ParameterChoice(emptyMap()), chosen)) {
+            val state = sheet(review(choice = choice, assessment = assessment))
+            assertNull(state.verdict)
+            assertNull(state.confirmationCheckbox)
+            assertFalse(state.primaryAction.enabled)
+            assertNull(state.preparationError)
+        }
+        val initial = sheet(review(assessment = assessment))
+        assertEquals("Choose a side and an amount to get a quote.", initial.terms?.emptyText)
+        assertEquals(
+            "Daily limits not set · transaction checked once prepared",
+            initial.section(PredictionReviewSections.CHECKS).summary,
+        )
+        // Nothing claims a read that has not happened.
+        assertTrue(
+            initial.section(PredictionReviewSections.CHECKS).infoBlocks.any {
+                it.body.startsWith("When you get a quote")
+            }
+        )
+    }
+
+    @Test
+    fun aGenuineRuleWarningIsShownBeforePreparingUnderItsOwnSourceWithoutATick() {
+        // Predictions are not on the owner's global allowlist: that is known without any bytes.
+        val assessment = globalRule(unread, actions = setOf(PolicyAction.Swap))
+        val before = sheet(review(choice = chosen, assessment = assessment))
+        val warning = before.verdict!!.warnings.single()
+        assertEquals("Global rule", warning.sourceLabel)
+        assertEquals(ScopeChipSource.Global, warning.source)
+        assertNull(before.confirmationCheckbox)
+
+        // Prepared and read in full, the same warning asks for the tick, still as the global rule.
+        val after =
+            sheet(
+                review(
+                    choice = chosen,
+                    prepared = true,
+                    assessment = globalRule(readFacts(), actions = setOf(PolicyAction.Swap)),
+                )
+            )
+        assertEquals(listOf("Global rule"), after.verdict!!.warnings.map { it.sourceLabel })
+        assertEquals(
+            "I have read the warning and want to approve anyway",
+            after.confirmationCheckbox,
+        )
+    }
+
+    @Test
+    fun insufficientFundsIsOneErrorThatKeepsTheInputsAndOffersToTryAgain() {
+        val state =
+            sheet(review(choice = chosen, failure = insufficient, assessment = globalRule(unread)))
+        val error = checkNotNull(state.preparationError)
+        assertEquals("Insufficient funds", error.title)
+        assertEquals(
+            "Could not prepare the 5 USDC order. The provider reported insufficient funds.",
+            error.message,
+        )
+        assertEquals("Try again", error.actionLabel)
+        assertEquals("5 USDC on Yes", state.yourPart?.summary)
+        // No synthetic verification warning, no rule chip, no tick, no stale placeholder.
+        assertNull(state.verdict)
+        assertNull(state.confirmationCheckbox)
+        assertNull(state.terms)
+        assertFalse(state.primaryAction.enabled)
+        assertTrue(state.statusBlocks.isEmpty())
+        // What the provider said, in full, under the technical details.
+        val technical = state.section(PredictionReviewSections.TECHNICAL).factRows
+        assertEquals(
+            "Insufficient funds",
+            technical.single { it.label == "The provider said" }.value,
+        )
+        assertEquals(
+            PluginFailureCodes.INSUFFICIENT_FUNDS,
+            technical.single { it.label == "Preparation error" }.value,
+        )
+    }
+
+    @Test
+    fun anOtherRefusalIsSaidInTheProvidersOwnExplanation() {
+        val state =
+            sheet(
+                review(
+                    choice = chosen,
+                    failure =
+                        OperationFailure(
+                            "market_closed",
+                            io.github.brrenat.seekervault.R.string.jupiter_failure_market_closed,
+                        ),
+                )
+            )
+        assertEquals("Nothing was prepared", state.preparationError?.title)
+        assertEquals(
+            context.getString(io.github.brrenat.seekervault.R.string.jupiter_failure_market_closed),
+            state.preparationError?.message,
+        )
+    }
+
+    @Test
+    fun preparingSaysSoAndApprovalWaits() {
+        val state = sheet(review(choice = chosen, preparing = true))
+        assertEquals("Getting a quote and checking the transaction…", state.terms?.emptyText)
+        assertFalse(state.primaryAction.enabled)
+        assertNull(state.confirmationCheckbox)
+    }
+
+    @Test
+    fun chosenInputsWithNothingPreparedAskForAQuoteRatherThanForAChoice() {
+        // What a wallet change or a cleared preparation leaves: inputs, and no bytes for them.
+        val state = sheet(review(choice = chosen))
+        assertEquals("Get quote", state.staleQuote?.actionLabel)
+        assertTrue(state.staleQuote!!.message.contains("5 USDC on Yes"))
+        assertNull(state.terms)
+        assertFalse(state.primaryAction.enabled)
+    }
+
+    @Test
+    fun aPreparedTransactionReadInFullIsWithinTheRulesAndNeedsNoTick() {
+        val state =
+            sheet(review(choice = chosen, prepared = true, assessment = globalRule(readFacts())))
+        assertEquals(emptyList<Any>(), state.verdict?.warnings)
+        assertNull(state.confirmationCheckbox)
+        assertTrue(state.primaryAction.enabled)
+        assertEquals(
+            "Daily limits not set · transaction read in full",
+            state.section(PredictionReviewSections.CHECKS).summary,
+        )
+        // The quote is concise; the supporting figures are technical details.
+        val quote = state.terms!!.rows.map { it.label }
+        assertTrue(quote.toString(), "You spend" in quote && "This order costs" in quote)
+    }
+
+    @Test
+    fun anUnreadableTransactionIsABlockerFromTheTransactionCheckThatNoTickGetsPast() {
+        val state =
+            sheet(
+                review(
+                    choice = chosen,
+                    prepared = true,
+                    inspection = unreadable(),
+                    assessment = globalRule(readFacts(fullyRead = false)),
+                    acknowledged = true,
+                )
+            )
+        assertEquals("This transaction can’t be approved", state.preparationError?.title)
+        assertEquals(
+            "This transaction contains an instruction this phone does not read.",
+            state.preparationError?.message,
+        )
+        assertFalse(state.primaryAction.enabled)
+        assertNull(state.confirmationCheckbox)
+        // The finding is the phone's own reading, never a rule the owner wrote.
+        val warning = state.verdict!!.warnings.single()
+        assertTrue(warning.message.startsWith("This phone could not account for the whole"))
+        assertEquals("Transaction check", warning.sourceLabel)
+        assertEquals(ScopeChipSource.Verification, warning.source)
+        assertEquals(
+            "Daily limits not set · transaction not read in full",
+            state.section(PredictionReviewSections.CHECKS).summary,
+        )
+    }
+
+    @Test
+    fun theReviewIsFourCollapsedSectionsAndEverythingMovedIsStillThere() {
+        val state = sheet(review(choice = chosen, prepared = true))
+        assertEquals(
+            listOf(
+                "Limits and checks",
+                "About this order and risks",
+                "Jupiter and terms",
+                "Technical details",
+            ),
+            state.sections.map { it.title },
+        )
+        // Only the wallet is a loose row; the long list of cards and identifiers is gone.
+        assertEquals(listOf("Wallet · paid and signed by"), state.factRows.map { it.label })
+        assertTrue(state.infoBlocks.isEmpty())
+        assertNull(state.dailySpend)
+        assertNull(state.note)
+        val technical = state.section(PredictionReviewSections.TECHNICAL).factRows
+        assertEquals(USDC_MINT, technical.single { it.label == "Asset mint" }.copyValue)
+        assertEquals(MARKET_ID, technical.single { it.label == "Market" }.copyValue)
+        assertEquals(
+            "From",
+            state.section(PredictionReviewSections.PROVIDER).factRows.first().label,
+        )
+    }
+
+    @Test
+    fun aSectionOpensInPlaceSaysItIsOpenAndStaysOpenAcrossAQuoteUpdate() {
+        var current by mutableStateOf(review(choice = chosen, preparing = true))
+        compose.setContent {
+            SeekerTheme(darkTheme = true) {
+                PredictionReviewScreen(
+                    review = current,
+                    source = PredictionReviewSource("CopyTrading"),
+                    wallet = wallet,
+                    now = now,
+                    onOwnerInput = {},
+                    onPrepare = {},
+                    onApprove = {},
+                    onDismiss = {},
+                    onAcknowledge = {},
+                    onRules = {},
+                    onBack = {},
+                    onOpenLink = { _, _ -> },
+                )
+            }
+        }
+        val technical = ReviewSheetTags.section(PredictionReviewSections.TECHNICAL)
+        compose.onNodeWithText("Asset mint").assertDoesNotExist()
+        compose
+            .onNodeWithTag(technical)
+            .performScrollTo()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
+            .performClick()
+        compose
+            .onNodeWithTag(technical)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
+        compose.onNodeWithText("Asset mint").assertExists()
+
+        // The quote arrives: the sheet recomposes and the section is still open.
+        current = review(choice = chosen, prepared = true)
+        compose.waitForIdle()
+        compose.onNodeWithText("Asset mint").assertExists()
+    }
+
+    @Test
+    fun tryingAgainAfterAFailurePreparesAgain() {
+        var prepares = 0
+        compose.setContent {
+            SeekerTheme(darkTheme = true) {
+                PredictionReviewScreen(
+                    review = review(choice = chosen, failure = insufficient),
+                    source = PredictionReviewSource("CopyTrading"),
+                    wallet = wallet,
+                    now = now,
+                    onOwnerInput = {},
+                    onPrepare = { prepares++ },
+                    onApprove = {},
+                    onDismiss = {},
+                    onAcknowledge = {},
+                    onRules = {},
+                    onBack = {},
+                    onOpenLink = { _, _ -> },
+                )
+            }
+        }
+        compose.onNodeWithText("Insufficient funds").assertIsDisplayed()
+        compose.onNodeWithText("I have read the warning", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Approve and trade").assertIsNotEnabled()
+        compose.onNodeWithText("Try again").performScrollTo().performClick()
+        assertEquals(1, prepares)
+    }
+
+    @Test
+    fun theMinimumIsSaidNextToTheAmount() {
+        compose.setContent {
+            SeekerTheme(darkTheme = true) {
+                PredictionParametersSheet(review = review(), onUse = {}, onClose = {})
+            }
+        }
+        compose.onNodeWithText("Minimum 5 USDC", substring = true).assertIsDisplayed()
     }
 
     private companion object {

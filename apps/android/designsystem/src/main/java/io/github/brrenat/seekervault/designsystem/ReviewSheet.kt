@@ -1,12 +1,14 @@
 package io.github.brrenat.seekervault.designsystem
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.RssFeed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -23,13 +27,18 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -118,10 +127,41 @@ data class ReviewSheetTerms(
     val rows: List<TermsCardRow>,
     val emptyText: String? = null,
     val kind: TermsCardKind = TermsCardKind.Swap,
+    /** Replaces the card's own heading. */
+    val title: String? = null,
 )
 
 /** A quote that is no longer current, and the action that fetches a fresh one. */
 data class ReviewSheetStaleQuote(val message: String, val actionLabel: String)
+
+/**
+ * Nothing could be prepared, or what was prepared cannot be approved: what happened, said once, and
+ * the action that prepares again with the same inputs (SEE-180). It takes the place of the quote.
+ */
+data class ReviewSheetPreparationError(
+    val title: String,
+    val message: String,
+    /** Null when trying again could not help, e.g. before anything is chosen. */
+    val actionLabel: String? = null,
+)
+
+/**
+ * One collapsed row of supporting detail, opened in place (SEE-180).
+ *
+ * [summary] is what the row says while closed, so the essentials of what is inside stay readable
+ * without opening it. A section never holds the only mention of a blocking or material warning:
+ * those stay on the verdict card or a status block, outside every section. [key] keeps a section's
+ * open or closed state across recompositions and quote updates.
+ */
+data class ReviewSheetSection(
+    val key: String,
+    val title: String,
+    val summary: String? = null,
+    val dailySpend: ReviewSheetDailySpend? = null,
+    val infoBlocks: List<ReviewSheetInfoBlock> = emptyList(),
+    val note: ReviewSheetNote? = null,
+    val factRows: List<ReviewSheetFactRow> = emptyList(),
+)
 
 data class ReviewSheetNote(val label: String, val body: String)
 
@@ -138,7 +178,8 @@ data class ReviewSheetState(
     val headerChips: List<ReviewSheetHeaderChip>,
     val sandboxNotice: String? = null,
     val yourPart: ReviewSheetYourPart? = null,
-    val verdict: ReviewSheetVerdict,
+    /** Null leaves the verdict card out, e.g. before there is a transaction to judge (SEE-180). */
+    val verdict: ReviewSheetVerdict?,
     val dailySpend: ReviewSheetDailySpend? = null,
     val infoBlocks: List<ReviewSheetInfoBlock> = emptyList(),
     val factRows: List<ReviewSheetFactRow> = emptyList(),
@@ -157,6 +198,9 @@ data class ReviewSheetState(
     val confirmationChecked: Boolean? = null,
     /** False hides the decision footer entirely, for a request that can no longer be acted on. */
     val actionsShown: Boolean = true,
+    val preparationError: ReviewSheetPreparationError? = null,
+    /** Collapsed detail rows, after everything above and before the expiry line. */
+    val sections: List<ReviewSheetSection> = emptyList(),
 )
 
 /**
@@ -179,10 +223,9 @@ fun ReviewSheet(
     onConfirmedChange: (Boolean) -> Unit = {},
     onRefreshQuote: () -> Unit = {},
 ) {
-    val hasWarnings = state.verdict.warnings.isNotEmpty()
-    require(!hasWarnings || state.confirmationCheckbox != null) {
-        "A warning verdict needs confirmation copy"
-    }
+    // A warning does not always come with a tick to go past it: one that blocks approval, or one
+    // shown before there is anything to approve, is read and not consented to (SEE-180).
+    val hasWarnings = state.verdict?.warnings?.isNotEmpty() == true
     val requiresConfirmation = state.confirmationCheckbox != null
     var confirmedHere by
         rememberSaveable(state.title, state.headline, state.confirmationCheckbox) {
@@ -233,22 +276,24 @@ fun ReviewSheet(
                         onChooseOrEdit = onChoose,
                     )
                 }
-                VerdictCard(
-                    verdict =
-                        if (hasWarnings) VerdictCardVerdict.Warning else VerdictCardVerdict.Ok,
-                    warnings =
-                        state.verdict.warnings.map {
-                            VerdictWarning(
-                                message = it.message,
-                                scopeLabel = it.sourceLabel,
-                                kind = it.kind,
-                                scope = it.source,
-                            )
-                        },
-                    onRulesClick = onRules,
-                    additionalContext = state.verdict.additionalContext,
-                    heading = state.verdict.heading,
-                )
+                state.verdict?.let { verdict ->
+                    VerdictCard(
+                        verdict =
+                            if (hasWarnings) VerdictCardVerdict.Warning else VerdictCardVerdict.Ok,
+                        warnings =
+                            verdict.warnings.map {
+                                VerdictWarning(
+                                    message = it.message,
+                                    scopeLabel = it.sourceLabel,
+                                    kind = it.kind,
+                                    scope = it.source,
+                                )
+                            },
+                        onRulesClick = onRules,
+                        additionalContext = verdict.additionalContext,
+                        heading = verdict.heading,
+                    )
+                }
                 state.staleQuote?.let {
                     NoticeCard(
                         kind = NoticeCardKind.StaleQuote,
@@ -257,22 +302,30 @@ fun ReviewSheet(
                         onAction = onRefreshQuote,
                     )
                 }
+                state.preparationError?.let {
+                    NoticeCard(
+                        kind = NoticeCardKind.PreparationFailed,
+                        title = it.title,
+                        message = it.message,
+                        actionLabel = it.actionLabel,
+                        onAction = onRefreshQuote,
+                    )
+                }
                 state.terms?.let {
-                    TermsCard(rows = it.rows, kind = it.kind, emptyText = it.emptyText)
+                    TermsCard(
+                        rows = it.rows,
+                        kind = it.kind,
+                        emptyText = it.emptyText,
+                        title = it.title,
+                    )
                 }
                 state.dailySpend?.let { ReviewSheetDailySpend(it) }
                 state.infoBlocks.forEach { ReviewSheetInfoBlock(it) }
-                state.factRows.forEach { row ->
-                    FactRow(
-                        label = row.label,
-                        value = row.value,
-                        valueStyle = row.valueStyle,
-                        onClick =
-                            row.link?.let { link -> { onOpenLink(link) } }
-                                ?: row.copyValue?.let { copy -> { onCopy(copy) } },
-                    )
-                }
+                state.factRows.forEach { ReviewSheetFactRow(it, onCopy, onOpenLink) }
                 state.note?.let { ReviewSheetNote(it) }
+                state.sections.forEach { section ->
+                    key(section.key) { ReviewSheetSection(section, onCopy, onOpenLink) }
+                }
                 Text(
                     text = "Expires ${state.expiry}.",
                     modifier = Modifier.padding(horizontal = SeekerTheme.spacing.xs),
@@ -544,6 +597,92 @@ private fun ReviewSheetInfoBlock(info: ReviewSheetInfoBlock) {
             style = MaterialTheme.typography.bodyMedium,
         )
     }
+}
+
+@Composable
+private fun ReviewSheetFactRow(
+    row: ReviewSheetFactRow,
+    onCopy: (String) -> Unit,
+    onOpenLink: (String) -> Unit,
+) {
+    FactRow(
+        label = row.label,
+        value = row.value,
+        valueStyle = row.valueStyle,
+        onClick =
+            row.link?.let { link -> { onOpenLink(link) } }
+                ?: row.copyValue?.let { copy -> { onCopy(copy) } },
+    )
+}
+
+/**
+ * A collapsed row that opens in place, drawn with the rules sheet's own expandable intro: the same
+ * surface, radius, padding and chevron, so the review gains no new visual language (SEE-180). It is
+ * a button for accessibility services, says whether it is open, and is at least a touch target
+ * tall.
+ */
+@Composable
+private fun ReviewSheetSection(
+    section: ReviewSheetSection,
+    onCopy: (String) -> Unit,
+    onOpenLink: (String) -> Unit,
+) {
+    var expanded by rememberSaveable(section.key) { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg)) {
+        Row(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .testTag(ReviewSheetTags.section(section.key))
+                    .heightIn(min = SeekerTheme.spacing.huge * ReviewSheetHeaderHeightUnits)
+                    .clip(RoundedCornerShape(SeekerTheme.radii.lg))
+                    .background(SeekerTheme.colors.surface1)
+                    .clickable(role = Role.Button) { expanded = !expanded }
+                    .semantics {
+                        stateDescription = if (expanded) "Expanded" else "Collapsed"
+                    }
+                    .padding(
+                        horizontal = SeekerTheme.spacing.xl,
+                        vertical = SeekerTheme.spacing.lgPlus,
+                    ),
+            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xxs),
+            ) {
+                Text(
+                    text = section.title,
+                    style =
+                        MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                )
+                section.summary?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            Icon(
+                imageVector =
+                    if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (expanded) {
+            section.dailySpend?.let { ReviewSheetDailySpend(it) }
+            section.infoBlocks.forEach { ReviewSheetInfoBlock(it) }
+            section.note?.let { ReviewSheetNote(it) }
+            section.factRows.forEach { ReviewSheetFactRow(it, onCopy, onOpenLink) }
+        }
+    }
+}
+
+/** Test tags the review sheet sets on its own parts. */
+object ReviewSheetTags {
+    fun section(key: String): String = "review-sheet.section.$key"
 }
 
 @Composable

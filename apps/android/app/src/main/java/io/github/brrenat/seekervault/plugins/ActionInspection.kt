@@ -104,7 +104,16 @@ data class PluginFinding(
  * neither, which is why this is two strings and not a number with a unit — the plugin knows what it
  * read, and the app knows how to lay out a row.
  */
-data class PluginFact(@StringRes val label: Int, val value: String)
+data class PluginFact(
+    @StringRes val label: Int,
+    val value: String,
+    /**
+     * Whether this is supporting detail — an instruction count, a limit price — rather than part of
+     * what the owner decides on. A compact review keeps it under its technical details (SEE-180);
+     * it is shown either way.
+     */
+    val technical: Boolean = false,
+)
 
 /**
  * One identifier an operation's provider named, for the owner's own record ([ActionInspection]).

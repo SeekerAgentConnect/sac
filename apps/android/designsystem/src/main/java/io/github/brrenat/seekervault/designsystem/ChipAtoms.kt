@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.GppMaybe
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -285,6 +286,8 @@ enum class ScopeChipSource {
     Global,
     Connection,
     None,
+    /** This phone's own reading of the transaction, which is not a rule (SEE-180). */
+    Verification,
 }
 
 enum class ScopeChipContext {
@@ -306,6 +309,7 @@ fun ScopeChip(
                 ScopeChipSource.Global -> "Global"
                 ScopeChipSource.Connection -> "Connection override"
                 ScopeChipSource.None -> "Not configured"
+                ScopeChipSource.Verification -> "Transaction check"
             }
     val containerColor =
         if (connection) SeekerTheme.colors.limeContainer else SeekerTheme.colors.surface3
@@ -329,6 +333,7 @@ fun ScopeChip(
                         ScopeChipSource.None -> Icons.Outlined.Block
                         ScopeChipSource.Connection -> Icons.Outlined.Edit
                         ScopeChipSource.Global -> Icons.Outlined.Public
+                        ScopeChipSource.Verification -> Icons.Outlined.GppMaybe
                     },
                 contentDescription = null,
                 modifier = Modifier.size(SeekerTheme.spacing.lg),

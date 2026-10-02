@@ -169,7 +169,9 @@ fun PredictionParametersSheet(
                     },
                 amountLabel = deposit?.let { resources.getString(it.label) }.orEmpty(),
                 amount = typed,
-                amountHelp = resources.getString(R.string.prediction_params_help),
+                amountHelp =
+                    depositKind?.let { boundsHelp(it, terms, resources) }
+                        ?: resources.getString(R.string.prediction_params_help),
                 amountError = error,
                 note = resources.getString(R.string.prediction_params_note),
                 useLabel = resources.getString(R.string.prediction_params_use),
@@ -223,6 +225,27 @@ fun PredictionParametersSheet(
         focusAmount = true,
         modifier = modifier.testTag(PredictionReviewTags.PARAMS),
     )
+}
+
+/**
+ * The market's bounds next to the amount, before anything is typed (SEE-180): "Minimum 5 USDC", or
+ * the range when there is a most too. Null when the market sets neither.
+ */
+private fun boundsHelp(
+    kind: ParameterKind.Amount,
+    terms: PredictionPayload?,
+    resources: android.content.res.Resources,
+): String? {
+    val unit = terms?.depositUnit().orEmpty()
+    fun said(baseUnits: ULong) = "${formatBaseUnits(baseUnits, kind.decimals)} $unit".trim()
+    val most = kind.most
+    return when {
+        most != null ->
+            resources.getString(R.string.prediction_params_help_range, said(kind.least), said(most))
+        kind.least > 0UL ->
+            resources.getString(R.string.prediction_params_help_least, said(kind.least))
+        else -> null
+    }
 }
 
 /** The market's own bounds, said in the asset's units; null when [amount] is within them. */

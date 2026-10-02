@@ -73,15 +73,18 @@ fun TermsCard(
     modifier: Modifier = Modifier,
     /** Shown in place of the rows while there is no quote yet. */
     emptyText: String? = null,
+    /** Replaces the kind's own heading, e.g. a plain "Quote" on the compact review (SEE-180). */
+    title: String? = null,
 ) {
     val heading =
-        when (kind) {
-            TermsCardKind.Swap,
-            TermsCardKind.Prediction ->
-                when (state) {
-                    TermsCardState.Quoted -> "The whole operation, quoted here"
-                }
-        }
+        title
+            ?: when (kind) {
+                TermsCardKind.Swap,
+                TermsCardKind.Prediction ->
+                    when (state) {
+                        TermsCardState.Quoted -> "The whole operation, quoted here"
+                    }
+            }
     Column(
         modifier =
             modifier

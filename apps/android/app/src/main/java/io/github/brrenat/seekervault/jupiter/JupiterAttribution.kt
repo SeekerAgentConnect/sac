@@ -5,6 +5,7 @@ import io.github.brrenat.seekervault.plugins.PluginDestination
 import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.ProviderAbout
 import io.github.brrenat.seekervault.plugins.ProviderNote
+import io.github.brrenat.seekervault.plugins.ProviderNoteTopic
 import io.github.brrenat.seekervault.plugins.ReceiptKey
 import io.github.brrenat.seekervault.plugins.ServiceFeeStatus
 
@@ -75,7 +76,10 @@ internal val PREDICTION_ABOUT: ProviderAbout =
                 ProviderNote(R.string.jupiter_about_prediction_mainnet),
                 ProviderNote(R.string.jupiter_about_prediction_fees),
                 ProviderNote(R.string.jupiter_about_prediction_region),
-                ProviderNote(R.string.jupiter_about_prediction_lifecycle),
+                ProviderNote(
+                    R.string.jupiter_about_prediction_lifecycle,
+                    topic = ProviderNoteTopic.Order,
+                ),
                 ProviderNote(R.string.jupiter_about_not_endorsed),
             ),
         links =
