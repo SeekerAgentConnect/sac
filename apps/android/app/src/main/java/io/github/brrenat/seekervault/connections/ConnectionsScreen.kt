@@ -425,9 +425,9 @@ private fun PendingItem.toHomeCarouselItem(
     val capability = request.action.capabilityId
     val source = sourceName ?: request.identity.sourceId
     // A signal's tile says what its review's verdict card says, read the same way: the warnings it
-    // lists, or "Outside rules" when no rules apply at all (SEE-158). A tile is a signal nobody
-    // has prepared an order for, so it reads the verdict the way the sheet does before a quote:
-    // the absence of a transaction is not a warning (SEE-180).
+    // lists (SEE-158). A tile is a signal nobody has prepared an order for, so it reads the verdict
+    // the way the sheet does before a quote: the absence of a transaction is not a warning
+    // (SEE-180).
     val signalVerdict =
         if (this is PendingItem.Signal) assessment?.decision?.reviewVerdict(prepared = false)
         else null
@@ -437,12 +437,15 @@ private fun PendingItem.toHomeCarouselItem(
                 (signalVerdict as? ReviewVerdict.Warnings)?.warnings?.size ?: 0
             else -> assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1) ?: 0
         }
-    val outsideRules = signalVerdict == ReviewVerdict.NoRules
-    // Not yet assessed, or nothing to assess until an order is prepared: the tile claims no
-    // verdict, where an empty warning count alone would read as "In rules".
-    val rulesPending =
-        this is PendingItem.Signal &&
-            (signalVerdict == null || signalVerdict == ReviewVerdict.Pending)
+    // "In rules" only when configured checks actually passed (SEE-181). Not yet assessed, nothing
+    // to assess until an order is prepared, or no rules at all: the tile claims no verdict, where
+    // an
+    // empty warning count alone would read as "In rules".
+    val unchecked =
+        when (this) {
+            is PendingItem.Signal -> signalVerdict !is ReviewVerdict.Within
+            else -> assessment?.decision?.allowed != true
+        }
     val kind =
         when (capability) {
             HomeCapability.Acknowledgement -> RequestTileKind.Acknowledgement
@@ -463,6 +466,7 @@ private fun PendingItem.toHomeCarouselItem(
                         sourceName = source,
                         supportingText = "$source asks",
                         warningCount = warnings,
+                        unchecked = unchecked,
                         sourceColour = sourceColour,
                     )
                 RequestTileKind.PredictionSignal ->
@@ -473,10 +477,9 @@ private fun PendingItem.toHomeCarouselItem(
                         // description is theirs, and it is shown in the review as their note.
                         supportingText = "$source · ${HomeCopy.Prediction}",
                         warningCount = warnings,
+                        unchecked = unchecked,
                         footerText = request.parameter("provider")?.providerName() ?: source,
                         sourceColour = sourceColour,
-                        outsideRules = outsideRules,
-                        rulesPending = rulesPending,
                     )
                 RequestTileKind.SwapSignal ->
                     RequestTileModel(
@@ -484,9 +487,8 @@ private fun PendingItem.toHomeCarouselItem(
                         sourceName = source,
                         supportingText = request.presentation.description,
                         warningCount = warnings,
+                        unchecked = unchecked,
                         sourceColour = sourceColour,
-                        outsideRules = outsideRules,
-                        rulesPending = rulesPending,
                     )
                 RequestTileKind.SignatureRequest ->
                     RequestTileModel(
@@ -495,6 +497,7 @@ private fun PendingItem.toHomeCarouselItem(
                         supportingText = request.parameter("text") ?: HomeCopy.MessageBytes,
                         sourceColour = sourceColour,
                         warningCount = warnings,
+                        unchecked = unchecked,
                         signatureByteCount = request.messageByteCount(),
                     )
                 RequestTileKind.Transfer -> {
@@ -506,6 +509,7 @@ private fun PendingItem.toHomeCarouselItem(
                             request.parameter("recipient")?.let { "to ${it.homeShortAddress()}" }
                                 ?: HomeCopy.RecipientUnavailable,
                         warningCount = warnings,
+                        unchecked = unchecked,
                         assetSymbol = amountAndAsset.second,
                         sourceColour = sourceColour,
                     )

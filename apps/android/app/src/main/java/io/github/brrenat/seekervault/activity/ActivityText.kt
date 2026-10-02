@@ -11,6 +11,7 @@ import io.github.brrenat.seekervault.confirmations.ChainState
 import io.github.brrenat.seekervault.connections.formatInstant
 import io.github.brrenat.seekervault.policy.DailyCheckScope
 import io.github.brrenat.seekervault.policy.PolicyCheckStatus
+import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.policy.RuleSource
 import io.github.brrenat.seekervault.policy.assessmentOf
 import io.github.brrenat.seekervault.policy.assessmentText
@@ -151,7 +152,13 @@ fun operationText(record: ActivityRecord): String {
 fun policyText(policy: ReviewedPolicy): String {
     val assessment =
         assessmentOf(policy.assessment) ?: return stringResource(R.string.activity_policy_unknown)
-    val verdict = stringResource(assessmentText(assessment))
+    // No rules is said as what it is — nothing was checked — and not as "outside" them (SEE-181).
+    val verdict =
+        if (PolicyReason.NoPolicyConfigured.code in policy.reasons) {
+            stringResource(R.string.policy_verdict_no_rules)
+        } else {
+            stringResource(assessmentText(assessment))
+        }
     val lines = mutableListOf<String>()
     lines +=
         if (policy.approvedAnyway) stringResource(R.string.activity_policy_anyway, verdict)

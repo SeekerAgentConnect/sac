@@ -235,9 +235,9 @@
     <string name="transfer_technical_rent_lamports">Estimated account rent in lamports</string>
     <string name="transfer_technical_confirmation_source">Network confirmation source</string>
     <string name="transfer_technical_network_result">Network result</string>
-    <string name="transfer_rules_no_policy_title">This transaction is outside your rules</string>
+    <string name="transfer_rules_outside_title">This transaction is outside your rules</string>
     <string name="transfer_rules_no_policy_detail">This connection has no transaction rules yet. You are approving this request manually.</string>
-    <string name="transfer_rules_no_policy_secondary">Set rules to automatically check allowed actions, recipients, assets, programs, and spending limits.</string>
+    <string name="transfer_rules_no_policy_secondary">Rules you set flag requests that need attention: allowed actions, recipients, assets, programs and spending thresholds. They never block a request or sign it.</string>
     <string name="transfer_configure_rules">Configure rules</string>
     <string name="policy_review_heading">What your rules make of this</string>
     <string name="policy_review_pending">Reading Global and connection rules, and this phone\'s Activity…</string>

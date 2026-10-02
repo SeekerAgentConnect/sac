@@ -3,6 +3,10 @@ package io.github.brrenat.seekervault.policy
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityOutcome
 import io.github.brrenat.seekervault.activity.ActivityRecord
+import io.github.brrenat.seekervault.activity.ReviewedSpending
+import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.request.v1.StakingOperation
+import io.github.brrenat.seekervault.skr.SKR_MINT
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -62,11 +66,23 @@ enum class SpendStatus {
     NotSpent,
 }
 
-/** One movement the app handled, as the day's counters see it. */
+/**
+ * One movement the app handled, as the day's counters see it.
+ *
+ * What a record establishes about *where* the money left from decides which counters it can reach.
+ * A transfer, a stake and an operation recorded since SEE-181 name the wallet, the asset and the
+ * chain. An operation recorded before then names a wallet and a chain but not what it spent, so it
+ * may belong to any asset's counter there: [asset] is null, and so is [amount].
+ */
 data class Spend(
-    val scope: SpendScope,
     /** The connection-qualified request whose Activity record supplied this movement. */
     val request: SpendRequest,
+    /** The wallet it left; null when the record doesn't say. */
+    val wallet: String?,
+    /** The chain; null when the record doesn't say. */
+    val network: Network?,
+    /** What left, on [network]; null when the record doesn't establish it. */
+    val asset: PolicyAsset?,
     /**
      * What makes this the same movement and not another: the transaction's signature when there is
      * one, and otherwise the request it belongs to. A request prepared three times, answered,
@@ -76,10 +92,25 @@ data class Spend(
     val identity: String,
     /** When the owner answered, which is the moment the day's count puts it in. */
     val at: Instant,
-    /** Base units, or null when the record's amount didn't read back as a whole number. */
+    /** Base units, or null when the record's amount didn't read back or was never recorded. */
     val amount: ULong?,
     val status: SpendStatus,
-)
+) {
+    init {
+        require(asset == null || asset.network == network) { "an asset is on its own chain" }
+        require(asset != null || amount == null) { "an amount is an amount of something" }
+    }
+
+    /**
+     * Whether this movement may be in [scope]'s count. Known dimensions must match; an unknown one
+     * matches anything, because "this record does not say which asset" is not "not this asset".
+     */
+    fun mayBelongTo(scope: DailySpendScope): Boolean =
+        (scope !is SpendScope || request.connectionId == scope.connectionId) &&
+            (wallet == null || wallet == scope.wallet) &&
+            (network == null || network == scope.asset.network) &&
+            (asset == null || asset == scope.asset)
+}
 
 /**
  * One scope's spending on one local day: what is known to have moved, and what may have.
@@ -102,6 +133,12 @@ data class DailyTotal(
      * as more room than there is.
      */
     val unreadable: Int,
+    /**
+     * Movements today that may belong to this scope and whose records never said what they spent:
+     * operations recorded before SEE-181 (docs/policy.md#records-written-before-see-181). They make
+     * the total unknown for the same reason an unreadable amount does.
+     */
+    val uncounted: Int = 0,
 ) {
     /**
      * What the day could already come to. It is the number a threshold is warned about, and it is
@@ -112,7 +149,7 @@ data class DailyTotal(
 
     /** Whether every movement in the day read back, so the total means what it says. */
     val known: Boolean
-        get() = unreadable == 0
+        get() = unreadable == 0 && uncounted == 0
 
     companion object {
         /** Nothing counted: no movement in this scope on this day. */
@@ -132,26 +169,99 @@ internal infix fun ULong.saturatingPlus(other: ULong): ULong {
 }
 
 /**
- * The movements in [records], as the counters see them. Records that aren't transfers are left out
- * entirely: acknowledging text and signing a message move nothing.
+ * The movements in [records], as the counters see them (docs/policy.md#what-counts-as-spending).
+ *
+ * Every kind of record that can take something out of the owner's balance is read here, from its
+ * typed terms and never from display text: a transfer's reviewed terms, a stake's, and what an
+ * operation's inspected bytes were pinned to spend. Acknowledging text, signing a message,
+ * unstaking, cancelling an unstake and withdrawing move nothing out, and are left out entirely.
  */
 fun spendsOf(records: List<ActivityRecord>): List<Spend> = records.mapNotNull { record ->
-    if (record.kind != ActivityKind.Transfer) return@mapNotNull null
-    val transfer = record.transfer ?: return@mapNotNull null
+    val outflow = outflowOf(record) ?: return@mapNotNull null
     Spend(
-        scope =
-            SpendScope(
-                connectionId = record.connectionId,
-                wallet = transfer.wallet,
-                asset = PolicyAsset(transfer.network, transfer.mint),
-            ),
         request = SpendRequest(record.connectionId, record.requestId),
+        wallet = outflow.wallet,
+        network = outflow.network,
+        asset = outflow.asset,
         identity = record.signature ?: "${record.connectionId}/${record.requestId}",
         at = record.answeredAt,
-        amount = transfer.amount.toULongOrNull(),
+        amount = outflow.amount,
         status = statusOf(record),
     )
 }
+
+/** Where one record's money left from, and how much, as far as its terms say. */
+private data class Outflow(
+    val wallet: String?,
+    val network: Network?,
+    val asset: PolicyAsset?,
+    val amount: ULong?,
+)
+
+/** A record that says something may have moved, and not what. */
+private val UNSAID = Outflow(null, null, null, null)
+
+/**
+ * What [record] takes out of the owner's spendable balance, or null when it takes nothing.
+ *
+ * Staking is accounted per action, by what the action moves rather than by its principal, so the
+ * same SKR is never counted twice (docs/policy.md#staking): a stake sends SKR from the wallet into
+ * the vault and counts; an unstake and a cancellation only change a position; a withdrawal brings
+ * SKR back, and that does not replenish a threshold about SKR going out.
+ */
+private fun outflowOf(record: ActivityRecord): Outflow? =
+    when (record.kind) {
+        ActivityKind.Transfer -> {
+            val transfer = record.transfer
+            if (transfer == null) UNSAID
+            else
+                Outflow(
+                    wallet = transfer.wallet,
+                    network = transfer.network,
+                    asset = PolicyAsset(transfer.network, transfer.mint),
+                    amount = transfer.amount.toULongOrNull(),
+                )
+        }
+        ActivityKind.Staking -> {
+            val staking = record.staking
+            when (staking?.operation) {
+                null -> UNSAID
+                StakingOperation.STAKING_OPERATION_STAKE.name ->
+                    Outflow(
+                        wallet = staking.wallet,
+                        network = staking.network,
+                        asset = PolicyAsset(staking.network, SKR_MINT),
+                        amount = staking.amount.toULongOrNull(),
+                    )
+                StakingOperation.STAKING_OPERATION_UNSTAKE.name,
+                StakingOperation.STAKING_OPERATION_CANCEL_UNSTAKE.name,
+                StakingOperation.STAKING_OPERATION_WITHDRAW.name -> null
+                // An action this build has no name for may have moved something.
+                else -> Outflow(staking.wallet, staking.network, null, null)
+            }
+        }
+        ActivityKind.Operation -> {
+            val operation = record.operation
+            when (val spending = operation?.spending) {
+                is ReviewedSpending.Outgoing ->
+                    Outflow(
+                        wallet = spending.wallet,
+                        network = spending.network,
+                        asset = PolicyAsset(spending.network, spending.mint),
+                        amount = spending.amount,
+                    )
+                ReviewedSpending.None -> null
+                // Recorded before SEE-181, or unreadable: it may have spent any asset this wallet
+                // holds on this chain, and how much is not known. Never zero.
+                null -> Outflow(operation?.wallet, operation?.network, null, null)
+            }
+        }
+        // Acknowledging text and signing a message move nothing. A record of a kind this build has
+        // no name for is an answer to a request no wallet was opened for here.
+        ActivityKind.Acknowledgement,
+        ActivityKind.MessageSignature,
+        ActivityKind.Other -> null
+    }
 
 /**
  * What one record says about whether the money left.
@@ -215,7 +325,7 @@ fun dailyTotal(
             .filter {
                 it.request != excluding &&
                     it.identity !in excludedIdentities &&
-                    it.scope.matches(scope)
+                    it.mayBelongTo(scope)
             }
             // One movement, counted once. Where two records carry one identity, the one that knows
             // the most wins: either chain outcome settles what the phone's guess couldn't. For a
@@ -238,8 +348,13 @@ fun dailyTotal(
     var confirmedCount = 0
     var unresolvedCount = 0
     var unreadable = unreadableHistory
+    var uncounted = 0
     for (spend in counted) {
         if (spend.status == SpendStatus.NotSpent) continue
+        if (spend.asset == null) {
+            uncounted++
+            continue
+        }
         val amount = spend.amount
         if (amount == null) {
             unreadable++
@@ -261,13 +376,9 @@ fun dailyTotal(
         confirmedCount = confirmedCount,
         unresolvedCount = unresolvedCount,
         unreadable = unreadable,
+        uncounted = uncounted,
     )
 }
-
-private fun SpendScope.matches(scope: DailySpendScope): Boolean =
-    wallet == scope.wallet &&
-        asset == scope.asset &&
-        (scope !is SpendScope || connectionId == scope.connectionId)
 
 /** A settled chain result outranks unresolved exposure when duplicate records disagree. */
 private val SpendStatus.resolutionRank: Int

@@ -717,6 +717,9 @@ class ProposalRepository(
                             binding.choice.values
                                 .map { (key, value) -> ReviewedValue(key.value, valueText(value)) }
                                 .sortedBy { it.key },
+                        // What the inspected bytes spend, as pinned before the wallet: the fact
+                        // the day's counters read for this operation (SEE-181).
+                        spending = binding.spending,
                     ),
                 signature =
                     (execution.outcome as? ProposalOutcome.Submitted)?.let {

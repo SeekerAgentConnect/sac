@@ -99,25 +99,37 @@ reading (SEE-180):
 
 | Decision | Before a transaction (`prepared = false`, and every tile) | With a transaction |
 | --- | --- | --- |
-| Allowed (only an assessment left over from earlier bytes) | no card (`ReviewVerdict.Pending`) | lime "Within the rules you set" |
-| No rules configured | orange "Outside rules · no rules set", **Connection rule** chip | same |
-| `RequestUnverified` only, or checks unverified for want of an amount or asset | no card (`ReviewVerdict.Pending`); tile shows no verdict pill (`RequestTileModel.rulesPending`), never "In rules" | orange, one row with a **Transaction check** chip (`WarningOrigin.Verification`, `ScopeChipSource.Verification`) |
+| Allowed (only an assessment left over from earlier bytes) | no card (`ReviewVerdict.Pending`) | lime "Configured checks passed", with "Not checked: …" naming every check no rule covers (SEE-181) |
+| No rules configured | no card; a neutral "No rules configured · not checked" block, no tick (SEE-181) | same |
+| `RequestUnverified` only, or checks unverified for want of an amount or asset | no card (`ReviewVerdict.Pending`); tile shows no verdict pill (`RequestTileModel.unchecked`), never "In rules" | orange, one row with a **Transaction check** chip (`WarningOrigin.Verification`, `ScopeChipSource.Verification`) |
 | A failed check, unreadable rules, an unknown day's total | orange, each row with its real source (**Global rule** / **Connection rule**) | same |
 
-A signal tile on Home is never prepared, so it never reads "In rules": with no warnings it shows
-"Outside rules" when no rules are configured and no pill at all otherwise, including before its
-assessment arrives.
+An exceeded threshold is one line with its amounts in the deposit's unit — "Over the global daily
+limit: 120 USDC of 100 USDC today.", "Over the per-request limit: 20 of 10 USDC." — and the
+confirmed / not yet settled / this order breakdown stays in **Limits and checks** (SEE-181). An
+unknown day's total says why, e.g. "1 of today's operations were recorded without what they spent"
+([`policy.md`](../policy.md#records-written-before-see-181)).
+
+A signal tile on Home is never prepared, so it never reads "In rules": with no warnings it shows no
+pill at all — with no rules configured, before its assessment arrives, and before an order is
+prepared (SEE-181 removed the old orange "Outside rules" pill). A private request's tile reads "In
+rules" only when its configured checks passed.
 
 A verification finding is never attributed to a rule document: `RequestUnverified` used to default
 to `RuleSource.Global`, which showed a fabricated **Global rule** chip.
 
 The sheet asks for "I have read the warning and want to approve anyway" only in the Ready stage —
-prepared, read in full (`ActionInspection.approvable`), not expired — when the card is orange,
-including the no-rules case, and **Approve** stays disabled until it is ticked. Before a quote,
+prepared, read in full (`ActionInspection.approvable`), not expired — when the card is orange, and
+**Approve** stays disabled until it is ticked. No rules is not a warning and asks for no tick
+(SEE-181). Before a quote,
 after a failed preparation and for a blocked transaction there is no tick: there is nothing it
 could approve. The view model's own gates are unchanged (approve requires an approvable inspection,
 re-assesses, requires consent to the current reasons, and binds the wallet the bytes were prepared
-for).
+for). Since SEE-181 it also re-reads the rules and Activity after waiting for the wallet lock: an
+approval that queued behind another wallet interaction which spent in the meantime stops with
+"rules changed", shows the new verdict, and needs a fresh tick if it now warns. The binding pins
+what the inspected order spends (`ExecutionBinding.spending`), so the stake counts towards the
+day's limits from before the wallet is opened.
 
 The sheet's stages are explicit (`PredictionStage`): Unchosen → Preparing → Failed | Blocked | Ready
 → Expired, plus NeedsQuote for chosen inputs with nothing prepared. Changing the inputs or the

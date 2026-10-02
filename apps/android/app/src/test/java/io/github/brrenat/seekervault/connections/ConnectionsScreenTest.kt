@@ -321,9 +321,15 @@ class ConnectionsScreenTest {
         val tile = state.pending.single().tile
         // The source and the kind, not the publisher's note.
         assertEquals("CopyTrading · Prediction", tile.supportingText)
-        // No rules at all: the review's card says "Outside rules", and so does the tile.
+        // No rules at all: nothing was checked, which is neither "In rules" nor a warning
+        // (SEE-181). The tile claims no verdict, exactly as its review shows no verdict card.
         assertEquals(0, tile.warningCount)
-        assertEquals(true, tile.outsideRules)
+        assertEquals(true, tile.unchecked)
+
+        show(state)
+        compose.onNodeWithText("In rules").assertDoesNotExist()
+        compose.onNodeWithText("Outside rules").assertDoesNotExist()
+        compose.onNodeWithText("warning", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -364,8 +370,7 @@ class ConnectionsScreenTest {
             )
         val tile = state.pending.single().tile
         assertEquals(0, tile.warningCount)
-        assertEquals(false, tile.outsideRules)
-        assertEquals(true, tile.rulesPending)
+        assertEquals(true, tile.unchecked)
 
         show(state)
         compose.onNodeWithText("Bitcoin Up or Down").assertExists()
@@ -386,7 +391,7 @@ class ConnectionsScreenTest {
                 pendingItems = listOf(waiting),
                 requestAssessments = emptyMap(),
             )
-        assertEquals(true, state.pending.single().tile.rulesPending)
+        assertEquals(true, state.pending.single().tile.unchecked)
         show(state)
         compose.onNodeWithText("In rules").assertDoesNotExist()
     }

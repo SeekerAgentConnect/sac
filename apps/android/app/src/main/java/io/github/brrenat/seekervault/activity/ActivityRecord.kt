@@ -144,7 +144,38 @@ data class ReviewedOperation(
      * from code that is compiled in (`Explorer.kt`, `PluginDestination`).
      */
     val references: List<ReviewedValue> = emptyList(),
+    /**
+     * What the operation takes out of the owner's spendable balance, as this phone inspected the
+     * bytes before the wallet was opened (SEE-181). Null on a record written before it existed,
+     * which therefore does not say — and the day's counters treat that as unknown, never as zero.
+     */
+    val spending: ReviewedSpending? = null,
 )
+
+/**
+ * What one execution takes out of the owner's spendable balance, as this phone established it from
+ * the inspected bytes before the wallet was opened (SEE-181, docs/policy.md#counters).
+ *
+ * It is the typed fact the day's counters are made from: never a display string, a publisher's
+ * prose, or an action's name. It is pinned with the binding, so the record says what was approved
+ * even if the app dies while the wallet has the transaction.
+ */
+sealed interface ReviewedSpending {
+    /**
+     * [amount] base units of [mint] (null for native SOL) leave [wallet] on [network]: a swap's
+     * inspected input, a prediction order's deposit. Nothing that comes back — a swap's output, a
+     * payout — is part of it.
+     */
+    data class Outgoing(
+        val wallet: String,
+        val network: Network,
+        val mint: String?,
+        val amount: ULong,
+    ) : ReviewedSpending
+
+    /** The inspected bytes take nothing out of the owner's balance: a sale, a withdrawal. */
+    data object None : ReviewedSpending
+}
 
 /**
  * The staking action the owner approved (SEE-165): the wallet and the cluster its transaction was

@@ -205,14 +205,22 @@ class TransferReviewScreenTest {
     }
 
     @Test
-    fun simplifiesTheNoRulesWarningAndOpensRules() {
+    fun saysNoRulesNeutrallyAndOpensRules() {
         val case = case("sol_transfer")
         show(case, readyFrom(case), decision = noPolicy(PolicyReason.NoPolicyConfigured))
 
+        // Not "outside your rules": nothing was checked, and that is not a warning (SEE-181).
         compose
             .onNodeWithTag(InboxTags.POLICY_VERDICT)
             .performScrollTo()
-            .assertTextEquals(context.getString(R.string.transfer_rules_no_policy_title))
+            .assertTextEquals(context.getString(R.string.policy_verdict_no_rules))
+        compose
+            .onNodeWithText(context.getString(R.string.transfer_rules_outside_title))
+            .assertDoesNotExist()
+        compose.onNodeWithTag(InboxTags.POLICY_ACKNOWLEDGE).assertDoesNotExist()
+        compose
+            .onNodeWithTag(InboxTags.TRANSFER_APPROVE)
+            .assertTextEquals(context.getString(R.string.approve_and_send))
         compose
             .onNodeWithTag(InboxTags.POLICY_REASON)
             .assertTextEquals(context.getString(R.string.transfer_rules_no_policy_detail))

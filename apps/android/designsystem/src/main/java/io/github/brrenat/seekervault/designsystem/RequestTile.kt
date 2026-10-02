@@ -63,15 +63,11 @@ data class RequestTileModel(
     /** The connection's stored marker. Null keeps the source-name hash used by captured tiles. */
     val sourceColour: SourceColour? = null,
     /**
-     * Nothing failed, but no rules applied: the tile says "Outside rules", as the review does,
-     * instead of reading as within them (SEE-158).
+     * Nothing was checked: there is no transaction yet for the rules to read (SEE-180), or no rules
+     * apply at all (SEE-181). With no warnings to count, the tile shows no verdict rather than "In
+     * rules" — not checked is neither a match nor a warning.
      */
-    val outsideRules: Boolean = false,
-    /**
-     * Nothing has been checked yet: there is no transaction for the rules to read (SEE-180). With
-     * no warnings to count, the tile shows no verdict at all rather than "In rules".
-     */
-    val rulesPending: Boolean = false,
+    val unchecked: Boolean = false,
 )
 
 @Composable
@@ -130,8 +126,7 @@ fun RequestTile(
             kind = kind,
             text = model.footerText ?: kind.effect(),
             warningCount = model.warningCount,
-            outsideRules = model.outsideRules,
-            rulesPending = model.rulesPending,
+            unchecked = model.unchecked,
             centred = centred,
             secondaryColor = tileColors.secondary,
         )
@@ -249,8 +244,7 @@ private fun RequestTileFooter(
     kind: RequestTileKind,
     text: String,
     warningCount: Int,
-    outsideRules: Boolean,
-    rulesPending: Boolean,
+    unchecked: Boolean,
     centred: Boolean,
     secondaryColor: Color,
 ) {
@@ -270,8 +264,7 @@ private fun RequestTileFooter(
         val verdict =
             when {
                 warningCount > 0 -> VerdictPillVerdict.Warning
-                outsideRules -> VerdictPillVerdict.OutsideRules
-                rulesPending -> null
+                unchecked -> null
                 else -> VerdictPillVerdict.Ok
             }
         if (verdict != null) {

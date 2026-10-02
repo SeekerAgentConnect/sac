@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.reviews
 
 import androidx.annotation.StringRes
+import io.github.brrenat.seekervault.policy.DailyCheckScope
 import io.github.brrenat.seekervault.policy.PolicyCheck
 import io.github.brrenat.seekervault.policy.PolicyCheckResult
 import io.github.brrenat.seekervault.policy.PolicyCheckStatus
@@ -13,11 +14,15 @@ import io.github.brrenat.seekervault.policy.reasonText
  * What a review's verdict card says, reduced to what a tile needs to say the same thing (SEE-158).
  *
  * One reading of a [PolicyDecision] for both places, so the chip on a home tile and the card in the
- * sheet it opens cannot disagree: the tile counts exactly the warnings the card lists, and says
- * "Outside rules" exactly when the card does.
+ * sheet it opens cannot disagree: the tile counts exactly the warnings the card lists, says "In
+ * rules" exactly when the card says the configured checks passed, and says nothing when nothing was
+ * checked (SEE-181).
  */
 sealed interface ReviewVerdict {
-    /** Every configured check passed. */
+    /**
+     * Every configured check passed, and the transaction was read whole. It says nothing about a
+     * check nobody configured ([PolicyDecision.notChecked]), and is worded that way.
+     */
     data object Within : ReviewVerdict
 
     /**
@@ -30,8 +35,11 @@ sealed interface ReviewVerdict {
     data object Pending : ReviewVerdict
 
     /**
-     * No rules apply to this connection at all. Nothing failed, but nothing was checked either, so
-     * this is shown as outside the rules rather than within them.
+     * No rules apply to this connection at all (SEE-181). Nothing was checked, so it is neither a
+     * match nor a warning: it is said neutrally — "No rules configured · not checked" — and asks
+     * for no acknowledgement, exactly as [PolicyDecision.warns] has always said. A phone whose
+     * owner wrote no rules would otherwise warn about every request, which teaches ticking past
+     * warnings.
      */
     data object NoRules : ReviewVerdict
 
@@ -60,6 +68,10 @@ data class ReviewWarning(
     val source: RuleSource,
     val daily: Boolean = false,
     val origin: WarningOrigin = WarningOrigin.Rules,
+    /** Why, as a code, so a sheet can say it concisely with its own amounts (SEE-181). */
+    val reason: PolicyReason? = null,
+    /** Which daily threshold a [daily] warning is about; null for every other warning. */
+    val dailyScope: DailyCheckScope? = null,
 )
 
 /**
@@ -101,15 +113,24 @@ fun PolicyDecision.reviewVerdict(prepared: Boolean = true): ReviewVerdict {
             .filter { it.shown() }
             .forEach { result ->
                 result.reason?.let {
-                    add(ReviewWarning(reasonText(it), result.detail, result.source))
+                    add(ReviewWarning(reasonText(it), result.detail, result.source, reason = it))
                 }
             }
         dailyChecks
-            .map { it.result }
-            .filter { it.shown() }
-            .forEach { result ->
+            .filter { it.result.shown() }
+            .forEach { daily ->
+                val result = daily.result
                 result.reason?.let {
-                    add(ReviewWarning(reasonText(it), result.detail, result.source, daily = true))
+                    add(
+                        ReviewWarning(
+                            reasonText(it),
+                            result.detail,
+                            result.source,
+                            daily = true,
+                            reason = it,
+                            dailyScope = daily.scope,
+                        )
+                    )
                 }
             }
     }

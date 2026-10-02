@@ -50,11 +50,16 @@ import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
 import io.github.brrenat.seekervault.plugins.actions.predictionBuyInputs
 import io.github.brrenat.seekervault.plugins.actions.predictionPayloadFrom
 import io.github.brrenat.seekervault.policy.Allowlist
+import io.github.brrenat.seekervault.policy.AssetLimits
+import io.github.brrenat.seekervault.policy.DailyTotal
+import io.github.brrenat.seekervault.policy.DailyTotals
 import io.github.brrenat.seekervault.policy.GlobalPolicy
+import io.github.brrenat.seekervault.policy.GlobalSpendScope
 import io.github.brrenat.seekervault.policy.PolicyAction
 import io.github.brrenat.seekervault.policy.PolicyAsset
 import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.policy.RequestFacts
+import io.github.brrenat.seekervault.policy.SpendScope
 import io.github.brrenat.seekervault.policy.evaluate
 import io.github.brrenat.seekervault.policy.noPolicy
 import io.github.brrenat.seekervault.policy.resolveEffectivePolicy
@@ -326,18 +331,49 @@ class PredictionReviewTest {
     }
 
     @Test
-    fun noRulesIsAWarningThatNamesItsRuleAndAsksForTheTick() {
+    fun noRulesIsNeutralAndAsksForNoTick() {
+        // SEE-181: nothing was checked, which is neither a match nor a warning. No verdict card,
+        // no orange, no tick: one neutral line saying so, and the owner decides as always.
         val state = sheet(review(choice = chosen, prepared = true))
-        assertEquals("Outside rules · no rules set", state.verdict?.heading)
-        val warning = state.verdict!!.warnings.single()
+        assertNull(state.verdict)
+        val notice = state.infoBlocks.single()
+        assertEquals("No rules configured · not checked", notice.title)
+        assertTrue(notice.body, notice.body.contains("not a warning"))
+        assertNull(state.confirmationCheckbox)
+        assertTrue(state.primaryAction.enabled)
+        // It is the same before anything is prepared: no rules is not a stage of preparation.
+        assertNull(sheet(review(choice = chosen)).verdict)
         assertEquals(
-            "This connection has no transaction rules yet. You are approving this request manually.",
-            warning.message,
+            "No rules configured · not checked",
+            sheet(review(choice = chosen)).infoBlocks.single().title,
         )
-        assertEquals("Connection rule", warning.sourceLabel)
+    }
+
+    @Test
+    fun anExceededDailyLimitSaysSoInOneLineAndAsksForTheTick() {
+        val state = sheet(review(choice = chosen, prepared = true, assessment = overDailyLimit()))
+        val warning = state.verdict!!.warnings.single()
+        // The observed amount against the threshold, in the deposit's own unit; the breakdown
+        // stays in the limits section.
+        assertEquals("Over the global daily limit: 5 USDC of 4 USDC today.", warning.message)
+        assertEquals("Global rule", warning.sourceLabel)
         assertEquals(
             "I have read the warning and want to approve anyway",
             state.confirmationCheckbox,
+        )
+        assertTrue(state.infoBlocks.isEmpty())
+    }
+
+    @Test
+    fun passingChecksClaimOnlyTheChecksThatWereConfigured() {
+        val state =
+            sheet(review(choice = chosen, prepared = true, assessment = globalRule(readFacts())))
+        assertEquals("Configured checks passed", state.verdict?.heading)
+        // Only the action rule is configured; everything else is named as not checked rather
+        // than implied by the lime card.
+        assertEquals(
+            "Not checked: asset, recipient, programs, most per request, most per day.",
+            state.verdict?.additionalContext,
         )
     }
 
@@ -392,7 +428,8 @@ class PredictionReviewTest {
         var approvals = 0
         var acknowledged: Boolean? = null
         var ownerInput = 0
-        var current by mutableStateOf(review(choice = chosen, prepared = true))
+        var current by
+            mutableStateOf(review(choice = chosen, prepared = true, assessment = overDailyLimit()))
         compose.setContent {
             SeekerTheme(darkTheme = true) {
                 PredictionReviewScreen(
@@ -482,6 +519,32 @@ class PredictionReviewTest {
 
     private val unread =
         RequestFacts.unread(CONNECTION, PolicyAction.Prediction, PREDICTION_PROPOSAL)
+
+    /** A 4 USDC global daily threshold, and this 5 USDC order on an otherwise empty day. */
+    private fun overDailyLimit(): RequestAssessment {
+        val facts = readFacts()
+        val usdc = PolicyAsset(Network.NETWORK_MAINNET, USDC_MINT)
+        val policy =
+            resolveEffectivePolicy(
+                CONNECTION,
+                GlobalPolicy(
+                    limits = mapOf(usdc to AssetLimits(daily = 4_000_000UL)),
+                    updatedAt = now,
+                ),
+                null,
+            )
+        val day = now.atZone(zone).toLocalDate()
+        val totals =
+            DailyTotals(
+                global = DailyTotal.none(GlobalSpendScope(PAYER, usdc), day),
+                connection = DailyTotal.none(SpendScope(CONNECTION, PAYER, usdc), day),
+            )
+        return RequestAssessment(
+            decision = evaluate(policy, facts, totals),
+            facts = facts,
+            at = now,
+        )
+    }
 
     private fun readFacts(fullyRead: Boolean = true) =
         RequestFacts(
@@ -750,9 +813,13 @@ class PredictionReviewTest {
             ),
             state.sections.map { it.title },
         )
-        // Only the wallet is a loose row; the long list of cards and identifiers is gone.
+        // Only the wallet is a loose row; the long list of cards and identifiers is gone. The one
+        // loose block is the neutral "no rules" line (SEE-181).
         assertEquals(listOf("Wallet · paid and signed by"), state.factRows.map { it.label })
-        assertTrue(state.infoBlocks.isEmpty())
+        assertEquals(
+            listOf("No rules configured · not checked"),
+            state.infoBlocks.map { it.title },
+        )
         assertNull(state.dailySpend)
         assertNull(state.note)
         val technical = state.section(PredictionReviewSections.TECHNICAL).factRows

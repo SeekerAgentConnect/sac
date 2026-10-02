@@ -88,8 +88,10 @@ class PolicyWordingTest {
         val restricted = context.getString(R.string.policy_verdict_restricted)
         val underThem = context.getString(R.string.policy_review_manual)
 
-        // The verdicts name the rules, and nothing else: what matched, or what didn't.
-        assertTrue(allowed, allowed.contains("rules", ignoreCase = true))
+        // The verdicts name the rules, and nothing else: what matched, or what didn't. A match
+        // claims only the checks the owner configured, never the ones nobody wrote (SEE-181).
+        assertTrue(allowed, allowed.contains("configured checks", ignoreCase = true))
+        assertFalse(allowed, allowed.contains("within", ignoreCase = true))
         assertTrue(restricted, restricted.contains("rules", ignoreCase = true))
         // And the line that never changes is under both of them, saying who approves.
         assertTrue(underThem, underThem.contains("approve", ignoreCase = true))

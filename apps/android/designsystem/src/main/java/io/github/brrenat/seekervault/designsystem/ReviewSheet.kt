@@ -94,7 +94,7 @@ data class ReviewSheetWarning(
 data class ReviewSheetVerdict(
     val warnings: List<ReviewSheetWarning> = emptyList(),
     val additionalContext: String? = null,
-    /** Replaces the counted heading, e.g. "Outside rules · no rules set". */
+    /** Replaces the counted heading, e.g. "Configured checks passed". */
     val heading: String? = null,
 )
 

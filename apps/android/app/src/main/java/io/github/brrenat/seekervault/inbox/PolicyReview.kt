@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material.icons.outlined.WarningAmber
@@ -137,10 +138,16 @@ fun PolicyReview(
     }
     val decision = assessment.decision
     val allowed = decision.allowed
-    val transactionWithoutRules = transaction && decision.reason == PolicyReason.NoPolicyConfigured
+    // No rules is neutral (SEE-181): nothing was checked, so it is neither the lime of a match nor
+    // the orange of a warning, and it asks for no acknowledgement ([PolicyDecision.warns]).
+    val noRules = decision.reason == PolicyReason.NoPolicyConfigured
+    val transactionWithoutRules = transaction && noRules
     val verdictInk =
-        if (allowed) MaterialTheme.colorScheme.onPrimaryContainer
-        else MaterialTheme.colorScheme.onTertiaryContainer
+        when {
+            allowed -> MaterialTheme.colorScheme.onPrimaryContainer
+            noRules -> MaterialTheme.colorScheme.onSurface
+            else -> MaterialTheme.colorScheme.onTertiaryContainer
+        }
     val ordinaryChecks =
         decision.checks.filterNot {
             decision.dailyChecks.isNotEmpty() && it.check == PolicyCheck.DailyLimit
@@ -168,8 +175,11 @@ fun PolicyReview(
         SeekerCard(
             modifier = Modifier.fillMaxWidth(),
             color =
-                if (allowed) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.tertiaryContainer,
+                when {
+                    allowed -> MaterialTheme.colorScheme.primaryContainer
+                    noRules -> MaterialTheme.colorScheme.surfaceContainerHigh
+                    else -> MaterialTheme.colorScheme.tertiaryContainer
+                },
             radius = SeekerTheme.dimensions.dp16,
         ) {
             Column(
@@ -181,17 +191,21 @@ fun PolicyReview(
                     horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
                 ) {
                     Icon(
-                        if (allowed) Icons.Outlined.Verified else Icons.Outlined.WarningAmber,
+                        when {
+                            allowed -> Icons.Outlined.Verified
+                            noRules -> Icons.Outlined.Info
+                            else -> Icons.Outlined.WarningAmber
+                        },
                         contentDescription = null,
                         tint = verdictInk,
                         modifier = Modifier.size(SeekerTheme.dimensions.dp22),
                     )
                     Text(
                         stringResource(
-                            if (transaction && !allowed) {
-                                R.string.transfer_rules_no_policy_title
-                            } else {
-                                assessmentText(decision.assessment)
+                            when {
+                                noRules -> R.string.policy_verdict_no_rules
+                                transaction && !allowed -> R.string.transfer_rules_outside_title
+                                else -> assessmentText(decision.assessment)
                             }
                         ),
                         style = MaterialTheme.typography.titleMedium,
@@ -229,10 +243,9 @@ fun PolicyReview(
                     }
                 }
                 configuredChecks.forEach { ConfiguredCheck(it, verdictInk) }
-                if (
-                    !transactionWithoutRules &&
-                        (deliberatelyOff.isNotEmpty() || absent.isNotEmpty())
-                ) {
+                // With no rules at all, every check is unconfigured and the heading already says
+                // so; listing all six again says nothing more.
+                if (!noRules && (deliberatelyOff.isNotEmpty() || absent.isNotEmpty())) {
                     Column(
                         Modifier.testTag(InboxTags.POLICY_UNCOVERED).semantics(
                             mergeDescendants = true
@@ -278,6 +291,7 @@ fun PolicyReview(
                     onRules?.let {
                         RulesButton(
                             allowed = allowed,
+                            neutral = noRules,
                             onClick = it,
                             label =
                                 if (transactionWithoutRules) {
@@ -415,11 +429,24 @@ private fun DailyRow(check: DailyPolicyCheck, decimals: Int) {
 }
 
 @Composable
-private fun RulesButton(allowed: Boolean, onClick: () -> Unit, @StringRes label: Int) {
+private fun RulesButton(
+    allowed: Boolean,
+    neutral: Boolean,
+    onClick: () -> Unit,
+    @StringRes label: Int,
+) {
     val container =
-        if (allowed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+        when {
+            allowed -> MaterialTheme.colorScheme.primary
+            neutral -> MaterialTheme.colorScheme.surfaceContainerHighest
+            else -> MaterialTheme.colorScheme.tertiary
+        }
     val ink =
-        if (allowed) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary
+        when {
+            allowed -> MaterialTheme.colorScheme.onPrimary
+            neutral -> MaterialTheme.colorScheme.onSurface
+            else -> MaterialTheme.colorScheme.onTertiary
+        }
     Box(
         Modifier.height(SeekerTheme.dimensions.dp32)
             .testTag(InboxTags.RULES_BUTTON)
