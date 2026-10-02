@@ -13,6 +13,7 @@ import io.github.brrenat.seekervault.jupiter.ORDER_PUBKEY
 import io.github.brrenat.seekervault.jupiter.POSITION_ACCOUNT
 import io.github.brrenat.seekervault.jupiter.POSITION_PUBKEY
 import io.github.brrenat.seekervault.jupiter.PredictionException
+import io.github.brrenat.seekervault.jupiter.PredictionOrder
 import io.github.brrenat.seekervault.jupiter.PredictionProblem
 import io.github.brrenat.seekervault.jupiter.openMarket
 import io.github.brrenat.seekervault.jupiter.orderTransaction
@@ -23,8 +24,10 @@ import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginFailureCodes
+import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
 import io.github.brrenat.seekervault.plugins.actions.PredictionOutcomes
 import io.github.brrenat.seekervault.plugins.actions.PredictionParameterNames
+import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
 import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
 import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
@@ -472,6 +475,63 @@ class PredictionOperationTest {
             emptyList<Triple<ByteString, SelectedWallet, String>>(),
             phone.adapter.sendings,
         )
+    }
+
+    @Test
+    fun whileARefreshIsWithTheProviderTheOldQuoteIsNotShownAsCurrent() = runBlocking {
+        val phone = phone()
+        val model = opened(phone)
+        val builds = phone.markets.answersOrder
+        val wallet = phone.wallet.walletFor(CONNECTION)
+        choose(model, yes = true, stake = 5_000_000UL)
+        // First a quote that is ready, which a refresh replaces as it would an expired one; then
+        // bytes this phone refused, which "Get a new quote" replaces.
+        val refused: (PredictionPayload, PredictionChoice, String) -> PredictionOrder =
+            { terms, choice, owner ->
+                val built =
+                    orderTransaction(
+                        terms = terms,
+                        yes = !choice.yes,
+                        deposit = choice.deposit,
+                        owner = owner,
+                    )
+                phone.chain.tables = built.tables
+                predictionOrder(built.transaction, yes = choice.yes, owner = owner)
+            }
+        for (first in listOf(builds, refused)) {
+            phone.markets.answersOrder = first
+            model.prepare()
+            val before = checkNotNull(model.review.value)
+            assertNotNull(before.inspection)
+
+            // The provider is asked again; what the owner sees while it works is captured from
+            // inside the call, with the old bytes still held by the review.
+            var during: OperationReview? = null
+            phone.markets.answersOrder = { terms, choice, owner ->
+                during = model.review.value
+                builds(terms, choice, owner)
+            }
+            model.prepare()
+
+            val working = checkNotNull(during)
+            assertTrue(working.preparing)
+            assertNotNull(working.inspection)
+            val sheet = working.sheet(wallet)
+            assertEquals(emptyList<Any>(), sheet.terms?.rows)
+            assertEquals(
+                "Getting a quote and checking the transaction…",
+                sheet.terms?.emptyText,
+            )
+            assertNull(sheet.preparationError)
+            assertNull(sheet.staleQuote)
+            assertNull(sheet.confirmationCheckbox)
+            assertFalse(sheet.primaryAction.enabled)
+
+            // And once it answers, the new quote is the one shown.
+            val ready = checkNotNull(model.review.value).sheet(wallet)
+            assertTrue(ready.terms?.rows.orEmpty().isNotEmpty())
+            assertNull(ready.preparationError)
+        }
     }
 
     private fun OperationReview.sheet(wallet: SelectedWallet?) =

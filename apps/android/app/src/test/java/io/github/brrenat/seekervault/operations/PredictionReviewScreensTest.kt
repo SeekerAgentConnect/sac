@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.operations
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.text.TextLayoutResult
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.designsystem.ReviewSheetTags
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
@@ -49,6 +51,9 @@ import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.io.File
 import java.time.Instant
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -295,9 +300,56 @@ class PredictionReviewScreensTest {
         capture("prediction-prepared-details-open")
     }
 
+    /**
+     * The provider's own words stay readable in full once Technical details is open, however long
+     * they are: they wrap, and nothing is cut off at the edge of the row.
+     */
+    @Test
+    @Config(qualifiers = "en-rUS-w393dp-h3200dp-xxhdpi")
+    fun longProviderDiagnostic() {
+        showLongDiagnostic()
+        capture("prediction-long-diagnostic")
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w393dp-h3200dp-xxhdpi", fontScale = 1.3f)
+    fun longProviderDiagnosticLargeFont() {
+        showLongDiagnostic()
+        capture("prediction-long-diagnostic-font-130")
+    }
+
+    private fun showLongDiagnostic() {
+        show(review(choice = chosen, failure = insufficient.copy(detail = LONG_DIAGNOSTIC)))
+        compose
+            .onNodeWithTag(ReviewSheetTags.section(PredictionReviewSections.TECHNICAL))
+            .performScrollTo()
+            .performClick()
+        compose.waitForIdle()
+        val node = compose.onNodeWithText(LONG_DIAGNOSTIC, useUnmergedTree = true).performScrollTo()
+        node.assertIsDisplayed()
+        val layouts = mutableListOf<TextLayoutResult>()
+        val layout =
+            requireNotNull(
+                    node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action
+                )
+                .let { getLayout ->
+                    assertTrue(getLayout(layouts))
+                    layouts.single()
+                }
+        // Every character is laid out, over several lines, and none is clipped at the edge.
+        assertTrue("lines=${layout.lineCount}", layout.lineCount > 1)
+        assertFalse(layout.didOverflowWidth)
+        assertFalse(layout.hasVisualOverflow)
+        assertEquals(LONG_DIAGNOSTIC.length, layout.getLineEnd(layout.lineCount - 1))
+    }
+
     private companion object {
         const val PAYER = "D3QxmK1oUkzJ8vsoWgxzuotSFNLLRe1T"
         const val ORDER = "Hut593VASqP7mq6w62JaXk2YjTx7wx3n"
         const val POSITION = "8G4K2rceeiTRV6V97zLvnYfMGstuRaR9"
+        const val LONG_DIAGNOSTIC =
+            "Simulation failed: Transaction results in an account (2) with insufficient funds " +
+                "for rent. Program log: Instruction: PlaceOrder. Program log: deposit 5000000 " +
+                "exceeds the available balance of the owner's associated token account."
     }
 }

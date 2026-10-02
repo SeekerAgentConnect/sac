@@ -46,14 +46,17 @@ in four collapsed sections):
    - the preparation error with **Try again** — e.g. `Insufficient funds` / "Could not prepare the 5
      USDC order. The provider reported insufficient funds." Only what the provider said: no token,
      balance or shortfall is inferred. Its code, its explanation and its own words are under
-     Technical details;
+     Technical details — the code as a row, the explanation and the provider's words as wrapping
+     blocks, so a long provider message is readable in full at any font size;
    - **This transaction can't be approved** with the inspection's findings and **Get a new quote** —
      bytes this phone could not account for. No tick gets past it.
 10. Quote — what you spend, contracts, cost, possible payout ("Paid out if this side wins"), provider
     fee and market status. Supporting figures the provider marks `PluginFact.technical` (the most
     one contract may cost, instruction and lookup-table counts) are under Technical details. Before
     a quote: "Choose a side and an amount to get a quote."; while preparing: "Getting a quote and
-    checking the transaction…".
+    checking the transaction…". A refresh (**Refresh quote**, **Get a new quote**) keeps the old
+    bytes in the view model until the provider answers, but the sheet shows none of them meanwhile:
+    no old quote rows, verdict, blocker, payer or accounts — only the loading card.
 11. Wallet — the feed's wallet, or the payer read out of the bytes once there are any (SEE-174).
 12. Four collapsed sections (`ReviewSheetSection`, each a button that says Expanded/Collapsed, at
     least a touch target tall, whose open state survives recomposition and quote updates):
@@ -96,10 +99,14 @@ reading (SEE-180):
 
 | Decision | Before a transaction (`prepared = false`, and every tile) | With a transaction |
 | --- | --- | --- |
-| Allowed | lime "Within the rules you set" | same |
+| Allowed (only an assessment left over from earlier bytes) | no card (`ReviewVerdict.Pending`) | lime "Within the rules you set" |
 | No rules configured | orange "Outside rules · no rules set", **Connection rule** chip | same |
-| `RequestUnverified` only, or checks unverified for want of an amount or asset | no card (`ReviewVerdict.Pending`); tile shows no warnings | orange, one row with a **Transaction check** chip (`WarningOrigin.Verification`, `ScopeChipSource.Verification`) |
+| `RequestUnverified` only, or checks unverified for want of an amount or asset | no card (`ReviewVerdict.Pending`); tile shows no verdict pill (`RequestTileModel.rulesPending`), never "In rules" | orange, one row with a **Transaction check** chip (`WarningOrigin.Verification`, `ScopeChipSource.Verification`) |
 | A failed check, unreadable rules, an unknown day's total | orange, each row with its real source (**Global rule** / **Connection rule**) | same |
+
+A signal tile on Home is never prepared, so it never reads "In rules": with no warnings it shows
+"Outside rules" when no rules are configured and no pill at all otherwise, including before its
+assessment arrives.
 
 A verification finding is never attributed to a rule document: `RequestUnverified` used to default
 to `RuleSource.Global`, which showed a fabricated **Global rule** chip.
@@ -137,8 +144,13 @@ screen (pinned footer on an 800dp screen, approve gated by the tick, the paramet
 back exact base units) and, for SEE-180, every stage: no warning or tick before a quote, a genuine
 global-rule warning kept under its source, insufficient funds with **Try again**, an unreadable
 transaction as a blocker attributed to the transaction check, sections that open in place and stay
-open across a quote update. `PredictionOperationTest` drives insufficient funds → try again →
-success through the view model (consent cleared, nothing sent) and an unaccountable transaction
-that no tick gets past. `PredictionReviewScreensTest` saves the sheets in
-[`docs/testing/see-180`](../testing/see-180.md) with `-Dseekervault.screenshots=<dir>`. `AppNavigationTest` covers `[review, params]` and `[review, rules]`, and
-`ConnectionsScreenTest` covers the tile's sub-line and verdict.
+open across a quote update, and a refresh from an expired or a refused quote that shows only the
+loading card. `PredictionOperationTest` drives insufficient funds → try again → success through the
+view model (consent cleared, nothing sent), an unaccountable transaction that no tick gets past, and
+reads the sheet from inside the provider call during a refresh from a ready and from a refused
+quote. `PredictionReviewScreensTest` saves the sheets in
+[`docs/testing/see-180`](../testing/see-180.md) with `-Dseekervault.screenshots=<dir>`, and checks
+that a long provider message wraps in full under Technical details at normal and 1.3× font.
+`AppNavigationTest` covers `[review, params]` and `[review, rules]`, and `ConnectionsScreenTest`
+covers the tile's sub-line and verdict, including no pill for an unprepared signal under configured
+rules.

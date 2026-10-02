@@ -67,6 +67,11 @@ data class RequestTileModel(
      * instead of reading as within them (SEE-158).
      */
     val outsideRules: Boolean = false,
+    /**
+     * Nothing has been checked yet: there is no transaction for the rules to read (SEE-180). With
+     * no warnings to count, the tile shows no verdict at all rather than "In rules".
+     */
+    val rulesPending: Boolean = false,
 )
 
 @Composable
@@ -126,6 +131,7 @@ fun RequestTile(
             text = model.footerText ?: kind.effect(),
             warningCount = model.warningCount,
             outsideRules = model.outsideRules,
+            rulesPending = model.rulesPending,
             centred = centred,
             secondaryColor = tileColors.secondary,
         )
@@ -244,6 +250,7 @@ private fun RequestTileFooter(
     text: String,
     warningCount: Int,
     outsideRules: Boolean,
+    rulesPending: Boolean,
     centred: Boolean,
     secondaryColor: Color,
 ) {
@@ -260,16 +267,20 @@ private fun RequestTileFooter(
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = null),
         )
-        VerdictPill(
-            verdict =
-                when {
-                    warningCount > 0 -> VerdictPillVerdict.Warning
-                    outsideRules -> VerdictPillVerdict.OutsideRules
-                    else -> VerdictPillVerdict.Ok
-                },
-            warningCount = warningCount.takeIf { it > 0 },
-            context = if (centred) VerdictPillContext.OnTile else VerdictPillContext.Standard,
-        )
+        val verdict =
+            when {
+                warningCount > 0 -> VerdictPillVerdict.Warning
+                outsideRules -> VerdictPillVerdict.OutsideRules
+                rulesPending -> null
+                else -> VerdictPillVerdict.Ok
+            }
+        if (verdict != null) {
+            VerdictPill(
+                verdict = verdict,
+                warningCount = warningCount.takeIf { it > 0 },
+                context = if (centred) VerdictPillContext.OnTile else VerdictPillContext.Standard,
+            )
+        }
     }
 }
 
