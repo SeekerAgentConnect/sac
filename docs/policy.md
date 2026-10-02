@@ -363,7 +363,7 @@ The threshold warning is made from `projected` — the two of them plus the requ
 | rejected, declined in the wallet, the wallet couldn't sign | nothing. A rejection is not a transfer |
 | the chain ran the transaction and it failed | nothing. The fee was paid; the transfer didn't happen |
 | an acknowledgement, a message signature | nothing. They move no asset |
-| a rehearsal in a sandbox connection | nothing. Nothing was signed or sent |
+| a rehearsal in a sandbox connection | nothing. Nothing was signed or sent — read from the environment pinned in the binding (`ReviewedOperation.environment`), so a rehearsal the app closed on before it was recorded as simulated, which a restart leaves unknown, still counts nothing |
 
 ### What counts as spending
 
@@ -373,7 +373,7 @@ Since SEE-181 every kind of record that can take something out of the owner's sp
 | --- | --- | --- |
 | direct transfer | the transferred amount of its asset | `ReviewedTransfer`, which the phone only approves when the bytes match it (SAW-020) |
 | feed swap | the **input** amount in its own asset, read out of the routing instruction | `ReviewedOperation.spending` |
-| prediction buy | the deposit (stake) in the deposit token | `ReviewedOperation.spending` |
+| prediction buy | the deposit (stake) in the deposit token, from the owner's wallet — also for a gasless order, whose network fee the provider's sponsor pays: the inspection names the verified funding owner, never the fee payer | `ReviewedOperation.spending` |
 | prediction sale | nothing — contracts leave, dollars arrive | `ReviewedOperation.spending` = none |
 | SKR stake | the staked SKR | `ReviewedStaking`, whose amount the inspection holds to the bytes |
 | SKR unstake, cancel unstake, withdraw | nothing ([staking](#staking)) | `ReviewedStaking.operation` |

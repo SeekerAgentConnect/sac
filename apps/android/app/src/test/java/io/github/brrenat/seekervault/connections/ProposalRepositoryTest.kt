@@ -5,15 +5,22 @@ import io.github.brrenat.seekervault.ReviewIdentity
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.ActivityOutcome
+import io.github.brrenat.seekervault.activity.ReviewedSpending
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.confirmations.Submission
 import io.github.brrenat.seekervault.confirmations.SubmissionTracking
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
+import io.github.brrenat.seekervault.jupiter.USDC_MINT
 import io.github.brrenat.seekervault.notifications.ArrivalLedger
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.jupiterLike
+import io.github.brrenat.seekervault.policy.DailyTotal
+import io.github.brrenat.seekervault.policy.GlobalSpendScope
+import io.github.brrenat.seekervault.policy.PolicyAsset
+import io.github.brrenat.seekervault.policy.PolicyEvaluator
+import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
 import io.github.brrenat.seekervault.proposals.AMOUNT
@@ -29,6 +36,7 @@ import io.github.brrenat.seekervault.proposals.binding
 import io.github.brrenat.seekervault.proposals.choice
 import io.github.brrenat.seekervault.proposals.hash
 import io.github.brrenat.seekervault.proposals.wireProposal
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.GATEWAY
@@ -46,6 +54,7 @@ import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.io.File
 import java.time.Instant
+import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -527,6 +536,58 @@ class ProposalRepositoryTest {
         assertEquals(
             ExecutionOutcome.Refused(BindingProblem.AlreadyExecuted),
             restarted.beginExecution(FEED, PROPOSAL_A, binding(held().proposal, chose), wallet),
+        )
+    }
+
+    @Test
+    fun aRehearsalTheAppClosedOnIsNeverCountedAsSpending() = runBlocking {
+        // A sandbox feed: the binding is begun, and the process dies before the rehearsal is
+        // recorded as Simulated (SEE-181). The restart turns the Pending execution Unknown.
+        connections =
+            listOf(
+                publisher.copy(
+                    environment = PluginEnvironment.Sandbox,
+                    server =
+                        ServerRecord.Known(
+                            manifest.copy(environments = setOf(PluginEnvironment.Sandbox))
+                        ),
+                ),
+                sidecar,
+            )
+        repository.apply(FEED, wireProposal())
+        val chose = choice(1_000_000u)
+        repository.review(FEED, PROPOSAL_A, chose)
+        val usdc = PolicyAsset(Network.NETWORK_MAINNET, USDC_MINT)
+        val bound =
+            binding(held().proposal, chose, environment = PluginEnvironment.Sandbox)
+                .copy(
+                    spending =
+                        ReviewedSpending.Outgoing(
+                            WALLET,
+                            Network.NETWORK_MAINNET,
+                            USDC_MINT,
+                            1_000_000u,
+                        )
+                )
+        assertTrue(
+            repository.beginExecution(FEED, PROPOSAL_A, bound, wallet) is ExecutionOutcome.Begun
+        )
+        val restarted = repository()
+        restarted.load()
+        assertEquals(ActivityOutcome.Unknown, history.records.value.single().outcome)
+
+        // The next launch counts from disk. No wallet was asked, so there is no exposure.
+        val evaluator =
+            PolicyEvaluator(
+                PolicyStore(File(folder.root, "files/policies").apply { mkdirs() }),
+                records = { ActivityStore(File(folder.root, "files/activity")).snapshot().records },
+                now = { clock },
+                zone = { ZoneOffset.UTC },
+            )
+        val day = clock.atZone(ZoneOffset.UTC).toLocalDate()
+        assertEquals(
+            DailyTotal.none(GlobalSpendScope(WALLET, usdc), day),
+            evaluator.spentToday(GlobalSpendScope(WALLET, usdc)),
         )
     }
 

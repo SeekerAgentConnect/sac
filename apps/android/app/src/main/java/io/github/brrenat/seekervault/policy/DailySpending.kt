@@ -242,19 +242,26 @@ private fun outflowOf(record: ActivityRecord): Outflow? =
         }
         ActivityKind.Operation -> {
             val operation = record.operation
-            when (val spending = operation?.spending) {
-                is ReviewedSpending.Outgoing ->
-                    Outflow(
-                        wallet = spending.wallet,
-                        network = spending.network,
-                        asset = PolicyAsset(spending.network, spending.mint),
-                        amount = spending.amount,
-                    )
-                ReviewedSpending.None -> null
-                // Recorded before SEE-181, or unreadable: it may have spent any asset this wallet
-                // holds on this chain, and how much is not known. Never zero.
-                null -> Outflow(operation?.wallet, operation?.network, null, null)
-            }
+            // A sandbox rehearsal never reaches a wallet, whatever its outcome says. The outcome
+            // can still read Waiting — and so Unknown after a restart — when the process died
+            // between binding it and recording it as Simulated; the environment it was bound in
+            // is the durable answer (SEE-97, docs/policy.md#counters).
+            if (operation?.rehearsal == true) null
+            else
+                when (val spending = operation?.spending) {
+                    is ReviewedSpending.Outgoing ->
+                        Outflow(
+                            wallet = spending.wallet,
+                            network = spending.network,
+                            asset = PolicyAsset(spending.network, spending.mint),
+                            amount = spending.amount,
+                        )
+                    ReviewedSpending.None -> null
+                    // Recorded before SEE-181, or unreadable: it may have spent any asset this
+                    // wallet
+                    // holds on this chain, and how much is not known. Never zero.
+                    null -> Outflow(operation?.wallet, operation?.network, null, null)
+                }
         }
         // Acknowledging text and signing a message move nothing. A record of a kind this build has
         // no name for is an answer to a request no wallet was opened for here.
