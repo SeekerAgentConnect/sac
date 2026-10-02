@@ -428,17 +428,18 @@ private fun details(
             ),
             PluginFact(R.string.jupiter_fact_stake, money(placed.cost)),
             PluginFact(R.string.jupiter_fact_payout, money(placed.payout)),
-            PluginFact(R.string.jupiter_fact_max_price, money(placed.maxPrice)),
+            PluginFact(R.string.jupiter_fact_max_price, money(placed.maxPrice), technical = true),
         )
     if (order.totalFeeUsd > 0UL) {
         facts += PluginFact(R.string.jupiter_fact_provider_fee, money(order.totalFeeUsd))
     }
     val budget = resolved.transaction.instructions.size
-    facts += PluginFact(R.string.jupiter_fact_instructions, budget.toString())
+    facts += PluginFact(R.string.jupiter_fact_instructions, budget.toString(), technical = true)
     facts +=
         PluginFact(
             R.string.jupiter_fact_resolved_accounts,
             "${resolved.accounts.size - resolved.static}",
+            technical = true,
         )
     return facts
 }

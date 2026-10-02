@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.jupiter
 
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.plugins.PluginFailureCodes
 import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
 import io.github.brrenat.seekervault.plugins.actions.PredictionPayload
 import java.io.IOException
@@ -241,7 +242,7 @@ enum class PredictionProblem(val code: String) {
     /** The provider refused the order, and said so with a status this phone can report. */
     Refused("provider_refused"),
     /** The owner does not hold enough of the deposit token. The provider checks and says so. */
-    InsufficientFunds("insufficient_funds"),
+    InsufficientFunds(PluginFailureCodes.INSUFFICIENT_FUNDS),
     /** The answer arrived and could not be used. */
     Unusable("provider_unusable"),
     /**

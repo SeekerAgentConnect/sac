@@ -1,5 +1,7 @@
 package io.github.brrenat.seekervault.operations
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityKind
@@ -10,6 +12,8 @@ import io.github.brrenat.seekervault.jupiter.ORDER_ACCOUNT
 import io.github.brrenat.seekervault.jupiter.ORDER_PUBKEY
 import io.github.brrenat.seekervault.jupiter.POSITION_ACCOUNT
 import io.github.brrenat.seekervault.jupiter.POSITION_PUBKEY
+import io.github.brrenat.seekervault.jupiter.PredictionException
+import io.github.brrenat.seekervault.jupiter.PredictionProblem
 import io.github.brrenat.seekervault.jupiter.openMarket
 import io.github.brrenat.seekervault.jupiter.orderTransaction
 import io.github.brrenat.seekervault.jupiter.predictionOrder
@@ -18,9 +22,11 @@ import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
 import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginFailureCodes
 import io.github.brrenat.seekervault.plugins.actions.PredictionOutcomes
 import io.github.brrenat.seekervault.plugins.actions.PredictionParameterNames
 import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
+import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.solana.SolanaProblem
@@ -30,6 +36,8 @@ import io.github.brrenat.seekervault.wallet.SendResult
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.io.File
 import java.time.Instant
+import java.time.ZoneId
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -374,6 +382,107 @@ class PredictionOperationTest {
             phone.adapter.sendings,
         )
     }
+
+    @Test
+    fun insufficientFundsIsOneClearErrorAndTryingAgainPreparesCleanly() = runBlocking {
+        val phone = phone()
+        val model = opened(phone)
+        val builds = phone.markets.answersOrder
+        // The provider checks the balance and refuses, exactly as its live API does.
+        phone.markets.answersOrder = { _, _, _ ->
+            throw PredictionException(PredictionProblem.InsufficientFunds, "Insufficient funds")
+        }
+        choose(model, yes = true, stake = 5_000_000UL)
+        model.prepare()
+
+        val failed = checkNotNull(model.review.value)
+        assertEquals(PluginFailureCodes.INSUFFICIENT_FUNDS, failed.failure?.code)
+        assertNull(failed.prepared)
+        assertNull(failed.inspection)
+        val wallet = phone.wallet.walletFor(CONNECTION)
+        val sheet = failed.sheet(wallet)
+        // One error, the owner's inputs kept, a way to try again, and nothing to approve or tick.
+        assertEquals("Insufficient funds", sheet.preparationError?.title)
+        assertEquals(
+            "Could not prepare the 5 USDC order. The provider reported insufficient funds.",
+            sheet.preparationError?.message,
+        )
+        assertEquals("Try again", sheet.preparationError?.actionLabel)
+        assertEquals("5 USDC on Yes", sheet.yourPart?.summary)
+        assertNull(sheet.terms)
+        assertNull(sheet.confirmationCheckbox)
+        assertFalse(sheet.primaryAction.enabled)
+        assertTrue(sheet.statusBlocks.isEmpty())
+        // Nothing about the absent transaction is called a finding.
+        assertFalse(
+            sheet.verdict?.warnings.orEmpty().any {
+                it.message.startsWith("This phone could not account")
+            }
+        )
+        model.acknowledge(true)
+
+        // The provider recovers; trying again prepares from the same inputs for the same wallet.
+        phone.markets.answersOrder = builds
+        model.prepare()
+
+        val ready = checkNotNull(model.review.value)
+        assertNull(ready.failure)
+        assertEquals(Verdict.Verified, ready.inspection?.verdict)
+        assertEquals(wallet, ready.preparedFor)
+        // Consent given before is not consent to these bytes.
+        assertFalse(ready.acknowledged)
+        assertFalse(PolicyReason.RequestUnverified in ready.assessment?.decision?.reasons.orEmpty())
+        val prepared = ready.sheet(wallet)
+        assertNull(prepared.preparationError)
+        assertTrue(prepared.terms?.rows.orEmpty().isNotEmpty())
+        // Nothing reached the wallet: trying again only prepares.
+        assertEquals(
+            emptyList<Triple<ByteString, SelectedWallet, String>>(),
+            phone.adapter.sendings,
+        )
+    }
+
+    @Test
+    fun aTransactionThePhoneCannotAccountForIsABlockerNoTickGetsPast() = runBlocking {
+        val phone = phone()
+        val model = opened(phone)
+        phone.markets.answersOrder = { terms, choice, wallet ->
+            val built =
+                orderTransaction(
+                    terms = terms,
+                    yes = !choice.yes,
+                    deposit = choice.deposit,
+                    owner = wallet,
+                )
+            phone.chain.tables = built.tables
+            predictionOrder(built.transaction, yes = choice.yes, owner = wallet)
+        }
+        choose(model, yes = true, stake = 5_000_000UL)
+        model.prepare()
+        model.acknowledge(true)
+
+        val review = checkNotNull(model.review.value)
+        val sheet = review.sheet(phone.wallet.walletFor(CONNECTION))
+        assertEquals("This transaction can’t be approved", sheet.preparationError?.title)
+        assertEquals("Get a new quote", sheet.preparationError?.actionLabel)
+        assertNull(sheet.confirmationCheckbox)
+        assertFalse(sheet.primaryAction.enabled)
+        model.approve(phone.wallet.walletFor(CONNECTION))
+        assertEquals(
+            emptyList<Triple<ByteString, SelectedWallet, String>>(),
+            phone.adapter.sendings,
+        )
+    }
+
+    private fun OperationReview.sheet(wallet: SelectedWallet?) =
+        toPredictionSheet(
+            ApplicationProvider.getApplicationContext<Context>().resources,
+            PredictionReviewSource("CopyTrading"),
+            wallet,
+            clock,
+            ZoneId.of("UTC"),
+            Locale.US,
+        )
 
     @Test
     fun changingTheSideThrowsAwayTheOrderPreparedForTheOtherOne() = runBlocking {

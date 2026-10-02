@@ -403,6 +403,17 @@ class PluginFailure(
 ) : Exception("provider could not prepare: $code")
 
 /**
+ * [PluginFailure] codes core tells apart from the rest, whichever provider reports them (SEE-180).
+ *
+ * A review names these to the owner as themselves rather than as "nothing was prepared". The code
+ * says what kind of refusal it was and nothing more: not which asset ran short, nor by how much.
+ */
+object PluginFailureCodes {
+    /** The provider checked the owner's balance and said it does not cover the order. */
+    const val INSUFFICIENT_FUNDS = "insufficient_funds"
+}
+
+/**
  * Which promise is being kept when the owner approves (SEE-97, docs/wiki/environments.md).
  *
  * It belongs to a connection rather than to the app or to a provider. A server's manifest says

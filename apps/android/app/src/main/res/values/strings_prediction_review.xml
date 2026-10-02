@@ -3,20 +3,32 @@
 <resources>
     <string name="prediction_review_title">Prediction</string>
     <string name="prediction_review_provider">%1$s Prediction</string>
-    <!-- Provider, market, closing time. -->
-    <string name="prediction_review_subline">%1$s, market %2$s, closing %3$s. The side and the amount are yours.</string>
+    <!-- Where the order is placed, as its provider names itself, and the closing time (SEE-180). -->
+    <string name="prediction_review_subline">%1$s · closes %2$s</string>
     <!-- Amount with its unit, and the side. -->
     <string name="prediction_review_stake_on">%1$s on %2$s</string>
     <string name="prediction_review_amount">%1$s %2$s</string>
 
     <string name="prediction_sandbox_notice">Sandbox. Everything above is real — the live market, the exact transaction and this phone’s reading of it. The last step is not: no funds will move, nothing is signed and nothing is sent.</string>
-    <string name="prediction_review_check">The market, its prices and its rules were read on this phone. Nothing here was taken from the publisher on trust, and neither the side nor the amount comes from the signal.</string>
-    <string name="prediction_review_terms_empty">Choose a side and an amount and this phone fetches a quote, then shows the contracts, the cost and the payout it was checked against.</string>
-    <string name="prediction_review_terms_fetching">Fetching a quote for your side and amount, and reading the transaction it comes back as on this phone.</string>
+    <string name="prediction_review_check">The market, its prices and the exact transaction were read on this phone. Nothing here was taken from the publisher on trust, and neither the side nor the amount comes from the signal.</string>
+    <!-- Said before anything is prepared: nothing has been read yet, so nothing claims it was. -->
+    <string name="prediction_review_check_pending">When you get a quote, this phone reads the market and the exact transaction itself. Nothing is taken from the publisher on trust, and neither the side nor the amount comes from the signal.</string>
+    <string name="prediction_review_terms_title">Quote</string>
+    <string name="prediction_review_terms_empty">Choose a side and an amount to get a quote.</string>
+    <string name="prediction_review_terms_fetching">Getting a quote and checking the transaction…</string>
     <string name="prediction_review_stale">This quote has run out. Nothing can be approved from it; fetch a fresh one and read it again.</string>
     <string name="prediction_review_refresh">Refresh quote</string>
-    <string name="prediction_review_findings">What this phone found in the transaction</string>
+    <!-- The inputs or the feed's wallet changed since the last quote, so there is none for them. -->
+    <string name="prediction_review_needs_quote">There is no quote for %1$s with this wallet yet. Get one before approving.</string>
+    <string name="prediction_review_get_quote">Get quote</string>
     <string name="prediction_review_not_prepared">Nothing was prepared</string>
+    <string name="prediction_review_insufficient_funds">Insufficient funds</string>
+    <!-- The amount with its unit. Only what the provider said: no token, balance or shortfall is inferred. -->
+    <string name="prediction_review_insufficient_funds_body">Could not prepare the %1$s order. The provider reported insufficient funds.</string>
+    <string name="prediction_review_retry">Try again</string>
+    <string name="prediction_review_blocked">This transaction can’t be approved</string>
+    <string name="prediction_review_blocked_unread">This phone could not account for the whole transaction, so it is not offered for approval.</string>
+    <string name="prediction_review_new_quote">Get a new quote</string>
 
     <!-- Fact rows. -->
     <string name="prediction_fact_from">From</string>
@@ -36,15 +48,48 @@
     <string name="prediction_fact_publisher">Publisher</string>
     <string name="prediction_fact_revision">Revision</string>
     <string name="prediction_fact_open">Open ↗</string>
+    <string name="prediction_fact_market_source">Market source</string>
+    <string name="prediction_fact_transaction">Transaction</string>
+    <string name="prediction_fact_transaction_none">Not prepared yet</string>
+    <string name="prediction_fact_transaction_preparing">Being prepared</string>
+    <string name="prediction_fact_transaction_read">Read in full on this phone</string>
+    <string name="prediction_fact_transaction_unread">Could not be read in full</string>
+    <string name="prediction_fact_failure_code">Preparation error</string>
+    <string name="prediction_fact_failure_explanation">What it means</string>
+    <string name="prediction_fact_failure_said">The provider said</string>
+
+    <!-- The collapsed sections (SEE-180). -->
+    <string name="prediction_section_checks">Limits and checks</string>
+    <string name="prediction_section_about">About this order and risks</string>
+    <string name="prediction_section_about_summary">How it fills, and what cannot be undone</string>
+    <!-- The provider's name. -->
+    <string name="prediction_section_provider">%1$s and terms</string>
+    <string name="prediction_section_provider_summary">Fees, availability, terms and privacy</string>
+    <string name="prediction_section_technical">Technical details</string>
+    <string name="prediction_section_technical_summary">Market, asset and account identifiers</string>
+    <string name="prediction_checks_daily_unset">Daily limits not set</string>
+    <string name="prediction_checks_daily_within">Within daily limits</string>
+    <string name="prediction_checks_daily_over">Over a daily limit</string>
+    <string name="prediction_checks_daily_unchecked">Daily limits checked once prepared</string>
+    <string name="prediction_checks_daily_unverified">Daily limits could not be checked</string>
+    <!-- A configured daily limit before there is an amount to count against it. -->
+    <string name="prediction_daily_after_quote">Checked once the order is prepared</string>
+    <string name="prediction_checks_daily_unset_body">No daily limit is set for this connection or globally.</string>
+    <string name="prediction_checks_tx_pending">transaction checked once prepared</string>
+    <string name="prediction_checks_tx_read">transaction read in full</string>
+    <string name="prediction_checks_tx_unread">transaction not read in full</string>
+    <!-- Two parts of the summary line. -->
+    <string name="prediction_checks_summary">%1$s · %2$s</string>
 
     <string name="prediction_review_note_label">The publisher’s note · not verified</string>
 
     <!-- The verdict, in the design's own pattern. -->
     <string name="prediction_verdict_no_rules">Outside rules · no rules set</string>
-    <string name="prediction_verdict_pending">Reading your rules</string>
     <string name="prediction_rule_global">Global rule</string>
     <string name="prediction_rule_connection">Connection rule</string>
     <string name="prediction_rule_none">No rule configured</string>
+    <!-- A finding of this phone's own reading of the transaction, not one of the owner's rules. -->
+    <string name="prediction_rule_check">Transaction check</string>
     <string name="prediction_acknowledge_one">I have read the warning and want to approve anyway</string>
     <string name="prediction_acknowledge_many">I have read the warnings and want to approve anyway</string>
     <string name="prediction_daily_title_sandbox">Daily spend if this ran in production</string>
@@ -59,6 +104,9 @@
     <string name="prediction_params_title">Your side and amount</string>
     <string name="prediction_params_use">Use these</string>
     <string name="prediction_params_help">In this asset’s own units. Nothing is rounded.</string>
+    <!-- The market's minimum, with its unit, next to the amount (SEE-180). -->
+    <string name="prediction_params_help_least">Minimum %1$s. In this asset’s own units; nothing is rounded.</string>
+    <string name="prediction_params_help_range">From %1$s to %2$s. In this asset’s own units; nothing is rounded.</string>
     <string name="prediction_params_note">The amount is yours alone. It stays on this phone: the publisher and the shared gateway are never told the amount, your wallet, or whether you acted.</string>
     <string name="prediction_params_too_little">At least %1$s.</string>
     <string name="prediction_params_too_much">At most %1$s.</string>

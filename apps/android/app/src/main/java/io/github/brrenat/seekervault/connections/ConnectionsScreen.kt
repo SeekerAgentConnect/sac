@@ -425,9 +425,12 @@ private fun PendingItem.toHomeCarouselItem(
     val capability = request.action.capabilityId
     val source = sourceName ?: request.identity.sourceId
     // A signal's tile says what its review's verdict card says, read the same way: the warnings it
-    // lists, or "Outside rules" when no rules apply at all (SEE-158).
+    // lists, or "Outside rules" when no rules apply at all (SEE-158). A tile is a signal nobody
+    // has prepared an order for, so it reads the verdict the way the sheet does before a quote:
+    // the absence of a transaction is not a warning (SEE-180).
     val signalVerdict =
-        if (this is PendingItem.Signal) assessment?.decision?.reviewVerdict() else null
+        if (this is PendingItem.Signal) assessment?.decision?.reviewVerdict(prepared = false)
+        else null
     val warnings =
         when {
             this is PendingItem.Signal ->

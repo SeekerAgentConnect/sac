@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Icon
@@ -20,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import io.github.brrenat.seekervault.designsystem.preview.DesignRef
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
@@ -29,6 +31,8 @@ enum class NoticeCardKind {
     StaleRules,
     /** The quote the review was read against has run out; the action fetches a fresh one. */
     StaleQuote,
+    /** Nothing could be prepared; the action tries again with the same inputs (SEE-180). */
+    PreparationFailed,
 }
 
 @Composable
@@ -38,12 +42,15 @@ fun NoticeCard(
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
     onAction: () -> Unit = {},
+    /** A short name for what happened, above [message]. */
+    title: String? = null,
 ) {
     val icon =
         when (kind) {
             NoticeCardKind.Sandbox -> Icons.Outlined.Science
             NoticeCardKind.StaleRules,
             NoticeCardKind.StaleQuote -> Icons.Outlined.Sync
+            NoticeCardKind.PreparationFailed -> Icons.Outlined.ErrorOutline
         }
 
     Row(
@@ -69,6 +76,13 @@ fun NoticeCard(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
         ) {
+            title?.let {
+                Text(
+                    text = it,
+                    color = SeekerTheme.colors.onOrangeContainer,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                )
+            }
             Text(
                 text = message,
                 color = SeekerTheme.colors.onOrangeContainer,

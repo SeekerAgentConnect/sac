@@ -80,7 +80,19 @@ data class ProviderAbout(
 )
 
 /** One paragraph of a [ProviderAbout], with the values its resource formats in. */
-data class ProviderNote(@StringRes val text: Int, val args: List<String> = emptyList())
+data class ProviderNote(
+    @StringRes val text: Int,
+    val args: List<String> = emptyList(),
+    val topic: ProviderNoteTopic = ProviderNoteTopic.Provider,
+)
+
+/** What a [ProviderNote] is about, so a review can put it with the right section (SEE-180). */
+enum class ProviderNoteTopic {
+    /** The provider itself: its network, fees, availability and relationships. */
+    Provider,
+    /** What an order is and is not: how it fills, and what can and cannot be undone. */
+    Order,
+}
 
 /**
  * The receipt as rows a person reads: a label and a value, in the order they matter.
