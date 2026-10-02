@@ -134,7 +134,11 @@ data class PluginReference(val key: String, val value: String)
  * plugin's word for which network its bytes are on.
  */
 data class InspectedAction(
-    /** The account that pays and signs, read from the bytes; null when they don't say. */
+    /**
+     * The owner's account the value leaves and whose signature it needs, read from the bytes; null
+     * when they don't say. It is not necessarily the fee payer: a gasless order's fee is paid by
+     * the provider's sponsor, and the deposit is still the owner's spending (SEE-181).
+     */
     val wallet: String?,
     /**
      * Whether these bytes move value at all. An operation that moves nothing satisfies every rule

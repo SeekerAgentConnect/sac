@@ -212,7 +212,11 @@ suspend fun inspectPrediction(
         findings = findings.distinct().map(PredictionFinding::finding),
         facts =
             InspectedAction(
-                wallet = decoded.feePayer,
+                // Whose balance the stake leaves: the owner's, checked above as the order's owner,
+                // the funding authority and the one signature still missing. Never the fee payer,
+                // which for a gasless order is the provider's sponsor — counting the deposit
+                // against it would put the owner's spending in somebody else's day (SEE-181).
+                wallet = owner,
                 movesValue = true,
                 // What the owner spends is the deposit token they chose, whatever the order's own
                 // token is: a rule about that asset has to cover this.

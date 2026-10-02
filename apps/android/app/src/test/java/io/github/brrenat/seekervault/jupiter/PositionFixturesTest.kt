@@ -2,9 +2,29 @@ package io.github.brrenat.seekervault.jupiter
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.SeekerVaultApplication
+import io.github.brrenat.seekervault.activity.ActivityKind
+import io.github.brrenat.seekervault.activity.ActivityOutcome
+import io.github.brrenat.seekervault.activity.ActivityRecord
+import io.github.brrenat.seekervault.activity.ReviewedOperation
+import io.github.brrenat.seekervault.activity.ReviewedSpending
+import io.github.brrenat.seekervault.activity.ReviewedTransfer
+import io.github.brrenat.seekervault.activity.storage.ActivityStore
 import io.github.brrenat.seekervault.plugins.HeldPosition
 import io.github.brrenat.seekervault.plugins.JUPITER_PROVIDER
+import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.plugins.actionFacts
 import io.github.brrenat.seekervault.plugins.actions.PredictionChoice
+import io.github.brrenat.seekervault.policy.AssetLimits
+import io.github.brrenat.seekervault.policy.DailyCheckScope.Global
+import io.github.brrenat.seekervault.policy.DailyTotal
+import io.github.brrenat.seekervault.policy.GlobalPolicy
+import io.github.brrenat.seekervault.policy.GlobalSpendScope
+import io.github.brrenat.seekervault.policy.PolicyAsset
+import io.github.brrenat.seekervault.policy.PolicyCheckStatus
+import io.github.brrenat.seekervault.policy.PolicyEvaluator
+import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.solana.AccountSnapshot
 import io.github.brrenat.seekervault.solana.SolanaAccounts
@@ -14,6 +34,8 @@ import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.transactions.associatedTokenAddress
 import io.github.brrenat.seekervault.transactions.decodeTransaction
 import java.net.InetAddress
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.Base64
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
@@ -24,8 +46,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.robolectric.RuntimeEnvironment
 
 /**
  * What Jupiter really answers about a position, and the close and buy it really builds (SEE-172).
@@ -37,6 +62,7 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class PositionFixturesTest {
+    @get:Rule val folder = TemporaryFolder()
 
     private val fixture: JSONObject by lazy {
         val text =
@@ -180,6 +206,156 @@ class PositionFixturesTest {
     }
 
     @Test
+    fun theRealGaslessBuyIsTheOwnersSpendingAndNeverTheSponsors() {
+        // Jupiter's sponsor pays the fee; the deposit leaves the owner (SEE-181). The day's
+        // counters, the review's evaluation and the record pinned before the wallet all have to
+        // name the owner, or a gasless buy and the owner's own transfers would never add up.
+        val order = buyNo.getJSONObject("order")
+        val buyer = buyNo.getString("owner")
+        val sponsor =
+            checkNotNull(
+                (decodeTransaction(bytes(buyNo).toByteArray(), resolvable = true)
+                        as DecodeResult.Decoded)
+                    .transaction
+                    .feePayer
+            )
+        assertTrue("the capture is gasless", buyNo.getBoolean("isGasless"))
+        assertTrue("the sponsor is not the owner", sponsor != buyer)
+        val stake = 5_000_000UL
+        val inspection = runBlocking {
+            inspectPrediction(
+                terms = predictionTerms(marketId = order.getString("marketId")),
+                choice = PredictionChoice(yes = false, deposit = stake),
+                order =
+                    PredictionOrder(
+                        transaction = bytes(buyNo),
+                        orderPubkey = order.getString("orderPubkey"),
+                        positionPubkey = order.getString("positionPubkey"),
+                        externalOrderId = order.getString("externalOrderId"),
+                        marketIdHash = order.getString("marketIdHash"),
+                        isYes = false,
+                        isBuy = true,
+                        contractsMicro = order.getString("contractsMicro").toULong(),
+                        maxBuyPriceUsd = order.getString("maxBuyPriceUsd").toULong(),
+                        orderCostUsd = order.getString("orderCostUsd").toULong(),
+                        payoutUsd = order.getString("payoutUsd").toULong(),
+                        totalFeeUsd = order.getString("estimatedTotalFeeUsd").toULong(),
+                        slippageBps = order.getInt("slippageBps"),
+                        requiredSigners = listOf(buyer),
+                    ),
+                wallet = wallet(buyer),
+                transaction = bytes(buyNo),
+                version = 1,
+                chain = tables(buyNo),
+            )
+        }
+        assertEquals(Verdict.Verified, inspection.verdict)
+        assertEquals(buyer, inspection.facts?.wallet)
+
+        // The facts the review evaluates, read the way the feed's review reads them.
+        val registry =
+            (RuntimeEnvironment.getApplication() as SeekerVaultApplication).providerRegistry
+        val facts =
+            actionFacts(
+                connectionId = CONNECTION,
+                proposalId = BUY_ID,
+                action = PREDICTION_BUY_ACTION,
+                network = Network.NETWORK_MAINNET,
+                resolution =
+                    registry.resolve(
+                        provider = JUPITER_PROVIDER,
+                        action = PREDICTION_BUY_ACTION,
+                        schemaVersion = 1,
+                        network = Network.NETWORK_MAINNET,
+                        environment = PluginEnvironment.Production,
+                    ),
+                inspection = inspection,
+            )
+        val usdc = PolicyAsset(Network.NETWORK_MAINNET, USDC_MINT)
+        val spending = ReviewedSpending.Outgoing(buyer, Network.NETWORK_MAINNET, USDC_MINT, stake)
+        assertEquals(buyer, facts.scope?.wallet)
+        assertEquals(spending, facts.spending())
+
+        // Under an 8 USDC global threshold, the owner already sent 4 USDC today from another
+        // connection: this 5 USDC buy goes over, because it is counted against the owner.
+        val policies = PolicyStore(folder.newFolder("policies"))
+        val activity = folder.newFolder("activity")
+        policies.putGlobal(
+            GlobalPolicy.default(NOW).copy(limits = mapOf(usdc to AssetLimits(daily = 8_000_000UL)))
+        )
+        val evaluator =
+            PolicyEvaluator(
+                policies,
+                records = { ActivityStore(activity).snapshot().records },
+                now = { NOW },
+                zone = { ZoneOffset.UTC },
+            )
+        ActivityStore(activity).put(transfer(buyer, 4_000_000UL))
+        val buying = evaluator.evaluate(facts).dailyChecks.single { it.scope == Global }
+        assertEquals(9_000_000UL, buying.projected)
+        assertEquals(PolicyCheckStatus.Failed, buying.result.status)
+
+        // And once it is recorded — the binding's spending, persisted and read back — the owner's
+        // next transfer sees it, and the sponsor's scope has spent nothing at all.
+        ActivityStore(activity).put(buy(buyer, spending))
+        val owners = checkNotNull(evaluator.spentToday(GlobalSpendScope(buyer, usdc)))
+        assertEquals(9_000_000UL, owners.confirmed)
+        assertEquals(
+            DailyTotal.none(GlobalSpendScope(sponsor, usdc), owners.day),
+            evaluator.spentToday(GlobalSpendScope(sponsor, usdc)),
+        )
+    }
+
+    /** A direct USDC transfer the owner made today through another connection. */
+    private fun transfer(owner: String, amount: ULong) =
+        ActivityRecord(
+            connectionId = OTHER_CONNECTION,
+            requestId = TRANSFER_ID,
+            source = "Hermes",
+            serverHost = "sidecar.example",
+            kind = ActivityKind.Transfer,
+            answeredAt = NOW,
+            recordedAt = NOW,
+            outcome = ActivityOutcome.Confirmed,
+            transfer =
+                ReviewedTransfer(
+                    wallet = owner,
+                    network = Network.NETWORK_MAINNET,
+                    recipient = "7LCE7pWnYuYKtGMWt2Q4aXKQrqTmGf4c1Kt1PTmAGwSt",
+                    amount = amount.toString(),
+                    mint = USDC_MINT,
+                    preparedVersion = 1,
+                ),
+            signature = "transfer-signature",
+        )
+
+    /** The gasless buy's own record, with the spending its binding pinned. */
+    private fun buy(owner: String, spending: ReviewedSpending) =
+        ActivityRecord(
+            connectionId = CONNECTION,
+            requestId = BUY_ID,
+            source = "Signals",
+            serverHost = "gateway.example",
+            kind = ActivityKind.Operation,
+            answeredAt = NOW,
+            recordedAt = NOW,
+            outcome = ActivityOutcome.Confirmed,
+            operation =
+                ReviewedOperation(
+                    operation = PREDICTION_BUY_ACTION.value,
+                    plugin = JUPITER_PROVIDER.value,
+                    contract = 1,
+                    revision = 1,
+                    wallet = owner,
+                    network = Network.NETWORK_MAINNET,
+                    environment = PluginEnvironment.Production,
+                    preparedVersion = 1,
+                    spending = spending,
+                ),
+            signature = "buy-signature",
+        )
+
+    @Test
     fun theRealCloseIsVerifiedForItsOwnerAndRefusedForAnyoneElse() {
         val stated =
             adapter(200 to close.toString()) {
@@ -264,5 +440,13 @@ class PositionFixturesTest {
         assertTrue(read.finished)
         assertEquals(65_660_000UL, read.contractsMicro)
         assertEquals(63_550_000UL, read.filledContractsMicro)
+    }
+
+    private companion object {
+        val NOW: Instant = Instant.parse("2026-09-28T12:00:00Z")
+        const val CONNECTION = "11111111-2222-4333-8444-555555555555"
+        const val OTHER_CONNECTION = "22222222-3333-4444-8555-666666666666"
+        const val BUY_ID = "0b6f5a1e-3c2d-4e8f-9a7b-1c2d3e4f5a6b"
+        const val TRANSFER_ID = "5e4d3c2b-1a09-4f8e-8d7c-6b5a49382716"
     }
 }

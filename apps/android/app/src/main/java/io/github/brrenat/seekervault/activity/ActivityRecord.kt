@@ -150,7 +150,15 @@ data class ReviewedOperation(
      * which therefore does not say — and the day's counters treat that as unknown, never as zero.
      */
     val spending: ReviewedSpending? = null,
-)
+) {
+    /**
+     * Whether this was a sandbox rehearsal, which no wallet was ever handed (SEE-97). It is read
+     * from the environment the binding was pinned in, so it holds even for a record whose outcome
+     * never got as far as Simulated.
+     */
+    val rehearsal: Boolean
+        get() = environment == PluginEnvironment.Sandbox
+}
 
 /**
  * What one execution takes out of the owner's spendable balance, as this phone established it from
