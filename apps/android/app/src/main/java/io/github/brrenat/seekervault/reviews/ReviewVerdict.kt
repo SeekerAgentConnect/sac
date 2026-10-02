@@ -71,10 +71,11 @@ data class ReviewWarning(
  * absence of a transaction (SEE-180). What the rules can already say — an action that is not
  * allowed, rules that cannot be read, a day's total that cannot be established — is still said. The
  * decision itself is untouched: it stays as conservative as it was, and only its reading for the
- * card changes.
+ * card changes. Nor is it ever read as within the rules: an assessment left over from bytes that
+ * are no longer on screen says nothing about the ones being prepared.
  */
 fun PolicyDecision.reviewVerdict(prepared: Boolean = true): ReviewVerdict {
-    if (allowed) return ReviewVerdict.Within
+    if (allowed) return if (prepared) ReviewVerdict.Within else ReviewVerdict.Pending
     if (reason == PolicyReason.NoPolicyConfigured) return ReviewVerdict.NoRules
     fun PolicyCheckResult.shown(): Boolean =
         warns() &&

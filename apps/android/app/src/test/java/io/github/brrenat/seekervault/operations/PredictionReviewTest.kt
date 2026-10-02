@@ -594,15 +594,63 @@ class PredictionReviewTest {
         assertNull(state.terms)
         assertFalse(state.primaryAction.enabled)
         assertTrue(state.statusBlocks.isEmpty())
-        // What the provider said, in full, under the technical details.
-        val technical = state.section(PredictionReviewSections.TECHNICAL).factRows
+        // What the provider said, in full, under the technical details: in a block that wraps,
+        // not a one-line row.
+        val technical = state.section(PredictionReviewSections.TECHNICAL)
         assertEquals(
             "Insufficient funds",
-            technical.single { it.label == "The provider said" }.value,
+            technical.infoBlocks.single { it.title == "The provider said" }.body,
         )
+        assertTrue(technical.factRows.none { it.label == "The provider said" })
         assertEquals(
             PluginFailureCodes.INSUFFICIENT_FUNDS,
-            technical.single { it.label == "Preparation error" }.value,
+            technical.factRows.single { it.label == "Preparation error" }.value,
+        )
+    }
+
+    @Test
+    fun aRefreshShowsThatItIsFetchingAndNeverTheQuoteItIsReplacing() {
+        // Refresh quote on an expired one, and Get a new quote on one this phone refused: the
+        // provider is still working, and the old bytes are still held until it answers.
+        val retained =
+            listOf(
+                review(
+                    choice = chosen,
+                    prepared = true,
+                    expiresAtEpochSeconds = now.epochSecond - 1,
+                    assessment = globalRule(readFacts()),
+                    preparing = true,
+                ),
+                review(
+                    choice = chosen,
+                    prepared = true,
+                    inspection = unreadable(),
+                    assessment = globalRule(readFacts(fullyRead = false)),
+                    preparing = true,
+                ),
+            )
+        for (refreshing in retained) {
+            val state = sheet(refreshing)
+            assertEquals(emptyList<Any>(), state.terms?.rows)
+            assertEquals("Getting a quote and checking the transaction…", state.terms?.emptyText)
+            // Neither the old verdict, nor the old blocker, nor the old staleness is current.
+            assertNull(state.verdict)
+            assertNull(state.preparationError)
+            assertNull(state.staleQuote)
+            assertNull(state.confirmationCheckbox)
+            assertFalse(state.primaryAction.enabled)
+            // Nothing read out of the old bytes is shown as read.
+            val technical = state.section(PredictionReviewSections.TECHNICAL).factRows
+            assertTrue(technical.none { it.copyValue == ORDER })
+            assertEquals(
+                "Daily limits not set · transaction checked once prepared",
+                state.section(PredictionReviewSections.CHECKS).summary,
+            )
+        }
+        // An assessment left over from read bytes is not "within the rules" for unprepared ones.
+        assertEquals(
+            ReviewVerdict.Pending,
+            globalRule(readFacts()).decision.reviewVerdict(prepared = false),
         )
     }
 

@@ -128,6 +128,13 @@ fun OperationReview.toPredictionSheet(
     zone: ZoneId = ZoneId.systemDefault(),
     locale: Locale = resources.configuration.locales[0],
 ): ReviewSheetState {
+    // A refresh keeps the bytes it is replacing until the provider answers. None of them is shown
+    // meanwhile — not as the quote, not as the verdict, not as accounts read out of them — so an
+    // expired or refused quote never reads as the current one while the new one is fetched.
+    if (preparing && inspection != null) {
+        return copy(inspection = null)
+            .toPredictionSheet(resources, source, wallet, now, zone, locale)
+    }
     val proposal = record.proposal
     val terms = (payload as? ActionPayload.PredictionBuy)?.payload
     val sandbox = environment == PluginEnvironment.Sandbox
@@ -672,8 +679,31 @@ private fun OperationReview.technicalSection(
         key = PredictionReviewSections.TECHNICAL,
         title = resources.getString(R.string.prediction_section_technical),
         summary = resources.getString(R.string.prediction_section_technical_summary),
+        infoBlocks = diagnosticsOf(resources),
         factRows = factsOf(stage, terms, wallet, resources),
     )
+
+/**
+ * What stopped a preparation, in full: what it means, then exactly what the provider said. A
+ * provider's message can be any length, so it wraps rather than sharing a line with its label.
+ */
+private fun OperationReview.diagnosticsOf(resources: Resources): List<ReviewSheetInfoBlock> {
+    val failed = failure ?: return emptyList()
+    return listOfNotNull(
+        failed.explanation?.let {
+            ReviewSheetInfoBlock(
+                body = resources.getString(it),
+                title = resources.getString(R.string.prediction_fact_failure_explanation),
+            )
+        },
+        failed.detail?.takeIf(String::isNotEmpty)?.let {
+            ReviewSheetInfoBlock(
+                body = it,
+                title = resources.getString(R.string.prediction_fact_failure_said),
+            )
+        },
+    )
+}
 
 private fun linkRow(label: Int, url: String, resources: Resources) =
     ReviewSheetFactRow(
@@ -850,15 +880,9 @@ private fun OperationReview.factsOf(
         ?.filter { it.technical || stage == PredictionStage.Blocked }
         ?.forEach { add(ReviewSheetFactRow(resources.getString(it.label), it.value)) }
     // What stopped a preparation, in full: the card above says it once and plainly.
-    failure?.let { failed ->
-        plain(R.string.prediction_fact_failure_code, failed.code)
-        failed.explanation?.let {
-            plain(R.string.prediction_fact_failure_explanation, resources.getString(it))
-        }
-        failed.detail?.takeIf(String::isNotEmpty)?.let {
-            plain(R.string.prediction_fact_failure_said, it)
-        }
-    }
+    // Only the code is a short value; the explanation and the provider's own words are prose of
+    // any length, and are blocks that wrap above these rows.
+    failure?.let { failed -> plain(R.string.prediction_fact_failure_code, failed.code) }
     // Where the market is on the provider's own site or app, as history shows it once an order is
     // placed (SEE-157), so the owner can look before approving too.
     destinations.forEach { add(linkRow(it.label, it.url, resources)) }

@@ -21,13 +21,23 @@ import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.inbox.PendingItem
+import io.github.brrenat.seekervault.inbox.RequestAssessment
+import io.github.brrenat.seekervault.jupiter.USDC_MINT
 import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
+import io.github.brrenat.seekervault.policy.Allowlist
+import io.github.brrenat.seekervault.policy.GlobalPolicy
+import io.github.brrenat.seekervault.policy.PolicyAction
+import io.github.brrenat.seekervault.policy.PolicyAsset
+import io.github.brrenat.seekervault.policy.RequestFacts
+import io.github.brrenat.seekervault.policy.evaluate
+import io.github.brrenat.seekervault.policy.resolveEffectivePolicy
 import io.github.brrenat.seekervault.proposals.PROPOSAL_A
 import io.github.brrenat.seekervault.proposals.PROPOSAL_B
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalValue
 import io.github.brrenat.seekervault.proposals.proposal
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.SERVER_PROTOCOL
 import io.github.brrenat.seekervault.servers.ServerManifest
@@ -314,6 +324,71 @@ class ConnectionsScreenTest {
         // No rules at all: the review's card says "Outside rules", and so does the tile.
         assertEquals(0, tile.warningCount)
         assertEquals(true, tile.outsideRules)
+    }
+
+    @Test
+    fun anUnpreparedSignalUnderConfiguredRulesClaimsNoVerdict() {
+        val home = HOME.copy(label = "CopyTrading")
+        val waiting = prediction(home, PROPOSAL_A, "Bitcoin Up or Down", "jupiter")
+        // Predictions are allowed and only USDC may be spent, but there is no order yet for the
+        // asset rule to read: the decision stays conservative, and the tile says nothing of it.
+        val policy =
+            resolveEffectivePolicy(
+                home.id,
+                GlobalPolicy(
+                    actions = Allowlist(setOf(PolicyAction.Prediction)),
+                    assets = Allowlist(setOf(PolicyAsset(Network.NETWORK_MAINNET, USDC_MINT))),
+                    updatedAt = Instant.parse("2026-09-25T10:00:00Z"),
+                ),
+                null,
+            )
+        val facts = RequestFacts.unread(home.id, PolicyAction.Prediction, waiting.requestId)
+        val decision = evaluate(policy, facts)
+        assertEquals(false, decision.allowed)
+        val state =
+            homeScreenState(
+                connectionsState = ConnectionsUiState(connections = listOf(home), loaded = true),
+                inboxSummary = null,
+                wallet = null,
+                pendingItems = listOf(waiting),
+                requestAssessments = emptyMap(),
+                signalAssessments =
+                    mapOf(
+                        RequestKey(home.id, waiting.requestId) to
+                            RequestAssessment(
+                                decision = decision,
+                                facts = facts,
+                                at = Instant.parse("2026-09-25T10:00:00Z"),
+                            )
+                    ),
+            )
+        val tile = state.pending.single().tile
+        assertEquals(0, tile.warningCount)
+        assertEquals(false, tile.outsideRules)
+        assertEquals(true, tile.rulesPending)
+
+        show(state)
+        compose.onNodeWithText("Bitcoin Up or Down").assertExists()
+        // Neither the green verdict nor a warning: nothing has been checked yet.
+        compose.onNodeWithText("In rules").assertDoesNotExist()
+        compose.onNodeWithText("warning", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun aSignalNotYetAssessedClaimsNoVerdictEither() {
+        val home = HOME.copy(label = "CopyTrading")
+        val waiting = prediction(home, PROPOSAL_A, "Bitcoin Up or Down", "jupiter")
+        val state =
+            homeScreenState(
+                connectionsState = ConnectionsUiState(connections = listOf(home), loaded = true),
+                inboxSummary = null,
+                wallet = null,
+                pendingItems = listOf(waiting),
+                requestAssessments = emptyMap(),
+            )
+        assertEquals(true, state.pending.single().tile.rulesPending)
+        show(state)
+        compose.onNodeWithText("In rules").assertDoesNotExist()
     }
 
     private fun prediction(

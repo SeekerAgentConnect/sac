@@ -438,6 +438,11 @@ private fun PendingItem.toHomeCarouselItem(
             else -> assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1) ?: 0
         }
     val outsideRules = signalVerdict == ReviewVerdict.NoRules
+    // Not yet assessed, or nothing to assess until an order is prepared: the tile claims no
+    // verdict, where an empty warning count alone would read as "In rules".
+    val rulesPending =
+        this is PendingItem.Signal &&
+            (signalVerdict == null || signalVerdict == ReviewVerdict.Pending)
     val kind =
         when (capability) {
             HomeCapability.Acknowledgement -> RequestTileKind.Acknowledgement
@@ -471,6 +476,7 @@ private fun PendingItem.toHomeCarouselItem(
                         footerText = request.parameter("provider")?.providerName() ?: source,
                         sourceColour = sourceColour,
                         outsideRules = outsideRules,
+                        rulesPending = rulesPending,
                     )
                 RequestTileKind.SwapSignal ->
                     RequestTileModel(
@@ -480,6 +486,7 @@ private fun PendingItem.toHomeCarouselItem(
                         warningCount = warnings,
                         sourceColour = sourceColour,
                         outsideRules = outsideRules,
+                        rulesPending = rulesPending,
                     )
                 RequestTileKind.SignatureRequest ->
                     RequestTileModel(
