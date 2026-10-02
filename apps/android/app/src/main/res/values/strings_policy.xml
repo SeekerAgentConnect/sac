@@ -8,10 +8,10 @@
     <string name="policy_global_caption">These are the defaults every connection starts from.</string>
     <string name="policy_global_empty_caption">Nothing is set, so connections that inherit compare nothing.</string>
     <string name="policy_global_empty_title">No global rules configured</string>
-    <string name="policy_global_empty_detail">Nothing is compared by default, so every request that inherits from here is flagged for attention. Connections with their own overrides are unaffected.</string>
+    <string name="policy_global_empty_detail">Nothing is compared by default, so requests that inherit from here show “No rules configured” and are not flagged. Connections with their own overrides are unaffected.</string>
     <string name="policy_help_rule">A rule never approves, stops or filters a request. It only decides whether the request is flagged when you review it.</string>
     <string name="policy_help_global">Global rules are the defaults. A connection either follows a section or replaces it outright — sections mix freely.</string>
-    <string name="policy_help_daily">Daily limits are the exception: a global daily limit counts every connection and cannot be raised or removed locally.</string>
+    <string name="policy_help_daily">Daily limits are the exception: a global daily limit counts every connection and cannot be raised or removed locally. A limit warns when a request would exceed it; it never caps spending or signs anything.</string>
     <string name="policy_help_wallet">Every request still needs your approval here, and the wallet asks again for anything it signs.</string>
     <string name="policy_connection_intro">Each section either uses Global rules or replaces that whole section for this connection. A connection override never adds items to a global list. These rules approve nothing and refuse nothing; every request still needs your hand here and in your wallet.</string>
     <string name="policy_intro">These rules are your own note about what this agent is expected to ask for. They approve nothing and refuse nothing. You approve every request by hand here and again in your wallet, whether the rules match it or not.</string>
@@ -22,7 +22,7 @@
     <string name="policy_override_never_saved">No connection overrides saved. Every section and per-request threshold inherits.</string>
 
     <string name="policy_summary_title">What these rules say</string>
-    <string name="policy_summary_none">Nothing is checked. Every request from this connection is shown as under restrictions, with the reason that no rules are configured.</string>
+    <string name="policy_summary_none">Nothing is checked. Requests from this connection show “No rules configured” — neither within rules nor a warning — and need no acknowledgement.</string>
     <string name="policy_global_summary_none">No global check is configured. Connections that inherit therefore get no rule from this document.</string>
     <string name="policy_summary_removes">Nothing is checked any more. Saving removes this connection\'s rules.</string>
     <string name="policy_global_summary_removes">Saving removes the global document. Connections that inherit then have no rule in those sections; their own overrides remain.</string>
@@ -205,7 +205,8 @@
     <string name="policy_global_unreadable_unknown">The stored global rules name something this version has no name for.</string>
     <string name="policy_global_unreadable_text">Every inheriting connection is shown as under restrictions until this is settled. Starting over replaces the global document and can change every inheriting connection; no connection override is deleted.</string>
     <!-- The assessment on the request-review screen (SAW-028). -->
-    <string name="policy_verdict_allowed">Within the rules you set</string>
+    <string name="policy_verdict_allowed">Configured checks passed</string>
+    <string name="policy_verdict_no_rules">No rules configured · not checked</string>
     <string name="policy_verdict_restricted">Outside your rules</string>
 
     <string name="policy_review_check_action">Action</string>

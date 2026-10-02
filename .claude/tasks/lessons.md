@@ -484,3 +484,17 @@
   explicit session (start/stop + a session token captured when a long operation begins).
 - **Re-check suppression when something delayed is finally presented** (SEE-175 review). A check
   made on arrival goes stale during a cooldown or while queued behind another banner.
+
+## Daily spending coverage (SEE-181)
+
+- **A counter that filters by kind is a list of what came to mind, too.** `spendsOf` read only
+  `ActivityKind.Transfer`, so every feed swap and prediction buy — added stages later — was silently
+  zero against daily limits. When a new record kind can move value, give the counter a `when` over
+  every kind with no `else`, so the next kind has to be given a counting rule before it compiles.
+- **"Not recorded" must never decode as "nothing".** Operations written before the spending fact
+  existed are *unknown* coverage (`DailyTotal.uncounted`), not zero, and an unreadable spending JSON
+  decodes as null for the same reason.
+- **Check which clock a shared test fixture uses before dating records.** `operations/Phone`'s
+  `PolicyEvaluator` reads the real clock for "today", so a record dated at the fixture clock is a
+  different day and silently counts nothing. Date such records `Instant.now()` or build an evaluator
+  with the test clock.

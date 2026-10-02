@@ -84,7 +84,13 @@
     <string name="prediction_review_note_label">The publisher’s note · not verified</string>
 
     <!-- The verdict, in the design's own pattern. -->
-    <string name="prediction_verdict_no_rules">Outside rules · no rules set</string>
+    <string name="prediction_verdict_within">Configured checks passed</string>
+    <string name="prediction_verdict_not_checked">Not checked: %1$s.</string>
+    <string name="prediction_no_rules_title">No rules configured · not checked</string>
+    <string name="prediction_no_rules_body">No rules apply to this connection, so nothing was checked against them. That is not a warning. Rules only flag a request for attention; they never block it or sign it.</string>
+    <string name="prediction_warning_daily_global">Over the global daily limit: %1$s of %2$s today.</string>
+    <string name="prediction_warning_daily_connection">Over this connection\'s daily limit: %1$s of %2$s today.</string>
+    <string name="prediction_warning_per_request">Over the per-request limit: %1$s.</string>
     <string name="prediction_rule_global">Global rule</string>
     <string name="prediction_rule_connection">Connection rule</string>
     <string name="prediction_rule_none">No rule configured</string>

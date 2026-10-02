@@ -251,7 +251,7 @@ There is no stored verdict. A review reloads Activity from disk, then `PolicyEva
 
 That matters at three moments: the policy may have been edited since the review opened, the day's counters may have moved, and a transfer is re-prepared as its blockhash expires. Each new preparation is new bytes and is read again from scratch.
 
-The review reads again when the request is opened, whenever a preparation has been read, when the app comes back to the front, and once more at the moment the owner answers ([the review](#read-again-before-the-answer-not-after)). Foreground work first resolves any wallet interaction that ended while the app was away, so a newly confirmed, unresolved, or failed record is part of the assessment that follows. A transfer's last read happens after it obtains the one wallet-interaction lock — where another wallet visit may have made it wait — and before either the sidecar or wallet is asked.
+The review reads again when the request is opened, whenever a preparation has been read, when the app comes back to the front, and once more at the moment the owner answers ([the review](#read-again-before-the-answer-not-after)). Foreground work first resolves any wallet interaction that ended while the app was away, so a newly confirmed, unresolved, or failed record is part of the assessment that follows. A transfer's last read happens after it obtains the one wallet-interaction lock — where another wallet visit may have made it wait — and before either the sidecar or wallet is asked. A feed operation (a swap or a prediction order) does the same since SEE-181: after the wait for the lock it reloads Activity from disk and evaluates again, and a verdict or a total that moved stops it before the binding is written or the wallet is opened. The owner is shown the new assessment and asked again — including for a fresh tick when it now warns.
 
 ## The editor
 
@@ -287,7 +287,7 @@ The editor does not open a blank form over a `StoredPolicy.Unreadable`. It says 
 
 The order on that screen is the order of trust, and the assessment is last on purpose. The facts above it come from the transaction's own bytes. The assessment is the owner's own note to themselves about what they expected this agent to ask for, and it is the weakest thing on the screen: it cannot make anything executable, and it cannot stop anything.
 
-Every effective check is named with its source — Global, Connection override, or Not configured — what it read, and what became of it: matched, outside the rules, could not be checked, or no rule set. Global daily and Connection daily are separate rows with their own source and result, and each shows the confirmed amount, unresolved amount, and total projected with this request. The checks nothing covered are named too, so `ALLOWED` is never read as a statement about a parameter nobody wrote a rule for. Under every verdict is the line that never changes: both verdicts still need the owner's hand on the wallet.
+Every effective check is named with its source — Global, Connection override, or Not configured — what it read, and what became of it: matched, outside the rules, could not be checked, or no rule set. A match is headed **Configured checks passed** (SEE-181), not "within your rules": it claims the checks the owner configured and nothing else, and the checks no rule covers are listed beside it as not checked. A connection with no rules at all is headed **No rules configured · not checked**, on a neutral card rather than the warning colour. Global daily and Connection daily are separate rows with their own source and result, and each shows the confirmed amount, unresolved amount, and total projected with this request. The checks nothing covered are named too, so `ALLOWED` is never read as a statement about a parameter nobody wrote a rule for. Under every verdict is the line that never changes: both verdicts still need the owner's hand on the wallet.
 
 Nothing is said by colour alone. A reader who sees no colour, or who hears the screen rather than seeing it, is told the same things in the same words.
 
@@ -302,6 +302,8 @@ A warning the owner can tap straight past is a warning that teaches them to tap 
 The moment an assessment was made is deliberately not part of consent. The same reasons about the same bytes, read again a second later, are the same reasons.
 
 **Having no rules at all is not a warning.** Every request on a phone whose owner has written no rules is `UNDER_RESTRICTIONS` for want of any, and asking them to tick past that on every request would make the tick a ritual. `PolicyDecision.warns` is `UNDER_RESTRICTIONS` for any other reason — rules this build can't read included, because there the owner did write something and this build can't say what.
+
+Since SEE-181 every surface says so the same way. The request review, the swap and prediction review sheets, the home tile and History all show no rules as neutral — "No rules configured · not checked" on a review, no verdict pill on a tile — never as "outside your rules", never in the warning colour, and never with the tick. "In rules" on a tile and the lime card on a review appear only when configured checks actually passed and the transaction was read whole. A real mismatch keeps its warning colour, its tick, and a reason that says what was observed against what was set (for example, "Over the global daily limit: 120 USDC of 100 USDC today."); the full breakdown stays in the review's limits section.
 
 ### Read again before the answer, not after
 
@@ -321,7 +323,7 @@ None of it reaches the sidecar. `StageBoundaryTest` holds the files that speak t
 
 ## Counters
 
-What this app has moved today, counted from the owner's own Activity records (`activity/`, SAW-023) — the record of what this phone did, which outlives the answer the sidecar was owed.
+What this app has moved today, counted from the owner's own Activity records (`activity/`, SAW-023) — the record of what this phone did, which outlives the answer the sidecar was owed. These are **app-local counters**: what went through this app, not the wallet's total or on-chain spending ([known limits](#known-limits)).
 
 ### What a counter is counted for
 
@@ -361,6 +363,44 @@ The threshold warning is made from `projected` — the two of them plus the requ
 | rejected, declined in the wallet, the wallet couldn't sign | nothing. A rejection is not a transfer |
 | the chain ran the transaction and it failed | nothing. The fee was paid; the transfer didn't happen |
 | an acknowledgement, a message signature | nothing. They move no asset |
+| a rehearsal in a sandbox connection | nothing. Nothing was signed or sent |
+
+### What counts as spending
+
+Since SEE-181 every kind of record that can take something out of the owner's spendable balance is counted, and each is counted from its own typed terms — never from display text, a publisher's prose, or an action's name (`spendsOf`, `policy/DailySpending.kt`):
+
+| Record | What counts | Read from |
+| --- | --- | --- |
+| direct transfer | the transferred amount of its asset | `ReviewedTransfer`, which the phone only approves when the bytes match it (SAW-020) |
+| feed swap | the **input** amount in its own asset, read out of the routing instruction | `ReviewedOperation.spending` |
+| prediction buy | the deposit (stake) in the deposit token | `ReviewedOperation.spending` |
+| prediction sale | nothing — contracts leave, dollars arrive | `ReviewedOperation.spending` = none |
+| SKR stake | the staked SKR | `ReviewedStaking`, whose amount the inspection holds to the bytes |
+| SKR unstake, cancel unstake, withdraw | nothing ([staking](#staking)) | `ReviewedStaking.operation` |
+| acknowledgement, message signature | nothing | — |
+
+What arrives is never spending and never subtracted from it: a swap's output, a payout, a refund and withdrawn SKR neither count nor replenish a threshold about what goes out. A threshold stays the amount that moves; fees are not added to it and are never invented ([known limits](#known-limits)).
+
+`ReviewedSpending` is the typed fact for an operation: `Outgoing(wallet, network, mint, amount)` or `None`. It is derived from the `RequestFacts` the rules were applied to at approval — the inspected bytes — and pinned in the `ExecutionBinding`, which is written before the wallet is opened, so an operation whose app dies while the wallet has it keeps its exposure as unresolved. A failed preparation never reaches a binding and is never spending. The record's outcome then moves it from unresolved to confirmed (or to nothing, when the chain says it failed), under the same identity, so it is never counted twice.
+
+### Staking
+
+The four SKR actions are accounted by what each one moves, so the same principal is never counted more than once:
+
+| Action | Daily accounting |
+| --- | --- |
+| stake | counts: SKR leaves the wallet for the vault |
+| unstake | nothing: the position and a clock change; SKR stays in the vault |
+| cancel unstake | nothing: the pending amount goes back to work |
+| withdraw | nothing: SKR comes back to the wallet. It is not spending, and it does not reduce the day's total |
+
+A withdrawal's own daily check therefore passes with "nothing leaves the wallet", even on a day already over a threshold, and the next stake is still warned about.
+
+### Records written before SEE-181
+
+Operations recorded before SEE-181 do not say what they spent. Their amount is not recovered from the parameters the owner chose or from the proposal, because neither is the inspected fact the counter needs. Such a record is **unknown spending, never zero**: on its own day it may belong to any asset of its wallet on its chain, so every daily total that could include it is incomplete, the daily check is `daily_total_unverified`, and the review says why ("1 of today's operations were recorded without what they spent"). It stops mattering when its day ends. A staking record written before SEE-165, which names no wallet or action, is treated the same way for every scope. Transfers and SEE-165 staking records already carry verified structured terms and are counted.
+
+A rehearsal, a decline, a failure and an operation on another wallet or chain clear nothing and cloud nothing.
 
 ### Counted once
 
@@ -379,7 +419,7 @@ The day a movement falls in is worked out when the counters are read, from the i
 
 ### Known limits
 
-A counter is a floor on the day's spending, never a ceiling. It does not see:
+A counter is a floor on the day's spending, never a ceiling. It counts what went through this app and nothing else. It does not see:
 
 - anything the owner did in their wallet app directly, or in any other app using the same wallet;
 - anything that happened before this app was installed, or after its records were cleared;
@@ -490,7 +530,7 @@ Its scenarios combine global programs with a connection recipient, prove a conne
 | `policy/PolicyDecision.kt` | The assessment, effective-rule sources, scoped daily results, checks, reasons, `assess`, and `noPolicy` |
 | `policy/RequestFacts.kt` | `RequestFacts`, including the request identity needed to exclude its existing attempt, and `policyFacts` |
 | `policy/PolicyEvaluation.kt` | Flat-policy compatibility evaluation, effective evaluation, both daily checks, and `PolicyEvaluator` |
-| `policy/DailySpending.kt` | Connection and global scopes, spend identity/status, overflow-safe totals, deduplication, and current-request exclusion |
+| `policy/DailySpending.kt` | Connection and global scopes, what each kind of record spends (transfer, operation, stake), spend identity/status, unknown coverage, overflow-safe totals, deduplication, and current-request exclusion |
 | `policy/PolicyDraft.kt` | `PolicyDraft`, `AssetDraft`, `readAmount`, and `review` |
 | `policy/PolicyEditorViewModel.kt` | `PolicyUiState`, and load, edit, save, remove, start over |
 | `policy/PolicyEditorScreen.kt` | The editor itself |
@@ -498,8 +538,10 @@ Its scenarios combine global programs with a connection recipient, prove a conne
 | `policy/storage/PolicyStore.kt` | Global and connection documents, version 1 migration, atomic writes, and the three stored states for each scope |
 | `inbox/PolicyReview.kt` | The assessment on Request details, and the step before going ahead anyway |
 | `inbox/InboxViewModel.kt` | `RequestAssessment`, when an assessment is made, and the re-read before an answer |
-| `activity/ActivityRecord.kt` | `ReviewedPolicy`, the snapshot kept with the record |
+| `activity/ActivityRecord.kt` | `ReviewedPolicy`, the snapshot kept with the record; `ReviewedSpending`, what an operation's inspected bytes spend (SEE-181) |
+| `proposals/ProposalBinding.kt` | `ExecutionBinding.spending`, pinned before the wallet is opened |
+| `operations/OperationViewModel.kt` | A feed operation's re-read of rules and counters after the wallet-lock wait |
 
-Tests: `policy/PolicyTest`, `policy/EffectivePolicyTest`, `policy/EffectivePolicyEvaluationTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyScenarioTest`, `policy/PolicyWordingTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, `policy/storage/PolicyStoreV2Test`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `inbox/Stage51PolicyScenarioTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`.
+Tests: `policy/PolicyTest`, `policy/EffectivePolicyTest`, `policy/EffectivePolicyEvaluationTest`, `policy/PolicyDecisionTest`, `policy/RequestFactsTest`, `policy/PolicyEvaluationTest`, `policy/DailySpendingTest`, `policy/SpendingCoverageTest` (swaps, prediction buys, staking, legacy records, through persisted Activity), `policy/PolicyEvaluatorTest`, `policy/PolicyFixturesTest`, `policy/PolicyScenarioTest`, `policy/PolicyWordingTest`, `policy/PolicyDraftTest`, `policy/PolicyEditorViewModelTest`, `policy/PolicyEditorScreenTest`, `policy/storage/PolicyStoreTest`, `policy/storage/PolicyStoreV2Test`, and `PolicyActivityTest` — the editor in the real activity, with the app's own storage. The review has its own: `inbox/PolicyReviewScreenTest`, `inbox/TransferReviewScreenTest`, `inbox/InboxViewModelTest`, `inbox/Stage51PolicyScenarioTest`, `activity/ActivityLogTest`, `activity/storage/ActivityStoreTest`, and `activity/ActivityDetailsScreenTest`. A feed operation's spending and its re-check after the wallet-lock wait: `operations/OperationSpendingTest`.
 
 `StageBoundaryTest` keeps the package unable to act — the editor included. Everything it may reach into is a read: the connection ID rule, the protocol's requests and networks, what the phone read out of a transaction's bytes, the owner's own activity records, the address rule, and the app's own strings, back button, and date format. It may reach nothing that opens a wallet, a connection, or a socket.

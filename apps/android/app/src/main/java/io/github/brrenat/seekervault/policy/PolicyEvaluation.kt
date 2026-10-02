@@ -26,6 +26,24 @@ import java.time.ZoneId
 private const val NOTHING_MOVES = "nothing moves"
 
 /**
+ * A daily check that passed because what moves comes to the owner (SEE-181). It adds nothing to the
+ * day's spending, and it takes nothing off it either.
+ */
+private const val NOTHING_LEAVES = "nothing leaves the wallet"
+
+/**
+ * Why a day's total isn't known, in the owner's terms: which records it is missing and why.
+ * Coverage is part of the answer — "unknown" alone would not say whether trying again could help.
+ */
+private fun DailyTotal.incompleteDetail(): String =
+    listOfNotNull(
+            "$unreadable of today's records didn't read back".takeIf { unreadable > 0 },
+            "$uncounted of today's operations were recorded without what they spent"
+                .takeIf { uncounted > 0 },
+        )
+        .joinToString("; ")
+
+/**
  * The verdict on [facts] under [policy], with [spentToday] the day's counters for the request's own
  * scope, or null when the phone couldn't establish which counter it belongs to.
  *
@@ -233,6 +251,7 @@ private fun dailyCheck(
     val check = PolicyCheck.DailyLimit
     val asset = facts.limitedAsset ?: return thresholdPreamble(policy, facts, check)
     val limit = policy.limitsFor(asset).daily ?: return PolicyCheckResult.notConfigured(check)
+    if (facts.incoming) return PolicyCheckResult.passed(check, NOTHING_LEAVES)
     val amount = facts.amount ?: return amountUnverified(check)
     val today =
         spentToday
@@ -246,7 +265,7 @@ private fun dailyCheck(
         return PolicyCheckResult.unverified(
             check,
             PolicyReason.DailyTotalUnverified,
-            "${today.unreadable} of today's records didn't read back",
+            today.incompleteDetail(),
         )
     }
     val projected = today.projected saturatingPlus amount
@@ -486,6 +505,15 @@ private fun effectiveDailyCheck(
             facts.amount,
         )
     }
+    if (facts.incoming) {
+        return DailyPolicyCheck(
+            scope,
+            PolicyCheckResult.passed(PolicyCheck.DailyLimit, NOTHING_LEAVES, rule.source),
+            limit,
+            total,
+            0UL,
+        )
+    }
     val amount = facts.amount
     if (amount == null) {
         return DailyPolicyCheck(
@@ -521,7 +549,7 @@ private fun effectiveDailyCheck(
             PolicyCheckResult.unverified(
                 PolicyCheck.DailyLimit,
                 PolicyReason.DailyTotalUnverified,
-                "${total.unreadable} of today's records didn't read back",
+                total.incompleteDetail(),
                 rule.source,
             ),
             limit,

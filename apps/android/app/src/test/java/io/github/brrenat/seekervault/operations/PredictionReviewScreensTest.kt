@@ -36,11 +36,18 @@ import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
 import io.github.brrenat.seekervault.plugins.actions.predictionBuyInputs
 import io.github.brrenat.seekervault.plugins.actions.predictionPayloadFrom
 import io.github.brrenat.seekervault.policy.Allowlist
+import io.github.brrenat.seekervault.policy.AssetLimits
+import io.github.brrenat.seekervault.policy.DailyTotal
+import io.github.brrenat.seekervault.policy.DailyTotals
 import io.github.brrenat.seekervault.policy.GlobalPolicy
+import io.github.brrenat.seekervault.policy.GlobalSpendScope
 import io.github.brrenat.seekervault.policy.PolicyAction
 import io.github.brrenat.seekervault.policy.PolicyAsset
+import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.policy.RequestFacts
+import io.github.brrenat.seekervault.policy.SpendScope
 import io.github.brrenat.seekervault.policy.evaluate
+import io.github.brrenat.seekervault.policy.noPolicy
 import io.github.brrenat.seekervault.policy.resolveEffectivePolicy
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -174,6 +181,7 @@ class PredictionReviewScreensTest {
         choice: ParameterChoice = ParameterChoice(emptyMap()),
         prepared: Boolean = false,
         failure: OperationFailure? = null,
+        assessment: RequestAssessment = assessment(if (prepared) read else unread),
     ) =
         OperationReview(
             connectionId = CONNECTION,
@@ -202,7 +210,7 @@ class PredictionReviewScreensTest {
                 else null,
             inspection = if (prepared) inspection else null,
             failure = failure,
-            assessment = assessment(if (prepared) read else unread),
+            assessment = assessment,
             wallet = wallet,
             preparedFor = if (prepared) wallet else null,
         )
@@ -244,6 +252,52 @@ class PredictionReviewScreensTest {
             R.string.jupiter_failure_insufficient_funds,
             "Insufficient funds",
         )
+
+    /** No rules configured anywhere, for SEE-181's neutral reading. */
+    private val noRules =
+        RequestAssessment(
+            decision = noPolicy(PolicyReason.NoPolicyConfigured),
+            facts = read,
+            at = now,
+        )
+
+    /** A 100 USDC global daily limit with 100 USDC already confirmed today, and this 5 on top. */
+    private fun overDailyLimit(): RequestAssessment {
+        val usdc = PolicyAsset(Network.NETWORK_MAINNET, USDC_MINT)
+        val policy =
+            resolveEffectivePolicy(
+                CONNECTION,
+                GlobalPolicy(
+                    limits = mapOf(usdc to AssetLimits(daily = 100_000_000UL)),
+                    updatedAt = now,
+                ),
+                null,
+            )
+        val day = now.atZone(java.time.ZoneOffset.UTC).toLocalDate()
+        val totals =
+            DailyTotals(
+                global =
+                    DailyTotal(GlobalSpendScope(PAYER, usdc), day, 100_000_000UL, 0UL, 1, 0, 0),
+                connection = DailyTotal.none(SpendScope(CONNECTION, PAYER, usdc), day),
+            )
+        return RequestAssessment(
+            decision = evaluate(policy, read, totals),
+            facts = read,
+            at = now,
+        )
+    }
+
+    @Test
+    fun preparedWithNoRules() {
+        show(review(choice = chosen, prepared = true, assessment = noRules))
+        capture("prediction-no-rules")
+    }
+
+    @Test
+    fun preparedOverADailyLimit() {
+        show(review(choice = chosen, prepared = true, assessment = overDailyLimit()))
+        capture("prediction-over-daily-limit")
+    }
 
     @Test
     fun initial() {

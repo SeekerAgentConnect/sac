@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.policy
 
+import io.github.brrenat.seekervault.activity.ReviewedSpending
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Network
@@ -56,6 +57,12 @@ data class RequestFacts(
      * The preparation this was read from, which a stored assessment names; 0 when there is none.
      */
     val preparedVersion: Int = 0,
+    /**
+     * Whether what moves comes *to* the owner rather than leaving them: a staking withdrawal
+     * (SEE-181). It is not spending, so it adds nothing to a day's total — and it takes nothing off
+     * it either: SKR coming back does not replenish a threshold about SKR going out.
+     */
+    val incoming: Boolean = false,
 ) {
     /** The counter this request would count against, or null when it can't be established. */
     val scope: SpendScope?
@@ -64,6 +71,20 @@ data class RequestFacts(
             val asset = asset ?: return null
             return SpendScope(connectionId, wallet, asset)
         }
+
+    /**
+     * What this request would take out of the owner's spendable balance, as the inspected bytes
+     * establish it (SEE-181): the typed fact pinned before the wallet is opened, and the one the
+     * day's counters later read back. Null when the bytes don't establish it whole — which the
+     * counters treat as unknown spending, never as none.
+     */
+    fun spending(): ReviewedSpending? {
+        if (!movesValue || incoming) return ReviewedSpending.None
+        val wallet = wallet ?: return null
+        val asset = asset ?: return null
+        val amount = amount ?: return null
+        return ReviewedSpending.Outgoing(wallet, asset.network, asset.mint, amount)
+    }
 
     companion object {
         /**
@@ -225,5 +246,7 @@ private fun stakingFacts(
         decimals = facts.decimals,
         fullyRead = facts.recognizedInstructions == facts.instructionCount,
         preparedVersion = inspection.version,
+        // A withdrawal brings SKR back; a stake is the only one of the four that spends.
+        incoming = facts.incoming,
     )
 }

@@ -8,6 +8,7 @@ import io.github.brrenat.seekervault.activity.ReviewedDailyCheck
 import io.github.brrenat.seekervault.activity.ReviewedOperation
 import io.github.brrenat.seekervault.activity.ReviewedPolicy
 import io.github.brrenat.seekervault.activity.ReviewedRuleSource
+import io.github.brrenat.seekervault.activity.ReviewedSpending
 import io.github.brrenat.seekervault.activity.ReviewedStaking
 import io.github.brrenat.seekervault.activity.ReviewedTransfer
 import io.github.brrenat.seekervault.activity.ReviewedValue
@@ -285,6 +286,9 @@ class ActivityStore(private val dir: File) {
                         }
                     },
                 )
+                // SEE-181 added what the operation spends, additively: an older build ignores it,
+                // and a record without it reads as one that does not say.
+                .putOpt("spending", operation.spending?.let(::encodeSpending))
 
         fun decodeOperation(json: JSONObject?): ReviewedOperation? = json?.let {
             ReviewedOperation(
@@ -301,6 +305,7 @@ class ActivityStore(private val dir: File) {
                 preparedVersion = it.getInt("preparedVersion"),
                 values = decodeValues(it.optJSONArray("values")),
                 references = decodeValues(it.optJSONArray("references")),
+                spending = decodeSpending(it.optJSONObject("spending")),
             )
         }
 
@@ -411,5 +416,47 @@ class ActivityStore(private val dir: File) {
                 chain = json.optJSONObject("chain")?.let(TrackingStore::decodeCheck),
             )
         }
+    }
+}
+
+/**
+ * What an execution spends, as JSON (SEE-181). Shared with the proposal store, which pins the same
+ * fact in the binding before the wallet is opened, so the two can never spell it differently.
+ *
+ * A kind or an amount this build cannot read decodes as null — "the record does not say" — which
+ * the day's counters treat as unknown, never as nothing spent.
+ */
+internal fun encodeSpending(spending: ReviewedSpending): JSONObject =
+    when (spending) {
+        is ReviewedSpending.Outgoing ->
+            JSONObject()
+                .put("kind", "outgoing")
+                .put("wallet", spending.wallet)
+                .put("network", spending.network.name)
+                .putOpt("mint", spending.mint)
+                // Base units as a decimal string: a JSON number cannot hold every ULong.
+                .put("amount", spending.amount.toString())
+        ReviewedSpending.None -> JSONObject().put("kind", "none")
+    }
+
+internal fun decodeSpending(json: JSONObject?): ReviewedSpending? {
+    json ?: return null
+    return when (json.optString("kind")) {
+        "none" -> ReviewedSpending.None
+        "outgoing" -> {
+            val wallet = json.optString("wallet").takeIf(String::isNotEmpty) ?: return null
+            val network =
+                runCatching { Network.valueOf(json.optString("network")) }
+                    .getOrNull()
+                    ?.takeIf { it != Network.UNRECOGNIZED } ?: return null
+            val amount = json.optString("amount").toULongOrNull() ?: return null
+            ReviewedSpending.Outgoing(
+                wallet = wallet,
+                network = network,
+                mint = json.optString("mint").takeIf(String::isNotEmpty),
+                amount = amount,
+            )
+        }
+        else -> null
     }
 }

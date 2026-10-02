@@ -49,9 +49,11 @@ import io.github.brrenat.seekervault.policy.DailyPolicyCheck
 import io.github.brrenat.seekervault.policy.PolicyCheckStatus
 import io.github.brrenat.seekervault.policy.PolicyReason
 import io.github.brrenat.seekervault.policy.RuleSource
+import io.github.brrenat.seekervault.policy.checkText
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.executable
 import io.github.brrenat.seekervault.reviews.ReviewVerdict
+import io.github.brrenat.seekervault.reviews.ReviewWarning
 import io.github.brrenat.seekervault.reviews.WarningOrigin
 import io.github.brrenat.seekervault.reviews.reviewVerdict
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
@@ -145,13 +147,11 @@ fun OperationReview.toPredictionSheet(
     // Before there is a transaction, its absence is not a finding (SEE-180).
     val verdict = assessment?.decision?.reviewVerdict(prepared = inspection != null)
     val warnings = verdict as? ReviewVerdict.Warnings
-    // The design draws "no rules" as orange with a row of its own, and asks for the same
-    // deliberate tick before approving as any other warning. The tick is only ever asked for a
-    // transaction that could be approved: a warning about nothing yet, or about bytes that are
-    // refused anyway, is read and not consented to.
-    val needsAcknowledging =
-        stage == PredictionStage.Ready &&
-            (verdict is ReviewVerdict.Warnings || verdict == ReviewVerdict.NoRules)
+    // Only a real advisory warning asks for the deliberate tick (SAW-028). "No rules" is neutral
+    // — nothing was checked, so there is nothing to go past (SEE-181). And the tick is only ever
+    // asked for a transaction that could be approved: a warning about nothing yet, or about bytes
+    // that are refused anyway, is read and not consented to.
+    val needsAcknowledging = stage == PredictionStage.Ready && verdict is ReviewVerdict.Warnings
     val approvable = stage == PredictionStage.Ready && standing.executable && !executed && !sending
     val closing = shortTime(proposal.expiresAt, zone, locale)
 
@@ -208,6 +208,16 @@ fun OperationReview.toPredictionSheet(
                 )
             } else null,
         verdict = verdictOf(verdict, resources),
+        // No rules is not a verdict: a neutral line where a verdict would be said, with no colour
+        // and nothing to acknowledge (SEE-181).
+        infoBlocks =
+            listOfNotNull(
+                ReviewSheetInfoBlock(
+                        title = resources.getString(R.string.prediction_no_rules_title),
+                        body = resources.getString(R.string.prediction_no_rules_body),
+                    )
+                    .takeIf { verdict == ReviewVerdict.NoRules }
+            ),
         staleQuote =
             when {
                 !choosable -> null
@@ -398,24 +408,29 @@ private fun OperationReview.preparationErrorOf(
         else -> null
     }
 
-private fun verdictOf(verdict: ReviewVerdict?, resources: Resources): ReviewSheetVerdict? =
+private fun OperationReview.verdictOf(
+    verdict: ReviewVerdict?,
+    resources: Resources,
+): ReviewSheetVerdict? =
     when (verdict) {
         // No assessment yet, or nothing to say until there is a transaction: no card, rather than
-        // a lime one that claims a check that has not happened.
+        // a lime one that claims a check that has not happened. No rules has its own neutral line
+        // instead of a card (SEE-181).
         null,
-        ReviewVerdict.Pending -> null
-        ReviewVerdict.Within -> ReviewSheetVerdict()
-        ReviewVerdict.NoRules ->
+        ReviewVerdict.Pending,
+        ReviewVerdict.NoRules -> null
+        // What passed is what was configured, and nothing else (SEE-181): a check nobody wrote is
+        // named as not checked rather than implied by the lime card.
+        ReviewVerdict.Within ->
             ReviewSheetVerdict(
-                heading = resources.getString(R.string.prediction_verdict_no_rules),
-                warnings =
-                    listOf(
-                        ReviewSheetWarning(
-                            message = resources.getString(R.string.transfer_rules_no_policy_detail),
-                            sourceLabel = resources.getString(R.string.prediction_rule_connection),
-                            source = ScopeChipSource.Connection,
-                        )
-                    ),
+                heading = resources.getString(R.string.prediction_verdict_within),
+                additionalContext =
+                    assessment
+                        ?.decision
+                        ?.notChecked
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.joinToString { resources.getString(checkText(it)).lowercase(Locale.ROOT) }
+                        ?.let { resources.getString(R.string.prediction_verdict_not_checked, it) },
             )
         is ReviewVerdict.Warnings ->
             ReviewSheetVerdict(
@@ -424,8 +439,12 @@ private fun verdictOf(verdict: ReviewVerdict?, resources: Resources): ReviewShee
                         val verification = warning.origin == WarningOrigin.Verification
                         ReviewSheetWarning(
                             message =
-                                listOfNotNull(resources.getString(warning.message), warning.detail)
-                                    .joinToString(" "),
+                                conciseWarning(warning, resources)
+                                    ?: listOfNotNull(
+                                            resources.getString(warning.message),
+                                            warning.detail,
+                                        )
+                                        .joinToString(" "),
                             sourceLabel =
                                 resources.getString(
                                     if (verification) R.string.prediction_rule_check
@@ -448,6 +467,43 @@ private fun verdictOf(verdict: ReviewVerdict?, resources: Resources): ReviewShee
                     }
             )
     }
+
+/**
+ * An exceeded threshold, said in one line with the amounts that make it so (SEE-181): "Over the
+ * global daily limit: 120 of 100 USDC today." The breakdown — confirmed, not yet settled, this
+ * order — stays in the limits section. Null for every other warning, which keeps its own words.
+ */
+private fun OperationReview.conciseWarning(
+    warning: ReviewWarning,
+    resources: Resources,
+): String? {
+    val unit = (payload as? ActionPayload.PredictionBuy)?.payload?.depositUnit().orEmpty()
+    return when (warning.reason) {
+        PolicyReason.OverDailyLimit -> {
+            val check =
+                assessment?.decision?.dailyChecks?.firstOrNull { it.scope == warning.dailyScope }
+            val limit = check?.limit ?: return null
+            val projected = check.projected ?: return null
+            val decimals = checkNotNull(assessment).facts.decimals
+            resources.getString(
+                when (check.scope) {
+                    DailyCheckScope.Global -> R.string.prediction_warning_daily_global
+                    DailyCheckScope.Connection -> R.string.prediction_warning_daily_connection
+                },
+                amount(projected, decimals, unit, resources),
+                amount(limit, decimals, unit, resources),
+            )
+        }
+        PolicyReason.OverPerOperationLimit ->
+            warning.detail?.let {
+                resources.getString(
+                    R.string.prediction_warning_per_request,
+                    listOf(it, unit).filter(String::isNotBlank).joinToString(" "),
+                )
+            }
+        else -> null
+    }
+}
 
 /** The quote: what is spent, what it buys, what it costs and what it could pay out. */
 private fun OperationReview.termsOf(resources: Resources): ReviewSheetTerms {

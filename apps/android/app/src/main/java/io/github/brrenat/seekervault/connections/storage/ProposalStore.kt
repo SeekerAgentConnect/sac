@@ -2,6 +2,8 @@ package io.github.brrenat.seekervault.connections.storage
 
 import android.util.AtomicFile
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.activity.storage.decodeSpending
+import io.github.brrenat.seekervault.activity.storage.encodeSpending
 import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.plugins.ActionId
 import io.github.brrenat.seekervault.plugins.ExecutionProviderId
@@ -423,6 +425,9 @@ class ProposalStore(private val dir: File) {
                             }
                         },
                 )
+                // Additive (SEE-181), in the same spelling Activity keeps it in: an older build
+                // ignores it, and a binding without it does not say what it spends.
+                .putOpt("spending", binding.spending?.let(::encodeSpending))
 
         fun decodeBinding(json: JSONObject): ExecutionBinding {
             // The bundled-plugin name a row written before SEE-145 carries, when it carries one.
@@ -486,6 +491,7 @@ class ProposalStore(private val dir: File) {
                             else PluginReference(key, entry.optString("value"))
                         }
                     } ?: emptyList(),
+                spending = decodeSpending(json.optJSONObject("spending")),
             )
         }
 

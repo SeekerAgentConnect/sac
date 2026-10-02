@@ -300,6 +300,9 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.activity.ActivityKind",
                 "io.github.brrenat.seekervault.activity.ActivityOutcome",
                 "io.github.brrenat.seekervault.activity.ActivityRecord",
+                // What an execution's inspected bytes spend, read back for the day's counters and
+                // derived from the facts the rules read (SEE-181). A record, not an action.
+                "io.github.brrenat.seekervault.activity.ReviewedSpending",
                 "io.github.brrenat.seekervault.connections.CloseButton",
                 "io.github.brrenat.seekervault.connections.formatInstant",
                 "io.github.brrenat.seekervault.connections.isConnectionId",
@@ -328,6 +331,9 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.request.v1.Action",
                 "io.github.brrenat.seekervault.request.v1.ActionRequest",
                 "io.github.brrenat.seekervault.request.v1.Network",
+                // Which staking action a record is, so the counters know which of the four spends
+                // (SEE-181).
+                "io.github.brrenat.seekervault.request.v1.StakingOperation",
                 // SEE-146 adds two more reads, both of them facts somebody else established: the
                 // mint a staking action is denominated in, and what this phone read out of a
                 // staking transaction's own bytes. A rule is still decided here and nowhere else.
@@ -954,6 +960,9 @@ class StageBoundaryTest {
                 .sorted()
         assertEquals(
             listOf(
+                // What the inspected bytes spend, pinned with the binding before the wallet so the
+                // record keeps the exposure (SEE-181). A value written down, deciding nothing.
+                "io.github.brrenat.seekervault.activity.ReviewedSpending",
                 "io.github.brrenat.seekervault.connections.isConnectionId",
                 "io.github.brrenat.seekervault.plugins.ActionId",
                 // Who would execute it, and the one table that turns a name written before

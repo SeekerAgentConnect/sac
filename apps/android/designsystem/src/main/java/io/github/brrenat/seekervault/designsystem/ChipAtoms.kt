@@ -27,8 +27,6 @@ import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 enum class VerdictPillVerdict {
     Ok,
     Warning,
-    /** Nothing failed, but there were no rules to check against: the review says so too. */
-    OutsideRules,
 }
 
 enum class VerdictPillContext {
@@ -52,8 +50,7 @@ fun VerdictPill(
                 } else {
                     colors.limeContainer to colors.onLimeContainer
                 }
-            VerdictPillVerdict.Warning,
-            VerdictPillVerdict.OutsideRules -> colors.orangeContainer to colors.onOrangeContainer
+            VerdictPillVerdict.Warning -> colors.orangeContainer to colors.onOrangeContainer
         }
     val text =
         when (verdict) {
@@ -62,7 +59,6 @@ fun VerdictPill(
                 val count = warningCount ?: 1
                 "$count ${if (count == 1) "warning" else "warnings"}"
             }
-            VerdictPillVerdict.OutsideRules -> "Outside rules"
         }
 
     Box(

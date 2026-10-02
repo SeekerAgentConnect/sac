@@ -663,6 +663,9 @@ class OperationViewModel(
                 // Who routed it and what service fee the bytes carry, as the owner reviewed them:
                 // pinned with the binding so History keeps what was approved (SEE-173).
                 receipt = open.inspection?.receipt.orEmpty(),
+                // What the inspected bytes take out of the owner's balance, pinned before the
+                // wallet so the day's counters keep the exposure whatever happens next (SEE-181).
+                spending = fresh.facts.spending(),
             )
         // The assessment the owner read, and the identifiers the provider named, both kept for the
         // record that is about to be written (SAW-028, SEE-94).
@@ -709,6 +712,15 @@ class OperationViewModel(
             // owner reviewed (SEE-174). The wallet call checks it once more.
             if (wallet.walletFor(open.connectionId) != selected) {
                 stop(OperationProblem.WalletChanged)
+                return@withWallet
+            }
+            // The rules and the day's counters are read again here too, from disk, after the wait
+            // and before anything is committed (SEE-181). Another approval that held the lock may
+            // have spent since the owner read this one, and a verdict — or a total — they did not
+            // read is not one they agreed to: the review shows the new one and asks again.
+            val current = reloaded() ?: return@withWallet
+            if (current.consent != fresh.consent) {
+                stop(OperationProblem.RulesChanged)
                 return@withWallet
             }
             when (
@@ -824,6 +836,11 @@ class OperationViewModel(
 
     /** Re-reads the history from disk before an assessment, and never lets a failure look empty. */
     suspend fun reload() {
+        reloaded()
+    }
+
+    /** [reload], answering the assessment it made; null when the review has gone. */
+    private suspend fun reloaded(): RequestAssessment? {
         withContext(io) {
             try {
                 history.load()
@@ -834,7 +851,7 @@ class OperationViewModel(
                 // Denied storage is treated exactly like any other incomplete history read.
             }
         }
-        assess()
+        return assess()
     }
 
     private fun stop(problem: OperationProblem) {

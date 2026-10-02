@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault.proposals
 
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.activity.ReviewedSpending
 import io.github.brrenat.seekervault.plugins.ActionId
 import io.github.brrenat.seekervault.plugins.ExecutionProviderId
 import io.github.brrenat.seekervault.plugins.ParameterChoice
@@ -90,6 +91,13 @@ data class ExecutionBinding(
      * nothing gates on it, and a binding written before it existed has none.
      */
     val receipt: List<PluginReference> = emptyList(),
+    /**
+     * What the inspected bytes take out of the owner's spendable balance (SEE-181), pinned here so
+     * the record keeps the exposure across a process death while the wallet has the transaction.
+     * Null on a binding written before it existed: the day's counters then read the operation as
+     * spending they cannot account for, never as nothing.
+     */
+    val spending: ReviewedSpending? = null,
 )
 
 /**
