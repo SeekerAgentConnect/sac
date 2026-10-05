@@ -506,3 +506,12 @@
   A sandbox execution can die between "begun" and "Simulated"; the restart rewrites it Unknown.
   Exclude rehearsals by the environment pinned in the binding, and add a restart case for each
   two-step write.
+
+## Shared chrome has no per-screen opt-outs (SEE-183 review)
+
+- **A flag that drops part of shared navigation is a divergence waiting to ship.** SEE-178 added
+  `includeDiscover = false` to `ScreenScaffold` for Wallet only, and the Wallet bar silently lost
+  the Discover tab while every other tab kept five. The design (`design/navigation.md`) says the
+  five tabs are peers. Don't parameterise what a peer screen may hide in the bar; if a screen truly
+  needs different chrome, it is a different scaffold (`DetailScreenScaffold`), and each tab's
+  screen test asserts the full tab list.

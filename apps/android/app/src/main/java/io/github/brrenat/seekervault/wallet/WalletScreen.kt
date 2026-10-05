@@ -243,7 +243,6 @@ fun WalletScreen(
         title = state.title,
         selectedDestination = ScreenDestination.Wallet,
         navigationCallbacks = callbacks.navigation,
-        includeDiscover = false,
         modifier = modifier,
     ) {
         ScreenScrollBody {
