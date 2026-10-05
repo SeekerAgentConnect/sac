@@ -51,15 +51,18 @@ From source, in a checkout:
 ```bash
 pnpm install
 cp servers/mcp-skr-staking/.env.example .env      # then fill in the two required values
-pnpm --filter @seeker_agent_connect/mcp-skr-staking run dev
+pnpm --filter @seekeragentconnect/mcp-skr-staking run dev
 ```
 
 The two values with no default are `SKR_STAKING_MCP_TOKEN` (generate one with `openssl rand -hex 32`)
 and `SKR_STAKING_RPC_URL` (a mainnet-beta endpoint). Everything else has a working default;
 `.env.example` documents each one.
 
-With Docker, from a checkout of the separate `do-deploy` repository, whose preset pulls the
-published `skr-staking-mcp-<version>` image (`SKR_STAKING_IMAGE` overrides it):
+With Docker, from a checkout of the separate `do-deploy` repository. Its preset is unchanged by
+SEE-182 and pulls the legacy Docker Hub image
+`docker.io/brenat/seeker-agent-connect:skr-staking-mcp-<version>` by default; set
+`SKR_STAKING_IMAGE=ghcr.io/seekeragentconnect/mcp-skr-staking:<version>` to run the published GHCR
+image instead:
 
 ```bash
 cp compose/skr-staking/.env.example compose/skr-staking/.env    # then fill it in

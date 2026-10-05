@@ -1,17 +1,17 @@
 # Embedding the Direct Server SDK
 
-`@seeker_agent_connect/server-sdk` lets a TypeScript backend host a private direct connection to Seeker
+`@seekeragentconnect/server-sdk` lets a TypeScript backend host a private direct connection to Seeker
 Agent Connect without running MCP, a feed gateway, Redis or a deployment proxy.
 
 ```sh
-npm install @seeker_agent_connect/server-sdk
+npm install @seekeragentconnect/server-sdk
 ```
 
 The supported runtime is Node.js `>=24.21.0`, using ESM; releases are tested on 24.21.0, and the
 floor is where the `node:sqlite` the SDK stores state through became stable. Import only:
 
-- `@seeker_agent_connect/server-sdk` for initialization, request/pairing APIs and optional provider types;
-- `@seeker_agent_connect/server-sdk/protocol` for the direct protobuf messages and service descriptors.
+- `@seekeragentconnect/server-sdk` for initialization, request/pairing APIs and optional provider types;
+- `@seekeragentconnect/server-sdk/protocol` for the direct protobuf messages and service descriptors.
 
 Source-relative imports and any other package subpath are private and unsupported.
 
@@ -43,7 +43,7 @@ A server says which Solana networks its wallet operations run against with `supp
 connection up, and signs nothing for a connection bound to any other:
 
 ```ts
-import { openDirectServer, parseSupportedNetworks } from "@seeker_agent_connect/server-sdk";
+import { openDirectServer, parseSupportedNetworks } from "@seekeragentconnect/server-sdk";
 
 openDirectServer({
   // …
@@ -112,7 +112,10 @@ older build to interpret a newer schema.
 ## Package and release status
 
 Run `pnpm test:server-sdk-package` to build and inspect the exact tarball, install it into a temporary
-project outside the workspace, type-check the public API and exercise a direct lifecycle. The
-package remains `private: true`; there is no npm token, upload or automatic publication workflow.
-Future publication is a separate, deliberate release-owner action after version, provenance and
-the exact packed files have been reviewed.
+project outside the workspace, type-check the public API and exercise a direct lifecycle. The same
+audit gates every release: a `server-sdk-vX.Y.Z` tag runs the release workflow, which re-runs it on
+the tagged commit and then publishes to npm with provenance (stable to `latest`, `X.Y.Z-rc.N` to
+`next`). The SDK is versioned independently; the MCP servers carry their own copy of it and are
+released separately. [docs/development/releases.md](../development/releases.md) is the procedure,
+and [docs/guides/installation.md](../guides/installation.md) shows a clean install outside any
+checkout.

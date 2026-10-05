@@ -5,14 +5,16 @@ Everything here runs from a registry. Nothing on this page needs a clone of this
 how these artifacts are produced, see
 [docs/development/releases.md](../development/releases.md).
 
-The published namespaces are the npm scope **`@seeker_agent_connect`** and the Docker Hub
-repository **`docker.io/brenat/seeker-agent-connect`**. Every image shares that one repository and
-is told apart by its tag prefix: `<prefix>-<version>`, `<prefix>-latest` (stable only) and
-`<prefix>-sha-<commit>`.
+The published namespaces are the npm scope **`@seekeragentconnect`**, the GitHub Container
+Registry namespace **`ghcr.io/seekeragentconnect`** (one repository per component) and the
+[GitHub Releases](https://github.com/SeekerAgentConnect/sac/releases) of this repository, which
+carry the signed Android APK (SEE-182). Every component is versioned on its own, and every
+component's version restarted at `0.0.1` under this scheme; the examples below use `0.0.1`. An
+artifact exists only once its component's release has actually run, so check the registry or the
+Releases page for what is published before pinning a version.
 
-npm releases currently run as a dry run (`registries.npmDryRun` in `release/components.json`), so
-new versions reach npm only once that switch is turned off; the versions already on the registry
-stay installable.
+The images are public: `docker pull` works anonymously, with no `docker login`. npm packages are
+published with provenance from the release workflow.
 
 Requirements: Node **24.21.0 or newer** for the npm packages (the SDK and both MCP servers use the
 stable `node:sqlite`, which arrived in Node 24), and Docker with `buildx`/Compose v2 for the
@@ -25,39 +27,75 @@ images. Images are published for `linux/amd64` and `linux/arm64`.
 Embed a direct server in your own Node application.
 
 ```bash
-npm install @seeker_agent_connect/server-sdk
+npm install @seekeragentconnect/server-sdk
 ```
 
 ```ts
-import { openDirectServer, privateRequest } from "@seeker_agent_connect/server-sdk";
+import { openDirectServer } from "@seekeragentconnect/server-sdk";
 
 const direct = openDirectServer({
   databasePath: "./direct-server.db",
-  publicUrl: "https://server.example",
+  publicOrigin: "https://server.example",
+  requestTtlSeconds: 86_400,
+  pendingLimit: 100,
+  pairingTokenTtlSeconds: 600,
+  liveCommandTimeoutSeconds: 30,
+  log: (message) => console.info(`[direct] ${message}`),
 });
 
-const pairing = direct.pairing.issue();
-console.log("Pair the phone with:", pairing.uri);
-
-const request = direct.requests.createRequest(
-  privateRequest(
-    { case: "acknowledgement", value: { text: "Hello from my own server" } },
-    "Review",
-    "hello-1",
-    300,
-  ),
-);
-console.log(request.ref?.requestId);
+console.info("Pair the phone with:", direct.pairing.issue().uri);
 ```
 
 Generated protocol types are a second entry point on the same package — there is no separate
 protocol package to install:
 
 ```ts
-import { RequestState } from "@seeker_agent_connect/server-sdk/protocol";
+import { RequestState } from "@seekeragentconnect/server-sdk/protocol";
 ```
 
-The package is ESM-only and ships its own TypeScript declarations. `docs/integrations/server-sdk.md`
+The package is ESM-only and ships its own TypeScript declarations. To check that it installs and
+typechecks in a project of its own, outside any checkout:
+
+```bash
+mkdir sdk-check && cd sdk-check
+npm init -y
+npm pkg set type=module
+npm install @seekeragentconnect/server-sdk typescript @types/node
+
+cat > index.ts <<'TS'
+import { openDirectServer } from "@seekeragentconnect/server-sdk";
+import { RequestState } from "@seekeragentconnect/server-sdk/protocol";
+
+const options: Parameters<typeof openDirectServer>[0] = {
+  databasePath: "./direct-server.db",
+  publicOrigin: "https://server.example",
+  requestTtlSeconds: 86_400,
+  pendingLimit: 100,
+  pairingTokenTtlSeconds: 600,
+  liveCommandTimeoutSeconds: 30,
+  log: (message) => console.info(message),
+};
+const pending: RequestState = RequestState.PENDING;
+console.info(options.publicOrigin, pending);
+TS
+
+cat > tsconfig.json <<'JSON'
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "types": ["node"]
+  },
+  "files": ["index.ts"]
+}
+JSON
+
+npx tsc --noEmit
+```
+
+Creating and observing requests is in the package README. `docs/integrations/server-sdk.md`
 covers the API; `packages/server-sdk/README.md` travels inside the tarball.
 
 ---
@@ -70,7 +108,8 @@ requests and the owner approves them on the phone.
 ### General MCP server
 
 ```bash
-npx --package=@seeker_agent_connect/mcp-server -- seeker-agent-connect-mcp --help
+npx @seekeragentconnect/mcp-server@0.0.1 --version
+npx --package=@seekeragentconnect/mcp-server -- seeker-agent-connect-mcp --help
 ```
 
 Run one for real with a config file and a data directory of its own:
@@ -94,14 +133,14 @@ PAIRING_TOKEN_TTL_SECONDS=600
 ENV
 chmod 600 ~/.seeker-agent-connect/config.env
 
-npx --package=@seeker_agent_connect/mcp-server -- \
+npx --package=@seekeragentconnect/mcp-server -- \
   seeker-agent-connect-mcp --config ~/.seeker-agent-connect/config.env start
 ```
 
 Pair a phone against the same configuration:
 
 ```bash
-npx --package=@seeker_agent_connect/mcp-server -- \
+npx --package=@seekeragentconnect/mcp-server -- \
   seeker-agent-connect-mcp --config ~/.seeker-agent-connect/config.env pair
 ```
 
@@ -115,7 +154,7 @@ It does not speak MCP over stdio. `servers/mcp-server/README.md` is the full ref
 ### SKR staking MCP server
 
 ```bash
-npx --package=@seeker_agent_connect/mcp-skr-staking -- seeker-skr-staking-mcp --help
+npx --package=@seekeragentconnect/mcp-skr-staking -- seeker-skr-staking-mcp --help
 ```
 
 Its variables are its own — `SKR_STAKING_DATA_DIR`, `SKR_STAKING_DATABASE_PATH`,
@@ -125,8 +164,16 @@ the two can run side by side on one host. `servers/mcp-skr-staking/.env.example`
 Installing globally works the same way and is the same artifact:
 
 ```bash
-npm install --global @seeker_agent_connect/mcp-server
+npm install --global @seekeragentconnect/mcp-server
 seeker-agent-connect-mcp --version
+```
+
+Each MCP server is versioned independently of the SDK. Its tarball and image carry their own copy
+of the SDK, and the published manifest records which one in the `seekerAgentConnect.serverSdk`
+field (`name`, `version`, `contentSha256`; the same is in `dist/vendor/server-sdk/package.json`):
+
+```bash
+npm view @seekeragentconnect/mcp-server seekerAgentConnect
 ```
 
 ---
@@ -135,12 +182,15 @@ seeker-agent-connect-mcp --version
 
 | Image | Ports | Data | Health |
 | -- | -- | -- | -- |
-| `docker.io/brenat/seeker-agent-connect:mcp-*` | 8080 | `/data` (SQLite) | `HEALTHCHECK` in the image |
-| `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-*` | 8090 | `/data` (SQLite) | `HEALTHCHECK` in the image |
-| `docker.io/brenat/seeker-agent-connect:gateway-*` | 8090 read, 8091 publish, 8092 admin | `/data`, or Postgres | external probe, see below |
-| `docker.io/brenat/seeker-agent-connect:centrifugo-*` | 8000 client, 11000 internal | none | Centrifugo's own `/health` |
-| `docker.io/brenat/seeker-agent-connect:copytrading-*` | 8092 | `/data` (SQLite) | external probe |
-| `docker.io/brenat/seeker-agent-connect:prediction-*` | 8092 | `/data` (SQLite) | external probe |
+| `ghcr.io/seekeragentconnect/mcp-server` | 8080 | `/data` (SQLite) | `HEALTHCHECK` in the image |
+| `ghcr.io/seekeragentconnect/mcp-skr-staking` | 8090 | `/data` (SQLite) | `HEALTHCHECK` in the image |
+| `ghcr.io/seekeragentconnect/gateway` | 8090 read, 8091 publish, 8092 admin | `/data`, or Postgres | external probe, see below |
+| `ghcr.io/seekeragentconnect/gateway-centrifugo` | 8000 client, 11000 internal | none | Centrifugo's own `/health` |
+| `ghcr.io/seekeragentconnect/demo-signals` | 8092 | `/data` (SQLite) | external probe |
+| `ghcr.io/seekeragentconnect/demo-prediction` | 8092 | `/data` (SQLite) | external probe |
+
+Tags are the exact version (`0.0.1`), `sha-<commit>` with the full 40-character commit the release
+was built from, and `latest`, which only stable releases move and only ever forwards.
 
 Every image runs as an unprivileged fixed uid/gid (`10001`), so a named volume's ownership is the
 same on every host. The Go images — the gateway and both demos — are `scratch` images with no
@@ -163,7 +213,7 @@ docker run --rm \
   -e MCP_TOKEN=<64 hex characters> \
   -e PHONE_TOKEN=<64 hex characters> \
   -e MCP_ENABLED=true \
-  docker.io/brenat/seeker-agent-connect:mcp-0.2.0
+  ghcr.io/seekeragentconnect/mcp-server:0.0.1
 ```
 
 The process is PID 1 and handles `SIGTERM` itself: it stops accepting, finishes what is in flight,
@@ -173,17 +223,19 @@ the volume survives it and a restart picks up the same server identity and pairi
 ### Compose
 
 The presets live under `compose/` in the separate
-[`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose) repository. They
-run the published images by default and build nothing; every one of them takes the image as a
-variable, so a different tag (or a local build) is one setting away. From a `do-deploy` checkout:
+[`do-deploy`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose) repository, and
+SEE-182 changed nothing there: they build nothing and still pull the legacy Docker Hub images
+(`docker.io/brenat/seeker-agent-connect`) by default. Every one of them takes the image as a
+variable, so running a GHCR image (or a local build) is one setting away. From a `do-deploy`
+checkout:
 
 ```bash
-MCP_SERVER_IMAGE=docker.io/brenat/seeker-agent-connect:mcp-0.2.0 \
+MCP_SERVER_IMAGE=ghcr.io/seekeragentconnect/mcp-server:0.0.1 \
   docker compose -f compose/mcp/compose.yaml up -d
 ```
 
 ```bash
-BROADCAST_IMAGE=docker.io/brenat/seeker-agent-connect:gateway-0.2.0 \
+BROADCAST_IMAGE=ghcr.io/seekeragentconnect/gateway:0.0.1 \
   docker compose -f compose/feed/compose.yaml up -d
 ```
 
@@ -196,7 +248,7 @@ Without a checkout at all, this is a complete file:
 # compose.yaml
 services:
   mcp-server:
-    image: docker.io/brenat/seeker-agent-connect:mcp-0.2.0
+    image: ghcr.io/seekeragentconnect/mcp-server:0.0.1
     restart: unless-stopped
     environment:
       SIDECAR_HOST: 0.0.0.0
@@ -224,49 +276,58 @@ docker compose exec mcp-server node servers/mcp-server/dist/cli.js pair
 
 ## Pinning and rolling back
 
-Pin an exact version everywhere, and a digest anywhere that matters. A digest cannot be moved:
+Pin an exact version everywhere, and a digest anywhere that matters. A digest cannot be moved.
+No login is needed for any of this:
 
 ```bash
-docker pull docker.io/brenat/seeker-agent-connect:gateway-0.2.0
-docker inspect --format '{{index .RepoDigests 0}}' docker.io/brenat/seeker-agent-connect:gateway-0.2.0
-# then deploy the digest form
-#   docker.io/brenat/seeker-agent-connect@sha256:<digest>
+docker buildx imagetools inspect ghcr.io/seekeragentconnect/gateway:0.0.1
+# "Digest: sha256:<digest>" is the multi-platform index; deploy that form
+docker pull ghcr.io/seekeragentconnect/gateway@sha256:<digest>
 ```
 
 Rolling back is pulling the previous exact version or digest. `latest` is a convenience for a first
 look, not something to deploy.
 
-Release candidates are published under `X.Y.Z-rc.N` and the npm `next` dist-tag, and never move
-`latest`. To try one deliberately:
+Release candidates are published under `X.Y.Z-rc.N` — the image gets that version tag and its
+`sha-<commit>` tag, the npm package the `next` dist-tag — and never move `latest`. To try one
+deliberately:
 
 ```bash
-npm install @seeker_agent_connect/server-sdk@next
-docker pull docker.io/brenat/seeker-agent-connect:gateway-0.2.0-rc.1
+npm install @seekeragentconnect/server-sdk@next
+docker pull ghcr.io/seekeragentconnect/gateway:0.0.2-rc.1
 ```
+
+Development builds, run by hand from the release workflow, are images only, tagged
+`dev-sha-<commit>` and `develop`. They are for testing, never for a deployment.
 
 ---
 
-## Upgrading from the 0.1.x images
+## Moving from the Docker Hub images
 
-The images stay in the same Docker Hub repository with the same tag prefixes as before SEE-168;
-only the version moved on, restarting at `0.2.0` above every previous tag.
+Until SEE-182 every image was published to the one Docker Hub repository
+`docker.io/brenat/seeker-agent-connect`, told apart by tag prefix. The release workflow no longer
+publishes there. Each component now has its own GHCR repository, and every component's version
+restarted at `0.0.1` as a new public baseline: `0.0.1` on GHCR is **newer** than the `0.1.x` tags on Docker Hub,
+despite the lower number.
 
-| Previous | Now |
+| Docker Hub (legacy) | GHCR |
 | -- | -- |
-| `docker.io/brenat/seeker-agent-connect:gateway-0.1.10` | `docker.io/brenat/seeker-agent-connect:gateway-0.2.0` |
-| `docker.io/brenat/seeker-agent-connect:centrifugo-0.1.2` | `docker.io/brenat/seeker-agent-connect:centrifugo-0.2.0` |
-| `docker.io/brenat/seeker-agent-connect:mcp-0.1.8` | `docker.io/brenat/seeker-agent-connect:mcp-0.2.0` |
-| `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-0.1.3` | `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-0.2.0` |
-| `docker.io/brenat/seeker-agent-connect:copytrading-0.1.7` | `docker.io/brenat/seeker-agent-connect:copytrading-0.2.0` |
-| `docker.io/brenat/seeker-agent-connect:prediction-0.1.9` | `docker.io/brenat/seeker-agent-connect:prediction-0.2.0` |
+| `docker.io/brenat/seeker-agent-connect:gateway-0.1.10` | `ghcr.io/seekeragentconnect/gateway:0.0.1` |
+| `docker.io/brenat/seeker-agent-connect:centrifugo-0.1.2` | `ghcr.io/seekeragentconnect/gateway-centrifugo:0.0.1` |
+| `docker.io/brenat/seeker-agent-connect:mcp-0.1.8` | `ghcr.io/seekeragentconnect/mcp-server:0.0.1` |
+| `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-0.1.3` | `ghcr.io/seekeragentconnect/mcp-skr-staking:0.0.1` |
+| `docker.io/brenat/seeker-agent-connect:copytrading-0.1.7` | `ghcr.io/seekeragentconnect/demo-signals:0.0.1` |
+| `docker.io/brenat/seeker-agent-connect:prediction-0.1.9` | `ghcr.io/seekeragentconnect/demo-prediction:0.0.1` |
 
 No npm package was ever published under the old `@seeker-vault` scope, so there is nothing to
 migrate there; `@seeker-vault/*` names in this repository's history refer to packages that only
 ever existed inside the workspace.
 
-**What an operator has to do.** Change the image reference and keep everything else. Environment
-variable names, ports, the `/data` path, the uid/gid and the database file names are all unchanged,
-so the existing named volumes mount onto the new images and the services start on the same state:
+**What an operator has to do.** Change the image reference and keep everything else. The runtime
+contract is unchanged — environment variable names, ports, the `/data` path, the uid/gid `10001`,
+the health checks and the database file names — so the existing named volumes mount onto the new
+images unchanged and the services start on the same state. With the `do-deploy` presets that is
+setting the component's image variable (above); with your own Compose file, the `image:` line:
 
 ```bash
 docker compose pull
@@ -278,5 +339,30 @@ identity, the pairings and the publication history. The `do-deploy`
 [deployment runbook](https://github.com/SeekerAgentConnect/do-deploy/blob/main/compose/README.md#7-back-up-replace-and-roll-back) lists the durable volume and
 database names each deployment has carried, including the ones inherited from earlier layouts.
 
-The old Docker Hub tags are not deleted; anything already pinned to one keeps working. They will
-simply stop receiving new versions.
+The Docker Hub tags are not deleted; anything already pinned to one, including the `do-deploy`
+presets' defaults, keeps working. They simply stop receiving new versions.
+
+---
+
+## Android app
+
+The signed APK is published as a GitHub Release of this repository, tagged `android-vX.Y.Z`, with
+the asset `sac-X.Y.Z.apk` and a `SHA256SUMS` file. The repository's
+[latest release](https://github.com/SeekerAgentConnect/sac/releases/latest) is always the newest
+stable Android release; the other components' releases are never marked latest. The application id
+is `io.github.brrenat.seekervault`.
+
+Download both assets into one directory, then verify and install:
+
+```bash
+sha256sum -c SHA256SUMS
+apksigner verify --print-certs sac-0.0.1.apk
+# compare "Signer #1 certificate SHA-256 digest" with the certificate SHA-256 in the release notes
+adb install --replace sac-0.0.1.apk
+```
+
+Every release is signed with the same release key, so an update installs over the previous
+version and keeps the app's data. An APK whose certificate does not match the one in the release
+notes did not come from this release; do not install it. An app already installed from a build
+signed with another key — a debug build, or one you signed yourself — cannot be replaced in place;
+Android refuses the update until that app is uninstalled, which removes its data.

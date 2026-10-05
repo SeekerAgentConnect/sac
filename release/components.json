@@ -1,143 +1,219 @@
 {
   "$comment": [
-    "The release manifest (SEE-168): every independently released component, its one version, and",
-    "the artifacts that version names. npm and Docker Hub artifacts for the same component share this",
-    "version and the commit the release tag points at, which is the ticket's consistency rule.",
-    "scripts/check-release.mjs proves the npm manifests agree with this file, and",
-    ".github/workflows/release.yml is driven by it. Versions are bumped here first.",
-    "Every image lives in the one Docker Hub repository registries.docker, told apart by its",
-    "image.tagPrefix (gateway-0.2.0, mcp-sha-<commit>). While registries.npmDryRun is true,",
-    "every npm release is `npm publish --dry-run`: packed and checked, never uploaded."
+    "The release manifest (SEE-168, SEE-182): every independently released component, its one",
+    "version, and the artifacts that version names. A component's npm package, its GHCR image and",
+    "its GitHub Release share this version and the commit its <component>-v<version> tag points at.",
+    "Versions are changed with `pnpm release:bump <component> <version>`, never by hand in one",
+    "place only: scripts/check-release.mjs proves the npm manifests, the in-source version",
+    "constants and the Android build agree with this file, and .github/workflows/release.yml is",
+    "driven by it. `checks` are the commands that must pass on the released commit before that",
+    "component publishes anything. `previousVersions` and `previousArtifacts` are history: the",
+    "pre-public 0.2.0 candidates and the Docker Hub images the unchanged do-deploy repository still",
+    "pulls. They are never rewritten or republished."
   ],
+  "repository": "SeekerAgentConnect/sac",
   "registries": {
     "npm": "https://registry.npmjs.org",
-    "npmScope": "@seeker_agent_connect",
-    "npmDryRun": true,
-    "docker": "docker.io/brenat/seeker-agent-connect"
+    "npmScope": "@seekeragentconnect",
+    "images": "ghcr.io/seekeragentconnect"
+  },
+  "toolchain": {
+    "npm": "11.19.0"
   },
   "tagPattern": "<component>-v<version>",
   "components": [
     {
       "id": "server-sdk",
       "directory": "packages/server-sdk",
-      "version": "0.2.0-rc.1",
+      "version": "0.0.1",
       "description": "Embeddable TypeScript SDK for Seeker Agent Connect direct servers",
       "npm": {
-        "name": "@seeker_agent_connect/server-sdk",
+        "name": "@seekeragentconnect/server-sdk",
         "packDirectory": "packages/server-sdk"
       },
       "image": null,
-      "dependsOn": [],
-      "previousArtifacts": [],
-      "versionConstants": []
+      "android": null,
+      "vendors": [],
+      "versionConstants": [],
+      "toolchains": {},
+      "checks": [
+        "pnpm check",
+        "pnpm check:generated",
+        "pnpm test:server-sdk-package"
+      ],
+      "previousVersions": ["0.2.0-rc.1"],
+      "previousArtifacts": []
     },
     {
       "id": "mcp-server",
       "directory": "servers/mcp-server",
-      "version": "0.2.0-rc.2",
+      "version": "0.0.1",
       "description": "Self-hosted Seeker Agent Connect MCP server",
       "npm": {
-        "name": "@seeker_agent_connect/mcp-server",
+        "name": "@seekeragentconnect/mcp-server",
         "packDirectory": "servers/mcp-server/package"
       },
       "image": {
-        "tagPrefix": "mcp",
+        "repository": "ghcr.io/seekeragentconnect/mcp-server",
         "dockerfile": "servers/mcp-server/Dockerfile",
         "platforms": ["linux/amd64", "linux/arm64"]
       },
-      "dependsOn": ["server-sdk"],
-      "previousArtifacts": ["docker.io/brenat/seeker-agent-connect:mcp-0.1.8"],
-      "versionConstants": ["servers/mcp-server/src/version.ts"]
+      "android": null,
+      "vendors": ["server-sdk"],
+      "versionConstants": ["servers/mcp-server/src/version.ts"],
+      "toolchains": {},
+      "checks": [
+        "pnpm check",
+        "pnpm check:generated",
+        "pnpm test:mcp-server-package"
+      ],
+      "previousVersions": ["0.2.0-rc.2"],
+      "previousArtifacts": ["docker.io/brenat/seeker-agent-connect:mcp-0.1.8"]
     },
     {
       "id": "mcp-skr-staking",
       "directory": "servers/mcp-skr-staking",
-      "version": "0.2.0-rc.1",
+      "version": "0.0.1",
       "description": "Standalone SKR staking MCP server for Seeker Agent Connect",
       "npm": {
-        "name": "@seeker_agent_connect/mcp-skr-staking",
+        "name": "@seekeragentconnect/mcp-skr-staking",
         "packDirectory": "servers/mcp-skr-staking/package"
       },
       "image": {
-        "tagPrefix": "skr-staking-mcp",
+        "repository": "ghcr.io/seekeragentconnect/mcp-skr-staking",
         "dockerfile": "servers/mcp-skr-staking/Dockerfile",
         "platforms": ["linux/amd64", "linux/arm64"]
       },
-      "dependsOn": ["server-sdk"],
+      "android": null,
+      "vendors": ["server-sdk"],
+      "versionConstants": ["servers/mcp-skr-staking/src/server.ts"],
+      "toolchains": {},
+      "checks": [
+        "pnpm check",
+        "pnpm check:generated",
+        "pnpm test:skr-staking-package"
+      ],
+      "previousVersions": ["0.2.0-rc.1"],
       "previousArtifacts": [
         "docker.io/brenat/seeker-agent-connect:skr-staking-mcp-0.1.3"
-      ],
-      "versionConstants": ["servers/mcp-skr-staking/src/server.ts"]
+      ]
     },
     {
       "id": "gateway",
       "directory": "services/gateway",
-      "version": "0.2.0-rc.1",
+      "version": "0.0.1",
       "description": "Seeker Agent Connect public feed gateway",
       "npm": null,
       "image": {
-        "tagPrefix": "gateway",
+        "repository": "ghcr.io/seekeragentconnect/gateway",
         "dockerfile": "services/gateway/Dockerfile",
         "target": "console",
         "platforms": ["linux/amd64", "linux/arm64"]
       },
-      "dependsOn": [],
+      "android": null,
+      "vendors": [],
+      "versionConstants": [],
+      "toolchains": {
+        "go": "services/gateway/go.mod"
+      },
+      "checks": ["pnpm check:gateway"],
+      "previousVersions": ["0.2.0-rc.1"],
       "previousArtifacts": [
         "docker.io/brenat/seeker-agent-connect:gateway-0.1.10"
-      ],
-      "versionConstants": []
+      ]
     },
     {
       "id": "gateway-centrifugo",
       "directory": "services/gateway",
-      "version": "0.2.0-rc.1",
+      "version": "0.0.1",
       "description": "Centrifugo broker with the feed gateway's pinned configuration",
       "npm": null,
       "image": {
-        "tagPrefix": "centrifugo",
+        "repository": "ghcr.io/seekeragentconnect/gateway-centrifugo",
         "dockerfile": "services/gateway/Dockerfile.centrifugo",
         "context": "services/gateway",
         "platforms": ["linux/amd64", "linux/arm64"]
       },
-      "dependsOn": [],
+      "android": null,
+      "vendors": [],
+      "versionConstants": [],
+      "toolchains": {
+        "go": "services/gateway/go.mod"
+      },
+      "checks": ["pnpm check:gateway"],
+      "previousVersions": ["0.2.0-rc.1"],
       "previousArtifacts": [
         "docker.io/brenat/seeker-agent-connect:centrifugo-0.1.2"
-      ],
-      "versionConstants": []
+      ]
     },
     {
       "id": "demo-signals",
       "directory": "examples/demo-signals",
-      "version": "0.2.0-rc.1",
+      "version": "0.0.1",
       "description": "CopyTrading signals publisher demo",
       "npm": null,
       "image": {
-        "tagPrefix": "copytrading",
+        "repository": "ghcr.io/seekeragentconnect/demo-signals",
         "dockerfile": "examples/demo-signals/Dockerfile",
         "platforms": ["linux/amd64", "linux/arm64"]
       },
-      "dependsOn": [],
+      "android": null,
+      "vendors": [],
+      "versionConstants": [],
+      "toolchains": {
+        "go": "examples/demo-signals/go.mod"
+      },
+      "checks": ["pnpm check:demo-signals"],
+      "previousVersions": ["0.2.0-rc.1"],
       "previousArtifacts": [
         "docker.io/brenat/seeker-agent-connect:copytrading-0.1.7"
-      ],
-      "versionConstants": []
+      ]
     },
     {
       "id": "demo-prediction",
       "directory": "examples/demo-prediction",
-      "version": "0.2.0-rc.1",
+      "version": "0.0.1",
       "description": "Jupiter Prediction markets publisher demo",
       "npm": null,
       "image": {
-        "tagPrefix": "prediction",
+        "repository": "ghcr.io/seekeragentconnect/demo-prediction",
         "dockerfile": "examples/demo-prediction/Dockerfile",
         "platforms": ["linux/amd64", "linux/arm64"]
       },
-      "dependsOn": [],
+      "android": null,
+      "vendors": [],
+      "versionConstants": [],
+      "toolchains": {
+        "go": "examples/demo-prediction/go.mod"
+      },
+      "checks": ["pnpm check:demo-prediction"],
+      "previousVersions": ["0.2.0-rc.1"],
       "previousArtifacts": [
         "docker.io/brenat/seeker-agent-connect:prediction-0.1.9"
-      ],
-      "versionConstants": []
+      ]
+    },
+    {
+      "id": "android",
+      "directory": "apps/android",
+      "version": "0.0.1",
+      "description": "Seeker Agent Connect Android app",
+      "npm": null,
+      "image": null,
+      "android": {
+        "applicationId": "io.github.brrenat.seekervault",
+        "versionCode": 2,
+        "previousVersionCode": 1,
+        "apk": "sac-<version>.apk",
+        "releaseRequires": ["firebase", "solanaRpc", "relayUrl"]
+      },
+      "vendors": [],
+      "versionConstants": [],
+      "toolchains": {
+        "java": "21"
+      },
+      "checks": ["pnpm check:android", "pnpm check:swap-fee-build"],
+      "previousVersions": ["0.1.0"],
+      "previousArtifacts": []
     }
   ]
 }

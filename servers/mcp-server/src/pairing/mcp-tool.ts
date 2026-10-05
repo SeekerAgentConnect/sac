@@ -17,7 +17,7 @@ import {
   pairingLinkView,
   type IssuedPairing,
   type PairingLinkView,
-} from "@seeker_agent_connect/server-sdk";
+} from "@seekeragentconnect/server-sdk";
 
 export const CREATE_PAIRING_LINK_TOOL = "vault_create_pairing_link";
 

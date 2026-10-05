@@ -30,10 +30,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
-import {
-  Network,
-  RequestState,
-} from "@seeker_agent_connect/server-sdk/protocol";
+import { Network, RequestState } from "@seekeragentconnect/server-sdk/protocol";
 import {
   callTool,
   connectAgent,

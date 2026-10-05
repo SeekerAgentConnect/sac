@@ -15,7 +15,7 @@ import {
   RequestError,
   RequestErrorDetailSchema,
   RequestState,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import { openDatabase } from "../../../packages/server-sdk/src/storage/database.ts";
 import {
   Code,

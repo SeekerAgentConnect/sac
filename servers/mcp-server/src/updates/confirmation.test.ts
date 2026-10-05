@@ -8,17 +8,14 @@ import { createGrpcTransport } from "@connectrpc/connect-node";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { PublicKey } from "@solana/web3.js";
 
-import {
-  Network,
-  RequestState,
-} from "@seeker_agent_connect/server-sdk/protocol";
+import { Network, RequestState } from "@seekeragentconnect/server-sdk/protocol";
 import {
   SubscribeRequestSchema,
   SubscribeSchema,
   UpdateService,
   type SubscribeRequest,
   type SubscribeResponse,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import { create } from "@bufbuild/protobuf";
 import { TRANSFER_TOOL } from "../requests/mcp-tools.ts";
 import { encodeBase58 } from "../../../../packages/server-sdk/src/requests/action.ts";

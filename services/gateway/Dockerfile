@@ -66,9 +66,9 @@ ARG VERSION
 ARG REVISION
 LABEL org.opencontainers.image.title="Seeker Agent Connect feed gateway" \
       org.opencontainers.image.description="The shared public feed gateway: publishers submit documents, subscribed phones read them." \
-      org.opencontainers.image.source="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.url="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.documentation="https://github.com/BrRenat/SeekerAgentConnect/blob/master/services/gateway/README.md" \
+      org.opencontainers.image.source="https://github.com/SeekerAgentConnect/sac" \
+      org.opencontainers.image.url="https://github.com/SeekerAgentConnect/sac" \
+      org.opencontainers.image.documentation="https://github.com/SeekerAgentConnect/sac/blob/master/services/gateway/README.md" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Seeker Agent Connect" \
       org.opencontainers.image.version="${VERSION}" \

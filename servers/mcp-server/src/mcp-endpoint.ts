@@ -26,7 +26,7 @@ import {
   type AgentRequests,
   type IssuedPairing,
   type LiveCommandBridge,
-} from "@seeker_agent_connect/server-sdk";
+} from "@seekeragentconnect/server-sdk";
 
 import { bearerToken, bearerTokenMatches } from "./auth.ts";
 import { VERSION } from "./version.ts";
@@ -392,7 +392,9 @@ function requestHost(req: IncomingMessage): string | undefined {
 function headerValue(
   value: string | readonly string[] | undefined,
 ): string | undefined {
-  const raw = Array.isArray(value) ? value[0] : value;
+  // Not Array.isArray: it narrows a readonly array to `any[]`.
+  const raw =
+    typeof value === "string" || value === undefined ? value : value[0];
   const trimmed = raw?.trim();
   return trimmed === undefined || trimmed === "" ? undefined : trimmed;
 }

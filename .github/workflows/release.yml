@@ -1,16 +1,21 @@
 name: Release
 
-# Publishing lives here and nowhere else. CI (.github/workflows/ci.yml) builds and audits the same
-# artifacts on every run and never contacts a registry, so a pull request cannot publish: the only
-# way into this workflow is a version tag or a deliberate dispatch by somebody who can push one.
+# Publishing lives here and nowhere else (SEE-168, SEE-182). CI (.github/workflows/ci.yml) builds
+# and audits the same artifacts on every pull request and holds no credential, so a pull request
+# cannot publish: the only ways in are a component tag and a deliberate dispatch.
 #
-# Tags are `<component>-v<version>`, the identifiers in release/components.json — `gateway-v1.2.0`,
-# `server-sdk-v1.2.0-rc.1`. One tag releases one component; a component's npm package and its
-# image share the tag's version and the commit it points at.
+# Every component is released on its own, by its own tag `<component>-v<version>` —
+# `server-sdk-v0.0.1`, `gateway-v0.0.1`, `android-v0.0.1` — using the identifiers and versions in
+# release/components.json at the tagged commit. One tag publishes that component's artifacts and
+# nothing else: its npm package (@seekeragentconnect/*), its GHCR image
+# (ghcr.io/seekeragentconnect/<component>), or its signed APK, and a GitHub Release recording them.
 #
-# Images go to the one Docker Hub repository docker.io/brenat/seeker-agent-connect, separated by
-# each component's tag prefix (`gateway-1.2.0`, `mcp-sha-<commit>`). npm is a dry run while
-# release/components.json sets `registries.npmDryRun`: the tarball is packed, never uploaded.
+# The order is fixed: resolve → every check and build for the component on the exact commit →
+# gate → publish. Nothing logs in to a registry, and no secret is read, until the gate has passed,
+# and a dry run never reaches the gate. Each publication step first asks scripts/release-state.mjs
+# what is already published, so a re-run finishes a partial release instead of redoing or
+# overwriting it. SeekerAgentConnect/do-deploy is not touched: nothing here deploys anything, and
+# the Docker Hub images it pulls are neither read nor written. docs/development/releases.md
 on:
   push:
     tags:
@@ -18,61 +23,80 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: >-
-          Component identifier from release/components.json, or `android` to build the APK
-          (SEE-173) — the app is not a registry component and publishes nothing
+        description: Component to release (release/components.json)
         required: true
-        type: string
-      channel:
-        description: >-
-          release = publish the manifest's version as the tag would;
-          development = push only <prefix>-sha-<commit> and <prefix>-develop images, never npm.
-        required: true
-        default: development
         type: choice
-        options: [development, release]
-      dry_run:
-        description: Build and audit everything, publish nothing
+        options:
+          - server-sdk
+          - mcp-server
+          - mcp-skr-staking
+          - gateway
+          - gateway-centrifugo
+          - demo-signals
+          - demo-prediction
+          - android
+      version:
+        description: >-
+          Optional: the version you expect release/components.json to pin at this commit. The run
+          stops if it does not.
         required: false
+        type: string
+      dry_run:
+        description: >-
+          Build, check and audit everything on this commit; log in nowhere, publish nothing, sign
+          nothing. A real manual run is only for retrying an existing tag, run from that tag.
+        required: true
         default: true
         type: boolean
+      channel:
+        description: >-
+          release, or development = push only the dev-sha-<commit> and develop image tags (never
+          npm, never an APK, never a release tag or latest)
+        required: true
+        default: release
+        type: choice
+        options: [release, development]
 
+# Read-only by default. Each write scope is granted to the one job that needs it.
 permissions:
   contents: read
 
-concurrency:
-  # Per component: two releases of the same component must never interleave, but the gateway and
-  # the SDK are independent and there is no reason for one to wait on the other.
-  group: release-${{ github.event.inputs.component || github.ref_name }}
-  cancel-in-progress: false
-
 jobs:
   resolve:
-    name: Resolve the component and version
-    # The APK is not in release/components.json and has a job of its own below.
-    if: github.event.inputs.component != 'android'
+    name: Resolve the component, version and commit
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       component: ${{ steps.plan.outputs.component }}
       version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      commit: ${{ steps.plan.outputs.commit }}
       prerelease: ${{ steps.plan.outputs.prerelease }}
       development: ${{ steps.plan.outputs.development }}
       dry_run: ${{ steps.plan.outputs.dry_run }}
-      npm_dry_run: ${{ steps.plan.outputs.npm_dry_run }}
-      npm_name: ${{ steps.plan.outputs.npm_name }}
-      npm_directory: ${{ steps.plan.outputs.npm_directory }}
-      npm_tag: ${{ steps.plan.outputs.npm_tag }}
+      title: ${{ steps.plan.outputs.title }}
       has_npm: ${{ steps.plan.outputs.has_npm }}
       has_image: ${{ steps.plan.outputs.has_image }}
-      image_ref: ${{ steps.plan.outputs.image_ref }}
+      has_android: ${{ steps.plan.outputs.has_android }}
+      checks: ${{ steps.plan.outputs.checks }}
+      go_version_file: ${{ steps.plan.outputs.go_version_file }}
+      java_version: ${{ steps.plan.outputs.java_version }}
+      npm_name: ${{ steps.plan.outputs.npm_name }}
+      npm_directory: ${{ steps.plan.outputs.npm_directory }}
+      npm_version: ${{ steps.plan.outputs.npm_version }}
+      npm_tag: ${{ steps.plan.outputs.npm_tag }}
+      image_repository: ${{ steps.plan.outputs.image_repository }}
       image_version_tag: ${{ steps.plan.outputs.image_version_tag }}
       image_tags: ${{ steps.plan.outputs.image_tags }}
+      image_stable_alias: ${{ steps.plan.outputs.image_stable_alias }}
       dockerfile: ${{ steps.plan.outputs.dockerfile }}
       context: ${{ steps.plan.outputs.context }}
       target: ${{ steps.plan.outputs.target }}
       platforms: ${{ steps.plan.outputs.platforms }}
-      title: ${{ steps.plan.outputs.title }}
+      android_application_id: ${{ steps.plan.outputs.android_application_id }}
+      android_version_code: ${{ steps.plan.outputs.android_version_code }}
+      android_requires: ${{ steps.plan.outputs.android_requires }}
+      apk_name: ${{ steps.plan.outputs.apk_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,49 +104,94 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+      # The manifest read here is the one at the commit being released. A tag must agree with it;
+      # a real manual run must be the existing tag's own commit (scripts/release-plan.mjs).
       - id: plan
-        name: Read release/components.json
+        name: Read release/components.json at this commit
         env:
-          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          INPUT_COMPONENT: ${{ github.event.inputs.component }}
-          INPUT_CHANNEL: ${{ github.event.inputs.channel }}
-          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
+          TAG: ${{ github.ref_type == 'tag' && github.event_name == 'push' && github.ref_name || '' }}
+          INPUT_COMPONENT: ${{ inputs.component }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
           COMMIT: ${{ github.sha }}
         run: node scripts/release-plan.mjs >> "$GITHUB_OUTPUT"
+      - name: Summarise the plan
+        env:
+          COMPONENT: ${{ steps.plan.outputs.component }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          COMMIT: ${{ steps.plan.outputs.commit }}
+          DRY: ${{ steps.plan.outputs.dry_run }}
+          DEVELOPMENT: ${{ steps.plan.outputs.development }}
+        run: |
+          {
+            echo "### Release plan"
+            echo
+            echo "| field | value |"
+            echo "| -- | -- |"
+            echo "| component | \`$COMPONENT\` |"
+            echo "| version | \`$VERSION\` |"
+            echo "| tag | \`$TAG\` |"
+            echo "| source commit | [\`$COMMIT\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$COMMIT) |"
+            echo "| development channel | $DEVELOPMENT |"
+            echo "| dry run | $DRY |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-  verify:
-    name: Build and audit the artifact
+  checks:
+    name: Checks on the released commit
     needs: resolve
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - if: needs.resolve.outputs.go_version_file != ''
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ needs.resolve.outputs.go_version_file }}
+          cache: false
+      - if: needs.resolve.outputs.java_version != ''
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: ${{ needs.resolve.outputs.java_version }}
+      - if: needs.resolve.outputs.java_version != ''
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+          # A release never writes a cache a later pull request would restore.
+          cache-read-only: true
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # The manifest, the npm manifests and the Dockerfiles have to agree before anything is built.
-      - run: pnpm check:release
-      # The same audits CI runs: the exact tarball, installed outside the workspace and exercised
-      # through its documented entry points. A release runs them again against the tagged commit.
-      - if: needs.resolve.outputs.component == 'server-sdk'
-        run: pnpm test:server-sdk-package
-      - if: needs.resolve.outputs.component == 'mcp-server'
-        run: pnpm test:mcp-server-package
-      - if: needs.resolve.outputs.component == 'mcp-skr-staking'
-        run: pnpm test:skr-staking-package
+      # The component's own checks from release/components.json — the same commands CI runs —
+      # each of which must pass before this component may publish anything.
+      - name: Run the component's checks
+        env:
+          CHECKS: ${{ needs.resolve.outputs.checks }}
+        run: |
+          mapfile -t commands < <(node -e 'for (const c of JSON.parse(process.env.CHECKS)) console.log(c)')
+          for command in "${commands[@]}"; do
+            echo "::group::$command"
+            bash -c "$command"
+            echo "::endgroup::"
+          done
 
-  npm:
-    name: Publish to npm
-    needs: [resolve, verify]
-    if: needs.resolve.outputs.has_npm == 'true' && needs.resolve.outputs.development != 'true'
+  npm-pack:
+    name: Pack and audit the npm tarball
+    needs: resolve
+    if: needs.resolve.outputs.has_npm == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    environment: release
+    outputs:
+      filename: ${{ steps.pack.outputs.filename }}
+      integrity: ${{ steps.pack.outputs.integrity }}
+      server_sdk_version: ${{ steps.audit.outputs.server_sdk_version }}
+      server_sdk_sha256: ${{ steps.audit.outputs.server_sdk_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -131,209 +200,127 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
-          registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - name: Build the artifact
-        run: pnpm --filter ${{ needs.resolve.outputs.npm_name }} run build
-
-      # A published version is immutable, so a rerun of a finished release must stop here rather
-      # than fail halfway through. docs/development/releases.md § Retrying a partial release.
-      - name: Refuse to overwrite a published version
+      - name: Build
+        run: pnpm --filter "${{ needs.resolve.outputs.npm_name }}" run build
+      # The tarball is built once, here, and the publish job uploads exactly these bytes. Its
+      # package.json names the commit (gitHead), which is what a retry checks a published version
+      # against.
+      - id: pack
+        name: Pack
+        working-directory: ${{ needs.resolve.outputs.npm_directory }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+        run: |
+          npm pkg set "gitHead=$COMMIT"
+          mkdir -p "$RUNNER_TEMP/npm"
+          npm pack --json --pack-destination "$RUNNER_TEMP/npm" > "$RUNNER_TEMP/npm/pack.json"
+          node -e '
+            const [packed] = require(process.argv[1]);
+            console.log(`filename=${packed.filename}`);
+            console.log(`integrity=${packed.integrity}`);
+            console.error(packed.files.map((file) => `${file.size}\t${file.path}`).join("\n"));
+          ' "$RUNNER_TEMP/npm/pack.json" >> "$GITHUB_OUTPUT"
+      - id: audit
+        name: Audit the packed manifest
+        env:
           NAME: ${{ needs.resolve.outputs.npm_name }}
           VERSION: ${{ needs.resolve.outputs.version }}
-          DRY: ${{ needs.resolve.outputs.npm_dry_run }}
-        run: |
-          if npm view "$NAME@$VERSION" version --json > /dev/null 2>&1; then
-            # A dry run uploads nothing, so an existing version is only worth a warning there.
-            if [ "$DRY" = "true" ]; then
-              echo "::warning::$NAME@$VERSION is already on the registry; a real publish would refuse it"
-              exit 0
-            fi
-            echo "::error::$NAME@$VERSION is already on the registry; bump the version instead of retagging"
-            exit 1
-          fi
-          echo "$NAME@$VERSION is not published yet"
-
-      # npm seeds `latest` on a package's very first publish whatever `--tag` says, and it will not
-      # let `latest` be deleted afterwards. So the rule "a prerelease never advances latest" is
-      # only meaningful once a stable version exists — and from then on it is checked, below.
-      - id: before
-        name: Record the current latest
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NAME: ${{ needs.resolve.outputs.npm_name }}
-        run: |
-          latest="$(npm view "$NAME@latest" version 2>/dev/null || true)"
-          echo "latest=$latest" >> "$GITHUB_OUTPUT"
-          if [ -z "$latest" ]; then
-            echo "::notice::$NAME has no published version yet. npm will point latest at this" \
-                 "one even though it is a release candidate; the first stable release moves it."
-          fi
-
-      - name: Publish
-        if: needs.resolve.outputs.npm_dry_run != 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        working-directory: ${{ needs.resolve.outputs.npm_directory }}
-        # --tag is what keeps a release candidate off `latest`: an RC goes to `next`, and a
-        # consumer running `npm install <name>` keeps getting the last stable version.
-        run: npm publish --access public --tag "${{ needs.resolve.outputs.npm_tag }}"
-
-      - name: Dry run
-        if: needs.resolve.outputs.npm_dry_run == 'true'
-        working-directory: ${{ needs.resolve.outputs.npm_directory }}
-        run: npm publish --access public --tag "${{ needs.resolve.outputs.npm_tag }}" --dry-run
-
-      # The acceptance criterion, as a check rather than a claim: publishing a release candidate
-      # must leave `latest` exactly where it was. It cannot run when there was no `latest` to
-      # begin with, which is the seeding case noted above.
-      - name: A release candidate must not have moved latest
-        if: >-
-          needs.resolve.outputs.npm_dry_run != 'true' &&
-          needs.resolve.outputs.prerelease == 'true' &&
-          steps.before.outputs.latest != ''
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NAME: ${{ needs.resolve.outputs.npm_name }}
-          BEFORE: ${{ steps.before.outputs.latest }}
-        run: |
-          after="$(npm view "$NAME@latest" version)"
-          if [ "$after" != "$BEFORE" ]; then
-            echo "::error::publishing a release candidate moved latest from $BEFORE to $after"
-            exit 1
-          fi
-          echo "latest is still $after"
-
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+          FILENAME: ${{ steps.pack.outputs.filename }}
+        run: tar -xzOf "$RUNNER_TEMP/npm/$FILENAME" package/package.json | node scripts/release-state.mjs npm-audit
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-${{ needs.resolve.outputs.component }}-${{ needs.resolve.outputs.commit }}
+          path: ${{ runner.temp }}/npm/
+          if-no-files-found: error
+          retention-days: 7
       - name: Summarise
         env:
           NAME: ${{ needs.resolve.outputs.npm_name }}
           VERSION: ${{ needs.resolve.outputs.version }}
-          NPM_TAG: ${{ needs.resolve.outputs.npm_tag }}
-          DRY: ${{ needs.resolve.outputs.npm_dry_run }}
+          FILENAME: ${{ steps.pack.outputs.filename }}
+          INTEGRITY: ${{ steps.pack.outputs.integrity }}
+          SDK: ${{ steps.audit.outputs.server_sdk_version }}
+          SDK_SHA: ${{ steps.audit.outputs.server_sdk_sha256 }}
         run: |
           {
-            echo "### npm"
+            echo "### npm tarball (packed, not yet published)"
             echo
             echo "| field | value |"
             echo "| -- | -- |"
             echo "| package | \`$NAME@$VERSION\` |"
-            echo "| dist-tag | \`$NPM_TAG\` |"
-            echo "| dry run | $DRY |"
-            echo "| install | \`npm install $NAME@$VERSION\` |"
-            echo "| registry | https://www.npmjs.com/package/$NAME/v/$VERSION |"
+            echo "| tarball | \`$FILENAME\` |"
+            echo "| integrity | \`$INTEGRITY\` |"
+            if [ -n "$SDK" ]; then
+              echo "| vendored server-sdk | \`$SDK\` (files sha256 \`$SDK_SHA\`) |"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  image:
-    name: Publish to Docker Hub
-    needs: [resolve, verify]
+  image-build:
+    name: Build the image for amd64 and arm64
+    needs: resolve
     if: needs.resolve.outputs.has_image == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    environment: release
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Require a Docker Hub credential
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
-            echo "::error::secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN must be set: an account" \
-                 "with write access to brenat/seeker-agent-connect and a Docker Hub access token" \
-                 "with Read & Write scope. See docs/development/releases.md."
-            exit 1
-          fi
-
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      # Same rule as npm: a released tag is a fixed point. `<prefix>-sha-<commit>` and
-      # `<prefix>-develop` are the development channel's moving tags and are deliberately exempt.
-      - name: Refuse to overwrite a released tag
-        if: needs.resolve.outputs.development != 'true'
-        env:
-          RELEASED: ${{ needs.resolve.outputs.image_version_tag }}
-        run: |
-          if docker buildx imagetools inspect "$RELEASED" > /dev/null 2>&1; then
-            echo "::error::$RELEASED already exists; bump the version instead of retagging"
-            exit 1
-          fi
-          echo "$RELEASED is free"
-
-      - id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      # Built and thrown away: no login, no push. It proves both platforms build from this commit
+      # before anything is published, and warms the cache the publish job builds from.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ needs.resolve.outputs.context }}
           file: ${{ needs.resolve.outputs.dockerfile }}
           target: ${{ needs.resolve.outputs.target }}
           platforms: ${{ needs.resolve.outputs.platforms }}
-          push: ${{ needs.resolve.outputs.dry_run != 'true' }}
-          tags: ${{ needs.resolve.outputs.image_tags }}
+          push: false
           provenance: mode=max
           sbom: true
           build-args: |
             VERSION=${{ needs.resolve.outputs.version }}
-            REVISION=${{ github.sha }}
-          labels: |
-            org.opencontainers.image.version=${{ needs.resolve.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-from: type=gha,scope=${{ needs.resolve.outputs.component }}
-          cache-to: type=gha,mode=max,scope=${{ needs.resolve.outputs.component }}
-
+            REVISION=${{ needs.resolve.outputs.commit }}
+          cache-from: type=gha,scope=release-${{ needs.resolve.outputs.component }}
+          cache-to: type=gha,mode=max,scope=release-${{ needs.resolve.outputs.component }}
       - name: Summarise
         env:
-          IMAGE: ${{ needs.resolve.outputs.image_ref }}
-          RELEASED: ${{ needs.resolve.outputs.image_version_tag }}
-          DIGEST: ${{ steps.build.outputs.digest }}
           TAGS: ${{ needs.resolve.outputs.image_tags }}
-          DRY: ${{ needs.resolve.outputs.dry_run }}
+          PLATFORMS: ${{ needs.resolve.outputs.platforms }}
         run: |
           {
-            echo "### Docker Hub"
+            echo "### Image built for $PLATFORMS (not pushed)"
             echo
-            echo "| field | value |"
-            echo "| -- | -- |"
-            echo "| image | \`$RELEASED\` |"
-            echo "| digest | \`$DIGEST\` |"
-            echo "| dry run | $DRY |"
-            echo "| pull by digest | \`docker pull $IMAGE@$DIGEST\` |"
-            echo
-            echo "Tags pushed:"
+            echo "Tags a publication would push:"
             echo '```'
             echo "$TAGS"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  android-apk:
-    # The app, built by hand from a chosen commit (SEE-173). It publishes nothing: the unsigned
-    # release APK is a workflow artifact for the owner to sign and distribute. Its only
-    # configuration is public — the SAC swap fee's rate and receiving accounts come from repository
-    # *variables*, never secrets, and are empty (no fee) unless the owner sets them. The complete
-    # Solana endpoint is also a repository variable because BuildConfig embeds it in the APK: use
-    # only a public endpoint or a client key intentionally distributed with suitable limits, never
-    # a provider key that must remain secret. A fee build without an endpoint fails at configuration
-    # time rather than shipping a fee that can never be charged. docs/development/swap-fee-config.md
-    name: Android APK
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.component == 'android'
+  android-build:
+    name: Build the unsigned release APK
+    needs: resolve
+    if: needs.resolve.outputs.has_android == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
+    outputs:
+      features: ${{ steps.config.outputs.features }}
+    # Client configuration only — every value here is compiled into the APK and readable by anyone
+    # who has it, so all of it is a repository *variable*. The signing key is the only secret, and
+    # this job never sees it. docs/development/releases.md § Android build configuration.
     env:
+      SEEKERVAULT_GOOGLE_SERVICES_JSON: ${{ vars.SEEKERVAULT_GOOGLE_SERVICES_JSON }}
+      SEEKERVAULT_SOLANA_RPC: ${{ vars.SEEKERVAULT_SOLANA_RPC }}
+      SEEKERVAULT_SOLANA_RPC_MAINNET: ${{ vars.SEEKERVAULT_SOLANA_RPC_MAINNET }}
+      SEEKERVAULT_SOLANA_RPC_DEVNET: ${{ vars.SEEKERVAULT_SOLANA_RPC_DEVNET }}
+      SEEKERVAULT_SOLANA_RPC_TESTNET: ${{ vars.SEEKERVAULT_SOLANA_RPC_TESTNET }}
+      SEEKERVAULT_RELAY_URL: ${{ vars.SEEKERVAULT_RELAY_URL }}
+      SEEKERVAULT_DISCOVERY_URL: ${{ vars.SEEKERVAULT_DISCOVERY_URL }}
       SEEKERVAULT_SWAP_FEE_BPS: ${{ vars.SEEKERVAULT_SWAP_FEE_BPS }}
       SEEKERVAULT_SWAP_FEE_OWNER: ${{ vars.SEEKERVAULT_SWAP_FEE_OWNER }}
       SEEKERVAULT_SWAP_FEE_ACCOUNTS: ${{ vars.SEEKERVAULT_SWAP_FEE_ACCOUNTS }}
-      SOLANA_RPC: ${{ vars.SEEKERVAULT_SOLANA_RPC }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -341,25 +328,599 @@ jobs:
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: ${{ needs.resolve.outputs.java_version }}
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           cache-provider: basic
+          cache-read-only: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      # Refuses a server credential or a credential-bearing URL outright; a real release also
+      # refuses a build missing a feature release/components.json requires.
+      - id: config
+        name: Check the official build configuration
+        env:
+          APPLICATION_ID: ${{ needs.resolve.outputs.android_application_id }}
+          REQUIRE: ${{ needs.resolve.outputs.android_requires }}
+          RELEASE: ${{ needs.resolve.outputs.dry_run == 'false' }}
+        run: |
+          node scripts/release-android.mjs "$APPLICATION_ID" \
+            "$RUNNER_TEMP/gradle-args" "$RUNNER_TEMP/features.json"
+          echo "features=$(cat "$RUNNER_TEMP/features.json")" >> "$GITHUB_OUTPUT"
       - name: Build the unsigned release APK
         run: |
-          args=()
-          if [ -n "$SOLANA_RPC" ]; then args+=("-Pseekervault.solanaRpc=$SOLANA_RPC"); fi
+          mapfile -t args < "$RUNNER_TEMP/gradle-args"
           apps/android/gradlew -p apps/android :app:assembleRelease "${args[@]}"
-      - name: Record the fee configuration the APK was built with
-        run: |
-          {
-            echo "### SAC swap fee"
-            echo "- rate: ${SEEKERVAULT_SWAP_FEE_BPS:-0} bps"
-            echo "- owner: ${SEEKERVAULT_SWAP_FEE_OWNER:-none}"
-            echo "- accounts: ${SEEKERVAULT_SWAP_FEE_ACCOUNTS:-none}"
-          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f apps/android/app/google-services.json
+          mkdir -p "$RUNNER_TEMP/apk"
+          cp apps/android/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/apk/"
+          cp "$RUNNER_TEMP/features.json" "$RUNNER_TEMP/apk/"
+      - name: Check the application id, versionName and versionCode
+        run: bash scripts/check-android-apk.sh "$RUNNER_TEMP/apk/app-release-unsigned.apk"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: seeker-agent-connect-${{ github.sha }}-unsigned
-          path: apps/android/app/build/outputs/apk/release/*.apk
+          name: apk-unsigned-${{ needs.resolve.outputs.commit }}
+          path: ${{ runner.temp }}/apk/
           if-no-files-found: error
+          retention-days: 3
+      - name: Summarise
+        env:
+          FEATURES: ${{ steps.config.outputs.features }}
+          DRY: ${{ needs.resolve.outputs.dry_run }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          CODE: ${{ needs.resolve.outputs.android_version_code }}
+        run: |
+          {
+            echo "### Android release candidate $VERSION ($CODE)"
+            echo
+            echo "- unsigned sha256: \`$(sha256sum "$RUNNER_TEMP/apk/app-release-unsigned.apk" | cut -d' ' -f1)\`"
+            echo "- features: \`$FEATURES\`"
+            echo "- SAC swap fee: ${SEEKERVAULT_SWAP_FEE_BPS:-0} bps"
+            if [ "$DRY" = "true" ]; then
+              echo "- **signing: NOT verified** — a dry run never reads the signing key"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Every check and build of the selected component has passed on this commit, and this is a real
+  # run. Publication jobs start only from here; a dry run stops before it.
+  gate:
+    name: Ready to publish
+    needs: [resolve, checks, npm-pack, image-build, android-build]
+    if: >-
+      !cancelled() && !failure() &&
+      needs.resolve.result == 'success' && needs.checks.result == 'success' &&
+      needs.resolve.outputs.dry_run == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: echo "Publishing ${{ needs.resolve.outputs.tag }} from ${{ needs.resolve.outputs.commit }}"
+
+  npm-publish:
+    name: Publish to npm
+    needs: [resolve, npm-pack, gate]
+    if: needs.resolve.outputs.has_npm == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # The npm trusted publisher for each package names this workflow file and this environment.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    # One npm publication per component at a time, across tags and manual runs. A running publish
+    # is never cancelled.
+    concurrency:
+      group: release-npm-${{ needs.resolve.outputs.component }}
+      cancel-in-progress: false
+    outputs:
+      action: ${{ steps.decide.outputs.action }}
+      dist_tag: ${{ steps.decide.outputs.dist_tag }}
+      integrity: ${{ steps.confirm.outputs.integrity || steps.decide.outputs.integrity }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install the pinned npm CLI
+        env:
+          NPM_VERSION: ${{ needs.resolve.outputs.npm_version }}
+        run: |
+          npm install --global "npm@$NPM_VERSION"
+          test "$(npm --version)" = "$NPM_VERSION"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: npm-${{ needs.resolve.outputs.component }}-${{ needs.resolve.outputs.commit }}
+          path: ${{ runner.temp }}/npm
+      - name: The tarball is the one that was audited
+        env:
+          FILENAME: ${{ needs.npm-pack.outputs.filename }}
+          INTEGRITY: ${{ needs.npm-pack.outputs.integrity }}
+        run: |
+          actual="sha512-$(openssl dgst -sha512 -binary "$RUNNER_TEMP/npm/$FILENAME" | base64 -w0)"
+          test "$actual" = "$INTEGRITY"
+      - id: decide
+        name: What is already published
+        env:
+          NAME: ${{ needs.resolve.outputs.npm_name }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+          INTEGRITY: ${{ needs.npm-pack.outputs.integrity }}
+          PRERELEASE: ${{ needs.resolve.outputs.prerelease }}
+        run: node scripts/release-state.mjs npm-decide
+      # Trusted publishing: npm exchanges this job's OIDC token for a one-time publish credential
+      # and attaches provenance. NPM_BOOTSTRAP_TOKEN exists only for a package's very first
+      # publication, before its trusted publisher can be configured, and is deleted afterwards.
+      - name: Publish
+        if: steps.decide.outputs.action == 'publish'
+        env:
+          FILENAME: ${{ needs.npm-pack.outputs.filename }}
+          DIST_TAG: ${{ steps.decide.outputs.dist_tag }}
+          NPM_BOOTSTRAP_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+        run: |
+          if [ -n "$NPM_BOOTSTRAP_TOKEN" ]; then
+            echo "::warning::publishing with NPM_BOOTSTRAP_TOKEN. Configure this package's trusted" \
+                 "publisher and delete the secret (docs/development/releases.md § First publication)."
+            export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/bootstrap.npmrc"
+            echo '//registry.npmjs.org/:_authToken=${NPM_BOOTSTRAP_TOKEN}' > "$NPM_CONFIG_USERCONFIG"
+          fi
+          npm publish "$RUNNER_TEMP/npm/$FILENAME" --access public --tag "$DIST_TAG" --provenance
+          rm -f "$RUNNER_TEMP/bootstrap.npmrc"
+      - id: confirm
+        name: The registry serves exactly the uploaded tarball
+        if: steps.decide.outputs.action == 'publish'
+        env:
+          NAME: ${{ needs.resolve.outputs.npm_name }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          INTEGRITY: ${{ needs.npm-pack.outputs.integrity }}
+        run: node scripts/release-state.mjs npm-confirm
+      - name: Summarise
+        env:
+          NAME: ${{ needs.resolve.outputs.npm_name }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          ACTION: ${{ steps.decide.outputs.action }}
+          DIST_TAG: ${{ steps.decide.outputs.dist_tag }}
+          INTEGRITY: ${{ steps.confirm.outputs.integrity || steps.decide.outputs.integrity }}
+          DIST_TAGS: ${{ steps.confirm.outputs.dist_tags }}
+        run: |
+          {
+            echo "### npm"
+            echo
+            echo "| field | value |"
+            echo "| -- | -- |"
+            echo "| package | [\`$NAME@$VERSION\`](https://www.npmjs.com/package/$NAME/v/$VERSION) |"
+            echo "| result | $ACTION |"
+            echo "| dist-tag | \`${DIST_TAG:-unchanged}\` |"
+            echo "| integrity | \`$INTEGRITY\` |"
+            echo "| dist-tags now | \`${DIST_TAGS:-not re-read}\` |"
+            echo "| install | \`npm install $NAME@$VERSION\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  image-publish:
+    name: Publish to GHCR
+    needs: [resolve, gate]
+    if: needs.resolve.outputs.has_image == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: release-image-${{ needs.resolve.outputs.component }}
+      cancel-in-progress: false
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+      latest: ${{ steps.alias.outputs.move }}
+    env:
+      REPOSITORY: ${{ needs.resolve.outputs.image_repository }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+      COMMIT: ${{ needs.resolve.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      # A released version tag that exists already must be this release's own image (its
+      # revision and version labels); it is then kept, never rebuilt over. Development tags move.
+      - id: decide
+        name: What is already published
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEVELOPMENT: ${{ needs.resolve.outputs.development }}
+        run: |
+          if [ "$DEVELOPMENT" = "true" ]; then
+            echo "action=push" >> "$GITHUB_OUTPUT"
+          else
+            node scripts/release-state.mjs image-decide
+          fi
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        if: steps.decide.outputs.action == 'push'
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: build
+        if: steps.decide.outputs.action == 'push'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ needs.resolve.outputs.context }}
+          file: ${{ needs.resolve.outputs.dockerfile }}
+          target: ${{ needs.resolve.outputs.target }}
+          platforms: ${{ needs.resolve.outputs.platforms }}
+          push: true
+          tags: ${{ needs.resolve.outputs.image_tags }}
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            VERSION=${{ needs.resolve.outputs.version }}
+            REVISION=${{ needs.resolve.outputs.commit }}
+          # The source label/annotation is what links the GHCR package to this repository.
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.resolve.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.resolve.outputs.commit }}
+          annotations: |
+            index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index:org.opencontainers.image.version=${{ needs.resolve.outputs.version }}
+            index:org.opencontainers.image.revision=${{ needs.resolve.outputs.commit }}
+            index:org.opencontainers.image.description=${{ needs.resolve.outputs.title }}
+            index:org.opencontainers.image.licenses=MIT
+          cache-from: type=gha,scope=release-${{ needs.resolve.outputs.component }}
+      - id: digest
+        name: Record the digest
+        env:
+          BUILT: ${{ steps.build.outputs.digest }}
+          EXISTING: ${{ steps.decide.outputs.digest }}
+        run: |
+          digest="${BUILT:-$EXISTING}"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no image digest"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      # A retry whose version tag was already pushed points the commit tag at that same image.
+      - name: Point sha-<commit> at the released image
+        if: steps.decide.outputs.action == 'verified'
+        env:
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: docker buildx imagetools create --tag "$REPOSITORY:sha-$COMMIT" "$REPOSITORY@$DIGEST"
+      # `latest` moves only for a stable release, and only forwards.
+      - id: alias
+        name: Move latest if this is the newest stable version
+        if: needs.resolve.outputs.image_stable_alias != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
+        run: |
+          node scripts/release-state.mjs image-alias
+          if grep -q '^move=true$' "$GITHUB_OUTPUT"; then
+            docker buildx imagetools create --tag "$REPOSITORY:latest" "$REPOSITORY@$DIGEST"
+          fi
+      - name: Log out
+        if: always()
+        run: docker logout ghcr.io
+      # The proof the image is public: every tag of this release resolves to the recorded digest
+      # with no credential at all. A new package starts private; see the error for the one-time fix.
+      - name: Anonymous pull check
+        env:
+          DIGEST: ${{ steps.digest.outputs.digest }}
+          DEVELOPMENT: ${{ needs.resolve.outputs.development }}
+          LATEST: ${{ steps.alias.outputs.move }}
+        run: |
+          if [ "$DEVELOPMENT" = "true" ]; then
+            TAGS="dev-sha-$COMMIT develop"
+          else
+            TAGS="$VERSION sha-$COMMIT"
+            if [ "$LATEST" = "true" ]; then TAGS="$TAGS latest"; fi
+          fi
+          export TAGS
+          node scripts/release-state.mjs image-anonymous
+      - name: Summarise
+        env:
+          DIGEST: ${{ steps.digest.outputs.digest }}
+          ACTION: ${{ steps.decide.outputs.action }}
+          TAGS: ${{ needs.resolve.outputs.image_tags }}
+          LATEST: ${{ steps.alias.outputs.move }}
+        run: |
+          {
+            echo "### GHCR"
+            echo
+            echo "| field | value |"
+            echo "| -- | -- |"
+            echo "| image | \`$REPOSITORY:$VERSION\` |"
+            echo "| result | $ACTION |"
+            echo "| digest | \`$DIGEST\` |"
+            echo "| latest moved | ${LATEST:-no (prerelease or development)} |"
+            echo "| pull by digest | \`docker pull $REPOSITORY@$DIGEST\` |"
+            echo
+            echo "Tags:"
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  android-publish:
+    name: Sign and publish the APK
+    needs: [resolve, android-build, gate]
+    if: needs.resolve.outputs.has_android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+    concurrency:
+      group: release-android-${{ needs.resolve.outputs.component }}
+      cancel-in-progress: false
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+      VERSION_CODE: ${{ needs.resolve.outputs.android_version_code }}
+      COMMIT: ${{ needs.resolve.outputs.commit }}
+      APK: ${{ needs.resolve.outputs.apk_name }}
+      PRERELEASE: ${{ needs.resolve.outputs.prerelease }}
+      CERT_SHA256: ${{ vars.SAC_ANDROID_SIGNING_CERT_SHA256 }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      # A real release is signed with the permanent key or not at all: never a debug key, never an
+      # unsigned APK presented as the app.
+      - name: Require the signing key and its pinned certificate
+        env:
+          KEYSTORE: ${{ secrets.SAC_ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.SAC_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SAC_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SAC_ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=()
+          [ -n "$KEYSTORE" ] || missing+=(secret SAC_ANDROID_KEYSTORE_BASE64)
+          [ -n "$STORE_PASSWORD" ] || missing+=(secret SAC_ANDROID_KEYSTORE_PASSWORD)
+          [ -n "$KEY_ALIAS" ] || missing+=(secret SAC_ANDROID_KEY_ALIAS)
+          [ -n "$KEY_PASSWORD" ] || missing+=(secret SAC_ANDROID_KEY_PASSWORD)
+          [ -n "$CERT_SHA256" ] || missing+=(variable SAC_ANDROID_SIGNING_CERT_SHA256)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::cannot sign the release: missing ${missing[*]} in the release" \
+                 "environment. See docs/development/releases.md § Android signing."
+            exit 1
+          fi
+      - id: decide
+        name: What is already published
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/release-state.mjs android-decide
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: steps.decide.outputs.action != 'verified'
+        with:
+          name: apk-unsigned-${{ needs.resolve.outputs.commit }}
+          path: ${{ runner.temp }}/apk
+      - id: sign
+        name: Sign
+        if: steps.decide.outputs.action != 'verified'
+        env:
+          KEYSTORE: ${{ secrets.SAC_ANDROID_KEYSTORE_BASE64 }}
+          SAC_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SAC_ANDROID_KEYSTORE_PASSWORD }}
+          SAC_ANDROID_KEY_PASSWORD: ${{ secrets.SAC_ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SAC_ANDROID_KEY_ALIAS }}
+        run: |
+          tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          keystore="$RUNNER_TEMP/sac-release.jks"
+          trap 'rm -f "$keystore"' EXIT
+          umask 077
+          base64 -d <<<"$KEYSTORE" > "$keystore"
+          "$tools/zipalign" -f -p 4 "$RUNNER_TEMP/apk/app-release-unsigned.apk" "$RUNNER_TEMP/aligned.apk"
+          mkdir -p "$RUNNER_TEMP/release"
+          "$tools/apksigner" sign \
+            --ks "$keystore" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:SAC_ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:SAC_ANDROID_KEY_PASSWORD \
+            --out "$RUNNER_TEMP/release/$APK" \
+            "$RUNNER_TEMP/aligned.apk"
+          rm -f "$keystore" "$RUNNER_TEMP/aligned.apk"
+      - id: verify
+        name: Verify the signature, certificate, id and version
+        if: steps.decide.outputs.action != 'verified'
+        run: |
+          bash scripts/check-android-apk.sh "$RUNNER_TEMP/release/$APK" --signed "$CERT_SHA256" | tee "$RUNNER_TEMP/verify.txt"
+          sed -n 's/^certificate_sha256=/certificate=/p' "$RUNNER_TEMP/verify.txt" >> "$GITHUB_OUTPUT"
+          (cd "$RUNNER_TEMP/release" && sha256sum "$APK" > SHA256SUMS)
+          echo "sha256=$(cut -d' ' -f1 "$RUNNER_TEMP/release/SHA256SUMS")" >> "$GITHUB_OUTPUT"
+      - name: Write the release notes
+        if: steps.decide.outputs.action != 'verified'
+        env:
+          FEATURES: ${{ needs.android-build.outputs.features }}
+          SHA256: ${{ steps.verify.outputs.sha256 }}
+          CERTIFICATE: ${{ steps.verify.outputs.certificate }}
+          APPLICATION_ID: ${{ needs.resolve.outputs.android_application_id }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          record="$(node -e '
+            const e = process.env;
+            console.log(JSON.stringify({
+              component: "android", version: e.VERSION, versionCode: Number(e.VERSION_CODE),
+              commit: e.COMMIT, apk: e.APK, sha256: e.SHA256, certificateSha256: e.CERTIFICATE,
+              applicationId: e.APPLICATION_ID,
+            }));
+          ')"
+          {
+            echo "Seeker Agent Connect for Android **$VERSION** (versionCode $VERSION_CODE)."
+            echo
+            echo "- Tag: [\`$TAG\`]($SERVER/$GITHUB_REPOSITORY/tree/$TAG)"
+            echo "- Source commit: [\`$COMMIT\`]($SERVER/$GITHUB_REPOSITORY/commit/$COMMIT)"
+            echo "- Application id: \`$APPLICATION_ID\`"
+            echo "- \`$APK\` SHA-256: \`$SHA256\`"
+            echo "- Signing certificate SHA-256: \`$CERTIFICATE\`"
+            echo "- Build configuration: \`$FEATURES\`"
+            echo
+            echo "Verify before installing: \`sha256sum -c SHA256SUMS\` and"
+            echo "\`apksigner verify --print-certs $APK\` (the certificate above must match)."
+            echo "Install or update: \`adb install --replace $APK\`."
+            echo "See docs/development/releases.md for the full procedure."
+            echo
+            RECORD="$record" node scripts/release-state.mjs record
+          } > "$RUNNER_TEMP/notes.md"
+      # Prepared as a draft — invisible to the public and free to replace — and published only
+      # once the signed APK and its checksums are attached.
+      - name: Create or resume the draft release
+        if: steps.decide.outputs.action != 'verified'
+        env:
+          ACTION: ${{ steps.decide.outputs.action }}
+          RELEASE_ID: ${{ steps.decide.outputs.release_id }}
+        run: |
+          if [ "$ACTION" = "create" ]; then
+            flags=()
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "$TAG" --draft --verify-tag --title "Android app $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
+          else
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+              -F "body=@$RUNNER_TEMP/notes.md" > /dev/null
+          fi
+          gh release upload "$TAG" "$RUNNER_TEMP/release/$APK" "$RUNNER_TEMP/release/SHA256SUMS" --clobber
+      - name: Publish the release
+        if: steps.decide.outputs.action != 'verified'
+        env:
+          LATEST: ${{ steps.decide.outputs.latest }}
+        run: gh release edit "$TAG" --draft=false "--latest=$LATEST"
+      # Whether it was published now or by an earlier run, the public asset must be the recorded
+      # bytes and carry the pinned certificate.
+      - id: public
+        name: Check the public download
+        env:
+          RECORDED: ${{ steps.verify.outputs.sha256 || steps.decide.outputs.sha256 }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/public"
+          url="$SERVER/$GITHUB_REPOSITORY/releases/download/$TAG/$APK"
+          curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+            --output "$RUNNER_TEMP/public/$APK" "$url"
+          actual="$(sha256sum "$RUNNER_TEMP/public/$APK" | cut -d' ' -f1)"
+          if [ "$actual" != "$RECORDED" ]; then
+            echo "::error::$url is $actual, but the release records $RECORDED"
+            exit 1
+          fi
+          bash scripts/check-android-apk.sh "$RUNNER_TEMP/public/$APK" --signed "$CERT_SHA256"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "sha256=$actual" >> "$GITHUB_OUTPUT"
+      - name: Clean up
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/sac-release.jks" "$RUNNER_TEMP/apk" "$RUNNER_TEMP/release" "$RUNNER_TEMP/public"
+      - name: Summarise
+        env:
+          ACTION: ${{ steps.decide.outputs.action }}
+          URL: ${{ steps.public.outputs.url }}
+          SHA256: ${{ steps.public.outputs.sha256 }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          {
+            echo "### Android"
+            echo
+            echo "| field | value |"
+            echo "| -- | -- |"
+            echo "| release | $SERVER/$GITHUB_REPOSITORY/releases/tag/$TAG |"
+            echo "| result | $ACTION |"
+            echo "| APK | $URL |"
+            echo "| sha256 | \`$SHA256\` |"
+            echo "| certificate sha256 | \`$CERT_SHA256\` |"
+            echo "| versionName / versionCode | $VERSION / $VERSION_CODE |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The GitHub Release that records an npm or image release: its tag, commit, integrity and
+  # digests. It is never marked latest, so the repository's latest release stays the app's
+  # download link.
+  github-release:
+    name: Record the GitHub Release
+    needs: [resolve, gate, npm-pack, npm-publish, image-publish]
+    if: >-
+      !cancelled() && !failure() &&
+      needs.gate.result == 'success' &&
+      needs.resolve.outputs.has_android != 'true' &&
+      needs.resolve.outputs.development != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: release-github-${{ needs.resolve.outputs.component }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Write the release notes
+        env:
+          COMPONENT: ${{ needs.resolve.outputs.component }}
+          TITLE: ${{ needs.resolve.outputs.title }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+          NPM_NAME: ${{ needs.resolve.outputs.has_npm == 'true' && needs.resolve.outputs.npm_name || '' }}
+          NPM_INTEGRITY: ${{ needs.npm-publish.outputs.integrity }}
+          NPM_DIST_TAG: ${{ needs.npm-publish.outputs.dist_tag }}
+          SDK: ${{ needs.npm-pack.outputs.server_sdk_version }}
+          SDK_SHA: ${{ needs.npm-pack.outputs.server_sdk_sha256 }}
+          IMAGE: ${{ needs.resolve.outputs.image_repository }}
+          DIGEST: ${{ needs.image-publish.outputs.digest }}
+          LATEST: ${{ needs.image-publish.outputs.latest }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          record="$(node -e '
+            const e = process.env;
+            console.log(JSON.stringify({
+              component: e.COMPONENT, version: e.VERSION, commit: e.COMMIT,
+              npm: e.NPM_NAME ? { name: e.NPM_NAME, integrity: e.NPM_INTEGRITY } : null,
+              image: e.IMAGE ? { repository: e.IMAGE, digest: e.DIGEST } : null,
+              serverSdk: e.SDK || null,
+            }));
+          ')"
+          {
+            echo "$TITLE **$VERSION**."
+            echo
+            echo "- Tag: [\`$TAG\`]($SERVER/$GITHUB_REPOSITORY/tree/$TAG)"
+            echo "- Source commit: [\`$COMMIT\`]($SERVER/$GITHUB_REPOSITORY/commit/$COMMIT)"
+            if [ -n "$NPM_NAME" ]; then
+              echo "- npm: [\`$NPM_NAME@$VERSION\`](https://www.npmjs.com/package/$NPM_NAME/v/$VERSION)," \
+                   "integrity \`$NPM_INTEGRITY\`${NPM_DIST_TAG:+, dist-tag \`$NPM_DIST_TAG\`}"
+              echo "  - \`npm install $NPM_NAME@$VERSION\`"
+            fi
+            if [ -n "$SDK" ]; then
+              echo "- Bundles \`@seekeragentconnect/server-sdk\` $SDK (vendored files sha256 \`$SDK_SHA\`)"
+            fi
+            if [ -n "$IMAGE" ]; then
+              echo "- Image: \`$IMAGE:$VERSION\` = \`$IMAGE@$DIGEST\` (linux/amd64, linux/arm64)" \
+                   "${LATEST:+— latest moved: $LATEST}"
+              echo "  - \`docker pull $IMAGE@$DIGEST\`"
+            fi
+            echo
+            RECORD="$record" node scripts/release-state.mjs record
+          } > "$RUNNER_TEMP/notes.md"
+      - name: Create or update the release
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          COMPONENT: ${{ needs.resolve.outputs.component }}
+          PRERELEASE: ${{ needs.resolve.outputs.prerelease }}
+        run: |
+          if out="$(gh release view "$TAG" --json tagName 2>&1)"; then
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --latest=false
+          elif grep -q "release not found" <<<"$out"; then
+            flags=(--latest=false)
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "$TAG" --verify-tag --title "$COMPONENT $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
+          else
+            echo "::error::cannot tell whether $TAG has a release: $out"
+            exit 1
+          fi
+          echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"

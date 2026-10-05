@@ -2,16 +2,16 @@
 
 This is the self-hosted server for one owner, their one currently paired phone, and their agents. It
 serves authenticated, sessionful MCP Streamable HTTP at `/mcp`, the direct phone API on the same
-listener, and `GET /healthz`. It embeds `@seeker_agent_connect/server-sdk` in-process through the SDK's two
+listener, and `GET /healthz`. It embeds `@seekeragentconnect/server-sdk` in-process through the SDK's two
 public entry points. The server holds no wallet key, cannot approve a request, and never signs.
 
 The same application entry point has four supported starts:
 
 1. TypeScript source in this checkout;
 2. the Docker image, built from this checkout or pulled from
-   `docker.io/brenat/seeker-agent-connect:mcp-*`;
+   `ghcr.io/seekeragentconnect/mcp-server`;
 3. the executable npm tarball built locally from this checkout; or
-4. the published package, `npx --package=@seeker_agent_connect/mcp-server -- seeker-agent-connect-mcp`.
+4. the published package, `npx --package=@seekeragentconnect/mcp-server -- seeker-agent-connect-mcp`.
 
 The commands below build **local** artifacts and publish nothing. For the published ones see
 [docs/guides/installation.md](../../docs/guides/installation.md), and for how they are produced,
@@ -122,10 +122,12 @@ credential and cancels its pending requests.
 
 ## Option 2: standalone Docker
 
-The build uses the repository root only to compile the declared MCP package and unpublished SDK.
-The Compose preset lives in the separate `do-deploy` repository and pulls the published
-`docker.io/brenat/seeker-agent-connect:mcp-<version>` image; set `MCP_SERVER_IMAGE` to run a local
-build instead. The `compose/...` commands run from a `do-deploy` checkout:
+The build uses the repository root only to compile the declared MCP package and the SDK it
+vendors. The Compose preset lives in the separate `do-deploy` repository, which SEE-182 left
+unchanged: by default it pulls the legacy Docker Hub image
+`docker.io/brenat/seeker-agent-connect:mcp-<version>`. Set `MCP_SERVER_IMAGE` to
+`ghcr.io/seekeragentconnect/mcp-server:<version>` to run a published GHCR image, or to a local
+build. The `compose/...` commands run from a `do-deploy` checkout:
 
 ```sh
 # in this repository
@@ -145,9 +147,10 @@ The Compose project publishes the container only on host loopback and persists `
 in `seeker-agent-connect-mcp_mcp-data`. It starts no proxy or feed process. To use another host port,
 set `MCP_SERVER_PORT` and make `SIDECAR_PUBLIC_URL` match the phone's real origin.
 
-The tested reference is the local tag above. No SEE-132 image was pushed. If an operator later
-pushes an image, pin its immutable digest; do not treat `:local` or the older `:sidecar-v1` image as
-a public MCP-server release.
+The tested reference is the local tag above. Published images are
+`ghcr.io/seekeragentconnect/mcp-server:<version>`; pin one by its immutable digest
+([docs/guides/installation.md](../../docs/guides/installation.md#pinning-and-rolling-back)), and do
+not treat `:local` or the older `:sidecar-v1` image as a public MCP-server release.
 
 ## Option 3: executable npm tarball
 
@@ -160,18 +163,22 @@ mkdir -p ./artifacts
 npm pack --json --pack-destination ./artifacts ./servers/mcp-server/package
 ```
 
-The source workspace imports `@seeker_agent_connect/server-sdk` through its public API. During the MCP build,
+The source workspace imports `@seekeragentconnect/server-sdk` through its public API. During the MCP build,
 the SDK's built public runtime is copied under `dist/vendor/server-sdk` and emitted imports are
 rewritten to that vendored output. The distributed manifest therefore has no workspace, file, or
-unpublished registry SDK dependency. It is still the SDK implementation—not a copied/reimplemented
-request engine—and the package test rejects private SDK imports.
+registry SDK dependency, and this package is versioned independently of the SDK. Which SDK it
+carries is recorded in `dist/vendor/server-sdk/package.json` and in the published manifest's
+`seekerAgentConnect.serverSdk` field (`name`, `version`, `contentSha256`); for a published version,
+`npm view @seekeragentconnect/mcp-server seekerAgentConnect` prints it. It is still the SDK
+implementation—not a copied/reimplemented request engine—and the package test rejects private SDK
+imports.
 
 For an ordinary local install, use the exact tarball path:
 
 ```sh
 mkdir -p "$HOME/.local/seeker-agent-connect-mcp"
 npm install --global --prefix "$HOME/.local/seeker-agent-connect-mcp" \
-  "$PWD/artifacts/seeker-vault-mcp-server-0.1.0.tgz"
+  "$PWD/artifacts/seekeragentconnect-mcp-server-0.0.1.tgz"
 mkdir -p "$HOME/.seeker-agent-connect/mcp-server"
 cp servers/mcp-server/.env.example "$HOME/.seeker-agent-connect/mcp-server/config.env"
 chmod 600 "$HOME/.seeker-agent-connect/mcp-server/config.env"
@@ -190,7 +197,7 @@ Transient execution is also an explicit local-tarball operation:
 
 ```sh
 npm exec --yes \
-  --package "$PWD/artifacts/seeker-vault-mcp-server-0.1.0.tgz" -- \
+  --package "$PWD/artifacts/seekeragentconnect-mcp-server-0.0.1.tgz" -- \
   seeker-agent-connect-mcp --version
 ```
 
@@ -201,7 +208,7 @@ server; it is **not an MCP stdio child process**. Do not put this command in an 
 The version-pinned command against the registry is the same shape (SEE-168):
 
 ```sh
-npm exec --yes --package @seeker_agent_connect/mcp-server@0.2.0 -- \
+npm exec --yes --package @seekeragentconnect/mcp-server@0.0.1 -- \
   seeker-agent-connect-mcp start
 ```
 
@@ -273,9 +280,9 @@ Start the server first, then configure the client for Streamable HTTP at its URL
 only for the agent leg. The one-use pairing token, lasting phone credential, and wallet
 authorization are different credentials and are never given to the agent.
 
-- [Hermes v0.21.3 instructions](https://github.com/BrRenat/SeekerAgentWallet/blob/master/docs/integrations/hermes.md)
-- [OpenClaw 2026.9.5 instructions](https://github.com/BrRenat/SeekerAgentWallet/blob/master/docs/integrations/openclaw.md)
-- [Hosted OAuth client requirements](https://github.com/BrRenat/SeekerAgentWallet/blob/master/docs/integrations/claude.md)
+- [Hermes v0.21.3 instructions](https://github.com/SeekerAgentConnect/sac/blob/master/docs/integrations/hermes.md)
+- [OpenClaw 2026.9.5 instructions](https://github.com/SeekerAgentConnect/sac/blob/master/docs/integrations/openclaw.md)
+- [Hosted OAuth client requirements](https://github.com/SeekerAgentConnect/sac/blob/master/docs/integrations/claude.md)
 
 Static bearer access and OAuth are alternatives. If OAuth is enabled, remove the static bearer
 header and use the client's real MCP OAuth login surface. Never turn off TLS verification.
@@ -373,6 +380,6 @@ credentials, requests, notes, RPC URLs, Firebase targets or TLS key bytes.
 - database is newer than the binary: restore the pre-upgrade backup or run the newer binary.
 
 For implementation boundaries see
-[the MCP adapter note](https://github.com/BrRenat/SeekerAgentWallet/blob/master/docs/wiki/mcp-adapter.md),
-the [Direct Server SDK](https://github.com/BrRenat/SeekerAgentWallet/blob/master/server-sdk/README.md),
-and the [security model](https://github.com/BrRenat/SeekerAgentWallet/blob/master/docs/security.md).
+[the MCP adapter note](https://github.com/SeekerAgentConnect/sac/blob/master/docs/wiki/mcp-adapter.md),
+the [Direct Server SDK](https://github.com/SeekerAgentConnect/sac/blob/master/packages/server-sdk/README.md),
+and the [security model](https://github.com/SeekerAgentConnect/sac/blob/master/docs/security.md).

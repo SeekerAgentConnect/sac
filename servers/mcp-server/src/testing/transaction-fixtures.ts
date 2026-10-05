@@ -30,7 +30,7 @@ import {
 import {
   Network,
   type TransferAction,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import {
   ASSOCIATED_TOKEN_PROGRAM,
   SYSTEM_PROGRAM,

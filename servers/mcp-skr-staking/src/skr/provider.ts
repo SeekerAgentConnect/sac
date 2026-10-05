@@ -23,7 +23,7 @@ import {
   Network,
   StakingOperation,
   type StakingAction,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import {
   decodeGuardianDelegationPool,
   decodeStakeConfig,

@@ -61,7 +61,7 @@ function main() {
     ]);
     // What npm checks before it will accept a scoped package, and what the release manifest says
     // this version is (SEE-168). Hardcoding the version here would let a bump pass unnoticed.
-    assert.equal(packedManifest.name, "@seeker_agent_connect/server-sdk");
+    assert.equal(packedManifest.name, "@seekeragentconnect/server-sdk");
     assert.equal(packedManifest.version, releaseVersion("server-sdk"));
     assert.notEqual(packedManifest.private, true);
     assert.deepEqual(packedManifest.publishConfig, { access: "public" });
@@ -79,6 +79,15 @@ function main() {
         `the published manifest is missing ${field}`,
       );
     }
+    assert.deepEqual(packedManifest.repository, {
+      type: "git",
+      url: "git+https://github.com/SeekerAgentConnect/sac.git",
+      directory: "packages/server-sdk",
+    });
+    assert.equal(
+      packedManifest.homepage,
+      "https://github.com/SeekerAgentConnect/sac/tree/master/packages/server-sdk#readme",
+    );
     assert.deepEqual(Object.keys(packedManifest.dependencies).sort(), [
       "@bufbuild/protobuf",
       "@connectrpc/connect",
@@ -126,7 +135,7 @@ function main() {
 
     const installed = join(
       consumer,
-      "node_modules/@seeker_agent_connect/server-sdk",
+      "node_modules/@seekeragentconnect/server-sdk",
     );
     assert.equal(lstatSync(installed).isSymbolicLink(), false);
     assert.ok(
@@ -236,12 +245,12 @@ import {
   openDirectServer,
   privateRequest,
   type DirectServer,
-} from "@seeker_agent_connect/server-sdk";
+} from "@seekeragentconnect/server-sdk";
 import {
   AckActionSchema,
   ActionSchema,
   RequestState,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 
 const action = create(ActionSchema, {
   kind: { case: "ack", value: create(AckActionSchema, { text: "Review" }) },
@@ -275,8 +284,8 @@ const signals = { SIGINT: process.listenerCount("SIGINT"), SIGTERM: process.list
 const resources = process.getActiveResourcesInfo().sort();
 try {
   process.chdir(empty);
-  await import("@seeker_agent_connect/server-sdk");
-  await import("@seeker_agent_connect/server-sdk/protocol");
+  await import("@seekeragentconnect/server-sdk");
+  await import("@seekeragentconnect/server-sdk/protocol");
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(readdirSync(empty), [], "import created a file");
   assert.equal(process.listenerCount("SIGINT"), signals.SIGINT, "import registered SIGINT");
@@ -304,14 +313,14 @@ import { setTimeout as delay } from "node:timers/promises";
 import { create } from "@bufbuild/protobuf";
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
-import { openDirectServer, privateRequest, startPhoneApi } from "@seeker_agent_connect/server-sdk";
+import { openDirectServer, privateRequest, startPhoneApi } from "@seekeragentconnect/server-sdk";
 import {
   AckActionSchema,
   ActionSchema,
   PairingService,
   RequestService,
   RequestState,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 
 const directory = mkdtempSync(join(tmpdir(), "sdk-installed-lifecycle-"));
 const databasePath = join(directory, "direct.db");

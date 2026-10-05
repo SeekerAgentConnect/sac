@@ -188,7 +188,7 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.30.0
         version: 1.30.0(zod@4.6.1)
-      '@seeker_agent_connect/server-sdk':
+      '@seekeragentconnect/server-sdk':
         specifier: workspace:*
         version: link:../../packages/server-sdk
       '@solana/web3.js':
@@ -228,7 +228,7 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.30.0(zod@4.6.1)
-      '@seeker_agent_connect/server-sdk':
+      '@seekeragentconnect/server-sdk':
         specifier: workspace:*
         version: link:../../packages/server-sdk
       '@solana/web3.js':
@@ -253,7 +253,7 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.30.0(zod@4.6.1)
-      '@seeker_agent_connect/server-sdk':
+      '@seekeragentconnect/server-sdk':
         specifier: workspace:*
         version: link:../../packages/server-sdk
       zod:

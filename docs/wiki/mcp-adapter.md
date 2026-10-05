@@ -31,7 +31,7 @@ flowchart TB
         Endpoint["mcp-endpoint.ts<br>Streamable HTTP, token / OAuth"]
         Tools["requests/mcp-tools.ts<br>vault_* tools"]
     end
-    Boundary["@seeker_agent_connect/server-sdk<br>AgentRequests"]
+    Boundary["@seekeragentconnect/server-sdk<br>AgentRequests"]
     subgraph core["packages/server-sdk/ — reusable core"]
         Store["storage/request-store.ts<br>identity, idempotency, lifecycle"]
         Phone["phone-api.ts, requests/phone-service.ts<br>pairing/, updates/, push/"]
@@ -57,7 +57,7 @@ What it deliberately does **not** do:
 
 `servers/mcp-server/src/stage-boundary.test.ts` and `servers/mcp-server/src/sdk-boundary.test.ts` hold this: adapter files
 may not name `RequestStore`, `TransactionPreparer` or `ConfirmationTracker`; production host files
-may import only `@seeker_agent_connect/server-sdk` or its documented `./protocol` export; nothing but
+may import only `@seekeragentconnect/server-sdk` or its documented `./protocol` export; nothing but
 `server.ts` may compose the endpoint; and no second store/lifecycle implementation exists there.
 
 ## Turning it off

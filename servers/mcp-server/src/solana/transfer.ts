@@ -17,12 +17,12 @@ import {
   type TransactionInstruction,
 } from "@solana/web3.js";
 
-import { parseBaseUnits } from "@seeker_agent_connect/server-sdk";
+import { parseBaseUnits } from "@seekeragentconnect/server-sdk";
 import {
   Network,
   type Asset,
   type TransferAction,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import {
   TOKEN_2022_PROGRAM,
   TOKEN_PROGRAM,

@@ -104,9 +104,11 @@ curl --fail "http://127.0.0.1:${BROADCAST_PORT:-8090}/healthz"
 
 The proxyless stack starts the gateway, Centrifugo, and colocated Redis—no MCP server or demo.
 Gateway read and authenticated publication ports bind host loopback; the broker API/stream and
-Redis have no host port. The preset pulls the published
-`docker.io/brenat/seeker-agent-connect:gateway-<version>` image; set `BROADCAST_IMAGE` to run one
-built from this directory instead. The independent
+Redis have no host port. The preset, unchanged by SEE-182, pulls the legacy Docker Hub images
+`docker.io/brenat/seeker-agent-connect:gateway-<version>` and `centrifugo-<version>` by default.
+Set `BROADCAST_IMAGE=ghcr.io/seekeragentconnect/gateway:<version>` and
+`CENTRIFUGO_IMAGE=ghcr.io/seekeragentconnect/gateway-centrifugo:<version>` to run the published
+GHCR images, or `BROADCAST_IMAGE` to one built from this directory. The independent
 [`compose/ingress/feed/`](https://github.com/SeekerAgentConnect/do-deploy/tree/main/compose/ingress/feed) project in `do-deploy` adds a domain, certificates, and the
 same-origin HTTPS/HTTP2 stream without coupling proxy and application lifecycle.
 

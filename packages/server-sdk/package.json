@@ -1,6 +1,6 @@
 {
-  "name": "@seeker_agent_connect/server-sdk",
-  "version": "0.2.0-rc.1",
+  "name": "@seekeragentconnect/server-sdk",
+  "version": "0.0.1",
   "description": "Embeddable TypeScript SDK for Seeker Agent Connect direct servers",
   "keywords": [
     "seeker",
@@ -10,13 +10,13 @@
     "connectrpc",
     "agent"
   ],
-  "homepage": "https://github.com/BrRenat/SeekerAgentConnect/tree/master/packages/server-sdk#readme",
+  "homepage": "https://github.com/SeekerAgentConnect/sac/tree/master/packages/server-sdk#readme",
   "bugs": {
-    "url": "https://github.com/BrRenat/SeekerAgentConnect/issues"
+    "url": "https://github.com/SeekerAgentConnect/sac/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BrRenat/SeekerAgentConnect.git",
+    "url": "git+https://github.com/SeekerAgentConnect/sac.git",
     "directory": "packages/server-sdk"
   },
   "license": "MIT",

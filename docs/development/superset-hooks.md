@@ -20,7 +20,7 @@ Body (same as `CLAUDE.md` § Superset Hook):
   "branch": "feat/see-100",
   "status": "finished",
   "message": "short human summary",
-  "pr": "https://github.com/BrRenat/SeekerAgentConnect/pull/1"
+  "pr": "https://github.com/SeekerAgentConnect/sac/pull/1"
 }
 ```
 

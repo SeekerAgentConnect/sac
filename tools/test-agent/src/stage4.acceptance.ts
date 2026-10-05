@@ -23,8 +23,8 @@ import {
   Network,
   RequestState,
   type PreparedTransaction,
-} from "@seeker_agent_connect/server-sdk/protocol";
-import { encodeBase58 } from "@seeker_agent_connect/server-sdk";
+} from "@seekeragentconnect/server-sdk/protocol";
+import { encodeBase58 } from "@seekeragentconnect/server-sdk";
 import { transactionMessage } from "../../../servers/mcp-server/src/solana/confirmation.ts";
 import {
   FakeChain,

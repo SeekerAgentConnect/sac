@@ -19,3 +19,6 @@ docs/design/*/*.html
 design/export/*.html
 design/components/
 design/screens/
+# Go html/template files: Prettier's HTML parser cannot read template actions inside tags, so it
+# rejects them outright. Without this, `pnpm check:format` fails on every pull request.
+**/internal/admin/templates/*.html
