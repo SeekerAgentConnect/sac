@@ -101,7 +101,7 @@ class RequestCarouselTest {
                 RequestTileModel(
                     title = id,
                     sourceName = "source",
-                    supportingText = "source asks",
+                    time = "9:41 PM",
                     warningCount = 0,
                 ),
         )

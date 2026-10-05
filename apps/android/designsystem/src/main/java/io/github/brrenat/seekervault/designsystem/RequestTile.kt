@@ -5,21 +5,24 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.NorthEast
+import androidx.compose.material.icons.outlined.PriorityHigh
 import androidx.compose.material.icons.outlined.SwapHoriz
-import androidx.compose.material.icons.outlined.Toll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,12 +33,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 
 enum class RequestTileKind {
@@ -52,14 +55,13 @@ enum class RequestTileRailState {
 }
 
 data class RequestTileModel(
+    /** The request's question, or its amount and unit ("5 SOL", "74 bytes"); shown whole. */
     val title: String,
+    /** The connection it came from: the footer chip, the only place the tile names it. */
     val sourceName: String,
-    val supportingText: String,
+    /** When it arrived, already formatted ("9:37 PM"). */
+    val time: String,
     val warningCount: Int,
-    val signatureByteCount: Int? = null,
-    val assetSymbol: String? = null,
-    /** Optional source-owned footer copy; kinds use their safe default when absent. */
-    val footerText: String? = null,
     /** The connection's stored marker. Null keeps the source-name hash used by captured tiles. */
     val sourceColour: SourceColour? = null,
     /**
@@ -70,6 +72,46 @@ data class RequestTileModel(
     val unchecked: Boolean = false,
 )
 
+/** The three title sizes (SEE-183): the shorter the title, the larger it is drawn. */
+enum class RequestTileTitleSize {
+    Large,
+    Medium,
+    Small;
+
+    companion object {
+        fun of(title: String): RequestTileTitleSize =
+            when {
+                title.length <= RequestTileTitleLargeMaxLength -> Large
+                title.length <= RequestTileTitleMediumMaxLength -> Medium
+                else -> Small
+            }
+    }
+}
+
+/** What the header's badge says, or null when nothing was checked. */
+enum class RequestTileStatus {
+    Ok,
+    Warning;
+
+    companion object {
+        fun of(model: RequestTileModel): RequestTileStatus? =
+            when {
+                model.warningCount > 0 -> Warning
+                model.unchecked -> null
+                else -> Ok
+            }
+    }
+}
+
+/** The badge's spoken label: "In rules", "1 warning" or "N warnings". */
+fun RequestTileModel.statusLabel(): String? =
+    when (RequestTileStatus.of(this)) {
+        RequestTileStatus.Ok -> "In rules"
+        RequestTileStatus.Warning ->
+            if (warningCount == 1) "1 warning" else "$warningCount warnings"
+        null -> null
+    }
+
 @Composable
 fun RequestTile(
     model: RequestTileModel,
@@ -78,210 +120,178 @@ fun RequestTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val centred = railState == RequestTileRailState.Centred
-    val tileWidth =
-        SeekerTheme.spacing.huge * RequestTileWidthUnits +
-            SeekerTheme.spacing.xxl +
-            SeekerTheme.spacing.xxs
-    val tileHeight = SeekerTheme.spacing.huge * RequestTileHeightUnits + SeekerTheme.spacing.md
     val tileColors =
-        if (centred) {
-            RequestTileColors(
-                container = SeekerTheme.colors.limeContainer,
-                content = SeekerTheme.colors.onLimeContainer,
-                secondary = SeekerTheme.colors.onLimeContainer,
-            )
-        } else {
-            RequestTileColors(
-                container = SeekerTheme.colors.surface1,
-                content = MaterialTheme.colorScheme.onSurface,
-                secondary = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        when (railState) {
+            RequestTileRailState.Centred ->
+                RequestTileColors(
+                    container = SeekerTheme.colors.limeContainer,
+                    content = SeekerTheme.colors.onLimeContainer,
+                    time = SeekerTheme.colors.onLimeContainer,
+                )
+            RequestTileRailState.InRail ->
+                RequestTileColors(
+                    container = SeekerTheme.colors.surface1,
+                    content = MaterialTheme.colorScheme.onSurface,
+                    time = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
         }
 
     Column(
         modifier =
             modifier
-                .size(width = tileWidth, height = tileHeight)
+                .size(
+                    width =
+                        SeekerTheme.spacing.huge * RequestTileSizeHugeUnits +
+                            SeekerTheme.spacing.xl +
+                            SeekerTheme.spacing.xxs,
+                    height =
+                        SeekerTheme.spacing.huge * RequestTileSizeHugeUnits +
+                            SeekerTheme.spacing.xs,
+                )
                 .clip(RoundedCornerShape(SeekerTheme.radii.xl))
                 .background(tileColors.container)
                 .clickable(role = Role.Button, onClick = onClick)
-                .padding(SeekerTheme.spacing.xl),
-        verticalArrangement = Arrangement.SpaceBetween,
+                .padding(SeekerTheme.spacing.xl)
     ) {
-        RequestTileHeader(
-            model = model,
-            kind = kind,
-            centred = centred,
-            contentColor = tileColors.content,
-        )
-        RequestTileHeadline(
-            model = model,
-            kind = kind,
-            centred = centred,
-            contentColor = tileColors.content,
-            secondaryColor = tileColors.secondary,
-        )
-        RequestTileFooter(
-            kind = kind,
-            text = model.footerText ?: kind.effect(),
-            warningCount = model.warningCount,
-            unchecked = model.unchecked,
-            centred = centred,
-            secondaryColor = tileColors.secondary,
-        )
-    }
-}
-
-@Composable
-private fun RequestTileHeader(
-    model: RequestTileModel,
-    kind: RequestTileKind,
-    centred: Boolean,
-    contentColor: Color,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.sm)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus),
-            verticalAlignment = Alignment.CenterVertically,
+        RequestTileHeader(model = model, kind = kind, contentColor = tileColors.content)
+        Spacer(Modifier.height(SeekerTheme.spacing.mdPlus))
+        // Space between header, title and footer, never less than the gap: the title sits centred
+        // in what the header and footer leave. Both rows are measured first, so a title that ever
+        // outgrew the box would be the one to give way, never the time.
+        Box(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentAlignment = Alignment.CenterStart,
         ) {
-            Icon(
-                imageVector = kind.icon(),
-                contentDescription = null,
-                modifier = Modifier.size(SeekerTheme.spacing.xxl + SeekerTheme.spacing.xxs),
-                tint = contentColor,
-            )
             Text(
-                text = kind.label(),
-                modifier = Modifier.weight(1f),
-                color = contentColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = SeekerTheme.typography.buttonLarge.copy(fontWeight = null),
-            )
-            if (kind.isSignal()) {
-                SignalLabel(
-                    context =
-                        if (centred) SignalLabelContext.OnTile else SignalLabelContext.Standard
-                )
-            }
-        }
-        SourceChip(
-            sourceName = model.sourceName,
-            colour = model.sourceColour,
-            size = if (kind.isSignal()) SourceChipSize.Compact else SourceChipSize.Standard,
-            modifier = Modifier.widthIn(max = SeekerTheme.spacing.huge * RequestTileSourceMaxUnits),
-        )
-    }
-}
-
-@Composable
-private fun RequestTileHeadline(
-    model: RequestTileModel,
-    kind: RequestTileKind,
-    centred: Boolean,
-    contentColor: Color,
-    secondaryColor: Color,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xs)) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (kind == RequestTileKind.Transfer) {
-                val coinContainer =
-                    if (centred) SeekerTheme.colors.onLimeContainer
-                    else SeekerTheme.colors.limeContainer
-                val coinContent =
-                    if (centred) SeekerTheme.colors.limeContainer
-                    else SeekerTheme.colors.onLimeContainer
-                Box(
-                    modifier =
-                        Modifier.size(SeekerTheme.spacing.huge)
-                            .background(coinContainer, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Toll,
-                        contentDescription = null,
-                        modifier = Modifier.size(SeekerTheme.spacing.xl + SeekerTheme.spacing.xxs),
-                        tint = coinContent,
-                    )
-                }
-            }
-            Text(
-                text = model.headline(kind),
-                color = contentColor,
-                maxLines = 1,
-                // A signal's title is words, and words end in an ellipsis rather than being cut
-                // through a glyph. Amounts and byte counts stay clipped: they are sized to fit.
-                overflow = if (kind.isSignal()) TextOverflow.Ellipsis else TextOverflow.Clip,
-                softWrap = false,
-                style = kind.headlineStyle(),
+                text = model.title,
+                color = tileColors.content,
+                style = RequestTileTitleSize.of(model.title).style(),
             )
         }
-        Text(
-            text = model.supportingText,
-            color = secondaryColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style =
-                if (kind == RequestTileKind.SignatureRequest || kind == RequestTileKind.Transfer) {
-                    SeekerTheme.typography.identifier.copy(
-                        fontSize = MaterialTheme.typography.labelMedium.fontSize,
-                        lineHeight = MaterialTheme.typography.labelMedium.lineHeight,
-                    )
-                } else {
-                    MaterialTheme.typography.labelMedium.copy(fontWeight = null)
-                },
-        )
+        Spacer(Modifier.height(SeekerTheme.spacing.mdPlus))
+        RequestTileFooter(model = model, timeColor = tileColors.time)
     }
 }
 
 @Composable
-private fun RequestTileFooter(
-    kind: RequestTileKind,
-    text: String,
-    warningCount: Int,
-    unchecked: Boolean,
-    centred: Boolean,
-    secondaryColor: Color,
-) {
+private fun RequestTileHeader(model: RequestTileModel, kind: RequestTileKind, contentColor: Color) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Icon(
+            imageVector = kind.icon(),
+            contentDescription = null,
+            modifier = Modifier.size(SeekerTheme.spacing.xxl),
+            tint = contentColor,
+        )
         Text(
-            text = text,
+            text = kind.label(),
             modifier = Modifier.weight(1f),
-            color = secondaryColor,
+            color = contentColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = null),
+            softWrap = false,
+            style = MaterialTheme.typography.bodyMedium,
         )
-        val verdict =
-            when {
-                warningCount > 0 -> VerdictPillVerdict.Warning
-                unchecked -> null
-                else -> VerdictPillVerdict.Ok
-            }
-        if (verdict != null) {
-            VerdictPill(
-                verdict = verdict,
-                warningCount = warningCount.takeIf { it > 0 },
-                context = if (centred) VerdictPillContext.OnTile else VerdictPillContext.Standard,
+        RequestTileStatus.of(model)?.let { status ->
+            RequestTileStatusBadge(
+                status = status,
+                warningCount = model.warningCount,
+                label = checkNotNull(model.statusLabel()),
             )
         }
+    }
+}
+
+/** A green check, or an orange `!` with the count beside it from two warnings up. */
+@Composable
+private fun RequestTileStatusBadge(status: RequestTileStatus, warningCount: Int, label: String) {
+    val colors = SeekerTheme.colors
+    val (container, content) =
+        when (status) {
+            RequestTileStatus.Ok -> colors.statusOk to colors.onStatusOk
+            RequestTileStatus.Warning -> colors.orangeContainer to colors.onOrangeContainer
+        }
+    val showCount = status == RequestTileStatus.Warning && warningCount >= 2
+    Row(
+        modifier =
+            Modifier.clearAndSetSemantics { contentDescription = label }
+                .height(SeekerTheme.spacing.huge)
+                .defaultMinSize(minWidth = SeekerTheme.spacing.huge)
+                .background(container, CircleShape)
+                .padding(
+                    if (showCount) {
+                        PaddingValues(start = SeekerTheme.spacing.xs, end = SeekerTheme.spacing.md)
+                    } else {
+                        PaddingValues()
+                    }
+                ),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector =
+                when (status) {
+                    RequestTileStatus.Ok -> Icons.Outlined.Check
+                    RequestTileStatus.Warning -> Icons.Outlined.PriorityHigh
+                },
+            contentDescription = null,
+            modifier = Modifier.size(SeekerTheme.spacing.xl + SeekerTheme.spacing.xxs),
+            tint = content,
+        )
+        if (showCount) {
+            Text(
+                text = warningCount.toString(),
+                color = content,
+                maxLines = 1,
+                softWrap = false,
+                style = SeekerTheme.typography.badgeCount,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RequestTileFooter(model: RequestTileModel, timeColor: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // The time is measured first and kept whole; the chip ellipsizes in what is left.
+        Box(modifier = Modifier.weight(1f)) {
+            SourceChip(
+                sourceName = model.sourceName,
+                colour = model.sourceColour,
+                size = SourceChipSize.Small,
+            )
+        }
+        Text(
+            text = model.time,
+            color = timeColor,
+            maxLines = 1,
+            softWrap = false,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal),
+        )
     }
 }
 
 private data class RequestTileColors(
     val container: Color,
     val content: Color,
-    val secondary: Color,
+    val time: Color,
 )
+
+@Composable
+private fun RequestTileTitleSize.style(): TextStyle =
+    when (this) {
+        RequestTileTitleSize.Large -> MaterialTheme.typography.titleLarge
+        RequestTileTitleSize.Medium -> SeekerTheme.typography.tileTitle
+        RequestTileTitleSize.Small ->
+            SeekerTheme.typography.buttonLarge.copy(fontWeight = FontWeight.Normal)
+    }.copy(lineBreak = LineBreak.Paragraph)
 
 private fun RequestTileKind.icon(): ImageVector =
     when (this) {
@@ -301,52 +311,7 @@ private fun RequestTileKind.label(): String =
         RequestTileKind.Transfer -> "Transfer"
     }
 
-private fun RequestTileKind.effect(): String =
-    when (this) {
-        RequestTileKind.Acknowledgement -> "Nothing is signed"
-        RequestTileKind.PredictionSignal,
-        RequestTileKind.SwapSignal -> "Nothing moves"
-        RequestTileKind.SignatureRequest -> "No funds move"
-        RequestTileKind.Transfer -> "Funds move"
-    }
-
-private fun RequestTileKind.isSignal(): Boolean =
-    this == RequestTileKind.PredictionSignal || this == RequestTileKind.SwapSignal
-
-@Composable
-private fun RequestTileKind.headlineStyle() =
-    when (this) {
-        RequestTileKind.Acknowledgement -> MaterialTheme.typography.headlineMedium
-        RequestTileKind.PredictionSignal,
-        RequestTileKind.SwapSignal ->
-            SeekerTheme.typography.screenTitle.copy(fontWeight = FontWeight.Normal)
-        RequestTileKind.SignatureRequest,
-        RequestTileKind.Transfer -> MaterialTheme.typography.headlineLarge
-    }.let { style -> style.copy(lineHeight = style.fontSize * RequestTileHeadlineLineHeight) }
-
-@Composable
-private fun RequestTileModel.headline(kind: RequestTileKind): AnnotatedString {
-    val unit =
-        when (kind) {
-            RequestTileKind.SignatureRequest -> "bytes"
-            RequestTileKind.Transfer -> assetSymbol
-            else -> null
-        }
-    val value =
-        when (kind) {
-            RequestTileKind.SignatureRequest -> signatureByteCount?.toString() ?: title
-            else -> title
-        }
-    return buildAnnotatedString {
-        append(value)
-        if (!unit.isNullOrEmpty()) {
-            append(" ")
-            withStyle(SpanStyle(fontSize = SeekerTheme.typography.amount.fontSize)) { append(unit) }
-        }
-    }
-}
-
-private const val RequestTileWidthUnits = 8
-private const val RequestTileHeightUnits = 8
-private const val RequestTileSourceMaxUnits = 7
-private const val RequestTileHeadlineLineHeight = 1.05f
+/** 214×200: seven `huge` steps plus `xl` + `xxs` across, plus `xs` down. */
+private const val RequestTileSizeHugeUnits = 7
+private const val RequestTileTitleLargeMaxLength = 34
+private const val RequestTileTitleMediumMaxLength = 60

@@ -59,7 +59,10 @@ class DesignTokensTest {
                 )
                 .map { it.value },
         )
-        assertEquals(tokens.getJSONArray("type").floats(), kotlinTypeScale())
+        assertEquals(
+            (tokens.getJSONArray("type").floats() + PendingExportTypeSizes).sorted(),
+            kotlinTypeScale(),
+        )
         assertEquals(
             tokens.getJSONArray("iconSize").floats(),
             listOf(SeekerSizeTokens.icon.standard.value),
@@ -111,6 +114,8 @@ class DesignTokensTest {
         add(SeekerExtraTypographyTokens.amount.fontSize.value)
         add(SeekerExtraTypographyTokens.screenTitle.fontSize.value)
         add(SeekerExtraTypographyTokens.identifier.fontSize.value)
+        add(SeekerExtraTypographyTokens.tileTitle.fontSize.value)
+        add(SeekerExtraTypographyTokens.badgeCount.fontSize.value)
     }
         .sorted()
 
@@ -138,3 +143,9 @@ class DesignTokensTest {
     private fun SeekerIconButtonSize.values(): Map<String, Float> =
         mapOf("box" to box.value, "glyph" to glyph.value)
 }
+
+/**
+ * Sizes a ticket specified before the export had them: SEE-183's 17sp request-tile title. Each one
+ * leaves this list when the design export is refreshed and `tokens.json` carries it.
+ */
+private val PendingExportTypeSizes = listOf(17f)

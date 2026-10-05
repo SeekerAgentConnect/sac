@@ -8,7 +8,7 @@ navigation, persistence, transports, and wallet SDK behavior stay with callers.
 
 | Design component | Compose API | State or content |
 | --- | --- | --- |
-| `request-tile` | `RequestTile` | five request kinds in rail or centred colour states |
+| `request-tile` | `RequestTile` | five request kinds in rail or centred colour states; SEE-183 header/title/footer rebuild with a status badge ([request tile](request-tile.md)) |
 | `request-carousel` | `RequestCarousel` | 358dp lazy row with SEE-81 endpoint snapping and centred-state selection |
 | `inbox-row` | `InboxRow` | merged request/signal summary, context chips, expiry, and one Review action |
 | `history-row` | `HistoryRow` | sent, simulated, dismissed, cancelled, expired, and unknown outcomes; optional kind and status icons, and a chevron when tappable (SEE-161) |

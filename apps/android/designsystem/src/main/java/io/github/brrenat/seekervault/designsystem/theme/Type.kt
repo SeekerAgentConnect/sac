@@ -27,6 +27,7 @@ private val Roboto =
     FontFamily(
         variableFont(R.font.roboto_variable, FontWeight.Normal),
         variableFont(R.font.roboto_variable, FontWeight.Medium),
+        variableFont(R.font.roboto_variable, FontWeight.SemiBold),
         variableFont(R.font.roboto_variable, FontWeight.Bold),
     )
 
@@ -86,6 +87,13 @@ data class SeekerExtraTypography(
     val screenTitle: TextStyle,
     val identifier: TextStyle,
     val walletAddress: TextStyle,
+    /**
+     * The request tile's middle title size (SEE-183), between `buttonLarge` and `titleLarge`. The
+     * Stage 7.2 export has no 17sp step; it joins `tokens.json` at the next re-export.
+     */
+    val tileTitle: TextStyle,
+    /** The count beside a warning badge's `!` (SEE-183): 13sp at 600. */
+    val badgeCount: TextStyle,
 )
 
 internal val SeekerExtraTypographyTokens =
@@ -95,4 +103,6 @@ internal val SeekerExtraTypographyTokens =
         screenTitle = style(20.sp, 24.sp),
         identifier = style(13.sp, 15.6.sp, family = RobotoMono),
         walletAddress = style(12.sp, 18.sp, family = RobotoMono),
+        tileTitle = style(17.sp, 20.4.sp),
+        badgeCount = style(13.sp, 15.6.sp, FontWeight.SemiBold),
     )

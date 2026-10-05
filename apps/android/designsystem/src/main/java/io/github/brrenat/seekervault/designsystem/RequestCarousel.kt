@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -141,16 +140,7 @@ fun RequestCarousel(
                                 }
                         },
                     onClick = { onItemClick(item) },
-                    modifier =
-                        Modifier.testTag(RequestCarouselTags.item(item.id))
-                            .size(
-                                width =
-                                    SeekerTheme.spacing.huge * RequestCarouselTileWidthHugeUnits +
-                                        SeekerTheme.spacing.xxl - SeekerTheme.spacing.xxs,
-                                height =
-                                    SeekerTheme.spacing.huge * RequestCarouselTileHeightHugeUnits +
-                                        SeekerTheme.spacing.xs,
-                            ),
+                    modifier = Modifier.testTag(RequestCarouselTags.item(item.id)),
                 )
             }
         }
@@ -204,8 +194,6 @@ private object RequestCarouselSnapPosition : SnapPosition {
 }
 
 private const val RequestCarouselPreviewDarkMode = Configuration.UI_MODE_NIGHT_YES
-private const val RequestCarouselTileWidthHugeUnits = 7
-private const val RequestCarouselTileHeightHugeUnits = 7
 
 @DesignRef(component = "request-carousel", variant = "state=rest centred=0")
 @Preview(
@@ -224,7 +212,7 @@ internal fun RequestCarouselRestPreview() {
                     RequestTileModel(
                         title = "Still here?",
                         sourceName = "studio-mac",
-                        supportingText = "studio-mac asks",
+                        time = "9:41 PM",
                         warningCount = 0,
                     ),
             ),
@@ -233,9 +221,9 @@ internal fun RequestCarouselRestPreview() {
                 kind = RequestTileKind.PredictionSignal,
                 tile =
                     RequestTileModel(
-                        title = "BTC < \$68k",
+                        title = "What price will Bitcoin hit on September 25?",
                         sourceName = "Jupiter Prediction demo",
-                        supportingText = "You pick side and amount",
+                        time = "9:37 PM",
                         warningCount = 1,
                     ),
             ),
@@ -244,11 +232,10 @@ internal fun RequestCarouselRestPreview() {
                 kind = RequestTileKind.Transfer,
                 tile =
                     RequestTileModel(
-                        title = "5",
+                        title = "5 SOL",
                         sourceName = "studio-mac",
-                        supportingText = "to FyfWsSPW…YSpEA",
-                        warningCount = 1,
-                        assetSymbol = "SOL",
+                        time = "9:36 PM",
+                        warningCount = 3,
                     ),
             ),
             RequestCarouselItem(
@@ -258,7 +245,7 @@ internal fun RequestCarouselRestPreview() {
                     RequestTileModel(
                         title = "SOL → USDC",
                         sourceName = "CopyTrading demo",
-                        supportingText = "You set the amount",
+                        time = "9:30 PM",
                         warningCount = 1,
                     ),
             ),
@@ -267,11 +254,10 @@ internal fun RequestCarouselRestPreview() {
                 kind = RequestTileKind.SignatureRequest,
                 tile =
                     RequestTileModel(
-                        title = "74",
+                        title = "74 bytes",
                         sourceName = "hermes-box",
-                        supportingText = "hermes-agent login…",
+                        time = "9:12 PM",
                         warningCount = 0,
-                        signatureByteCount = 74,
                     ),
             ),
         )

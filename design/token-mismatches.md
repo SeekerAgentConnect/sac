@@ -63,3 +63,20 @@ They are reconstructed from generic dimensions, radii, spacing, and typography. 
 - Kotlin also supplies `Color.Transparent` for surface tint and typography metadata not represented by `tokens.json`: Roboto/Roboto Mono families, weights 400/500/700, zero letter spacing, and 1.2× line heights.
 
 There are no Kotlin-only radius values and no Kotlin-only font-size values.
+
+## SEE-183 tokens pending the export
+
+The rebuilt request tile (`docs/design/request-tile/request-tile.html`) names values the Stage 7.2
+export does not contain. They are named Kotlin tokens, not literals, and join `tokens.json` at the
+next refresh through [UPDATING.md](./UPDATING.md):
+
+| Reference | Value | Kotlin |
+| --- | --- | --- |
+| `--status-ok` | `oklch(0.6 0.15 150)` = `#25984D` | `SeekerColors.statusOk` |
+| `--on-status-ok` | `#ffffff` | `SeekerColors.onStatusOk` |
+| `.tile__title--m` | 17px / 1.2 | `SeekerExtraTypography.tileTitle` (17sp / 20.4sp) |
+| `.status` count | 13px / 600 | `SeekerExtraTypography.badgeCount` (13sp; adds the Roboto 600 variation) |
+
+`DesignTokensTest` accepts 17 as the one Kotlin type size absent from `tokens.json`
+(`PendingExportTypeSizes`) and fails if any other appears. The badge's 1px icon-to-count gap is
+not reproduced: there is no 1dp spacing token.
