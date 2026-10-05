@@ -101,7 +101,7 @@ reading (SEE-180):
 | --- | --- | --- |
 | Allowed (only an assessment left over from earlier bytes) | no card (`ReviewVerdict.Pending`) | lime "Configured checks passed", with "Not checked: …" naming every check no rule covers (SEE-181) |
 | No rules configured | no card; a neutral "No rules configured · not checked" block, no tick (SEE-181) | same |
-| `RequestUnverified` only, or checks unverified for want of an amount or asset | no card (`ReviewVerdict.Pending`); tile shows no verdict pill (`RequestTileModel.unchecked`), never "In rules" | orange, one row with a **Transaction check** chip (`WarningOrigin.Verification`, `ScopeChipSource.Verification`) |
+| `RequestUnverified` only, or checks unverified for want of an amount or asset | no card (`ReviewVerdict.Pending`); tile shows no status badge (`RequestTileModel.unchecked`), never "In rules" | orange, one row with a **Transaction check** chip (`WarningOrigin.Verification`, `ScopeChipSource.Verification`) |
 | A failed check, unreadable rules, an unknown day's total | orange, each row with its real source (**Global rule** / **Connection rule**) | same |
 
 An exceeded threshold is one line with its amounts in the deposit's unit — "Over the global daily

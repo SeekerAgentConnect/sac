@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Request tile — reference markup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
+<style>
+/* ===== Tokens (dark theme) ===== */
+:root{
+  --surface1:#1c1c1c;            /* tile, in rail */
+  --primary-container:#c2e60f;   /* tile, centred */
+  --on-surface:#ffffff;
+  --on-surface-variant:#cacaca;  /* time, in rail */
+  --on-primary-container:#1b1b1b;/* text + time, centred */
+  --status-ok:oklch(0.6 0.15 150);
+  --on-status-ok:#ffffff;
+  --tertiary-container:#ff7a1a;  /* warning */
+  --on-tertiary-container:#2e1200;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#121212;color:var(--on-surface);font-family:Roboto,sans-serif}
+a{color:#e7fc6e}a:hover{color:#c2e60f}
+.msy{font-family:'Material Symbols Outlined';font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;font-feature-settings:'liga'}
+
+/* ===== COMPONENT: request-tile ===== */
+.tile{
+  width:214px;height:200px;padding:16px;border-radius:20px;
+  display:flex;flex-direction:column;justify-content:space-between;gap:10px;
+  background:var(--surface1);color:var(--on-surface);
+}
+.tile--centred{background:var(--primary-container);color:var(--on-primary-container)}
+
+/* row 1: header */
+.tile__header{display:flex;align-items:center;gap:8px;min-width:0}
+.tile__kind-icon{font-size:20px;flex:none}
+.tile__kind{flex:1;min-width:0;font-size:14px;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* atom: status badge */
+.status{
+  flex:none;height:28px;min-width:28px;padding:0;border-radius:14px;
+  display:inline-flex;align-items:center;justify-content:center;gap:1px;
+  font-size:13px;font-weight:600;
+}
+.status .msy{font-size:18px}
+.status--ok{background:var(--status-ok);color:var(--on-status-ok)}
+.status--warn{background:var(--tertiary-container);color:var(--on-tertiary-container)}
+.status--count{padding:0 8px 0 4px}  /* only when warnings >= 2 */
+
+/* row 2: title */
+.tile__title{font-weight:400;line-height:1.2;min-width:0;overflow-wrap:break-word;text-wrap:pretty}
+.tile__title--l{font-size:22px}  /* length <= 34 */
+.tile__title--m{font-size:17px}  /* 35..60 */
+.tile__title--s{font-size:15px}  /* > 60 */
+
+/* row 3: footer */
+.tile__footer{display:flex;align-items:center;gap:8px}
+.tile__server-slot{flex:1;min-width:0;display:flex}
+/* atom: server chip — bg/fg come from srvOf(serverName) */
+.server-chip{
+  display:inline-flex;align-items:center;max-width:100%;height:22px;padding:0 8px;border-radius:8px;
+  font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* atom: time */
+.tile__time{flex:none;font-size:12px;font-weight:400;color:var(--on-surface-variant)}
+.tile--centred .tile__time{color:var(--on-primary-container)}
+
+/* ===== Reference page layout (not part of the component) ===== */
+.page{padding:48px;display:flex;flex-direction:column;gap:48px}
+.board{display:inline-flex;flex-direction:column;gap:20px;padding:32px;background:#121212;width:max-content}
+.board h2{margin:0;font:500 14px 'Roboto Mono',monospace;color:#e7fc6e;letter-spacing:.04em}
+.row{display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap}
+.cell{display:flex;flex-direction:column;gap:10px}
+.cap{font:400 13px/1.5 'Roboto Mono',monospace;color:#cacaca;white-space:pre}
+.pad{padding:16px;border-radius:12px;background:var(--surface1);display:flex;gap:8px;align-items:center}
+.pad--light{background:var(--primary-container)}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ========== 1. TILE: all states ========== -->
+<section class="board" id="png-tile">
+  <h2>request-tile · 214×200 · centred (top) / in rail (bottom)</h2>
+  <div class="row">
+    <div class="cell">
+      <div class="tile tile--centred">
+        <div class="tile__header"><span class="msy tile__kind-icon">trending_up</span><span class="tile__kind">Prediction</span><span class="status status--ok" title="In rules"><span class="msy">check</span></span></div>
+        <div class="tile__title tile__title--m">What price will Bitcoin hit on September 25?</div>
+        <div class="tile__footer"><span class="tile__server-slot"><span class="server-chip" style="background:#ff7a1a;color:#2e1200">Polymarket</span></span><span class="tile__time">9:37 PM</span></div>
+      </div>
+      <span class="cap">centred · in rules</span>
+    </div>
+    <div class="cell">
+      <div class="tile tile--centred">
+        <div class="tile__header"><span class="msy tile__kind-icon">trending_up</span><span class="tile__kind">Prediction</span><span class="status status--warn" title="1 warning"><span class="msy">priority_high</span></span></div>
+        <div class="tile__title tile__title--l">Bitcoin above ___ on Sept 26?</div>
+        <div class="tile__footer"><span class="tile__server-slot"><span class="server-chip" style="background:#ff7a1a;color:#2e1200">Polymarket</span></span><span class="tile__time">9:37 PM</span></div>
+      </div>
+      <span class="cap">centred · 1 warning</span>
+    </div>
+    <div class="cell">
+      <div class="tile tile--centred">
+        <div class="tile__header"><span class="msy tile__kind-icon">north_east</span><span class="tile__kind">Transfer</span><span class="status status--warn status--count" title="3 warnings"><span class="msy">priority_high</span>3</span></div>
+        <div class="tile__title tile__title--l">5 SOL</div>
+        <div class="tile__footer"><span class="tile__server-slot"><span class="server-chip" style="background:#7ec8ff;color:#00243d">Personal MCP</span></span><span class="tile__time">9:36 PM</span></div>
+      </div>
+      <span class="cap">centred · 3 warnings</span>
+    </div>
+  </div>
+  <div class="row">
+    <div class="cell">
+      <div class="tile">
+        <div class="tile__header"><span class="msy tile__kind-icon">trending_up</span><span class="tile__kind">Prediction</span><span class="status status--ok" title="In rules"><span class="msy">check</span></span></div>
+        <div class="tile__title tile__title--m">What price will Bitcoin hit on September 25?</div>
+        <div class="tile__footer"><span class="tile__server-slot"><span class="server-chip" style="background:#ff7a1a;color:#2e1200">Polymarket</span></span><span class="tile__time">9:37 PM</span></div>
+      </div>
+      <span class="cap">in rail · in rules</span>
+    </div>
+    <div class="cell">
+      <div class="tile">
+        <div class="tile__header"><span class="msy tile__kind-icon">trending_up</span><span class="tile__kind">Prediction</span><span class="status status--warn" title="1 warning"><span class="msy">priority_high</span></span></div>
+        <div class="tile__title tile__title--l">Bitcoin above ___ on Sept 26?</div>
+        <div class="tile__footer"><span class="tile__server-slot"><span class="server-chip" style="background:#ff7a1a;color:#2e1200">Polymarket</span></span><span class="tile__time">9:37 PM</span></div>
+      </div>
+      <span class="cap">in rail · 1 warning</span>
+    </div>
+    <div class="cell">
+      <div class="tile">
+        <div class="tile__header"><span class="msy tile__kind-icon">north_east</span><span class="tile__kind">Transfer</span><span class="status status--warn status--count" title="3 warnings"><span class="msy">priority_high</span>3</span></div>
+        <div class="tile__title tile__title--l">5 SOL</div>
+        <div class="tile__footer"><span class="tile__server-slot"><span class="server-chip" style="background:#7ec8ff;color:#00243d">Personal MCP</span></span><span class="tile__time">9:36 PM</span></div>
+      </div>
+      <span class="cap">in rail · 3 warnings</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 2. TITLE sizes ========== -->
+<section class="board" id="png-title">
+  <h2>tile__title · full text, size by length · weight 400 · lh 1.2</h2>
+  <div class="row">
+    <div class="cell">
+      <div class="tile">
+        <div class="tile__header"><span class="msy tile__kind-icon">trending_up</span><span class="tile__kind">Prediction</span><span class="status status--ok"><span class="msy">check</span></span></div>
+        <div class="tile__title tile__title--l">Baltimore Orioles</div>
+        <div class="tile__footer"><span class="tile__server-slot"><span class="server-chip" style="background:#ff7a1a;color:#2e1200">Polymarket</span></span><span class="tile__time">9:37 PM</span></div>
+      </div>
+      <span class="cap">--l · 22px · length ≤ 34</span>
+    </div>
+    <div class="cell">
+      <div class="tile">
+        <div class="tile__header"><span class="msy tile__kind-icon">trending_up</span><span class="tile__kind">Prediction</span><span class="status status--ok"><span class="msy">check</span></span></div>
+        <div class="tile__title tile__title--m">What price will Bitcoin hit on September 25?</div>
+        <div class="tile__footer"><span class="tile__server-slot"><span class="server-chip" style="background:#ff7a1a;color:#2e1200">Polymarket</span></span><span class="tile__time">9:37 PM</span></div>
+      </div>
+      <span class="cap">--m · 17px · length 35–60</span>
+    </div>
+    <div class="cell">
+      <div class="tile">
+        <div class="tile__header"><span class="msy tile__kind-icon">trending_up</span><span class="tile__kind">Prediction</span><span class="status status--ok"><span class="msy">check</span></span></div>
+        <div class="tile__title tile__title--s">Bitcoin Up or Down - September 25, 4:00PM-8:00PM ET · Polymarket hourly</div>
+        <div class="tile__footer"><span class="tile__server-slot"><span class="server-chip" style="background:#ff7a1a;color:#2e1200">Polymarket</span></span><span class="tile__time">9:37 PM</span></div>
+      </div>
+      <span class="cap">--s · 15px · length &gt; 60</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 3. ATOM: status badge ========== -->
+<section class="board" id="png-atom-status">
+  <h2>atom · status · 28×28 min · radius 14 · icon 18px</h2>
+  <div class="row">
+    <div class="cell"><div class="pad"><span class="status status--ok"><span class="msy">check</span></span></div><span class="cap">status--ok
+0 warnings
+bg --status-ok
+icon "check" #fff
+title="In rules"</span></div>
+    <div class="cell"><div class="pad"><span class="status status--warn"><span class="msy">priority_high</span></span></div><span class="cap">status--warn
+1 warning
+bg --tertiary-container
+icon "priority_high"
+title="1 warning"</span></div>
+    <div class="cell"><div class="pad"><span class="status status--warn status--count"><span class="msy">priority_high</span>3</span></div><span class="cap">status--warn --count
+N ≥ 2 warnings
+count 13px / 600
+padding 0 8 0 4
+title="N warnings"</span></div>
+    <div class="cell"><div class="pad pad--light"><span class="status status--ok"><span class="msy">check</span></span><span class="status status--warn status--count"><span class="msy">priority_high</span>3</span></div><span class="cap">same colours on
+centred tile</span></div>
+  </div>
+</section>
+
+<!-- ========== 4. ATOM: server chip ========== -->
+<section class="board" id="png-atom-server">
+  <h2>atom · server-chip · h 22 · padding 0 8 · radius 8 · 12px / 500</h2>
+  <div class="row">
+    <div class="cell"><div class="pad"><span class="server-chip" style="background:#ff7a1a;color:#2e1200">Polymarket</span></div><span class="cap">bg/fg = srvOf(serverName)
+one server = one colour</span></div>
+    <div class="cell"><div class="pad"><span class="server-chip" style="background:#7ec8ff;color:#00243d">Personal MCP</span></div><span class="cap">example colour</span></div>
+    <div class="cell"><div class="pad" style="width:182px"><span class="tile__server-slot"><span class="server-chip" style="background:#c9a7ff;color:#241042">Very Long Server Name MCP</span></span></div><span class="cap">overflow → ellipsis
+max-width = free footer space</span></div>
+  </div>
+</section>
+
+<!-- ========== 5. ATOM: header + footer rows ========== -->
+<section class="board" id="png-atom-rows">
+  <h2>rows · tile__header / tile__footer · width 182 (214 − 2×16)</h2>
+  <div class="row">
+    <div class="cell"><div class="pad" style="width:214px;padding:16px"><div class="tile__header" style="width:182px"><span class="msy tile__kind-icon">swap_horiz</span><span class="tile__kind">Swap</span><span class="status status--ok"><span class="msy">check</span></span></div></div><span class="cap">header: kind-icon 20px · gap 8
+kind 14px / 400, flex 1, ellipsis
+status flex:none, right</span></div>
+    <div class="cell"><div class="pad" style="width:214px;padding:16px"><div class="tile__footer" style="width:182px"><span class="tile__server-slot"><span class="server-chip" style="background:#ff7a1a;color:#2e1200">Polymarket</span></span><span class="tile__time">9:37 PM</span></div></div><span class="cap">footer: server-slot flex 1 · gap 8
+time 12px, flex:none, right
+time colour: --on-surface-variant</span></div>
+    <div class="cell"><div class="pad pad--light" style="width:214px;padding:16px;color:#1b1b1b"><div class="tile__footer" style="width:182px"><span class="tile__server-slot"><span class="server-chip" style="background:#ff7a1a;color:#2e1200">Polymarket</span></span><span class="tile__time" style="color:var(--on-primary-container)">9:37 PM</span></div></div><span class="cap">centred: time colour
+--on-primary-container</span></div>
+  </div>
+  <div class="row">
+    <div class="cell"><div class="pad" style="gap:16px">
+      <span class="msy" style="font-size:20px">trending_up</span><span class="msy" style="font-size:20px">north_east</span><span class="msy" style="font-size:20px">swap_horiz</span><span class="msy" style="font-size:20px">draw</span><span class="msy" style="font-size:20px">done_all</span><span class="msy" style="font-size:20px">bolt</span>
+    </div><span class="cap">kind icons (Material Symbols Outlined):
+trending_up Prediction · north_east Transfer · swap_horiz Swap
+draw Signature · done_all Approve · bolt Signal-origin</span></div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

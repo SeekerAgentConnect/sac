@@ -5,7 +5,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsEnabled
@@ -49,6 +52,14 @@ class WalletScreenTest {
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val actions = mutableListOf<String>()
+    private val navigation =
+        ScreenNavigationCallbacks(
+            onHome = { actions += "nav:home" },
+            onInbox = { actions += "nav:inbox" },
+            onWallet = { actions += "nav:wallet" },
+            onActivity = { actions += "nav:activity" },
+            onDiscover = { actions += "nav:discover" },
+        )
 
     private fun show(
         state: WalletUiState,
@@ -67,7 +78,7 @@ class WalletScreenTest {
                         },
                         onPublishAgain = { actions += "again" },
                         onBack = { actions += "back" },
-                        navigation = NAVIGATION,
+                        navigation = navigation,
                         onCopyAddress = { actions += "copy:$it" },
                         onRename = { actions += "rename:$it" },
                         onSaveName = { id, label -> actions += "save:$id:$label" },
@@ -107,6 +118,28 @@ class WalletScreenTest {
                 hasAnyAncestor(hasTestTag(WalletTags.profile(id))),
             useUnmergedTree = true,
         )
+
+    /** The same bottom navigation as every other tab, Discover included (SEE-183 review). */
+    @Test
+    fun showsTheSharedBottomNavigationWithEveryTab() {
+        show(WalletUiState(loaded = true, connections = listOf(HOME)))
+
+        val tabs =
+            compose.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
+        assertEquals(
+            listOf("Home", "Inbox", "Discover", "Wallet", "Activity"),
+            tabs.fetchSemanticsNodes().map { node ->
+                node.config[SemanticsProperties.Text].joinToString { it.text }
+            },
+        )
+        listOf("Home", "Inbox", "Discover", "Wallet", "Activity").forEach { label ->
+            compose.onNode(hasText(label) and hasClickAction()).performClick()
+        }
+        assertEquals(
+            listOf("nav:home", "nav:inbox", "nav:discover", "nav:wallet", "nav:activity"),
+            actions,
+        )
+    }
 
     @Test
     fun offersAddWalletWhenNoWalletIsSaved() {
@@ -516,8 +549,5 @@ class WalletScreenTest {
         val HOME = connection("0b8e2b1c-3f4d-4e5a-9b6c-7d8e9f0a1b2c", "Home Mac")
         val OFFICE = connection("1c9f3c2d-4a5e-4f6b-8c7d-8e9fa0b1c2d3", "Office")
         val CLOUD = connection("2d0a4d3e-5b6f-4a7c-9d8e-9fa0b1c2d3e4", "Cloud")
-
-        val NAVIGATION =
-            ScreenNavigationCallbacks(onHome = {}, onInbox = {}, onWallet = {}, onActivity = {})
     }
 }

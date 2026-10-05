@@ -7,9 +7,10 @@ Android `:designsystem` library. Each destination separates display state from a
   stateless composables. They receive UI-only state and callbacks and do not collect a ViewModel.
 - Their thin route adapters preserve the existing repositories, refreshes, wallet publishing,
   pairing, camera permission, scanner, history, and review navigation.
-- `ScreenScaffold` owns the app bar, overlaid four-item navigation bar, and the scroll body whose
-  trailing space lets the last item clear that bar. Add connection keeps the navigation visible
-  with no selected tab. `DetailScreenScaffold` is the same app bar with no navigation bar, for a
+- `ScreenScaffold` owns the app bar, the overlaid navigation bar, and the scroll body whose
+  trailing space lets the last item clear that bar. The bar is the same five items on every tab —
+  Home, Inbox, Discover, Wallet, Activity — with no per-screen opt-out; only the selected item
+  differs. Add connection keeps the navigation visible with no selected tab. `DetailScreenScaffold` is the same app bar with no navigation bar, for a
   page reached from a tab such as a History record ([history details](history-details.md)).
 - Empty Home server, Home pending, Inbox pending/history, and Activity states use the shared
   design-system empty-state component.

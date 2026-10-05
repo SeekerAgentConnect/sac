@@ -42,13 +42,9 @@ with the sheet.
   outside the 40px fill; the sheet keeps the 4dp border already in the recorded screen so the
   baseline does not move.
 - **Paired servers.** The initials avatar uses that fill and ink.
-- **Waiting for you.** The server-name pill under the kind row uses the same fill and ink. The
-  selected tile stays on the lime container. The pill is at most 196dp wide inside the 246dp tile,
-  ellipsises, and the kind label ellipsises on its own row.
-
-The pill's radius is the source chip's 12dp (`radii.md`). The ticket text says 10px; the captured
-request-tile HTML and the radius scale both use 12, and 10 is not a radius token. The tile itself
-is the captured 246dp card. The pill's cap is under 204dp, which is the bound the acceptance
-names.
+- **Waiting for you.** The server chip in each tile's footer uses the same fill and ink (SEE-183;
+  before that it sat under the kind row). The selected tile stays on the lime container. The chip
+  is 22dp high with radius `sm` (8), takes whatever the footer leaves beside the time, and
+  ellipsizes. See [request tile](request-tile.md).
 
 Colour is not shown on request rows, Activity rows, or the review sheet.

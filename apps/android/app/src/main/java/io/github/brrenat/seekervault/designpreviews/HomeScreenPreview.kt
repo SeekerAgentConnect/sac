@@ -49,7 +49,7 @@ internal fun homeDesignFixture() =
                         RequestTileModel(
                             title = "Still here?",
                             sourceName = "studio-mac",
-                            supportingText = "studio-mac asks",
+                            time = "9:41 PM",
                             warningCount = 0,
                         ),
                 ),
@@ -58,9 +58,9 @@ internal fun homeDesignFixture() =
                     kind = RequestTileKind.PredictionSignal,
                     tile =
                         RequestTileModel(
-                            title = "BTC < \$68k",
+                            title = "What price will Bitcoin hit on September 25?",
                             sourceName = "Jupiter Prediction demo",
-                            supportingText = "You pick side and amount",
+                            time = "9:37 PM",
                             warningCount = 1,
                         ),
                 ),
@@ -69,11 +69,10 @@ internal fun homeDesignFixture() =
                     kind = RequestTileKind.Transfer,
                     tile =
                         RequestTileModel(
-                            title = "5",
+                            title = "5 SOL",
                             sourceName = "studio-mac",
-                            supportingText = "to FyfWsSPW…YSpEA",
-                            warningCount = 1,
-                            assetSymbol = "SOL",
+                            time = "9:36 PM",
+                            warningCount = 3,
                         ),
                 ),
                 RequestCarouselItem(
@@ -83,7 +82,7 @@ internal fun homeDesignFixture() =
                         RequestTileModel(
                             title = "SOL → USDC",
                             sourceName = "CopyTrading demo",
-                            supportingText = "You set the amount",
+                            time = "9:30 PM",
                             warningCount = 1,
                         ),
                 ),
@@ -92,11 +91,10 @@ internal fun homeDesignFixture() =
                     kind = RequestTileKind.SignatureRequest,
                     tile =
                         RequestTileModel(
-                            title = "74",
+                            title = "74 bytes",
                             sourceName = "hermes-box",
-                            supportingText = "hermes-agent login…",
+                            time = "9:12 PM",
                             warningCount = 0,
-                            signatureByteCount = 74,
                         ),
                 ),
             ),

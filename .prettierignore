@@ -13,6 +13,8 @@ fixtures/transactions/
 examples/demo-prediction/internal/jupiter/testdata/
 # Approved Linear design attachments; docs/design/README.md records their exact hashes.
 docs/design/*.html
+# Ticket design briefs committed unchanged (SEE-183).
+docs/design/*/*.html
 # Claude Design exports and their generated, byte-compared reference output (SEE-113).
 design/export/*.html
 design/components/

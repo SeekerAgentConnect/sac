@@ -233,7 +233,8 @@ class ConnectionsScreenTest {
         assertEquals(ServerRowState.Connected, live.servers.single().rowState)
         assertEquals("Connected · 2 pending", live.servers.single().model.statusText)
         assertEquals("Will SOL close above \$200?", live.pending.first().tile.title)
-        assertEquals("Polymarket", live.pending.first().tile.footerText)
+        // The connection, named once by the footer chip (SEE-183), not the provider beside it.
+        assertEquals("Prediction feed", live.pending.first().tile.sourceName)
 
         val reconnecting =
             homeScreenState(
@@ -298,6 +299,7 @@ class ConnectionsScreenTest {
                 wallet = null,
                 pendingItems = listOf(waiting),
                 requestAssessments = emptyMap(),
+                formatTime = { "10:00 AM" },
                 signalAssessments =
                     mapOf(
                         RequestKey(home.id, waiting.requestId) to
@@ -319,8 +321,10 @@ class ConnectionsScreenTest {
                     ),
             )
         val tile = state.pending.single().tile
-        // The source and the kind, not the publisher's note.
-        assertEquals("CopyTrading · Prediction", tile.supportingText)
+        // The question is the title; the source is the footer chip, beside the arrival time.
+        assertEquals("Bitcoin Up or Down", tile.title)
+        assertEquals("CopyTrading", tile.sourceName)
+        assertEquals("10:00 AM", tile.time)
         // No rules at all: nothing was checked, which is neither "In rules" nor a warning
         // (SEE-181). The tile claims no verdict, exactly as its review shows no verdict card.
         assertEquals(0, tile.warningCount)
@@ -328,8 +332,10 @@ class ConnectionsScreenTest {
 
         show(state)
         compose.onNodeWithText("In rules").assertDoesNotExist()
+        compose.onNodeWithContentDescription("In rules").assertDoesNotExist()
         compose.onNodeWithText("Outside rules").assertDoesNotExist()
         compose.onNodeWithText("warning", substring = true).assertDoesNotExist()
+        compose.onNodeWithContentDescription("warning", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -375,8 +381,8 @@ class ConnectionsScreenTest {
         show(state)
         compose.onNodeWithText("Bitcoin Up or Down").assertExists()
         // Neither the green verdict nor a warning: nothing has been checked yet.
-        compose.onNodeWithText("In rules").assertDoesNotExist()
-        compose.onNodeWithText("warning", substring = true).assertDoesNotExist()
+        compose.onNodeWithContentDescription("In rules").assertDoesNotExist()
+        compose.onNodeWithContentDescription("warning", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -393,7 +399,7 @@ class ConnectionsScreenTest {
             )
         assertEquals(true, state.pending.single().tile.unchecked)
         show(state)
-        compose.onNodeWithText("In rules").assertDoesNotExist()
+        compose.onNodeWithContentDescription("In rules").assertDoesNotExist()
     }
 
     private fun prediction(
@@ -450,7 +456,7 @@ class ConnectionsScreenTest {
                             RequestTileModel(
                                 title = "Still here?",
                                 sourceName = "studio-mac",
-                                supportingText = "studio-mac asks",
+                                time = "9:41 PM",
                                 warningCount = 0,
                             ),
                     )

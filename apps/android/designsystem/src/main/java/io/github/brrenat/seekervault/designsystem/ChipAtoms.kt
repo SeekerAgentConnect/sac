@@ -126,6 +126,8 @@ fun SignalLabel(
 enum class SourceChipSize {
     Standard,
     Compact,
+    /** The request tile's footer chip (SEE-183): 22 high, 8 of padding, radius 8, 12sp/500. */
+    Small,
 }
 
 enum class SourceChipWidth {
@@ -148,7 +150,10 @@ fun SourceChip(
             SourceChipSize.Standard -> MaterialTheme.typography.labelLarge
             SourceChipSize.Compact ->
                 MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium)
+            SourceChipSize.Small -> MaterialTheme.typography.labelMedium
         }
+    val horizontalPadding =
+        if (size == SourceChipSize.Small) SeekerTheme.spacing.md else SeekerTheme.spacing.lg
     val containerModifier =
         when (width) {
             SourceChipWidth.Natural -> modifier
@@ -160,16 +165,25 @@ fun SourceChip(
         }
     val textModifier =
         when (width) {
-            SourceChipWidth.Natural -> Modifier.padding(horizontal = SeekerTheme.spacing.lg)
-            SourceChipWidth.Truncated ->
-                Modifier.fillMaxWidth().padding(start = SeekerTheme.spacing.lg)
+            SourceChipWidth.Natural -> Modifier.padding(horizontal = horizontalPadding)
+            SourceChipWidth.Truncated -> Modifier.fillMaxWidth().padding(start = horizontalPadding)
         }
 
     Box(
         modifier =
             containerModifier
-                .height(SeekerTheme.spacing.huge)
-                .background(colors.container, MaterialTheme.shapes.medium),
+                .height(
+                    if (size == SourceChipSize.Small) {
+                        SeekerTheme.spacing.xxl + SeekerTheme.spacing.xxs
+                    } else {
+                        SeekerTheme.spacing.huge
+                    }
+                )
+                .background(
+                    colors.container,
+                    if (size == SourceChipSize.Small) MaterialTheme.shapes.small
+                    else MaterialTheme.shapes.medium,
+                ),
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(

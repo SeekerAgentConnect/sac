@@ -42,6 +42,12 @@ data class SeekerColors(
     val destructiveContainer: Color,
     val onDestructiveContainer: Color,
     /**
+     * A rules check that passed (SEE-183): the request tile's green check. The same pair on every
+     * background, so the badge reads the same on a centred tile as in the rail.
+     */
+    val statusOk: Color,
+    val onStatusOk: Color,
+    /**
      * The only translucent value in the scheme. A floating layer — today the in-app notification
      * banner — casts a shadow so it reads as being above the content rather than part of it; a
      * solid ink under a rounded corner would read as a second, misaligned card.
@@ -84,6 +90,8 @@ internal val DarkSeekerColors =
         onDestructive = Color(0xFF2B0008),
         destructiveContainer = Color(0xFF4D0011),
         onDestructiveContainer = Color(0xFFFFD9DE),
+        statusOk = Color(0xFF25984D),
+        onStatusOk = Color(0xFFFFFFFF),
         overlayShadow = Color(0x73000000),
     )
 
@@ -122,6 +130,8 @@ internal val LightSeekerColors =
         onDestructive = Color(0xFF2B0008),
         destructiveContainer = Color(0xFFFFE1E5),
         onDestructiveContainer = Color(0xFF5C0014),
+        statusOk = Color(0xFF25984D),
+        onStatusOk = Color(0xFFFFFFFF),
         overlayShadow = Color(0x29000000),
     )
 

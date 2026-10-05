@@ -338,6 +338,36 @@ internal val componentGallerySpecimens =
         GallerySpecimen(component = "request-tile", variant = "kind=tx state=in-rail") {
             RequestTileTransferInRailPreview()
         },
+        GallerySpecimen(component = "request-tile", variant = "state=centred status=ok") {
+            RequestTileCentredOkPreview()
+        },
+        GallerySpecimen(component = "request-tile", variant = "state=centred status=warning") {
+            RequestTileCentredWarningPreview()
+        },
+        GallerySpecimen(component = "request-tile", variant = "state=centred status=warnings") {
+            RequestTileCentredWarningsPreview()
+        },
+        GallerySpecimen(component = "request-tile", variant = "state=in-rail status=ok") {
+            RequestTileInRailOkPreview()
+        },
+        GallerySpecimen(component = "request-tile", variant = "state=in-rail status=warning") {
+            RequestTileInRailWarningPreview()
+        },
+        GallerySpecimen(component = "request-tile", variant = "state=in-rail status=warnings") {
+            RequestTileInRailWarningsPreview()
+        },
+        GallerySpecimen(component = "request-tile", variant = "title=l") {
+            RequestTileTitleLargePreview()
+        },
+        GallerySpecimen(component = "request-tile", variant = "title=m") {
+            RequestTileTitleMediumPreview()
+        },
+        GallerySpecimen(component = "request-tile", variant = "title=s") {
+            RequestTileTitleSmallPreview()
+        },
+        GallerySpecimen(component = "request-tile", variant = "title=longest") {
+            RequestTileTitleLongestPreview()
+        },
         GallerySpecimen(component = "rule-row", variant = "kind=action state=checked") {
             RuleRowActionCheckedPreview()
         },

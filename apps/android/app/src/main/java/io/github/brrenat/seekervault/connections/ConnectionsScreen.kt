@@ -394,6 +394,7 @@ fun homeScreenState(
                             is PendingItem.Signal ->
                                 signalAssessments[RequestKey(item.connectionId, item.requestId)]
                         },
+                    formatTime = formatTime,
                 )
             },
         serversLoaded = connectionsState.loaded,
@@ -420,6 +421,7 @@ private fun PendingItem.toHomeCarouselItem(
     sourceName: String?,
     sourceColour: SourceColour?,
     assessment: RequestAssessment?,
+    formatTime: (Instant) -> String,
 ): RequestCarouselItem {
     val request = envelope
     val capability = request.action.capabilityId
@@ -455,66 +457,30 @@ private fun PendingItem.toHomeCarouselItem(
             HomeCapability.Transfer -> RequestTileKind.Transfer
             else -> RequestTileKind.Acknowledgement
         }
+    // The question is the title; a request with no question is titled by its amount and unit
+    // (SEE-183). The source is named once, by the footer chip.
+    val title =
+        when (kind) {
+            RequestTileKind.Acknowledgement ->
+                request.parameter("text") ?: request.presentation.title
+            RequestTileKind.PredictionSignal,
+            RequestTileKind.SwapSignal -> request.presentation.title
+            RequestTileKind.SignatureRequest -> "${request.messageByteCount()} ${HomeCopy.Bytes}"
+            RequestTileKind.Transfer ->
+                transferAmountAndAsset(request).toList().filterNotNull().joinToString(" ")
+        }
     return RequestCarouselItem(
         id = homeId(),
         kind = kind,
         tile =
-            when (kind) {
-                RequestTileKind.Acknowledgement ->
-                    RequestTileModel(
-                        title = request.parameter("text") ?: request.presentation.title,
-                        sourceName = source,
-                        supportingText = "$source asks",
-                        warningCount = warnings,
-                        unchecked = unchecked,
-                        sourceColour = sourceColour,
-                    )
-                RequestTileKind.PredictionSignal ->
-                    RequestTileModel(
-                        title = request.presentation.title,
-                        sourceName = source,
-                        // Where it came from and what kind of thing it is. The publisher's own
-                        // description is theirs, and it is shown in the review as their note.
-                        supportingText = "$source · ${HomeCopy.Prediction}",
-                        warningCount = warnings,
-                        unchecked = unchecked,
-                        footerText = request.parameter("provider")?.providerName() ?: source,
-                        sourceColour = sourceColour,
-                    )
-                RequestTileKind.SwapSignal ->
-                    RequestTileModel(
-                        title = request.presentation.title,
-                        sourceName = source,
-                        supportingText = request.presentation.description,
-                        warningCount = warnings,
-                        unchecked = unchecked,
-                        sourceColour = sourceColour,
-                    )
-                RequestTileKind.SignatureRequest ->
-                    RequestTileModel(
-                        title = request.messageByteCount().toString(),
-                        sourceName = source,
-                        supportingText = request.parameter("text") ?: HomeCopy.MessageBytes,
-                        sourceColour = sourceColour,
-                        warningCount = warnings,
-                        unchecked = unchecked,
-                        signatureByteCount = request.messageByteCount(),
-                    )
-                RequestTileKind.Transfer -> {
-                    val amountAndAsset = transferAmountAndAsset(request)
-                    RequestTileModel(
-                        title = amountAndAsset.first,
-                        sourceName = source,
-                        supportingText =
-                            request.parameter("recipient")?.let { "to ${it.homeShortAddress()}" }
-                                ?: HomeCopy.RecipientUnavailable,
-                        warningCount = warnings,
-                        unchecked = unchecked,
-                        assetSymbol = amountAndAsset.second,
-                        sourceColour = sourceColour,
-                    )
-                }
-            },
+            RequestTileModel(
+                title = title,
+                sourceName = source,
+                time = formatTime(at),
+                warningCount = warnings,
+                sourceColour = sourceColour,
+                unchecked = unchecked,
+            ),
     )
 }
 
@@ -694,11 +660,6 @@ private fun Connection.toHomeServerState(
     )
 }
 
-private fun String.providerName(): String =
-    split(Regex("[-_\\s]+")).filter(String::isNotBlank).joinToString(" ") { word ->
-        word.replaceFirstChar(Char::uppercase)
-    }
-
 private fun PendingItem.homeId(): String = "$namespace/$connectionId/$requestId"
 
 private fun String.homeInitials(): String =
@@ -747,7 +708,6 @@ private object HomeCapability {
 
 object HomeCopy {
     const val Title = "Seeker Agent Connect"
-    const val Prediction = "Prediction"
     const val Waiting = "Waiting for you"
     const val CarouselCaption =
         "Swipe to browse, tap to review. The carousel only browses — nothing is answered here."
@@ -769,8 +729,7 @@ object HomeCopy {
     const val NoNetworksDeclared = "Server declares no network"
     const val WalletUnconfirmed = "Telling it the wallet"
     const val WalletProfiles = "wallet profiles"
-    const val MessageBytes = "Message bytes"
-    const val RecipientUnavailable = "Recipient unavailable"
+    const val Bytes = "bytes"
     const val Sol = "SOL"
     const val Disconnected = "Disconnected · pair again to reconnect"
     const val Reconnecting = "Reconnecting"
