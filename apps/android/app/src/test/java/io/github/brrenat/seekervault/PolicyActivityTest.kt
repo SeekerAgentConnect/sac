@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault
 
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -188,6 +189,11 @@ class PolicyActivityTest {
         compose.onNodeWithContentDescription("Close").performClick()
         compose.onNodeWithTag(ConnectionsTags.DISCONNECT).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()
+        // The disconnect reaches the list a frame later, and only then does the connection's sheet
+        // start closing, after its exit motion: wait for the list rather than for a fixed time.
+        compose.waitUntil {
+            compose.onAllNodesWithTag(ConnectionsTags.EMPTY).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag(ConnectionsTags.EMPTY).assertExists()
         assertFalse(File(app.filesDir, "policies/${connection.id}.json").exists())
         assertEquals(emptySet<String>(), app.policyStore.connectionIds())

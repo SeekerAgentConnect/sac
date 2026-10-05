@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -133,6 +134,11 @@ class ConnectionsActivityTest {
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag(ConnectionsTags.DISCONNECT).performScrollTo().performClick()
         compose.onNodeWithTag(ConnectionsTags.DIALOG_CONFIRM).performClick()
+        // The disconnect reaches the list a frame later, and only then does the connection's sheet
+        // start closing, after its exit motion: wait for the list rather than for a fixed time.
+        compose.waitUntil {
+            compose.onAllNodesWithTag(ConnectionsTags.EMPTY).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag(ConnectionsTags.EMPTY).assertExists()
         compose.onNodeWithText(app.getString(R.string.message_disconnected, HOST)).assertExists()
         assertEquals(setOf(connection.id), server.revoked)

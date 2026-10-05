@@ -12,6 +12,8 @@ import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.gateway.v1.FeedEvent
 import io.github.brrenat.seekervault.proposal.v1.Proposal
 import java.net.InetAddress
+import java.security.Provider
+import java.security.Security
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -24,9 +26,11 @@ import okhttp3.tls.HandshakeCertificates
 import okhttp3.tls.HeldCertificate
 import okio.Buffer
 import org.junit.After
+import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.BeforeClass
 import org.junit.Test
 
 /**
@@ -350,11 +354,45 @@ class UniStreamInteropTest {
             )
             .build()
 
-    private companion object {
-        const val TICKET = "a-ticket-the-gateway-minted"
-        const val SERVER = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
-        const val PROPOSAL = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
-        const val CHANNEL = "feed:server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
-        const val EPOCH = "hKsZ1p"
+    companion object {
+        private const val TICKET = "a-ticket-the-gateway-minted"
+        private const val SERVER = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+        private const val PROPOSAL = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+        private const val CHANNEL = "feed:server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+        private const val EPOCH = "hKsZ1p"
+
+        /**
+         * The security provider a Robolectric test leaves at the front of the whole JVM's list.
+         *
+         * Robolectric installs Conscrypt first for its own sandboxes and never takes it out again,
+         * so in a full run every test after the first Robolectric one gets Conscrypt as the default
+         * TLS. On a plain JVM a Conscrypt socket ignores the ALPN OkHttp asks for: both ends then
+         * settle quietly on HTTP/1.1, where MockWebServer sends no trailers, and a gRPC response
+         * without its `grpc-status` trailer is a protocol error — every case here would fail for a
+         * reason that has nothing to do with the client. (Pinning the JDK's own provider instead
+         * does not help: with Conscrypt still first, the JDK's TLS fails to initialise its groups.)
+         * So for this class only the JVM gets its own TLS back, and Conscrypt is put back where it
+         * was afterwards.
+         */
+        private const val ROBOLECTRIC_PROVIDER = "Conscrypt"
+        private var displaced: Pair<Int, Provider>? = null
+
+        @BeforeClass
+        @JvmStatic
+        fun useTheJvmsOwnTls() {
+            val providers = Security.getProviders()
+            val index = providers.indexOfFirst { it.name == ROBOLECTRIC_PROVIDER }
+            if (index < 0) return
+            displaced = index to providers[index]
+            Security.removeProvider(ROBOLECTRIC_PROVIDER)
+        }
+
+        @AfterClass
+        @JvmStatic
+        fun restoreTheProviders() {
+            // insertProviderAt counts from 1.
+            displaced?.let { (index, provider) -> Security.insertProviderAt(provider, index + 1) }
+            displaced = null
+        }
     }
 }

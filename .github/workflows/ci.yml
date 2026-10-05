@@ -235,6 +235,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The workspace consumes the SDK through its published entry point, packages/server-sdk/dist,
+      # which no install creates: the real sidecars these tests start import it.
+      - run: pnpm build:server-sdk
       # Includes verifyRoborazziDebug for both Android modules. CI never records over the
       # source-controlled baselines, so an unapproved rendering change fails this job.
       - run: pnpm check:android
@@ -277,6 +280,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The workspace consumes the SDK through its published entry point, packages/server-sdk/dist,
+      # which no install creates: the real sidecars these tests start import it.
+      - run: pnpm build:server-sdk
       - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 36

@@ -13,7 +13,7 @@
   "scripts": {
     "build": "pnpm --recursive run build",
     "build:server-sdk": "pnpm --filter @seekeragentconnect/server-sdk run build",
-    "check": "pnpm run check:format && pnpm run check:lint && pnpm run check:release && pnpm run build:server-sdk && pnpm --recursive run typecheck && pnpm --recursive run test",
+    "check": "pnpm run check:format && pnpm run build:server-sdk && pnpm run check:lint && pnpm run check:release && pnpm --recursive run typecheck && pnpm --recursive run test",
     "check:release": "node scripts/check-release.mjs && node --test scripts/release-plan.test.mjs scripts/release-state.test.mjs scripts/release-bump.test.mjs scripts/release-android.test.mjs",
     "check:gateway": "node scripts/check-feed-gateway.mjs",
     "check:feed-gateway": "pnpm run check:gateway",
