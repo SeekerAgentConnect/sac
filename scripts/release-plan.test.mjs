@@ -9,23 +9,32 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  apkName,
   compareVersions,
   formatOutputs,
   imageTags,
   loadManifest,
   releasePlan,
   remoteTagCommit,
+  SEMVER,
 } from "./release-plan.mjs";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 const OTHER = "fedcba9876543210fedcba9876543210fedcba98";
-const manifest = loadManifest();
+// The repository's manifest moves with every release, so it is only held to what stays true at any
+// version. Scenarios that name a version run against `manifest`: the live manifest's components,
+// with every version pinned to the 0.0.1 baseline and Android to versionCode 2.
+const live = loadManifest();
+const manifest = pinned(live, "0.0.1", {
+  versionCode: 2,
+  previousVersionCode: 1,
+});
 const plan = (environment, source = manifest) =>
   releasePlan({ COMMIT, ...environment }, source);
 
-const versionOf = (id) =>
-  manifest.components.find((entry) => entry.id === id).version;
-const tagFor = (id) => `${id}-v${versionOf(id)}`;
+const versionOf = (id, source = manifest) =>
+  source.components.find((entry) => entry.id === id).version;
+const tagFor = (id, source = manifest) => `${id}-v${versionOf(id, source)}`;
 
 const IDS = [
   "server-sdk",
@@ -38,14 +47,26 @@ const IDS = [
   "android",
 ];
 
-test("the manifest releases exactly the eight public components, each from 0.0.1", () => {
+test("the manifest releases exactly the eight public components, each at a usable version", () => {
   assert.deepEqual(
-    manifest.components.map((component) => component.id),
+    live.components.map((component) => component.id),
     IDS,
   );
-  for (const component of manifest.components) {
-    assert.equal(component.version, "0.0.1", component.id);
+  for (const component of live.components) {
+    assert.match(component.version, SEMVER, component.id);
+    // Each component's own tag, at whatever version it has reached, resolves to that version.
+    const resolved = plan({ TAG: tagFor(component.id, live) }, live);
+    assert.equal(resolved.component, component.id);
+    assert.equal(resolved.version, component.version);
+    assert.equal(resolved.prerelease, component.version.includes("-"));
   }
+  const android = live.components.find(({ id }) => id === "android");
+  assert.ok(Number.isInteger(android.android.versionCode));
+  assert.ok(android.android.versionCode > android.android.previousVersionCode);
+  assert.equal(
+    plan({ TAG: tagFor("android", live) }, live).apk_name,
+    apkName(android),
+  );
 });
 
 test("each component publishes only its own artifacts", () => {
@@ -322,5 +343,17 @@ function withVersion(source, id, version) {
     components: source.components.map((component) =>
       component.id === id ? { ...component, version } : component,
     ),
+  };
+}
+
+/** `source` with every component at `version`, and the Android app at `android`'s codes. */
+function pinned(source, version, android) {
+  return {
+    ...source,
+    components: source.components.map((component) => ({
+      ...component,
+      version,
+      android: component.android && { ...component.android, ...android },
+    })),
   };
 }

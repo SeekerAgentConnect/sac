@@ -14,7 +14,9 @@ import { join, resolve } from "node:path";
 import { SDK_PACKAGE, publishedDependencies } from "./package-mcp-artifact.mjs";
 import { compareVersions, SEMVER } from "./release-plan.mjs";
 
-const ROOT = resolve(import.meta.dirname, "..");
+// The repository by default; a path argument checks another copy of it (the bump tests check the
+// scratch tree they bumped).
+const ROOT = resolve(process.argv[2] ?? join(import.meta.dirname, ".."));
 const MANIFEST = "release/components.json";
 const REPOSITORY = "SeekerAgentConnect/sac";
 const REPOSITORY_URL = `https://github.com/${REPOSITORY}`;

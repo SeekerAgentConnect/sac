@@ -356,13 +356,14 @@ test("image state tells absent from denied, and a server error from both", async
 
 // --- Android --------------------------------------------------------------------------------
 
+const APK_SHA256 = "ab".repeat(32);
 const record = (overrides) => ({
   component: "android",
   version: "0.0.1",
   versionCode: 2,
   commit: COMMIT,
   apk: "sac-0.0.1.apk",
-  sha256: "abc",
+  sha256: APK_SHA256,
   ...overrides,
 });
 const release = ({ tag, draft = false, body, assets = [] }) => ({
@@ -438,7 +439,55 @@ test("android: a published release of this commit is verified, never rebuilt", (
     }),
   ]);
   assert.equal(decision.action, "verified");
-  assert.equal(decision.record.sha256, "abc");
+  assert.equal(decision.record.sha256, APK_SHA256);
+});
+
+test("android: retrying an older published release after a newer one verifies it and keeps latest", () => {
+  const published = (version, versionCode) =>
+    release({
+      tag: `android-v${version}`,
+      body: formatRecord(
+        record({ version, versionCode, apk: `sac-${version}.apk` }),
+      ),
+      assets: [`sac-${version}.apk`, "SHA256SUMS"],
+    });
+  const releases = [published("0.0.1", 2), published("0.0.2", 3)];
+  const retry = android(releases);
+  assert.equal(retry.action, "verified");
+  assert.equal(retry.releaseId, releases[0].id);
+  assert.equal(retry.record.versionCode, 2);
+  assert.equal(retry.record.apk, "sac-0.0.1.apk");
+  assert.equal(retry.record.sha256, APK_SHA256);
+  assert.equal(retry.latest, false);
+  // The newer release is still held to its own record, and a new build still needs a higher code.
+  assert.equal(
+    android(releases, {
+      tag: "android-v0.0.2",
+      version: "0.0.2",
+      versionCode: 3,
+      apk: "sac-0.0.2.apk",
+    }).action,
+    "verified",
+  );
+  assert.throws(
+    () =>
+      android(releases, {
+        tag: "android-v0.0.3",
+        version: "0.0.3",
+        versionCode: 3,
+        apk: "sac-0.0.3.apk",
+      }),
+    /versionCode 3/,
+  );
+  // A draft of the older tag is a build about to be published, so the guard applies to it.
+  assert.throws(
+    () =>
+      android([
+        release({ tag: "android-v0.0.1", draft: true }),
+        published("0.0.2", 3),
+      ]),
+    /versionCode 3/,
+  );
 });
 
 test("android: a published release from another commit stops the run", () => {
@@ -457,6 +506,17 @@ test("android: a published release from another commit stops the run", () => {
     () =>
       android([release({ tag: "android-v0.0.1", assets: ["sac-0.0.1.apk"] })]),
     /no release record/,
+  );
+  assert.throws(
+    () =>
+      android([
+        release({
+          tag: "android-v0.0.1",
+          body: formatRecord(record({ sha256: "" })),
+          assets: ["sac-0.0.1.apk"],
+        }),
+      ]),
+    /no APK sha256/,
   );
 });
 

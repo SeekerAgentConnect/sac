@@ -384,12 +384,22 @@ jobs:
 
   # Every check and build of the selected component has passed on this commit, and this is a real
   # run. Publication jobs start only from here; a dry run stops before it.
+  #
+  # Every component skips at least one of the three build jobs, and a skipped ancestor fails the
+  # implicit `success()` GitHub adds to any condition without a status function — transitively, so
+  # it would skip a publisher even after this gate succeeded (actions/runner#2205). This job and
+  # every job after it therefore state their status condition explicitly, in terms of the jobs the
+  # selected component actually runs; scripts/release-workflow.test.mjs evaluates them for every
+  # component.
   gate:
     name: Ready to publish
     needs: [resolve, checks, npm-pack, image-build, android-build]
     if: >-
       !cancelled() && !failure() &&
       needs.resolve.result == 'success' && needs.checks.result == 'success' &&
+      (needs.resolve.outputs.has_npm != 'true' || needs.npm-pack.result == 'success') &&
+      (needs.resolve.outputs.has_image != 'true' || needs.image-build.result == 'success') &&
+      (needs.resolve.outputs.has_android != 'true' || needs.android-build.result == 'success') &&
       needs.resolve.outputs.dry_run == 'false'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -399,7 +409,9 @@ jobs:
   npm-publish:
     name: Publish to npm
     needs: [resolve, npm-pack, gate]
-    if: needs.resolve.outputs.has_npm == 'true'
+    if: >-
+      !cancelled() && needs.gate.result == 'success' && needs.npm-pack.result == 'success' &&
+      needs.resolve.outputs.has_npm == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     # The npm trusted publisher for each package names this workflow file and this environment.
@@ -500,7 +512,9 @@ jobs:
   image-publish:
     name: Publish to GHCR
     needs: [resolve, gate]
-    if: needs.resolve.outputs.has_image == 'true'
+    if: >-
+      !cancelled() && needs.gate.result == 'success' &&
+      needs.resolve.outputs.has_image == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment: release
@@ -645,7 +659,10 @@ jobs:
   android-publish:
     name: Sign and publish the APK
     needs: [resolve, android-build, gate]
-    if: needs.resolve.outputs.has_android == 'true'
+    if: >-
+      !cancelled() && needs.gate.result == 'success' &&
+      needs.android-build.result == 'success' &&
+      needs.resolve.outputs.has_android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: release
@@ -834,13 +851,16 @@ jobs:
 
   # The GitHub Release that records an npm or image release: its tag, commit, integrity and
   # digests. It is never marked latest, so the repository's latest release stays the app's
-  # download link.
+  # download link. It is written only once every publisher the component selects has succeeded,
+  # so a skipped publisher can never leave a release with an empty integrity or digest.
   github-release:
     name: Record the GitHub Release
     needs: [resolve, gate, npm-pack, npm-publish, image-publish]
     if: >-
       !cancelled() && !failure() &&
       needs.gate.result == 'success' &&
+      (needs.resolve.outputs.has_npm != 'true' || needs.npm-publish.result == 'success') &&
+      (needs.resolve.outputs.has_image != 'true' || needs.image-publish.result == 'success') &&
       needs.resolve.outputs.has_android != 'true' &&
       needs.resolve.outputs.development != 'true'
     runs-on: ubuntu-24.04

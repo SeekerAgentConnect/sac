@@ -221,21 +221,6 @@ export function androidDecision({
     );
   }
 
-  // Android only installs an update whose versionCode is higher, so every *other* published app
-  // release must have a lower code than this one.
-  for (const release of releases) {
-    if (release.draft || release.tag_name === tag) continue;
-    if (!release.tag_name.startsWith("android-v")) continue;
-    const record = parseRecord(release.body);
-    if (record?.versionCode === undefined) continue;
-    if (record.versionCode >= versionCode) {
-      throw new Error(
-        `${release.tag_name} was published with versionCode ${record.versionCode}; ${tag} has ` +
-          `${versionCode}. Bump with \`pnpm release:bump android <version>\` so the code increases`,
-      );
-    }
-  }
-
   // The repository's "latest release" is the app's download link, so only a stable app release
   // that is not older than another published stable one may take it.
   const newerStable = releases.some((release) => {
@@ -250,30 +235,57 @@ export function androidDecision({
   });
   const latest = !prerelease && !newerStable;
 
+  // A release this tag already published is checked against its own record first: a retry of an
+  // older release after a newer one shipped verifies and keeps the original APK (and leaves
+  // `latest` where it is), rather than being held to a versionCode only a new build needs.
   const [existing] = own;
-  if (!existing) return { action: "create", latest };
-  if (existing.draft)
-    return { action: "resume", releaseId: existing.id, latest };
+  if (existing && !existing.draft) {
+    const record = parseRecord(existing.body);
+    const hasApk = existing.assets?.some((asset) => asset.name === apk);
+    if (!record || !hasApk) {
+      throw new Error(
+        `${tag} is already a published release but has no ${record ? apk : "release record"}; ` +
+          "it was not made by this workflow. Fix it by hand rather than letting a rebuild replace it",
+      );
+    }
+    if (
+      record.component !== "android" ||
+      record.commit !== commit ||
+      record.version !== version ||
+      record.versionCode !== versionCode ||
+      record.apk !== apk
+    ) {
+      throw new Error(
+        `${tag} is published from ${record.commit} as ${record.version} (${record.versionCode}, ` +
+          `${record.apk}); this run is ${commit} as ${version} (${versionCode}, ${apk}). ` +
+          "A published release is immutable",
+      );
+    }
+    if (!/^[0-9a-f]{64}$/.test(record.sha256 ?? "")) {
+      throw new Error(
+        `${tag}'s release record has no APK sha256, so its public asset cannot be verified`,
+      );
+    }
+    return { action: "verified", releaseId: existing.id, record, latest };
+  }
 
-  const record = parseRecord(existing.body);
-  const hasApk = existing.assets?.some((asset) => asset.name === apk);
-  if (!record || !hasApk) {
-    throw new Error(
-      `${tag} is already a published release but has no ${record ? apk : "release record"}; ` +
-        "it was not made by this workflow. Fix it by hand rather than letting a rebuild replace it",
-    );
+  // Only a build about to be published has to be installable as an update: Android refuses a
+  // versionCode that is not higher, so every *other* published app release must have a lower one.
+  for (const release of releases) {
+    if (release.draft || release.tag_name === tag) continue;
+    if (!release.tag_name.startsWith("android-v")) continue;
+    const record = parseRecord(release.body);
+    if (record?.versionCode === undefined) continue;
+    if (record.versionCode >= versionCode) {
+      throw new Error(
+        `${release.tag_name} was published with versionCode ${record.versionCode}; ${tag} has ` +
+          `${versionCode}. Bump with \`pnpm release:bump android <version>\` so the code increases`,
+      );
+    }
   }
-  if (
-    record.commit !== commit ||
-    record.version !== version ||
-    record.versionCode !== versionCode
-  ) {
-    throw new Error(
-      `${tag} is published from ${record.commit} as ${record.version} (${record.versionCode}); ` +
-        `this run is ${commit} as ${version} (${versionCode}). A published release is immutable`,
-    );
-  }
-  return { action: "verified", releaseId: existing.id, record, latest };
+
+  if (!existing) return { action: "create", latest };
+  return { action: "resume", releaseId: existing.id, latest };
 }
 
 // ---------------------------------------------------------------------------------------------

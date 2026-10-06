@@ -111,13 +111,19 @@ unless `--allow-lower` is given — which is only for a deliberate new baseline 
 
 `pnpm check:release` ([`scripts/check-release.mjs`](../../scripts/check-release.mjs)) then proves
 the manifest, the package manifests, the version constants, the Android build, the Dockerfiles and
-both workflows agree. It also runs the planner, retry-state, bump and Android-configuration tests.
+both workflows agree. It also runs the planner, retry-state, bump, Android-configuration and
+release-workflow tests. None of them assume the versions the manifest currently pins: scenarios that
+name a version use a pinned copy of the manifest, the live one is held only to what is true at any
+version, and the bump tests bump each kind of component in a scratch repository and run
+`check-release.mjs` on it — so a legitimate bump never fails the checks.
 
 The Android build has no version of its own: `apps/android/app/build.gradle.kts` reads `versionName`
 and `versionCode` from the manifest's `android` component, so rebuilding a commit always produces
 the same code. `versionCode` is an explicit integer that only goes up — `0.0.1` is `2`, above the
-`1` every earlier build carried — and the release workflow additionally refuses a code that is not
-above every other published `android-v*` release.
+`1` every earlier build carried — and the release workflow additionally refuses to create or
+resume a release whose code is not above every other published `android-v*` release. A release
+the tag already published is verified against its own record instead, so retrying an older
+release after a newer one shipped keeps its original APK and does not move `latest`.
 
 ## Releasing one component
 
@@ -149,11 +155,19 @@ above every other published `android-v*` release.
    | `npm-pack` | Builds, writes `gitHead`, packs **once**, audits the packed `package.json` (name, version, commit, public access, no `workspace:`/`catalog:`/`file:`), keeps the tarball for 7 days. | none |
    | `image-build` | Builds both platforms, pushes nothing. | none |
    | `android-build` | Checks the build configuration, builds the unsigned release APK, checks its id/versionName/versionCode, keeps it for 3 days. | none (variables only) |
-   | `gate` | Passes only when every job above succeeded and this is a real run. | none |
+   | `gate` | Passes only when `checks` and every build the component selects succeeded and this is a real run. | none |
    | `npm-publish` | Publishes **the audited tarball** with trusted publishing and provenance, then confirms the registry serves that integrity. | OIDC (`id-token: write`) |
    | `image-publish` | Pushes `X.Y.Z` and `sha-<commit>`, moves `latest` if allowed, then proves every tag pulls **anonymously** to the recorded digest. | `GITHUB_TOKEN` (`packages: write`) |
    | `android-publish` | Signs, verifies the certificate against the pin, creates a **draft** release, uploads APK + `SHA256SUMS`, publishes it, re-downloads the public asset and checks it. | signing secrets, `contents: write` |
-   | `github-release` | Records an npm/image release as a GitHub Release (never marked latest). | `contents: write` |
+   | `github-release` | Records an npm/image release as a GitHub Release (never marked latest), only once every publisher the component selects succeeded. | `contents: write` |
+
+   Every component skips at least one build job, and GitHub's implicit `success()` treats a
+   skipped ancestor as not successful, transitively
+   ([actions/runner#2205](https://github.com/actions/runner/issues/2205)). So `gate`, each
+   publisher and `github-release` state their status condition explicitly (`!cancelled() &&
+   needs.gate.result == 'success' && …`), and
+   [`scripts/release-workflow.test.mjs`](../../scripts/release-workflow.test.mjs) evaluates the
+   workflow's job graph for every component to prove its publishers run.
 
    Each job's summary reports what it did: source commit, npm integrity and dist-tag, image digest
    and tags, APK SHA-256 and certificate, release URLs.
@@ -206,7 +220,7 @@ already there:
 | image `X.Y.Z` labelled with this version and commit | keeps it, re-points `sha-<commit>` at it, decides `latest`, re-checks anonymous pulls |
 | image `X.Y.Z` from another commit, or unlabelled | stops |
 | Android draft release for the tag | resumes it: replaces the draft's assets (nothing public yet), then publishes |
-| Android published release from this commit | verifies the public APK against the recorded SHA-256 and certificate, changes nothing |
+| Android published release from this commit | verifies the public APK against the recorded SHA-256 and certificate, changes nothing — also when a newer app release has shipped since: the older release keeps its APK and `latest` stays on the newer one |
 | Android published release from another commit, or without its record | stops |
 
 Absence is concluded only from an explicit not-found answer. A timeout, `5xx`, authentication
