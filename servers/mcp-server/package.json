@@ -1,6 +1,6 @@
 {
-  "name": "@seeker_agent_connect/mcp-server",
-  "version": "0.2.0-rc.2",
+  "name": "@seekeragentconnect/mcp-server",
+  "version": "0.0.1",
   "description": "Self-hosted Seeker Agent Connect MCP server",
   "keywords": [
     "seeker",
@@ -10,13 +10,13 @@
     "wallet",
     "agent"
   ],
-  "homepage": "https://github.com/BrRenat/SeekerAgentConnect/tree/master/servers/mcp-server#readme",
+  "homepage": "https://github.com/SeekerAgentConnect/sac/tree/master/servers/mcp-server#readme",
   "bugs": {
-    "url": "https://github.com/BrRenat/SeekerAgentConnect/issues"
+    "url": "https://github.com/SeekerAgentConnect/sac/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BrRenat/SeekerAgentConnect.git",
+    "url": "git+https://github.com/SeekerAgentConnect/sac.git",
     "directory": "servers/mcp-server"
   },
   "license": "MIT",
@@ -38,7 +38,7 @@
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('package',{recursive:true,force:true})\"",
-    "build": "pnpm run clean && pnpm --filter @seeker_agent_connect/server-sdk run build && tsc -p tsconfig.build.json && node scripts/package.mjs",
+    "build": "pnpm run clean && pnpm --filter @seekeragentconnect/server-sdk run build && tsc -p tsconfig.build.json && node scripts/package.mjs",
     "dev": "node --env-file-if-exists=../../.env src/cli.ts start",
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
@@ -48,7 +48,7 @@
     "@connectrpc/connect": "2.2.0",
     "@connectrpc/connect-node": "2.2.0",
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@seeker_agent_connect/server-sdk": "workspace:*",
+    "@seekeragentconnect/server-sdk": "workspace:*",
     "@solana/web3.js": "1.99.0",
     "firebase-admin": "14.4.0",
     "jose": "6.2.12",

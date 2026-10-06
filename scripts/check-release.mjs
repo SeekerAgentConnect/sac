@@ -1,61 +1,35 @@
 /**
- * Prove the release manifest and the repository agree (SEE-168).
+ * Prove the release manifest and the repository agree (SEE-168, SEE-182).
  *
  * `release/components.json` is where a component's version is decided. Everything else — the npm
- * manifests, the Dockerfiles, the release workflow — has to follow it, and this check is what says
- * so. It reads only files: it contacts no registry, needs no credential, and publishes nothing, so
- * it runs in PR validation exactly as it runs locally.
+ * manifests, the in-source version constants, the Android build, the Dockerfiles and both
+ * workflows — has to follow it, and this check is what says so. It reads only files: it contacts
+ * no registry, needs no credential, and publishes nothing, so it runs in PR validation exactly as
+ * it runs locally.
  */
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { SDK_PACKAGE, publishedDependencies } from "./package-mcp-artifact.mjs";
+import { compareVersions, SEMVER } from "./release-plan.mjs";
 
-const ROOT = resolve(import.meta.dirname, "..");
+// The repository by default; a path argument checks another copy of it (the bump tests check the
+// scratch tree they bumped).
+const ROOT = resolve(process.argv[2] ?? join(import.meta.dirname, ".."));
 const MANIFEST = "release/components.json";
-const SEMVER =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:rc|alpha|beta)\.(?:0|[1-9]\d*))?$/;
+const REPOSITORY = "SeekerAgentConnect/sac";
+const REPOSITORY_URL = `https://github.com/${REPOSITORY}`;
+// The Android features a release can be required to have, and the configuration each needs
+// (docs/development/releases.md § Android build configuration).
+const ANDROID_FEATURES = new Set([
+  "firebase",
+  "solanaRpc",
+  "relayUrl",
+  "discoveryUrl",
+]);
 
 const failures = [];
-
-/**
- * Semantic version ordering, enough of it for the comparison this file makes: release before
- * prerelease at the same triple, and prerelease identifiers compared left to right, numerically
- * where both sides are numeric.
- */
-function compareVersions(left, right) {
-  const split = (version) => {
-    const [core, prerelease] = version.split("-");
-    return [
-      core.split(".").map(Number),
-      prerelease ? prerelease.split(".") : null,
-    ];
-  };
-  const [leftCore, leftPre] = split(left);
-  const [rightCore, rightPre] = split(right);
-  for (let index = 0; index < 3; index += 1) {
-    if (leftCore[index] !== rightCore[index])
-      return leftCore[index] - rightCore[index];
-  }
-  if (leftPre === null && rightPre === null) return 0;
-  if (leftPre === null) return 1;
-  if (rightPre === null) return -1;
-  for (
-    let index = 0;
-    index < Math.max(leftPre.length, rightPre.length);
-    index += 1
-  ) {
-    const a = leftPre[index];
-    const b = rightPre[index];
-    if (a === undefined) return -1;
-    if (b === undefined) return 1;
-    if (a === b) continue;
-    const numeric = /^\d+$/.test(a) && /^\d+$/.test(b);
-    return numeric ? Number(a) - Number(b) : a < b ? -1 : 1;
-  }
-  return 0;
-}
 
 function check(description, assertion) {
   try {
@@ -71,20 +45,22 @@ const readJson = (path) => JSON.parse(read(path));
 const manifest = readJson(MANIFEST);
 const { registries, components } = manifest;
 const workflow = read(".github/workflows/release.yml");
+const ci = read(".github/workflows/ci.yml");
+const rootScripts = readJson("package.json").scripts;
 
-check("the npm scope is the one the release token can write", () => {
-  assert.equal(registries.npmScope, "@seeker_agent_connect");
+check("the public npm scope and image namespace are the agreed ones", () => {
+  assert.equal(manifest.repository, REPOSITORY);
+  assert.equal(registries.npmScope, "@seekeragentconnect");
+  assert.equal(registries.images, "ghcr.io/seekeragentconnect");
+  assert.equal(registries.npm, "https://registry.npmjs.org");
 });
-check("the Docker Hub repository is the agreed one", () => {
-  assert.equal(registries.docker, "docker.io/brenat/seeker-agent-connect");
+check("npm is never forced into a repository-wide dry run", () => {
+  assert.equal("npmDryRun" in registries, false);
 });
-check("the npm dry-run switch is a boolean", () => {
-  assert.equal(typeof registries.npmDryRun, "boolean");
+check("the pinned npm CLI can use trusted publishing (11.5.1 or later)", () => {
+  assert.match(manifest.toolchain.npm, SEMVER);
+  assert.ok(compareVersions(manifest.toolchain.npm, "11.5.1") >= 0);
 });
-
-// Every image shares one repository, so the tag prefix is what tells them apart; two components
-// with the same prefix would overwrite each other's tags.
-const tagPrefixes = new Set();
 
 const identifiers = new Set();
 for (const component of components) {
@@ -105,8 +81,8 @@ for (const component of components) {
 
   check(`${where} publishes at least one artifact`, () => {
     assert.ok(
-      component.npm || component.image,
-      "neither an npm package nor an image",
+      component.npm || component.image || component.android,
+      "neither an npm package, an image nor an APK",
     );
   });
 
@@ -114,22 +90,47 @@ for (const component of components) {
     assert.ok(existsSync(join(ROOT, component.directory)), component.directory);
   });
 
-  check(`${where} declares dependencies that exist`, () => {
-    for (const dependency of component.dependsOn) {
+  check(`${where} vendors only components that exist`, () => {
+    for (const vendored of component.vendors) {
       assert.ok(
-        components.some(({ id }) => id === dependency),
-        `unknown component ${dependency}`,
+        components.some(({ id }) => id === vendored),
+        `unknown component ${vendored}`,
       );
     }
   });
 
-  // The release workflow is driven by this file, but the tag that starts it is typed by a human.
-  // A component nobody can tag is a component nobody can release.
-  check(`${where} is reachable from the release workflow`, () => {
+  // These commands gate publication on the released commit, so each must be a real script.
+  check(`${where} names checks that exist`, () => {
     assert.ok(
-      workflow.includes(`${component.id}-v`) || workflow.includes(MANIFEST),
-      "the workflow neither matches its tag nor reads the manifest",
+      Array.isArray(component.checks) && component.checks.length > 0,
+      "no checks: nothing would stand between a tag and a publication",
     );
+    for (const command of component.checks) {
+      const match = /^pnpm ([a-z0-9:-]+)$/.exec(command);
+      assert.ok(match, `${command} is not \`pnpm <script>\``);
+      assert.ok(
+        rootScripts[match[1]],
+        `package.json has no ${match[1]} script`,
+      );
+    }
+    if (component.toolchains.go) {
+      assert.ok(existsSync(join(ROOT, component.toolchains.go)));
+    }
+  });
+
+  check(`${where} records its history`, () => {
+    assert.ok(Array.isArray(component.previousVersions));
+    for (const version of component.previousVersions) {
+      assert.match(version, SEMVER);
+    }
+    assert.ok(Array.isArray(component.previousArtifacts));
+    for (const previous of component.previousArtifacts) {
+      assert.match(
+        previous,
+        /^[a-z0-9.]+\/\S+:\S+$/,
+        `${previous} is not a fully qualified ref`,
+      );
+    }
   });
 
   if (component.npm) {
@@ -138,10 +139,7 @@ for (const component of components) {
 
     check(`${packageJson} carries the manifest's name`, () => {
       assert.equal(npm.name, component.npm.name);
-      assert.ok(
-        npm.name.startsWith(`${registries.npmScope}/`),
-        `${npm.name} is outside ${registries.npmScope}`,
-      );
+      assert.equal(npm.name, `${registries.npmScope}/${component.id}`);
     });
     check(`${packageJson} carries the manifest's version`, () => {
       assert.equal(npm.version, component.version);
@@ -155,17 +153,19 @@ for (const component of components) {
       );
     });
     check(`${packageJson} tells a consumer where it came from`, () => {
-      for (const field of [
-        "description",
-        "license",
-        "repository",
-        "homepage",
-        "bugs",
-        "engines",
-      ]) {
+      for (const field of ["description", "license", "engines"]) {
         assert.ok(npm[field], `missing ${field}`);
       }
-      assert.equal(npm.repository.directory, component.directory);
+      assert.deepEqual(npm.repository, {
+        type: "git",
+        url: `git+${REPOSITORY_URL}.git`,
+        directory: component.directory,
+      });
+      assert.equal(
+        npm.homepage,
+        `${REPOSITORY_URL}/tree/master/${component.directory}#readme`,
+      );
+      assert.deepEqual(npm.bugs, { url: `${REPOSITORY_URL}/issues` });
     });
     check(`${packageJson} ships an explicit file allowlist`, () => {
       assert.ok(
@@ -204,44 +204,28 @@ for (const component of components) {
             `${component.id} vendors the SDK, so it must depend on it as a workspace package`,
           );
         }
-        // Throws on anything a registry could not resolve, and resolves the catalog the way the
-        // staging step will.
         publishedDependencies(dependencies, ROOT);
       },
     );
-
-    // A vendored SDK means a dependent's published bytes contain the SDK's. Releasing the SDK
-    // without releasing them leaves consumers on the old copy with no way to tell — so a
-    // dependent may never be *behind* the SDK it vendors. It may be ahead: a server with a fix of
-    // its own should not have to drag an unchanged SDK release along with it.
-    if (component.dependsOn.includes("server-sdk")) {
-      check(`${where} is not behind the SDK it vendors`, () => {
-        const sdk = components.find(({ id }) => id === "server-sdk");
-        assert.ok(
-          compareVersions(component.version, sdk.version) >= 0,
-          `vendors server-sdk ${sdk.version} but is versioned ${component.version}; ` +
-            "an SDK release has to re-release its dependents",
-        );
-      });
-    }
+    // Versions are independent (SEE-182): a server is never required to match or exceed the SDK's
+    // version. What is required is that the artifact records which SDK it carries, which
+    // scripts/package-mcp-artifact.mjs writes and the package tests verify.
+    check(`${where} declares the SDK it vendors`, () => {
+      assert.equal(
+        component.vendors.includes("server-sdk"),
+        Boolean(npm.dependencies?.[SDK_PACKAGE]),
+      );
+    });
   }
 
   if (component.image) {
     const { image } = component;
-    check(`${where} names a Dockerfile that exists`, () => {
-      assert.ok(existsSync(join(ROOT, image.dockerfile)), image.dockerfile);
+    check(`${where} has its own GHCR repository`, () => {
+      assert.equal(image.repository, `${registries.images}/${component.id}`);
     });
-    check(`${where} has a unique image tag prefix`, () => {
-      assert.match(
-        image.tagPrefix,
-        /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
-        "tag prefixes are lowercase words joined by hyphens",
-      );
-      assert.ok(
-        !tagPrefixes.has(image.tagPrefix),
-        `${image.tagPrefix} is used by two components`,
-      );
-      tagPrefixes.add(image.tagPrefix);
+    check(`${where} names a Dockerfile and context that exist`, () => {
+      assert.ok(existsSync(join(ROOT, image.dockerfile)), image.dockerfile);
+      assert.ok(existsSync(join(ROOT, image.context ?? ".")));
     });
     check(`${where} supports both published platforms`, () => {
       assert.deepEqual([...image.platforms].sort(), [
@@ -252,11 +236,50 @@ for (const component of components) {
     check(`${image.dockerfile} records where it came from`, () => {
       const dockerfile = read(image.dockerfile);
       for (const label of [
-        "org.opencontainers.image.source",
         "org.opencontainers.image.revision",
         "org.opencontainers.image.version",
       ]) {
         assert.ok(dockerfile.includes(label), `no ${label} label`);
+      }
+      // GHCR links a package to its repository through this label, which is also what lets the
+      // package inherit the repository's Actions access.
+      assert.ok(
+        dockerfile.includes(
+          `org.opencontainers.image.source="${REPOSITORY_URL}"`,
+        ),
+        `org.opencontainers.image.source is not ${REPOSITORY_URL}`,
+      );
+    });
+  }
+
+  if (component.android) {
+    const { android } = component;
+    const gradle = read(`${component.directory}/app/build.gradle.kts`);
+    check(`${where} keeps the installed app's application id`, () => {
+      assert.ok(
+        gradle.includes(`applicationId = "${android.applicationId}"`),
+        `build.gradle.kts does not set applicationId = "${android.applicationId}"`,
+      );
+    });
+    check(`${where} is the only place the app's version is written`, () => {
+      assert.doesNotMatch(gradle, /versionCode = \d/);
+      assert.doesNotMatch(gradle, /versionName = "/);
+      assert.ok(gradle.includes("release/components.json"));
+    });
+    check(`${where} has an increasing versionCode`, () => {
+      assert.ok(Number.isInteger(android.versionCode));
+      assert.ok(Number.isInteger(android.previousVersionCode));
+      assert.ok(
+        android.versionCode > android.previousVersionCode,
+        `versionCode ${android.versionCode} is not above ${android.previousVersionCode}`,
+      );
+    });
+    check(`${where} names its APK by version`, () => {
+      assert.match(android.apk, /^[a-z0-9-]+-<version>\.apk$/);
+    });
+    check(`${where} requires only features the release knows`, () => {
+      for (const feature of android.releaseRequires) {
+        assert.ok(ANDROID_FEATURES.has(feature), `unknown feature ${feature}`);
       }
     });
   }
@@ -272,40 +295,78 @@ for (const component of components) {
       );
     }
   });
-
-  check(`${where} records what it replaces`, () => {
-    assert.ok(
-      Array.isArray(component.previousArtifacts),
-      "previousArtifacts must be a list",
-    );
-    for (const previous of component.previousArtifacts) {
-      assert.match(
-        previous,
-        /^[a-z0-9.]+\/\S+:\S+$/,
-        `${previous} is not a fully qualified ref`,
-      );
-    }
-  });
 }
 
-// The workflow must not be able to publish from anything but a tag: a pull request that could
-// publish is the failure mode the ticket names by name.
+// --- the release workflow -------------------------------------------------------------------
+
 check(
   ".github/workflows/release.yml publishes only from a tag or a deliberate dispatch",
   () => {
-    assert.doesNotMatch(
-      workflow.split("jobs:")[0],
-      /^\s*pull_request:/m,
-      "the release workflow reacts to pull requests",
-    );
-    assert.match(workflow, /tags:/, "the release workflow is not tag-driven");
+    const triggers = workflow.split("\njobs:")[0];
+    assert.doesNotMatch(triggers, /^\s*pull_request/m);
+    assert.match(triggers, /tags:\s*\n\s*- "\*-v\*"/);
+    assert.match(triggers, /workflow_dispatch:/);
   },
 );
-
-check(".github/workflows/ci.yml publishes nothing", () => {
-  const ci = read(".github/workflows/ci.yml");
-  assert.doesNotMatch(ci, /npm publish|docker push|docker\/build-push-action/);
+check(
+  ".github/workflows/release.yml offers exactly the manifest's components",
+  () => {
+    const block = /component:[\s\S]*?options:\s*\n((?:\s+- .+\n)+)/.exec(
+      workflow,
+    );
+    assert.ok(block, "no component choice input");
+    const options = block[1]
+      .split("\n")
+      .map((line) => line.trim().replace(/^- /, ""))
+      .filter(Boolean);
+    assert.deepEqual(
+      options,
+      components.map(({ id }) => id),
+    );
+  },
+);
+check(".github/workflows/release.yml is driven by the manifest", () => {
+  assert.ok(workflow.includes("scripts/release-plan.mjs"));
+  assert.ok(workflow.includes("scripts/release-state.mjs"));
 });
+check(".github/workflows/release.yml grants write access narrowly", () => {
+  // Defaults are read-only; each write scope is granted to exactly one publishing job.
+  assert.match(
+    workflow.split("\njobs:")[0],
+    /permissions:\s*\n\s+contents: read/,
+  );
+  assert.equal(workflow.match(/id-token: write/g)?.length, 1);
+  assert.equal(workflow.match(/packages: write/g)?.length, 1);
+});
+check(".github/workflows/release.yml needs no Docker Hub credential", () => {
+  assert.ok(
+    !/DOCKERHUB|docker\.io|registry: docker/.test(workflow),
+    "the release workflow still refers to Docker Hub",
+  );
+});
+check(".github/workflows/release.yml never cancels a publication", () => {
+  assert.ok(
+    !workflow.includes("cancel-in-progress: true"),
+    "a group cancels in progress",
+  );
+});
+
+// --- CI -------------------------------------------------------------------------------------
+
+check(
+  ".github/workflows/ci.yml validates pull requests and publishes nothing",
+  () => {
+    assert.ok(
+      /^\s*pull_request:/m.test(ci.split("\njobs:")[0]),
+      "ci.yml does not run on pull requests",
+    );
+    const publishing =
+      /npm publish|docker push|push: true|docker\/login-action|secrets\.|id-token|packages: write|contents: write/.exec(
+        ci,
+      );
+    assert.equal(publishing, null, `ci.yml contains ${publishing?.[0]}`);
+  },
+);
 
 if (failures.length > 0) {
   console.error(`release manifest check failed (${failures.length}):`);

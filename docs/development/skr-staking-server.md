@@ -53,7 +53,7 @@ stops being a different one (8090 against 8080).
 ```bash
 pnpm install
 cp servers/mcp-skr-staking/.env.example .env
-pnpm --filter @seeker_agent_connect/mcp-skr-staking run dev
+pnpm --filter @seekeragentconnect/mcp-skr-staking run dev
 ```
 
 Two values have no default: `SKR_STAKING_MCP_TOKEN` (`openssl rand -hex 32`) and
@@ -69,8 +69,8 @@ and a variable that could say "devnet" would advertise a network every request w
 ## Checks
 
 ```bash
-pnpm --filter @seeker_agent_connect/mcp-skr-staking run typecheck
-pnpm --filter @seeker_agent_connect/mcp-skr-staking run test
+pnpm --filter @seekeragentconnect/mcp-skr-staking run typecheck
+pnpm --filter @seekeragentconnect/mcp-skr-staking run test
 ```
 
 Both run in `pnpm check` with the rest of the workspace. The tests are offline: the account decoders
@@ -93,9 +93,11 @@ cp compose/skr-staking/.env.example compose/skr-staking/.env
 docker compose --env-file compose/skr-staking/.env -f compose/skr-staking/compose.yaml up
 ```
 
-It pulls the published `docker.io/brenat/seeker-agent-connect:skr-staking-mcp-<version>` image;
-`SKR_STAKING_IMAGE` overrides it. The image is built from this repository's root, because the
-checkout supplies the unpublished SDK. It runs as an unprivileged user, drops every capability,
+The preset is unchanged by SEE-182 and pulls the legacy Docker Hub image
+`docker.io/brenat/seeker-agent-connect:skr-staking-mcp-<version>` by default; set
+`SKR_STAKING_IMAGE=ghcr.io/seekeragentconnect/mcp-skr-staking:<version>` to run the published GHCR
+image. The image is built from this repository's root, because the checkout supplies the SDK it
+vendors. It runs as an unprivileged user, drops every capability,
 keeps its database on a named volume, and its health check is a Node script rather than a shell
 fetch. The Compose preset is checked in `do-deploy` by `node scripts/check-compose.mjs`; this
 repository's `pnpm check:deployments` (`scripts/check-deployments.mjs`) keeps only the

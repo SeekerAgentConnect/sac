@@ -21,7 +21,7 @@ import {
   ServerEnvironment,
   ServerManifestSchema,
   SolanaNetwork,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import {
   manifestFingerprint,
   publishManifest,

@@ -1,5 +1,5 @@
 {
-  "name": "@seeker_agent_connect/test-agent",
+  "name": "@seekeragentconnect/test-agent",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@seeker_agent_connect/server-sdk": "workspace:*",
+    "@seekeragentconnect/server-sdk": "workspace:*",
     "@modelcontextprotocol/sdk": "catalog:",
     "zod": "catalog:"
   },

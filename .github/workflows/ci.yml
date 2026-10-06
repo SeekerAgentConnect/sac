@@ -1,9 +1,13 @@
 name: CI
 
+# Every pull request and every push to the main branches. A pull request from a fork gets a
+# read-only token and no secrets, and this workflow asks for neither: it builds, tests and audits
+# exactly what a release would publish, and publishes nothing (scripts/check-release.mjs holds it
+# to that). Publication is .github/workflows/release.yml alone.
 on:
-  # pull_request:
-  # push:
-  #   branches: [master, develop]
+  pull_request:
+  push:
+    branches: [master, develop]
   workflow_dispatch:
 
 # CI only reads the repository. It never commits or pushes generated or formatted changes.
@@ -156,6 +160,59 @@ jobs:
       - run: pnpm check:demo-prediction
       - run: docker build -f examples/demo-prediction/Dockerfile -t demo-prediction:ci .
 
+  images:
+    # Every published image, built for both release platforms the way the release workflow builds
+    # it — and never pushed. The list is release/components.json's, so a new image component is
+    # covered without editing this file (SEE-182).
+    name: Image ${{ matrix.component.id }} (amd64, arm64)
+    needs: image-matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJSON(needs.image-matrix.outputs.components) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.component.context }}
+          file: ${{ matrix.component.dockerfile }}
+          target: ${{ matrix.component.target }}
+          platforms: ${{ matrix.component.platforms }}
+          push: false
+          build-args: |
+            VERSION=${{ matrix.component.version }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=ci-${{ matrix.component.id }}
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.component.id }}
+
+  image-matrix:
+    name: Image components
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      components: ${{ steps.list.outputs.components }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: list
+        run: |
+          node -e '
+            const { components } = require("./release/components.json");
+            const images = components.filter((c) => c.image).map((c) => ({
+              id: c.id, version: c.version, dockerfile: c.image.dockerfile,
+              context: c.image.context ?? ".", target: c.image.target ?? "",
+              platforms: c.image.platforms.join(","),
+            }));
+            console.log(`components=${JSON.stringify(images)}`);
+          ' >> "$GITHUB_OUTPUT"
+
   android:
     name: Android unit tests, lint, debug APK
     runs-on: ubuntu-24.04
@@ -178,12 +235,20 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The workspace consumes the SDK through its published entry point, packages/server-sdk/dist,
+      # which no install creates: the real sidecars these tests start import it.
+      - run: pnpm build:server-sdk
       # Includes verifyRoborazziDebug for both Android modules. CI never records over the
       # source-controlled baselines, so an unapproved rendering change fails this job.
       - run: pnpm check:android
       # The SAC swap fee build configuration (SEE-173): default off, fee builds from properties
       # and from environment variables, and every malformed setting refused at configuration time.
       - run: pnpm check:swap-fee-build
+      # The unsigned release candidate, as the release workflow builds it with no configuration:
+      # the application id, versionName and versionCode must be release/components.json's. No
+      # signing key exists here, and the check says so (SEE-182).
+      - run: apps/android/gradlew -p apps/android :app:assembleRelease
+      - run: bash scripts/check-android-apk.sh apps/android/app/build/outputs/apk/release/app-release-unsigned.apk
 
   device:
     # The instrumentation UI test on an emulator, against the real sidecar over MCP. An emulator run
@@ -215,6 +280,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The workspace consumes the SDK through its published entry point, packages/server-sdk/dist,
+      # which no install creates: the real sidecars these tests start import it.
+      - run: pnpm build:server-sdk
       - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 36
@@ -223,3 +291,10 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: pnpm test:hello --device
+      # The emulator run prints only that a test failed; the report says which one and why.
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-device-test-report
+          path: apps/android/app/build/reports/androidTests/connected/
+          if-no-files-found: ignore

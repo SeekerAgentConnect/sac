@@ -20,7 +20,7 @@ import {
   UpdateService,
   type SubscribeRequest,
   type SubscribeResponse,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 
 const token = required("PROOF_PHONE_TOKEN");
 const connectionId = required("PROOF_CONNECTION_ID");

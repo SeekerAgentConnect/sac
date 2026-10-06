@@ -1,6 +1,6 @@
 {
-  "name": "@seeker_agent_connect/mcp-skr-staking",
-  "version": "0.2.0-rc.1",
+  "name": "@seekeragentconnect/mcp-skr-staking",
+  "version": "0.0.1",
   "description": "Standalone SKR staking MCP server for Seeker Agent Connect",
   "keywords": [
     "seeker",
@@ -10,13 +10,13 @@
     "mcp",
     "model-context-protocol"
   ],
-  "homepage": "https://github.com/BrRenat/SeekerAgentConnect/tree/master/servers/mcp-skr-staking#readme",
+  "homepage": "https://github.com/SeekerAgentConnect/sac/tree/master/servers/mcp-skr-staking#readme",
   "bugs": {
-    "url": "https://github.com/BrRenat/SeekerAgentConnect/issues"
+    "url": "https://github.com/SeekerAgentConnect/sac/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BrRenat/SeekerAgentConnect.git",
+    "url": "git+https://github.com/SeekerAgentConnect/sac.git",
     "directory": "servers/mcp-skr-staking"
   },
   "license": "MIT",
@@ -38,7 +38,7 @@
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true});require('node:fs').rmSync('package',{recursive:true,force:true})\"",
-    "build": "pnpm run clean && pnpm --filter @seeker_agent_connect/server-sdk run build && tsc -p tsconfig.build.json && node scripts/package.mjs",
+    "build": "pnpm run clean && pnpm --filter @seekeragentconnect/server-sdk run build && tsc -p tsconfig.build.json && node scripts/package.mjs",
     "dev": "node --env-file-if-exists=../../.env src/cli.ts start",
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
@@ -48,7 +48,7 @@
     "@connectrpc/connect": "2.2.0",
     "@connectrpc/connect-node": "2.2.0",
     "@modelcontextprotocol/sdk": "catalog:",
-    "@seeker_agent_connect/server-sdk": "workspace:*",
+    "@seekeragentconnect/server-sdk": "workspace:*",
     "@solana/web3.js": "1.99.0",
     "uqr": "0.1.3",
     "zod": "catalog:"

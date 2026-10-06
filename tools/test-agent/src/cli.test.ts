@@ -28,7 +28,7 @@ import {
 } from "../../../servers/mcp-server/src/testing/chain.ts";
 import { temporaryDatabasePath } from "../../../servers/mcp-server/src/testing/process.ts";
 import { testWallet } from "../../../packages/server-sdk/src/testing/wallet.ts";
-import { Network } from "@seeker_agent_connect/server-sdk/protocol";
+import { Network } from "@seekeragentconnect/server-sdk/protocol";
 
 const MAIN = fileURLToPath(new URL("./main.ts", import.meta.url));
 const MCP_TOKEN = "m".repeat(64);

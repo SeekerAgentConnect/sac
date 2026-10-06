@@ -32,7 +32,7 @@ import {
   UpdateService,
   type SubscribeRequest,
   type SubscribeResponse,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 
 /**
  * Which HTTP the phone's unary calls go over. "1.1" is what the phone uses against an `http://`

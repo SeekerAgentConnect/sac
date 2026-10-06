@@ -170,8 +170,10 @@ For the remaining Compose snippets, run from `compose/prediction` in `do-deploy`
 reads the local `compose.yaml` and `.env` automatically. The base preset has no ingress, domain,
 certificate, feed, MCP server, or CopyTrading process.
 
-The preset pulls the published `docker.io/brenat/seeker-agent-connect:prediction-<version>`
-image; set `PREDICTION_IMAGE` to run one built from this directory instead.
+The preset, unchanged by SEE-182, pulls the legacy Docker Hub image
+`docker.io/brenat/seeker-agent-connect:prediction-<version>` by default; set
+`PREDICTION_IMAGE=ghcr.io/seekeragentconnect/demo-prediction:<version>` to run the published GHCR
+image, or point it at one built from this directory.
 
 ## 5. Configuration
 

@@ -16,7 +16,7 @@ import {
   pairingLinkInstruction,
   type AgentRequests,
   type IssuedPairing,
-} from "@seeker_agent_connect/server-sdk";
+} from "@seekeragentconnect/server-sdk";
 import type { SkrStakingProvider } from "./skr/provider.ts";
 import { registerStakingTools } from "./requests/tools.ts";
 import {

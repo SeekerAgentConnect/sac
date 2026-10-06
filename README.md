@@ -12,9 +12,9 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/SeekerAgentConnect/sac?style=flat-square" alt="License" /></a>
   <a href="https://github.com/SeekerAgentConnect/sac/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/SeekerAgentConnect/sac/ci.yml?style=flat-square&label=CI" alt="CI" /></a>
-  <a href="https://www.npmjs.com/package/@seeker_agent_connect/mcp-server"><img src="https://img.shields.io/npm/v/@seeker_agent_connect/mcp-server?style=flat-square&label=mcp-server" alt="npm mcp-server" /></a>
-  <a href="https://www.npmjs.com/package/@seeker_agent_connect/server-sdk"><img src="https://img.shields.io/npm/v/@seeker_agent_connect/server-sdk?style=flat-square&label=server-sdk" alt="npm server-sdk" /></a>
-  <a href="https://hub.docker.com/r/brenat/seeker-agent-connect"><img src="https://img.shields.io/docker/pulls/brenat/seeker-agent-connect?style=flat-square&logo=docker&logoColor=white" alt="Docker pulls" /></a>
+  <a href="https://www.npmjs.com/package/@seekeragentconnect/mcp-server"><img src="https://img.shields.io/npm/v/@seekeragentconnect/mcp-server?style=flat-square&label=mcp-server" alt="npm mcp-server" /></a>
+  <a href="https://www.npmjs.com/package/@seekeragentconnect/server-sdk"><img src="https://img.shields.io/npm/v/@seekeragentconnect/server-sdk?style=flat-square&label=server-sdk" alt="npm server-sdk" /></a>
+  <a href="https://github.com/SeekerAgentConnect/sac/releases/latest"><img src="https://img.shields.io/github/v/release/SeekerAgentConnect/sac?style=flat-square&label=app" alt="Latest app release" /></a>
   <a href="https://github.com/SeekerAgentConnect/sac/stargazers"><img src="https://img.shields.io/github/stars/SeekerAgentConnect/sac?style=flat-square" alt="GitHub stars" /></a>
 </p>
 
@@ -33,7 +33,7 @@
 <p align="center">
   <a href="https://seekeragentconnect.github.io/landing/">Website</a> ·
   <a href="https://seekeragentconnect.github.io/docs/getting-started">Documentation</a> ·
-  <a href="https://github.com/SeekerAgentConnect/sac/releases">Get the app</a>
+  <a href="https://github.com/SeekerAgentConnect/sac/releases/latest">Get the app</a>
 </p>
 
 ## Table of contents
@@ -168,7 +168,7 @@ to choose an integration path.
 
 | I want to… | Start here |
 | --- | --- |
-| Use SAC on my phone | [Get the app](https://github.com/SeekerAgentConnect/sac/releases), then [connect a wallet](https://seekeragentconnect.github.io/docs/wallet-setup) |
+| Use SAC on my phone | [Get the app](https://github.com/SeekerAgentConnect/sac/releases/latest), then [connect a wallet](https://seekeragentconnect.github.io/docs/wallet-setup) |
 | Connect my AI agent | [General MCP server](https://seekeragentconnect.github.io/docs/mcp-quickstart) and [agent configuration](https://seekeragentconnect.github.io/docs/connect-your-agent) |
 | Manage SKR staking | [SKR Staking MCP server](https://seekeragentconnect.github.io/docs/skr-staking-server) |
 | Build my own direct server | [Direct Server SDK](https://seekeragentconnect.github.io/docs/server-sdk) |
@@ -176,8 +176,10 @@ to choose an integration path.
 | Restrict access to a feed | [Restricted feeds](https://seekeragentconnect.github.io/docs/restricted-feeds) and [subscriber access](https://seekeragentconnect.github.io/docs/manage-subscriber-access) |
 
 The MCP servers are standalone HTTP services available through npm, Docker or a source checkout.
-Follow the matching guide for configuration, credentials, pairing and a phone-reachable endpoint;
-running an MCP command alone is not a complete setup.
+[docs/guides/installation.md](docs/guides/installation.md) lists the published npm packages, the
+`ghcr.io/seekeragentconnect` images and the signed APK. Follow the matching guide for
+configuration, credentials, pairing and a phone-reachable endpoint; running an MCP command alone is
+not a complete setup.
 
 The **Direct Server SDK** implements direct connections. Feed publishers use the gateway's
 publisher API from any backend; the Go publisher library in this repository powers the examples.

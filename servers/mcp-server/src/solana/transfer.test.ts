@@ -14,7 +14,7 @@ import {
   Network,
   TransferActionSchema,
   type TransferAction,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import {
   FakeChain,
   TOKEN_ACCOUNT_RENT,

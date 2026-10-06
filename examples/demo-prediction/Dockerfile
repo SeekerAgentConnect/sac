@@ -70,9 +70,9 @@ ARG VERSION
 ARG REVISION
 LABEL org.opencontainers.image.title="Seeker Agent Connect Prediction demo" \
       org.opencontainers.image.description="A demonstration publisher: Jupiter Prediction markets, discovered and published to the feed gateway." \
-      org.opencontainers.image.source="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.url="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.documentation="https://github.com/BrRenat/SeekerAgentConnect/blob/master/examples/demo-prediction/README.md" \
+      org.opencontainers.image.source="https://github.com/SeekerAgentConnect/sac" \
+      org.opencontainers.image.url="https://github.com/SeekerAgentConnect/sac" \
+      org.opencontainers.image.documentation="https://github.com/SeekerAgentConnect/sac/blob/master/examples/demo-prediction/README.md" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Seeker Agent Connect" \
       org.opencontainers.image.version="${VERSION}" \

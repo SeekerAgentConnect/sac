@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
-import { SolanaNetwork } from "@seeker_agent_connect/server-sdk/protocol";
+import { SolanaNetwork } from "@seekeragentconnect/server-sdk/protocol";
 import { MAINNET_GENESIS_HASH } from "./skr/chain.ts";
 import {
   configFor,

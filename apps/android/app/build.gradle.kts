@@ -189,6 +189,23 @@ if (swapFeeBps > 0) {
 val discoveryUrl =
     (providers.gradleProperty("seekervault.discoveryUrl").orNull ?: relayUrl).trim().trimEnd('/')
 
+// The app's public version (SEE-182). release/components.json is the one place every released
+// component's version is written, the app included, so this reads it rather than repeating it:
+// `versionName` is the `android` component's version and `versionCode` its explicit, monotonically
+// increasing code. Change both with `pnpm release:bump android <version>`; never by hand here.
+// Rebuilding the same commit therefore always produces the same code.
+val androidRelease: Map<*, *> = run {
+    val manifest =
+        providers
+            .fileContents(rootProject.layout.projectDirectory.file("../../release/components.json"))
+            .asText
+            .get()
+    val components = (groovy.json.JsonSlurper().parseText(manifest) as Map<*, *>)["components"]
+    (components as List<*>).map { it as Map<*, *> }.single { it["id"] == "android" }
+}
+val releaseVersionName = androidRelease["version"] as String
+val releaseVersionCode = ((androidRelease["android"] as Map<*, *>)["versionCode"] as Number).toInt()
+
 android {
     namespace = "io.github.brrenat.seekervault"
     compileSdk = 37
@@ -197,8 +214,8 @@ android {
         applicationId = "io.github.brrenat.seekervault"
         minSdk = 31
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
         // Lets the UI omit an irrelevant permission prompt from Firebase-off deployments.
         // It contains configuration presence only, never a Firebase identifier or credential.
         buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())

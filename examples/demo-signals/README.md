@@ -135,8 +135,10 @@ For the remaining Compose snippets, run from `compose/copytrading` in `do-deploy
 reads the local `compose.yaml` and `.env` automatically. The base preset has no ingress, domain,
 certificate, feed, MCP server, or Prediction process.
 
-The preset pulls the published `docker.io/brenat/seeker-agent-connect:copytrading-<version>`
-image; set `COPYTRADING_IMAGE` to run one built from this directory instead.
+The preset, unchanged by SEE-182, pulls the legacy Docker Hub image
+`docker.io/brenat/seeker-agent-connect:copytrading-<version>` by default; set
+`COPYTRADING_IMAGE=ghcr.io/seekeragentconnect/demo-signals:<version>` to run the published GHCR
+image, or point it at one built from this directory.
 
 ## 5. Configuration
 

@@ -17,7 +17,7 @@ import {
   openDirectServer,
   pairingLandingUrl,
   type PairedPhone,
-} from "@seeker_agent_connect/server-sdk";
+} from "@seekeragentconnect/server-sdk";
 
 import {
   ConfigError,

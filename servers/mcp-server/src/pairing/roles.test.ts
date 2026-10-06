@@ -7,15 +7,15 @@ import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
 import { after, before, describe, it } from "node:test";
 
-import { AcknowledgementResult } from "@seeker_agent_connect/server-sdk/protocol";
+import { AcknowledgementResult } from "@seekeragentconnect/server-sdk/protocol";
 import {
   RequestError,
   RequestErrorDetailSchema,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import {
   ConnectionMode,
   ServerEnvironment,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import { SERVER_PROTOCOL_VERSION } from "../../../../packages/server-sdk/src/manifest.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
 import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";

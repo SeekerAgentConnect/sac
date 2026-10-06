@@ -28,7 +28,7 @@ WORKDIR /app
 COPY packages/server-sdk/ packages/server-sdk/
 COPY servers/mcp-server/ servers/mcp-server/
 COPY scripts/package-mcp-artifact.mjs scripts/
-RUN pnpm --filter @seeker_agent_connect/mcp-server run build
+RUN pnpm --filter @seekeragentconnect/mcp-server run build
 
 FROM deps AS prod-deps
 WORKDIR /app
@@ -39,9 +39,9 @@ ARG VERSION
 ARG REVISION
 LABEL org.opencontainers.image.title="Seeker Agent Connect MCP server" \
       org.opencontainers.image.description="One owner's self-hosted direct server, speaking MCP to agents and the protocol to their phone." \
-      org.opencontainers.image.source="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.url="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.documentation="https://github.com/BrRenat/SeekerAgentConnect/blob/master/servers/mcp-server/README.md" \
+      org.opencontainers.image.source="https://github.com/SeekerAgentConnect/sac" \
+      org.opencontainers.image.url="https://github.com/SeekerAgentConnect/sac" \
+      org.opencontainers.image.documentation="https://github.com/SeekerAgentConnect/sac/blob/master/servers/mcp-server/README.md" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Seeker Agent Connect" \
       org.opencontainers.image.version="${VERSION}" \

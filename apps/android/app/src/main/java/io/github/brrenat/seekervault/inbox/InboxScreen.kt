@@ -202,13 +202,20 @@ fun InboxScreen(
                     InboxTab.entries.size
                 }
             val select by rememberUpdatedState(callbacks.onSelectTab)
+            val selected by rememberUpdatedState(state.selectedTab)
             LaunchedEffect(state.selectedTab) {
                 if (pager.targetPage != state.selectedTab.ordinal) {
                     pager.animateScrollToPage(state.selectedTab.ordinal)
                 }
             }
+            // Only a swipe that lands on another tab selects it: the page the pager opens on is
+            // already the selected tab, and reporting it again would be a selection nobody made.
             LaunchedEffect(pager) {
-                snapshotFlow { pager.settledPage }.collect { select(InboxTab.entries[it]) }
+                snapshotFlow { pager.settledPage }
+                    .collect { page ->
+                        val tab = InboxTab.entries[page]
+                        if (tab != selected) select(tab)
+                    }
             }
             HorizontalPager(
                 state = pager,

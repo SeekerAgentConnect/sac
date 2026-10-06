@@ -9,9 +9,13 @@
  *
  * The SDK is vendored rather than depended on from the registry deliberately: an MCP release then
  * needs no SDK release to land first, and the artifact an external consumer runs is the exact tree
- * this repository tested. The cost is that an SDK change requires re-releasing both dependents,
- * which `scripts/check-release.mjs` and docs/development/releases.md make explicit.
+ * this repository tested. Versions are independent (SEE-182): a server's version says nothing about
+ * the SDK's, so the artifact records which SDK it carries instead — `dist/vendor/server-sdk/
+ * package.json` and the published manifest's `seekerAgentConnect.serverSdk` both name the SDK
+ * version and a digest of the vendored files, and the package tests check both against the
+ * workspace SDK. A server that wants changed SDK bytes is bumped and released on its own.
  */
+import { createHash } from "node:crypto";
 import {
   cpSync,
   mkdirSync,
@@ -21,7 +25,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
-export const SDK_PACKAGE = "@seeker_agent_connect/server-sdk";
+export const SDK_PACKAGE = "@seekeragentconnect/server-sdk";
 // Everything a published manifest may not contain: a specifier only this workspace can resolve.
 const WORKSPACE_ONLY = /^(?:workspace|catalog|link|file|portal):/;
 
@@ -49,6 +53,7 @@ export function stageMcpPackage({ packageRoot, copyExtraAssets }) {
     recursive: true,
     filter: (source) => !source.endsWith(".d.ts"),
   });
+  const serverSdk = recordVendoredSdk(vendoredSdk, sdkDistribution);
 
   let rewrittenImports = 0;
   for (const file of javascriptFiles(distribution)) {
@@ -113,6 +118,7 @@ export function stageMcpPackage({ packageRoot, copyExtraAssets }) {
     files: source.files,
     publishConfig: source.publishConfig,
     dependencies,
+    seekerAgentConnect: { serverSdk },
   };
   for (const [key, value] of Object.entries(manifest)) {
     if (value === undefined) {
@@ -124,6 +130,48 @@ export function stageMcpPackage({ packageRoot, copyExtraAssets }) {
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
   return staged;
+}
+
+/**
+ * Which SDK this artifact carries: its name, its version, and a digest of the vendored files taken
+ * before anything else is written beside them. The record is a `package.json` because that is where
+ * a reader looks for a version — and so it has to say `"type": "module"`, or Node would read the
+ * vendored `.js` files beneath it as CommonJS.
+ */
+function recordVendoredSdk(vendoredSdk, sdkDistribution) {
+  const sdk = JSON.parse(
+    readFileSync(join(sdkDistribution, "..", "package.json"), "utf8"),
+  );
+  const serverSdk = {
+    name: sdk.name,
+    version: sdk.version,
+    contentSha256: vendoredSdkDigest(vendoredSdk),
+  };
+  writeFileSync(
+    join(vendoredSdk, "package.json"),
+    `${JSON.stringify({ ...serverSdk, type: "module", license: sdk.license }, null, 2)}\n`,
+  );
+  return serverSdk;
+}
+
+/**
+ * A digest of a vendored SDK tree: every file but its own record, by sorted relative path and
+ * content. The package tests recompute it from the installed artifact.
+ */
+export function vendoredSdkDigest(directory) {
+  const hash = createHash("sha256");
+  const files = readdirSync(directory, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name))
+    .filter((file) => file !== join(directory, "package.json"))
+    .sort();
+  for (const file of files) {
+    hash.update(relative(directory, file).split(sep).join("/"));
+    hash.update("\0");
+    hash.update(readFileSync(file));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
 }
 
 /**

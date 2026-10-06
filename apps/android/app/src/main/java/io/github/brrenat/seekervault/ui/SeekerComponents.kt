@@ -85,6 +85,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -624,7 +625,12 @@ fun SeekerSheet(
                                 }
                             }
                     StackedSheetUnderlay(back = back, modifier = swipeModifier.then(exitGuard)) {
-                        SheetLayer(chrome = chrome, peek = peek, content = content)
+                        SheetLayer(
+                            chrome = chrome,
+                            peek = peek,
+                            covered = !interactive,
+                            content = content,
+                        )
                     }
                 }
             }
@@ -655,8 +661,14 @@ private fun KeyboardResizesWindow() {
 private fun SheetLayer(
     chrome: Boolean,
     peek: (() -> Unit)?,
+    covered: Boolean,
     content: @Composable () -> Unit,
 ) {
+    // A lower sheet, or one on its way out, is only its exposed edge: tapping it is the one thing
+    // it does (design/navigation.md), and the peek below says so. What is drawn on it stays out of
+    // the semantics tree, the way the root does under any sheet, so accessibility services and
+    // tests reach only the front sheet's controls.
+    val coveredSemantics = if (covered) Modifier.clearAndSetSemantics {} else Modifier
     Box(Modifier.fillMaxWidth()) {
         // The sheet surface runs to the bottom edge, behind the gesture area or the navigation
         // buttons, and what is on it stops above them with a gap (SEE-150): the last line of a
@@ -671,7 +683,7 @@ private fun SheetLayer(
         val navigationBarInset = WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
         if (chrome) {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().then(coveredSemantics),
                 shape =
                     RoundedCornerShape(
                         topStart = SeekerTheme.dimensions.dp28,
@@ -710,7 +722,7 @@ private fun SheetLayer(
             // cannot consume the height first. The sibling spacer paints only the inset area, so
             // the system bar keeps the sheet colour without filling the library's rounded top
             // corners (SEE-150, SEE-153).
-            Box(Modifier.fillMaxWidth()) {
+            Box(Modifier.fillMaxWidth().then(coveredSemantics)) {
                 Box(Modifier.fillMaxWidth().windowInsetsPadding(navigationBarInset)) { content() }
                 Spacer(
                     Modifier.align(Alignment.BottomCenter)

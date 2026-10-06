@@ -72,9 +72,9 @@ ARG VERSION
 ARG REVISION
 LABEL org.opencontainers.image.title="Seeker Agent Connect CopyTrading demo" \
       org.opencontainers.image.description="A demonstration publisher: a trader's own signals, submitted to the shared feed gateway." \
-      org.opencontainers.image.source="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.url="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.documentation="https://github.com/BrRenat/SeekerAgentConnect/blob/master/examples/demo-signals/README.md" \
+      org.opencontainers.image.source="https://github.com/SeekerAgentConnect/sac" \
+      org.opencontainers.image.url="https://github.com/SeekerAgentConnect/sac" \
+      org.opencontainers.image.documentation="https://github.com/SeekerAgentConnect/sac/blob/master/examples/demo-signals/README.md" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Seeker Agent Connect" \
       org.opencontainers.image.version="${VERSION}" \

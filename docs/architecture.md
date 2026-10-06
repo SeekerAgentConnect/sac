@@ -140,7 +140,7 @@ These are the canonical post-refactor boundaries:
 | `apps/android/` | SAC app and design system | No server implementation |
 | `packages/protocol/proto/` | Shared direct/feed contracts plus compatibility reservations | Retired private-gateway identifiers stay reserved |
 | `packages/server-sdk/` | Reusable TypeScript direct-server engine, phone services and persistence | Embeddable library; no MCP/product configuration |
-| `servers/mcp-server/` | Self-hosted MCP host, executable CLI, providers and standalone Docker/npm packaging | Consumes only the Direct Server SDK's public API; the npm artifact vendors the unpublished runtime |
+| `servers/mcp-server/` | Self-hosted MCP host, executable CLI, providers and standalone Docker/npm packaging | Consumes only the Direct Server SDK's public API; the npm artifact and image vendor the SDK runtime and record its version |
 | `services/gateway/` | Shared Go feed gateway with public-read and publisher listeners, storage contract and local SQLite implementation | The only shared public-feed service |
 | `packages/publisher-support/` | Go source library shared by both feed demos: publication bindings, document rules, manifest, store, gateway client, API and operator CLI | No command, image or deployment of its own |
 | `examples/demo-signals/` | CopyTrading application: commands, admin UI, SDK and image | Independent preset in `compose/copytrading/` in `do-deploy` |

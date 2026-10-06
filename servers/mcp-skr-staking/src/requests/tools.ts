@@ -31,14 +31,14 @@ import {
   privateRequest,
   stakingOperationName,
   type AgentRequests,
-} from "@seeker_agent_connect/server-sdk";
+} from "@seekeragentconnect/server-sdk";
 import {
   ActionSchema,
   RequestError,
   RequestState,
   StakingOperation,
   type ActionRequest,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import { z } from "zod";
 import { ChainUnavailable } from "../skr/chain.ts";
 import { SKR_DECIMALS } from "../skr/program.ts";

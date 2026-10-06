@@ -26,6 +26,7 @@ import { basename, join, resolve, sep } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { vendoredSdkDigest } from "./package-mcp-artifact.mjs";
 import { parsePairingUri } from "../packages/server-sdk/src/index.ts";
 import { Network } from "../packages/server-sdk/src/protocol.ts";
 import { MAINNET_GENESIS_HASH } from "../servers/mcp-skr-staking/src/skr/chain.ts";
@@ -86,7 +87,7 @@ try {
 
   run(
     "pnpm",
-    ["--filter", "@seeker_agent_connect/mcp-skr-staking", "run", "build"],
+    ["--filter", "@seekeragentconnect/mcp-skr-staking", "run", "build"],
     { cwd: ROOT },
   );
 
@@ -95,7 +96,7 @@ try {
     ["--json", "--pack-destination", artifacts, SOURCE_PACKAGE],
     ROOT,
   )[0];
-  assert.equal(dryRun.name, "@seeker_agent_connect/mcp-skr-staking");
+  assert.equal(dryRun.name, "@seekeragentconnect/mcp-skr-staking");
   assert.equal(dryRun.version, expectedVersion);
   assert.deepEqual(
     fileNames(dryRun),
@@ -110,7 +111,7 @@ try {
   const localPackage = join(
     localPrefix,
     "node_modules",
-    "@seeker_agent_connect",
+    "@seekeragentconnect",
     "mcp-skr-staking",
   );
   auditManifest(localPackage);
@@ -121,7 +122,7 @@ try {
   );
   assert.ok(
     !existsSync(
-      join(localPrefix, "node_modules", "@seeker_agent_connect", "server-sdk"),
+      join(localPrefix, "node_modules", "@seekeragentconnect", "server-sdk"),
     ),
     "the artifact does not require a separately installed unpublished SDK",
   );
@@ -291,7 +292,7 @@ function auditManifest(packageRoot) {
   const manifest = JSON.parse(
     readFileSync(join(packageRoot, "package.json"), "utf8"),
   );
-  assert.equal(manifest.name, "@seeker_agent_connect/mcp-skr-staking");
+  assert.equal(manifest.name, "@seekeragentconnect/mcp-skr-staking");
   assert.equal(manifest.version, expectedVersion);
   // The two fields npm reads before it will accept a scoped package: `private: true` refuses the
   // publish outright, and a missing `publishConfig.access` quietly makes it private instead.
@@ -314,16 +315,42 @@ function auditManifest(packageRoot) {
   assert.deepEqual(manifest.files, ["dist", "README.md", "LICENSE"]);
   assert.equal(manifest.scripts, undefined);
   assert.equal(
-    manifest.dependencies["@seeker_agent_connect/server-sdk"],
+    manifest.dependencies["@seekeragentconnect/server-sdk"],
     undefined,
   );
   for (const value of Object.values(manifest.dependencies)) {
     assert.doesNotMatch(value, /^(?:workspace:|catalog:|file:|link:)/);
     assert.doesNotMatch(value, /[/\\](?:Users|home|workspace|worktrees)[/\\]/);
   }
+  assert.deepEqual(manifest.repository, {
+    type: "git",
+    url: "git+https://github.com/SeekerAgentConnect/sac.git",
+    directory: "servers/mcp-skr-staking",
+  });
   const emitted = readAllJavaScript(join(packageRoot, "dist"));
-  assert.doesNotMatch(emitted, /["']@seeker_agent_connect\/server-sdk/);
+  assert.doesNotMatch(emitted, /["']@seekeragentconnect\/server-sdk/);
   assert.ok(emitted.includes("vendor/server-sdk"));
+  // The artifact names the SDK it carries (SEE-182): the server's own version says nothing about
+  // the SDK's, so the record is what makes the vendored copy traceable. It must be this
+  // workspace's SDK, byte for byte.
+  const vendored = join(packageRoot, "dist", "vendor", "server-sdk");
+  const record = JSON.parse(
+    readFileSync(join(vendored, "package.json"), "utf8"),
+  );
+  const sdk = JSON.parse(
+    readFileSync(join(ROOT, "packages", "server-sdk", "package.json"), "utf8"),
+  );
+  assert.equal(record.name, "@seekeragentconnect/server-sdk");
+  assert.equal(record.version, sdk.version);
+  assert.equal(record.type, "module");
+  assert.equal(record.contentSha256, vendoredSdkDigest(vendored));
+  assert.deepEqual(manifest.seekerAgentConnect, {
+    serverSdk: {
+      name: record.name,
+      version: record.version,
+      contentSha256: record.contentSha256,
+    },
+  });
   // Nothing in the artifact may name the machine it was built on. A rewritten import that kept an
   // absolute specifier would still run here and resolve nowhere else.
   const checkout = realpathSync(ROOT);

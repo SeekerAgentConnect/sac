@@ -17,8 +17,8 @@ import {
   normalizeServerUrl,
   parseSupportedNetworks,
   type RelayConfiguration,
-} from "@seeker_agent_connect/server-sdk";
-import type { SolanaNetwork } from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk";
+import type { SolanaNetwork } from "@seekeragentconnect/server-sdk/protocol";
 
 import { isSecureEndpoint, type OAuthConfig } from "./oauth.ts";
 import { CHAIN_BUDGET_MS } from "./solana/rpc.ts";

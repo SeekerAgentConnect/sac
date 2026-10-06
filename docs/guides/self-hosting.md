@@ -5,7 +5,10 @@ The one step-by-step deployment runbook is
 in the separate `do-deploy` repository. Start there for direct MCP only,
 public feeds only, or the collision-free combined-host setup. It includes native HTTPS/HTTP/2
 updates, credentials, publisher registration, SAC verification, restarts, backup, rollback, and
-troubleshooting. Its Compose presets pull the published images; none builds from this checkout.
+troubleshooting. Its Compose presets pull published images and none builds from this checkout. They
+still default to the legacy Docker Hub images (`docker.io/brenat/seeker-agent-connect`), which
+SEE-182 left in place; each preset's image variable can point at the matching
+`ghcr.io/seekeragentconnect/<component>` image instead.
 
 This page is a boundary reference. It deliberately does not duplicate commands from the canonical
 runbook.
@@ -46,9 +49,10 @@ A public deployment needs resources the repository does not issue or operate:
 - an operator-supplied Firebase project/credential only when optional wake-up hints are enabled.
 
 The repository supplies no hosted service, certificate authority, OAuth issuer, Firebase project
-or wallet key. It does publish the SDK and both MCP servers on npm under `@seeker_agent_connect`,
-and the gateway, MCP servers and demos as images in `docker.io/brenat/seeker-agent-connect`
-([docs/guides/installation.md](installation.md)); running them is still entirely yours to operate.
+or wallet key. It does publish the SDK and both MCP servers on npm under `@seekeragentconnect`,
+the gateway, Centrifugo, MCP servers and demos as images under `ghcr.io/seekeragentconnect`, and
+the signed Android APK as a GitHub Release ([docs/guides/installation.md](installation.md));
+running them is still entirely yours to operate.
 
 ## Security and data rules
 

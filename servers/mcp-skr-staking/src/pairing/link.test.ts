@@ -21,7 +21,7 @@ import {
   landingUrlHasCredential,
   parsePairingUri,
   type PairingLinkView,
-} from "@seeker_agent_connect/server-sdk";
+} from "@seekeragentconnect/server-sdk";
 import { renderSVG } from "uqr";
 
 import { MAINNET_GENESIS_HASH } from "../skr/chain.ts";

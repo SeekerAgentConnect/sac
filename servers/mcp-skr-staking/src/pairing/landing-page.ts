@@ -7,7 +7,7 @@
  */
 import { fileURLToPath } from "node:url";
 
-import type { PairingPageIdentity } from "@seeker_agent_connect/server-sdk";
+import type { PairingPageIdentity } from "@seekeragentconnect/server-sdk";
 
 export const PAIRING_PAGE: PairingPageIdentity = {
   title: "Pair the SKR staking server",

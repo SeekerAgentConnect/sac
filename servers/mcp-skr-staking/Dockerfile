@@ -29,7 +29,7 @@ WORKDIR /app
 COPY packages/server-sdk/ packages/server-sdk/
 COPY servers/mcp-skr-staking/ servers/mcp-skr-staking/
 COPY scripts/package-mcp-artifact.mjs scripts/
-RUN pnpm --filter @seeker_agent_connect/mcp-skr-staking run build
+RUN pnpm --filter @seekeragentconnect/mcp-skr-staking run build
 
 FROM deps AS prod-deps
 WORKDIR /app
@@ -40,9 +40,9 @@ ARG VERSION
 ARG REVISION
 LABEL org.opencontainers.image.title="Seeker Agent Connect SKR staking MCP server" \
       org.opencontainers.image.description="A standalone MCP server for staking the owner's own SKR. It holds no key and signs nothing." \
-      org.opencontainers.image.source="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.url="https://github.com/BrRenat/SeekerAgentConnect" \
-      org.opencontainers.image.documentation="https://github.com/BrRenat/SeekerAgentConnect/blob/master/servers/mcp-skr-staking/README.md" \
+      org.opencontainers.image.source="https://github.com/SeekerAgentConnect/sac" \
+      org.opencontainers.image.url="https://github.com/SeekerAgentConnect/sac" \
+      org.opencontainers.image.documentation="https://github.com/SeekerAgentConnect/sac/blob/master/servers/mcp-skr-staking/README.md" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Seeker Agent Connect" \
       org.opencontainers.image.version="${VERSION}" \

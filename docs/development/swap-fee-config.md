@@ -104,23 +104,29 @@ values (owner and accounts are empty whenever the rate is 0). `BuildConfig.SOLAN
 complete RPC URL, including any query or path key, so treating that URL as a CI secret does not keep
 it secret from APK recipients.
 
-**CI.** `.github/workflows/release.yml` builds the unsigned release APK on a manual dispatch with
-`component: android`. It reads `SEEKERVAULT_SWAP_FEE_BPS`, `SEEKERVAULT_SWAP_FEE_OWNER` and
-`SEEKERVAULT_SWAP_FEE_ACCOUNTS` from **repository variables** (public values, not secrets; unset means
-no fee) and the Solana endpoint from the `SEEKERVAULT_SOLANA_RPC` **repository variable**. That
-endpoint is extractable from the artifact: set it only to a public endpoint or a client key that is
-intended for distribution and has suitable limits. Do not put a provider key that must remain
-secret there. The workflow records the fee configuration in the run summary and uploads the APK as
-an artifact; it publishes nothing and signs nothing.
+**CI.** `.github/workflows/release.yml` builds the official APK for an `android-vX.Y.Z` tag. It
+reads `SEEKERVAULT_SWAP_FEE_BPS`, `SEEKERVAULT_SWAP_FEE_OWNER` and `SEEKERVAULT_SWAP_FEE_ACCOUNTS`
+from **repository variables** (public values, not secrets; unset means no fee) and the Solana
+endpoint from the `SEEKERVAULT_SOLANA_RPC` **repository variable** (with the per-network
+`SEEKERVAULT_SOLANA_RPC_MAINNET`/`_DEVNET`/`_TESTNET` beside it). Like the rest of the client
+configuration, that endpoint is extractable from the APK: set it only to a public endpoint or a
+client key that is intended for distribution and has suitable limits. Do not put a provider key
+that must remain secret there. The workflow records the fee configuration in the run summary,
+zipaligns and signs the APK with the release key from the protected release environment, checks
+its certificate against `SAC_ANDROID_SIGNING_CERT_SHA256`, and publishes it as the `sac-X.Y.Z.apk`
+asset of the GitHub Release. A manual dispatch with `dry_run` builds only the unsigned candidate,
+uploads it as a workflow artifact and reports signing as not verified; it publishes nothing.
+[releases.md](releases.md) is the procedure and lists every variable and secret.
 
 `pnpm check:swap-fee-build` (run in CI's Android job) proves the default, both ways of configuring a
 fee, the precedence, and every refusal above, by generating `BuildConfig` only.
 
 ## Sign, verify and install the release APK
 
-`assembleRelease` and the manual CI workflow deliberately produce an **unsigned** APK. Use the
-same protected release keystore for every update to an installed app. Do not commit the keystore or
-its passwords. With Android SDK Build Tools and `adb` installed, sign the locally built artifact
+Official releases are signed by CI, as above; this section is for a build made locally or the
+unsigned candidate of a dry run. `assembleRelease` deliberately produces an **unsigned** APK. Use
+the same protected release keystore for every update to an installed app. Do not commit the
+keystore or its passwords. With Android SDK Build Tools and `adb` installed, sign the locally built artifact
 like this; `apksigner` prompts for the keystore/key passwords rather than exposing them in the
 command line:
 
@@ -144,7 +150,7 @@ SIGNED=apps/android/app/build/outputs/apk/release/app-release-signed.apk
 adb install --replace "$SIGNED"
 ```
 
-For a downloaded workflow artifact, set `UNSIGNED` to the downloaded `.apk`; the remaining steps
+For a downloaded dry-run artifact, set `UNSIGNED` to the downloaded `.apk`; the remaining steps
 are identical. An unsigned release artifact is not installable as the normal app and must not be
 called a distributable release.
 

@@ -15,7 +15,7 @@ import {
   RequestError,
   RequestErrorDetailSchema,
   RequestState,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import { startSidecar, type Sidecar } from "../server.ts";
 import {
   ASSOCIATED_TOKEN_PROGRAM,

@@ -1,18 +1,28 @@
-# `@seeker_agent_connect/server-sdk`
+# `@seekeragentconnect/server-sdk`
 
 An embeddable TypeScript engine for a Seeker Agent Connect direct server. Your backend calls the
 SDK in-process to create, read, cancel and observe requests. The owner's phone pairs with and calls
 the mounted Connect API. The SDK never holds a wallet key, approves, signs or broadcasts.
 
-This repository prepares `0.1.0` as a private npm artifact for local-tarball verification. It is not
-published. The supported runtime is Node.js `>=24.21.0 <25`, and the package is ESM-only.
+Releases of this package are published to npm by the release workflow of
+[SeekerAgentConnect/sac](https://github.com/SeekerAgentConnect/sac), with provenance. The supported
+runtime is Node.js `>=24.21.0 <25`, and the package is ESM-only.
 
-## Install a reviewed local tarball
-
-From this repository:
+## Install
 
 ```sh
-pnpm --filter @seeker_agent_connect/server-sdk run build
+npm install @seekeragentconnect/server-sdk
+```
+
+Generated protocol types are the second entry point, `@seekeragentconnect/server-sdk/protocol`;
+there is no separate protocol package.
+
+### A reviewed local tarball
+
+From a checkout of the repository:
+
+```sh
+pnpm --filter @seekeragentconnect/server-sdk run build
 npm pack --dry-run --json ./packages/server-sdk
 npm pack --json ./packages/server-sdk --pack-destination /absolute/reviewed/directory
 ```
@@ -20,17 +30,13 @@ npm pack --json ./packages/server-sdk --pack-destination /absolute/reviewed/dire
 Then, from a separate project outside this repository:
 
 ```sh
-npm install --ignore-scripts /absolute/reviewed/directory/seeker-vault-server-sdk-0.1.0.tgz
+npm install --ignore-scripts /absolute/reviewed/directory/seekeragentconnect-server-sdk-0.0.1.tgz
 ```
-
-The SDK has no registry release yet. A future registry install must be version-pinned after a
-release owner deliberately publishes it; do not use an unversioned `latest` instruction before
-that release exists.
 
 ## Public API
 
-The package exports only `@seeker_agent_connect/server-sdk` and
-`@seeker_agent_connect/server-sdk/protocol`. There are no supported source or private deep imports.
+The package exports only `@seekeragentconnect/server-sdk` and
+`@seekeragentconnect/server-sdk/protocol`. There are no supported source or private deep imports.
 
 `openDirectServer` explicitly opens and migrates the configured SQLite file. It requires a durable
 path, public origin, logger and the current request/pairing limits. Importing the package alone does
@@ -42,11 +48,11 @@ import {
   openDirectServer,
   privateRequest,
   startPhoneApi,
-} from "@seeker_agent_connect/server-sdk";
+} from "@seekeragentconnect/server-sdk";
 import {
   AckActionSchema,
   ActionSchema,
-} from "@seeker_agent_connect/server-sdk/protocol";
+} from "@seekeragentconnect/server-sdk/protocol";
 import { create } from "@bufbuild/protobuf";
 
 const server = openDirectServer({
@@ -88,7 +94,7 @@ await server.close();
 ```
 
 The complete runnable source is available in the repository's
-[`examples/minimal.ts`](https://github.com/BrRenat/SeekerAgentWallet/blob/superset/feat/see-128/server-sdk/examples/minimal.ts).
+[`examples/minimal.ts`](https://github.com/SeekerAgentConnect/sac/blob/master/packages/server-sdk/examples/minimal.ts).
 The example is intentionally excluded from the runtime tarball. A production host may
 mount `server.phoneHandler()` in its existing listener instead; that is how the repository's MCP
 host shares one port without reaching SDK internals.
@@ -111,7 +117,7 @@ up-to-date phone signs nothing for such a server. The example above queues only 
 so it rightly declares none; a server that asks the owner to sign passes what it runs against:
 
 ```ts
-import { parseSupportedNetworks } from "@seeker_agent_connect/server-sdk";
+import { parseSupportedNetworks } from "@seekeragentconnect/server-sdk";
 
 openDirectServer({
   // …
@@ -139,7 +145,9 @@ binary against a schema it reports as newer; rollback restores the matching pre-
 
 ## Release policy
 
-The package is `private: true`, and this repository contains no npm token or publish workflow. A
-future release is manual: choose and review a semantic version, run all package/consumer checks,
-inspect the exact tarball, remove the private guard in a dedicated reviewed release change,
-authenticate to the intended registry and publish that reviewed artifact deliberately.
+The SDK is versioned on its own (semantic versioning; tags `server-sdk-vX.Y.Z`). A release is
+published only by the repository's release workflow from the tagged commit, through npm trusted
+publishing with provenance; stable versions take the `latest` dist-tag and release candidates
+(`X.Y.Z-rc.N`) take `next`. The MCP servers in the same repository carry their own copy of the SDK
+and are released independently of it. The procedure is
+[docs/development/releases.md](https://github.com/SeekerAgentConnect/sac/blob/master/docs/development/releases.md).

@@ -6,4 +6,4 @@
  * the version in `release/components.json`, so a release cannot ship a server that misreports
  * which one it is (SEE-168).
  */
-export const VERSION = "0.2.0-rc.2";
+export const VERSION = "0.0.1";

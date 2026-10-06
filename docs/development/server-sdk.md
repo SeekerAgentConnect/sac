@@ -5,15 +5,17 @@ Seeker Agent Connect. A backend embeds it in-process: backend code creates and r
 requests through the library, while the phone uses the mounted Connect API. MCP is one host adapter,
 not part of the SDK.
 
-Package: `@seeker_agent_connect/server-sdk`
+Package: `@seekeragentconnect/server-sdk`
 
 Runtime: Node.js 24.21 or newer within the Node 24 release line
 
 Module format: ESM with TypeScript declarations
-Versioning: the initial prepared package is `0.1.0`; future releases use semantic versioning.
+Versioning: semantic versioning, independent of every other component; the public baseline is
+`0.0.1` (SEE-182).
 
-The package is prepared for a later npm release but is not published by this repository. There are
-no npm credentials or automatic publication workflows.
+Releases are published to npm only by `.github/workflows/release.yml`, through npm trusted
+publishing with provenance; there is no npm token in the repository. See
+[releases.md](releases.md).
 
 ## Ownership boundary
 
@@ -44,7 +46,7 @@ to it.
 
 ## Public entry points
 
-`@seeker_agent_connect/server-sdk` exports:
+`@seekeragentconnect/server-sdk` exports:
 
 - `openDirectServer(options)`: explicitly opens/migrates the configured SQLite file and initializes
   one direct engine. Importing the module does none of those things.
@@ -61,7 +63,7 @@ to it.
   update streams without closing SQLite under an in-flight response; the second drains queued
   invalidations and closes the database. `close()` calls `beginShutdown()` if needed and is
   idempotent.
-- `@seeker_agent_connect/server-sdk/protocol`: the direct protobuf messages and service descriptors needed
+- `@seekeragentconnect/server-sdk/protocol`: the direct protobuf messages and service descriptors needed
   by callers and phone protocol clients. There are no wildcard exports into private source paths.
 
 Required initialization values are the database path, the externally advertised public origin and
@@ -138,7 +140,12 @@ That project imports and type-checks the package, starts the phone API, pairs a 
 creates and observes a request, records the phone result and shuts both listener and SDK down.
 
 SEE-168 turned that audit into a release gate. The package is published to
-`@seeker_agent_connect/server-sdk`; the version lives in `release/components.json`, a
+`@seekeragentconnect/server-sdk`; the version lives in `release/components.json`, a
 `server-sdk-v<version>` tag runs `.github/workflows/release.yml`, and that workflow re-runs this
 same audit against the tagged commit before it publishes. No publish happens from a pull request
 or from a developer's machine. See [releases.md](releases.md).
+
+The MCP servers vendor the SDK's built output and are versioned independently of it: an SDK
+release does not force a release of either server. Each MCP package records the SDK it carries in
+`dist/vendor/server-sdk/package.json` and in its published manifest's `seekerAgentConnect.serverSdk`
+field (`name`, `version`, `contentSha256`).

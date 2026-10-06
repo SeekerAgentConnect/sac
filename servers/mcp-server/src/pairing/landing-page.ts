@@ -9,7 +9,7 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { SEEKER_MCP_PAIRING_PAGE } from "@seeker_agent_connect/server-sdk";
+import { SEEKER_MCP_PAIRING_PAGE } from "@seekeragentconnect/server-sdk";
 
 export const PAIRING_PAGE = SEEKER_MCP_PAIRING_PAGE;
 

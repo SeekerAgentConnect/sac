@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import {
   decodeLandingFragment,
   parsePairingUri,
-} from "@seeker_agent_connect/server-sdk";
+} from "@seekeragentconnect/server-sdk";
 
 const CLI = fileURLToPath(new URL("../cli.ts", import.meta.url));
 const MCP_TOKEN = "s".repeat(64);
