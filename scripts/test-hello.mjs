@@ -170,6 +170,7 @@ async function device() {
           MCP_URL: `${sidecar.url}/mcp`,
           MCP_TOKEN: mcpToken,
           LIVE_COMMAND_TIMEOUT_SECONDS: String(DEADLINE_SECONDS),
+          MCP_DEMO_TOOLS: "true", // `hello` is a development diagnostic (SAW-037)
         },
       },
     );
