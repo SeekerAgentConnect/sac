@@ -291,3 +291,10 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: pnpm test:hello --device
+      # The emulator run prints only that a test failed; the report says which one and why.
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-device-test-report
+          path: apps/android/app/build/reports/androidTests/connected/
+          if-no-files-found: ignore

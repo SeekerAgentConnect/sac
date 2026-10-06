@@ -1,6 +1,7 @@
 package io.github.brrenat.seekervault
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeTimeoutException
@@ -15,7 +16,6 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.live.LiveCommandTags
 import java.util.Base64
 import org.junit.Rule
@@ -70,9 +70,11 @@ class LiveCommandDeviceTest {
         val connected = context.getString(R.string.status_connected)
         val acknowledged = context.getString(R.string.command_acknowledged)
 
-        ActivityScenario.launch(MainActivity::class.java).use {
-            // The app opens on Connections; the live test is one tap away.
-            compose.onNodeWithTag(ConnectionsTags.LIVE_TEST).performClick()
+        // The live test is a diagnostic entry with no place on Home: the app opens on it only when
+        // asked to (MainActivity.EXTRA_LIVE_TEST).
+        val intent =
+            Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_LIVE_TEST, true)
+        ActivityScenario.launch<MainActivity>(intent).use {
             compose.onNodeWithTag(LiveCommandTags.SERVER_URL).performTextReplacement(serverUrl)
             compose.onNodeWithTag(LiveCommandTags.PHONE_TOKEN).performTextInput(phoneToken)
             compose.onNodeWithTag(LiveCommandTags.CONNECT).performClick()
