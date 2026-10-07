@@ -29,6 +29,14 @@ everything else follows it.
 | `demo-prediction` | — | `ghcr.io/seekeragentconnect/demo-prediction` | — |
 | `android` | — | — | `sac-<version>.apk` on the `android-v<version>` GitHub Release |
 
+**Every component's `0.0.1` was published on 2026-10-07** from commit
+[`f3521ff7`](https://github.com/SeekerAgentConnect/sac/commit/f3521ff7f3f0a05523453105ad5d09bcafa53cb5),
+one tag each. The npm integrities, image digests, APK SHA-256 and signing certificate are recorded
+in [docs/guides/installation.md § Published versions](../guides/installation.md#published-versions)
+and on each [GitHub Release](https://github.com/SeekerAgentConnect/sac/releases), whose
+`<!-- sac-release … -->` comment is the machine-readable record `scripts/release-state.mjs` reads
+on a retry.
+
 `packages/protocol` is deliberately **not** published on its own. Its generated types are the SDK's
 public `@seekeragentconnect/server-sdk/protocol` entry. The root workspace, `packages/publisher-support`,
 `tools/test-agent` and `tools/loadtest` are never published.
@@ -119,10 +127,10 @@ version, and the bump tests bump each kind of component in a scratch repository 
 
 The Android build has no version of its own: `apps/android/app/build.gradle.kts` reads `versionName`
 and `versionCode` from the manifest's `android` component, so rebuilding a commit always produces
-the same code. `versionCode` is an explicit integer that only goes up — `0.0.1` is `2`, above the
-`1` every earlier build carried — and the release workflow additionally refuses to create or
-resume a release whose code is not above every other published `android-v*` release. A release
-the tag already published is verified against its own record instead, so retrying an older
+the same code. `versionCode` is an explicit integer that only goes up — the published `0.0.1` is
+`2`, above the `1` every earlier build carried — and the release workflow additionally refuses to
+create or resume a release whose code is not above every other published `android-v*` release. A
+release the tag already published is verified against its own record instead, so retrying an older
 release after a newer one shipped keeps its original APK and does not move `latest`.
 
 ## Releasing one component
@@ -136,7 +144,8 @@ release after a newer one shipped keeps its original APK and does not move `late
    git push origin server-sdk-v0.0.1
    ```
 
-   The first releases, one tag each, in any order:
+   The first releases were made exactly this way on 2026-10-07, one tag each, in any order; the
+   same loop releases any set of components bumped together:
 
    ```bash
    for component in server-sdk mcp-server mcp-skr-staking gateway gateway-centrifugo \
@@ -258,6 +267,12 @@ pending one, the older pending run is cancelled before it starts — re-run it a
 These need the owner's accounts. Until they are done, the corresponding first publication fails
 with an error naming the missing piece; nothing is published halfway and no version is consumed.
 
+The `0.0.1` releases went through all of it: the three npm packages exist (with provenance), the
+six GHCR packages are public, and the signed APK was published against the pinned certificate. What
+follows is kept for a **new** package, image or signing setup — and for the two npm steps that only
+the owner's account can confirm, trusted publishing and the bootstrap token's revocation (steps 3
+and 4 below). The next npm release's publish job warns if it still had to use the bootstrap token.
+
 ### The `release` environment
 
 **Settings → Environments → `release`** (created on first use if absent). The npm, GHCR and Android
@@ -295,7 +310,8 @@ currently `11.19.0`; trusted publishing needs 11.5.1 or later) and checks the ve
 
 Images are pushed with the workflow's own `GITHUB_TOKEN` (`packages: write`); no registry secret
 exists. A package is created by its first push, linked to this repository through its `source`
-label — and **created private**, whatever the repository's visibility.
+label — and **created private**, whatever the repository's visibility. All six packages were
+created and made public by the `0.0.1` releases; these steps are for a new image.
 
 1. **Organisation settings → Packages → Package creation**: allow *Public* packages.
 2. Push the first image tag (say `gateway-v0.0.1`). The image is pushed, then the **anonymous pull
@@ -315,10 +331,13 @@ credentials are untouched).
 
 Updates install only over an app signed with the same key, so the release key is permanent.
 
-- **If a release key has already signed APKs that people installed** (the `sac-release.jks`
-  procedure in [swap-fee-config.md](swap-fee-config.md#sign-verify-and-install-the-release-apk)),
-  use that key. Do not create another.
-- **Otherwise create it once:**
+- **The release key exists.** It signed `sac-0.0.1.apk`, and its certificate's SHA-256 is
+  `3b29a71fb3c5ff63c9b693f1e9e1fdc945bfd5231a2c1ec1537f4f7ad2164f28` — the value of
+  `SAC_ANDROID_SIGNING_CERT_SHA256`, and what every published APK is verified against. Use that key
+  for every release (the `sac-release.jks` procedure in
+  [swap-fee-config.md](swap-fee-config.md#sign-verify-and-install-the-release-apk)). Do not create
+  another: an APK signed with a different key cannot update an installed app.
+- **Only a fresh fork of the project creates one:**
 
   ```bash
   keytool -genkeypair -v -keystore sac-release.jks -alias sac-release \
@@ -411,8 +430,10 @@ if `ci.yml` ever contains a publish, login or write permission.
 organisation and trusted publishers accept the publish, that each GHCR package is public, that the
 signing secrets produce the pinned certificate, and that the official build configuration is
 complete. Each of those is checked by the release itself — the npm integrity re-read, the anonymous
-pull, the certificate pin, the public APK download — and reported in the run summary. Until a
-component's first release has passed them, treat its artifacts as unpublished.
+pull, the certificate pin, the public APK download — and reported in the run summary. The `0.0.1`
+releases of all eight components passed them on 2026-10-07. The rule still holds for anything new —
+a new package, image or component: until its first release has passed them, treat its artifacts as
+unpublished.
 
 ## Compatibility
 

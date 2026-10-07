@@ -280,8 +280,8 @@ rather than public issues.
 
 Issues and pull requests are welcome. Before opening a PR, run `pnpm check` and the checks for
 the components you changed (`pnpm check:android`, `pnpm check:gateway` or `pnpm check:demos`).
-The [CI workflow](.github/workflows/ci.yml) defines Node, Go, Android and emulator checks;
-it currently runs through manual dispatch.
+The [CI workflow](.github/workflows/ci.yml) runs the Node, Go, Android and emulator checks on
+every pull request and on pushes to `master` and `develop`.
 
 ## 📄 License
 
