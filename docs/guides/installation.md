@@ -9,9 +9,10 @@ The published namespaces are the npm scope **`@seekeragentconnect`**, the GitHub
 Registry namespace **`ghcr.io/seekeragentconnect`** (one repository per component) and the
 [GitHub Releases](https://github.com/SeekerAgentConnect/sac/releases) of this repository, which
 carry the signed Android APK (SEE-182). Every component is versioned on its own, and every
-component's version restarted at `0.0.1` under this scheme; the examples below use `0.0.1`. An
-artifact exists only once its component's release has actually run, so check the registry or the
-Releases page for what is published before pinning a version.
+component's version restarted at `0.0.1` under this scheme. All eight `0.0.1` releases were
+published on 2026-10-07; the table below records them, and the examples on this page use them.
+A later version exists only once its component's release has actually run, so check the registry or
+the Releases page before pinning one.
 
 The images are public: `docker pull` works anonymously, with no `docker login`. npm packages are
 published with provenance from the release workflow.
@@ -19,6 +20,40 @@ published with provenance from the release workflow.
 Requirements: Node **24.21.0 or newer** for the npm packages (the SDK and both MCP servers use the
 stable `node:sqlite`, which arrived in Node 24), and Docker with `buildx`/Compose v2 for the
 images. Images are published for `linux/amd64` and `linux/arm64`.
+
+## Published versions
+
+Every component's first public release, built from commit
+[`f3521ff7`](https://github.com/SeekerAgentConnect/sac/commit/f3521ff7f3f0a05523453105ad5d09bcafa53cb5)
+and published on 2026-10-07. The identities below are what to pin: an npm integrity is what
+`npm install` verifies, an image digest cannot be moved, and the APK's SHA-256 and signing
+certificate are what a download is checked against. Each GitHub Release carries the same record.
+
+| Component | Release | Artifact | Identity |
+| -- | -- | -- | -- |
+| `server-sdk` | [`server-sdk-v0.0.1`](https://github.com/SeekerAgentConnect/sac/releases/tag/server-sdk-v0.0.1) | [`@seekeragentconnect/server-sdk@0.0.1`](https://www.npmjs.com/package/@seekeragentconnect/server-sdk/v/0.0.1) | `sha512-pMR5fpq7YJASTMuZxO4TGG8dhF3J/HzpB/RKylRnUqiEwnId4ds2IrM57/o+jmrbBM2kR5lqIl6xI6gsGEw1Hg==` |
+| `mcp-server` | [`mcp-server-v0.0.1`](https://github.com/SeekerAgentConnect/sac/releases/tag/mcp-server-v0.0.1) | [`@seekeragentconnect/mcp-server@0.0.1`](https://www.npmjs.com/package/@seekeragentconnect/mcp-server/v/0.0.1) | `sha512-iX9gYneNyejvD5s/4/m7b8IIwhAWZlJYuevHcd1iGRS5xdkvjhMDdOxUuDijk+GcgBBCALzf6gUlMuhMwcuW6w==` |
+| | | `ghcr.io/seekeragentconnect/mcp-server:0.0.1` | `sha256:1d2dc54636c861ec93020769176c19ed53433d98874c0565a0739e341e6c318a` |
+| `mcp-skr-staking` | [`mcp-skr-staking-v0.0.1`](https://github.com/SeekerAgentConnect/sac/releases/tag/mcp-skr-staking-v0.0.1) | [`@seekeragentconnect/mcp-skr-staking@0.0.1`](https://www.npmjs.com/package/@seekeragentconnect/mcp-skr-staking/v/0.0.1) | `sha512-Ma1sxbLYnbAjfZJJI2BEL7t5b+P3ZafdlYiQ2QJl7IPEl8Wq1XKmwoFMGOf2EwM0k+5Alz7cZ5HgjhwZImcQGA==` |
+| | | `ghcr.io/seekeragentconnect/mcp-skr-staking:0.0.1` | `sha256:a14c57c13f6bec8ec64288d65ab29f90af8e96620bae3780f347ba33c401e510` |
+| `gateway` | [`gateway-v0.0.1`](https://github.com/SeekerAgentConnect/sac/releases/tag/gateway-v0.0.1) | `ghcr.io/seekeragentconnect/gateway:0.0.1` | `sha256:7e744e77ff05b7277373051761c2be7eeee4b6772de7168d3bd7396830084d67` |
+| `gateway-centrifugo` | [`gateway-centrifugo-v0.0.1`](https://github.com/SeekerAgentConnect/sac/releases/tag/gateway-centrifugo-v0.0.1) | `ghcr.io/seekeragentconnect/gateway-centrifugo:0.0.1` | `sha256:cf724aaf36fe105e1ec9c49a0006ee80ebe5c55a05d01b181d82188f4e4cf938` |
+| `demo-signals` | [`demo-signals-v0.0.1`](https://github.com/SeekerAgentConnect/sac/releases/tag/demo-signals-v0.0.1) | `ghcr.io/seekeragentconnect/demo-signals:0.0.1` | `sha256:dd44bb9ca75384ed5ac0a613ed3da131178fcd12ececcb7602dadce9bbcd8a14` |
+| `demo-prediction` | [`demo-prediction-v0.0.1`](https://github.com/SeekerAgentConnect/sac/releases/tag/demo-prediction-v0.0.1) | `ghcr.io/seekeragentconnect/demo-prediction:0.0.1` | `sha256:561a278912745e97409dd71e4622eff9e18d92787e702ff105b2ff5e1061e95f` |
+| `android` | [`android-v0.0.1`](https://github.com/SeekerAgentConnect/sac/releases/tag/android-v0.0.1) | `sac-0.0.1.apk` (`versionCode` 2) | APK SHA-256 `73947127396becce6b17dce8051b2e0886c9c82b5033425504d637303859496b` |
+
+Both MCP servers bundle `@seekeragentconnect/server-sdk` 0.0.1 (vendored files SHA-256
+`d02df39a83b11d1cbb5a14363242e8ffb0db80e1a07b5543d64fe6ca17b0c011`). Every image also carries the
+tag `sha-f3521ff7f3f0a05523453105ad5d09bcafa53cb5`, and `latest` points at `0.0.1` until a newer
+stable release moves it. The npm packages were published with SLSA provenance
+(`npm audit signatures` verifies it), and every image pulls anonymously.
+
+The Android signing certificate's SHA-256 is
+`3b29a71fb3c5ff63c9b693f1e9e1fdc945bfd5231a2c1ec1537f4f7ad2164f28`. Every app release is signed
+with the same key, so this value is the one to compare against for `0.0.1` and for every update.
+The official `0.0.1` build has push (Firebase) and Solana RPC configured and uses
+`https://seeker-gateway-sg8g3.ondigitalocean.app` as its relay and Discover catalog; the release
+notes record each build's configuration.
 
 ---
 
@@ -357,12 +392,13 @@ Download both assets into one directory, then verify and install:
 ```bash
 sha256sum -c SHA256SUMS
 apksigner verify --print-certs sac-0.0.1.apk
-# compare "Signer #1 certificate SHA-256 digest" with the certificate SHA-256 in the release notes
+# "Signer #1 certificate SHA-256 digest" must be
+# 3b29a71fb3c5ff63c9b693f1e9e1fdc945bfd5231a2c1ec1537f4f7ad2164f28 (also in the release notes)
 adb install --replace sac-0.0.1.apk
 ```
 
-Every release is signed with the same release key, so an update installs over the previous
-version and keeps the app's data. An APK whose certificate does not match the one in the release
+Every release is signed with the same release key — the certificate above, first used for
+`0.0.1` — so an update installs over the previous version and keeps the app's data. An APK whose certificate does not match the one in the release
 notes did not come from this release; do not install it. An app already installed from a build
 signed with another key — a debug build, or one you signed yourself — cannot be replaced in place;
 Android refuses the update until that app is uninstalled, which removes its data.
