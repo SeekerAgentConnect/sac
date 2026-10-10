@@ -38,6 +38,7 @@ the four-item bar.
 | Connection detail | Bottom sheet: `[connection]` over Home or Discover | Paired-server row on Home; Add connection Continue; **Open** on a Discover card for a feed already added | Close removes it. **Its inbox** closes all sheets and opens Inbox/Pending filtered to that server. Rules pushes Connection rules. | [`connection`](./screens/connection.png) |
 | Rules, this connection | Usually `[connection, rules]`; `[review, rules]` from a verdict | Rules row on Connection detail; Rules action on a review verdict | Close removes Rules only, revealing Connection detail or Review. Global pushes Global rules. Asset/address actions push their editors. | [`rulesConn`](./screens/rulesConn.png) |
 | Global rules | `[global]` from Home, otherwise stacked over the current sheet | Global Rules row on Home; Global link in Connection rules; Edit global daily limit in Asset editor | Close removes Global rules only and reveals the exact destination underneath. | [`rulesGlobal`](./screens/rulesGlobal.png) |
+| Solana RPC | Bottom sheet over Wallet: `[rpc]` (SEE-184) | **Solana RPC** under Add wallet on the Wallet tab | Close removes it and reveals Wallet. Saving or resetting one network's endpoint changes only that network and leaves the sheet open. Nothing here selects an active network. | Hand-written: [`rpc-endpoint-card`](./components/rpc-endpoint-card/spec.md) |
 | Add / edit asset | `[connection, rules, asset]` or `[global, asset]` | Asset row; Add asset | Close or successful Add/Save removes Asset editor and returns to its rules editor. Editing the global daily limit from a connection asset can push `[connection, rules, asset, global]`. | [`assetEdit`](./screens/assetEdit.png) |
 | Add address | `[connection, rules, address]` or `[global, address]` | Add under Recipients or Programs | Close or successful Add removes Address editor and returns to its rules editor. The same destination serves wallet-recipient and program-address content. | [`addAddress`](./screens/addAddress.png) |
 
@@ -62,6 +63,7 @@ The unrolled review references and [`rail-unrolled`](./screens/rail-unrolled.png
 - Home paired-server row → Connection detail → Rules, this connection → Global rules.
 - Rules, this connection → Add / edit asset.
 - Rules, this connection → Add address.
+- Wallet → Solana RPC (SEE-184, hand-written; not in the Stage 7.2 export).
 
 ## Open questions in the export
 
