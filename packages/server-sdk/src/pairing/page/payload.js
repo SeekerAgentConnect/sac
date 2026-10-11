@@ -2,13 +2,22 @@
  * Bounded pairing-page fragment codec. This file is served to the browser and imported by
  * whichever server hosts the page; it has no Node, SDK, fetch, or storage APIs.
  *
- * Encoding: UTF-8 JSON object → base64url without padding. The HTTP request never carries
- * this payload. A fragment is not encryption.
+ * Links issued now use the compact form `2.<server id>.<token>.<expiry, Unix seconds>.<0|1>`
+ * (the last field says a paired phone would be replaced), with `.<URI-encoded path>` appended
+ * only when the server URL has one. The origin is not in it: the page that reads the fragment is
+ * served by the pairing server, so the page's own origin completes the server URL. It is about
+ * 95 characters, short enough that an agent relaying it has nothing to abbreviate — the earlier
+ * base64url JSON form ran to several hundred and agents shortened it to `eyJ2Ij...` (SEE-149).
+ *
+ * The earlier form (UTF-8 JSON object → base64url without padding) is still read, so a link
+ * issued before an upgrade keeps working until it expires. The HTTP request never carries either
+ * form. A fragment is not encryption.
  */
 
 export const PAIRING_FRAGMENT_VERSION = 1;
 export const MAX_FRAGMENT_BYTES = 4096;
 export const MAX_DISPLAY_CHARS = 500;
+export const COMPACT_FRAGMENT_PREFIX = "2.";
 
 export const REPLACEMENT_WARNING =
   "Connecting a phone with this link will disconnect the previously paired phone and cancel its pending requests. Creating or opening this link does not disconnect it.";
@@ -21,6 +30,30 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EXPIRES_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const COMPACT =
+  /^2\.([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.([A-Za-z0-9_-]{43})\.([1-9][0-9]{0,11})\.([01])(?:\.([A-Za-z0-9%._~!$&'()*+,;=:@-]+))?$/;
+
+/**
+ * The compact fragment for a code issued by the server at `serverUrl`. `replacing` says the
+ * page should show the replacement warning rather than the conditional one.
+ */
+export function encodeCompactPairingFragment(code, expiresAt, replacing) {
+  const uri = parseCustomPairingUri(pairingUriFromCode(code));
+  if (!uri.ok) throw new Error("pairing code is not a seekervault://pair code");
+  if (typeof expiresAt !== "string" || !EXPIRES_AT.test(expiresAt)) {
+    throw new Error("expires_at must be RFC 3339 UTC");
+  }
+  const path = new URL(uri.code.serverUrl).pathname.replace(/\/+$/, "");
+  const fields = [
+    "2",
+    uri.code.serverId.toLowerCase(),
+    uri.code.token,
+    String(Math.floor(Date.parse(expiresAt) / 1000)),
+    replacing ? "1" : "0",
+  ];
+  if (path !== "") fields.push(encodeURIComponent(path));
+  return fields.join(".");
+}
 
 export function encodePairingFragment(payload) {
   const body = JSON.stringify(canonicalPayload(payload));
@@ -31,9 +64,16 @@ export function encodePairingFragment(payload) {
   return toBase64Url(bytes);
 }
 
-export function decodePairingFragment(fragment) {
+/**
+ * Decodes either fragment form. `origin` is the origin of the page reading it, and is required
+ * for the compact form, which does not carry one.
+ */
+export function decodePairingFragment(fragment, origin) {
   if (typeof fragment !== "string" || fragment.length === 0) {
     return { ok: false, reason: "empty" };
+  }
+  if (fragment.startsWith(COMPACT_FRAGMENT_PREFIX)) {
+    return decodeCompactFragment(fragment, origin);
   }
   if (fragment.length > MAX_FRAGMENT_BYTES * 2) {
     return { ok: false, reason: "too_large" };
@@ -93,6 +133,35 @@ export function decodePairingFragment(fragment) {
       expires_at: parsed.expires_at,
       ...(warning === undefined ? {} : { warning }),
       ...(replaces === undefined ? {} : { replaces }),
+    },
+    code: uri.code,
+  };
+}
+
+function decodeCompactFragment(fragment, origin) {
+  const match = COMPACT.exec(fragment);
+  if (match === null) return { ok: false, reason: "compact" };
+  const [, serverId, token, seconds, replacing, path] = match;
+  if (typeof origin !== "string" || origin.length === 0) {
+    return { ok: false, reason: "origin" };
+  }
+  let serverUrl;
+  try {
+    serverUrl = `${originOf(origin)}${path === undefined ? "" : decodeURIComponent(path)}`;
+  } catch {
+    return { ok: false, reason: "pairing_uri" };
+  }
+  const uri = parseCustomPairingUri(
+    pairingUriFromCode({ serverUrl, serverId, token }),
+  );
+  if (!uri.ok) return { ok: false, reason: "pairing_uri" };
+  return {
+    ok: true,
+    payload: {
+      v: PAIRING_FRAGMENT_VERSION,
+      pairing_uri: pairingUriFromCode(uri.code),
+      expires_at: new Date(Number(seconds) * 1000).toISOString(),
+      ...(replacing === "1" ? { warning: REPLACEMENT_WARNING } : {}),
     },
     code: uri.code,
   };

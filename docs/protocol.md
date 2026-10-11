@@ -214,7 +214,7 @@ Keys belong to the agent, which means the whole sidecar rather than one connecti
 | `CANCELLED` | Yes | Withdrawn before approval: the agent cancelled it, or its connection was revoked |
 | `EXPIRED` | Yes | `expires_at` passed while the request was PENDING. Nothing was signed. |
 | `FAILED` | Yes | It didn't succeed: the wallet failed before signing or sending, the transaction failed on chain, or it never landed before its blockhash expired |
-| `UNKNOWN` | No | Whether the wallet signed or sent isn't known yet. The sidecar keeps resolving it, and a late report can settle it. Agents must not treat it as a failure and retry. |
+| `UNKNOWN` | No | Whether the wallet signed or sent isn't known yet. The sidecar keeps resolving it, and a late report can settle it. A transaction the phone proves was never sent returns to PENDING ([reopening](#reopening)). Agents must not treat it as a failure and retry. |
 
 ```mermaid
 stateDiagram-v2
@@ -235,6 +235,7 @@ stateDiagram-v2
     UNKNOWN --> SUBMITTED: signature reported or found
     UNKNOWN --> REJECTED: late decline
     UNKNOWN --> FAILED: late failure, or never landed
+    UNKNOWN --> PENDING: proven never sent
 ```
 
 These are all the allowed transitions. Anything else is refused.
@@ -263,19 +264,39 @@ These are all the allowed transitions. Anything else is refused.
 | UNKNOWN | REJECTED | Phone | A late report says the user declined in the wallet | sign_message, transfer, swap |
 | UNKNOWN | FAILED | Phone | A late report says the wallet failed before signing or sending | sign_message, transfer, swap |
 | UNKNOWN | FAILED | Sidecar | The approved transaction's blockhash expired, and it never landed | transfer, swap |
+| UNKNOWN | PENDING | Phone | The phone proved the approved transaction was never sent, and the sidecar checked that its blockhash has expired ([reopening](#reopening)) | transfer, swap, staking |
 
 The rules behind the table:
 
-- **No state moves backward, and nothing leaves a terminal state.** A request never returns to PENDING. Another attempt is a new request, with a new idempotency key.
+- **Nothing leaves a terminal state, and only one move goes backward.** UNKNOWN → PENDING, for a transaction the phone proved was never sent and whose blockhash the sidecar checked has expired, is the one exception ([reopening](#reopening)). No other move returns a request to PENDING, and once a request has ended, another attempt is a new request, with a new idempotency key.
 - **Approval is the commit point.** The phone reports its approval, which moves the request to PROCESSING, before it invokes the wallet. It invokes the wallet only if the sidecar accepted that approval. The sidecar applies one change to a request at a time, so when the agent's cancellation and the user's approval race, exactly one wins: a cancelled request refuses the approval, and a PROCESSING request can't be cancelled.
 - **Success depends on the kind.** An `ack` or a message succeeds as COMPLETED, because nothing goes on chain. A transfer or swap succeeds only as CONFIRMED: the wallet's submission is SUBMITTED, not success.
-- **UNKNOWN isn't terminal.** It means the wallet may have signed or sent, and the sidecar keeps resolving it. SUBMITTED never becomes UNKNOWN either: both already mean "not settled", and the lifecycle never goes back. When a check can't account for a SUBMITTED transaction — the signature names a transaction nobody approved — the request stays SUBMITTED and its `Outcome.confirmation` says exactly that, rather than moving sideways into another unsettled state. See [confirmation](#confirmation).
+- **UNKNOWN isn't terminal.** It means the wallet may have signed or sent, and the sidecar keeps resolving it. SUBMITTED never becomes UNKNOWN either: both already mean "not settled", and the lifecycle goes back only by [reopening](#reopening), which needs a transaction that was never sent. When a check can't account for a SUBMITTED transaction — the signature names a transaction nobody approved — the request stays SUBMITTED and its `Outcome.confirmation` says exactly that, rather than moving sideways into another unsettled state. See [confirmation](#confirmation).
 - **Expiry comes first.** At or after `expires_at`, the sidecar moves a PENDING request to EXPIRED before it applies any other operation, so a late approval gets `INVALID_STATE` with the request as EXPIRED. The boundary is Stage 1's: a request is PENDING strictly before `expires_at`.
 - **The sidecar never re-executes on its own.** After a restart it neither rebuilds nor resubmits anything (SAW-010).
 
 The table is `TRANSITIONS` in `lifecycle.ts`, and its tests spell out each kind's table independently.
 
 Not every sidecar-driven transition in it has an implementation yet. SAW-022 implements the three a signature can settle — `SUBMITTED → CONFIRMED`, `SUBMITTED → FAILED`, and expiry — and no more. The rest need the sidecar to find a transaction it was never told the signature of, which would mean searching the wallet's own history; nothing does that today, and nothing pretends to. They stay in the table as what a later stage may implement, not as something the sidecar already does.
+
+### Reopening
+
+`not_sent` moves an UNKNOWN transfer, swap or staking action back to PENDING. It is the one backward step in the lifecycle, and it exists for one case: the owner approved, the wallet never answered, and the phone has since proved that the approved transaction was never sent — its blockhash has expired, and the wallet's history on chain holds no transaction carrying the approved message ([`docs/wiki/chain-confirmation.md`](wiki/chain-confirmation.md#a-wallet-that-never-answered)). Ending such a request as FAILED would make the agent start over for something the owner still wants; reopening it lets the owner approve it again.
+
+Why it is safe:
+
+- **The approved bytes can never land.** A transaction is valid only through its blockhash's `last_valid_block_height`. Once the chain is past it, those bytes are dead whatever happened to them, so going back cannot leave a second copy of the transfer in flight.
+- **The sidecar checks the expiry itself.** The phone's word isn't enough. Before it accepts `not_sent`, the sidecar reads the chain through its own endpoint: it confirms the endpoint serves the request's network (the genesis hash, as for [confirmation](#confirmation)), then that the current block height is past the approved version's `last_valid_block_height`. Until both hold, it refuses with `CHAIN_UNAVAILABLE` (`unavailable`) and moves nothing; the phone tries again later. The same answer covers an endpoint that doesn't answer or serves another cluster. A sidecar with no endpoint configured can check nothing and answers `unimplemented`; one that no longer holds the approved version answers `INVALID_PARAMETERS`. In both cases the phone reports `execution_failure` instead.
+- **The wallet is asked again only after a new review of a new preparation.** A version, once approved, is spent: an approval naming it, or any older version, gets `STALE_PREPARATION`. The phone prepares the request again, the owner reviews the new version, and only an accepted approval of it invokes the wallet.
+
+What reopening changes:
+
+- **The outcome starts over.** `Outcome.approval`, `signature` and `confirmation` belonged to the attempt that was never sent, so they are cleared, and `Outcome.detail` says the request is waiting for approval again. This is the one exception to Outcome fields never being cleared. The phone's own `detail` is kept with the accepted result.
+- **The deadline applies again.** A reopened request is PENDING, so `expires_at` is back in force. If it has already passed, the sidecar expires the request in the same operation, and `not_sent` answers with it EXPIRED.
+- **A new attempt has new results.** [Repeating an accepted result](#phone-api) is judged within the current attempt, so the second attempt's `unknown_outcome` is a new result even when its bytes match the first's. A retried `not_sent` is still a repeat until anything else is accepted.
+- **Events fire as for any other move.** The phone's update stream and an agent polling `vault_get_request` see PENDING, with `terminal` false.
+
+An older sidecar doesn't know the `not_sent` field, so it reads the submission as one without a result and answers `INVALID_PARAMETERS` (`invalid_argument`, "result is missing"); the phone then reports `execution_failure`.
 
 ### Two expiries
 
@@ -348,9 +369,10 @@ A `SubmitResult` carries one result:
 | `transaction_submission {signature}` | PROCESSING, UNKNOWN | SUBMITTED | transfer, swap |
 | `execution_failure {detail}` | PROCESSING, UNKNOWN | FAILED | sign_message, transfer, swap |
 | `unknown_outcome {detail}` | PROCESSING | UNKNOWN | sign_message, transfer, swap |
+| `not_sent {detail}` | UNKNOWN | PENDING, after the sidecar checks the approved blockhash has expired ([reopening](#reopening)) | transfer, swap, staking |
 
 - **Signatures are 64 bytes, and hashes 32.** From SAW-016 on, the sidecar verifies a `message_signature` against the request's wallet and its exact bytes before it accepts it; see [message results](#message-results).
-- **Repeating an accepted result has no further effect.** The sidecar compares the submitted result with every result it has already stored for that request, byte for byte, and a match returns the request as it is now — the same terminal result each time, after a restart as well. The phone stores each result before it sends it, and sends it again on each refresh until the sidecar answers (SAW-013; [`docs/guides/pending-requests.md`](guides/pending-requests.md)), so a lost response costs nothing (SAW-017; [`docs/testing/wallet-lifecycle.md`](testing/wallet-lifecycle.md)).
+- **Repeating an accepted result has no further effect.** The sidecar compares the submitted result with every result it has already stored for that request, byte for byte, and a match returns the request as it is now — the same terminal result each time, after a restart as well. After a [reopening](#reopening), only the results of the current attempt count. The phone stores each result before it sends it, and sends it again on each refresh until the sidecar answers (SAW-013; [`docs/guides/pending-requests.md`](guides/pending-requests.md)), so a lost response costs nothing (SAW-017; [`docs/testing/wallet-lifecycle.md`](testing/wallet-lifecycle.md)).
 - **A result belongs to its own connection.** `ref` names both the connection and the request, and a reference to a request another connection owns gets `NOT_FOUND`, whatever credential sent it. One connection's reply can never settle another's request.
 - **Any other result for a request that has moved on** gets `INVALID_STATE`, with the request as it is now.
 
@@ -385,10 +407,10 @@ The rules behind it:
 - **A confirmed result is checked against the approved bytes.** The sidecar fetches the transaction the chain holds under that signature and compares it with the exact `PreparedTransaction` the approval named, over the message — everything the signatures cover. A wallet's signature fills the slots the approved bytes leave empty, so that part differs and nothing else may. A transaction it can't take apart is not a match.
 - **The endpoint has to be serving the request's own cluster.** The database outlives the process and `SOLANA_RPC_URL` does not, so a restart can point stored requests at another chain. There, the signature is absent and the block height is somebody else's — which together read exactly like "the transaction expired, and nothing was spent". That is a terminal answer about money that may well have moved, so the genesis hash is compared first, the same way a preparation compares it, and a mismatch settles nothing at all: no status, no transaction, and above all no block height is read.
 - **A missing status is never proof.** A signature drops out of a node's status cache after a while, and an endpoint that didn't answer has said nothing at all. Only the approved transaction's own blockhash window closing, together with a search of the ledger that still finds nothing, means it can never land ([R9](https://solana.com/developers/cookbook/transactions/confirmation)).
-- **A check settles a request or leaves it exactly as it was.** It never moves one backward, never returns one to PENDING, and never opens a wallet. A finished request is left alone, whatever the chain says later.
+- **A check settles a request or leaves it exactly as it was.** It never moves one backward, never returns one to PENDING, and never opens a wallet. Only the phone's `not_sent`, verified by the sidecar, reopens a request ([reopening](#reopening)). A finished request is left alone, whatever the chain says later.
 - **The result rests on one endpoint.** `Outcome.confirmation.endpoint` is the host of the configured `SOLANA_RPC_URL` — the host and nothing else, because the URL can carry an API key. There is no second opinion behind a CONFIRMED or a FAILED transfer, and the agent (`checked_with`) and the owner are both told whose word it is.
-- **Nothing replaces a transaction.** A failure on chain, an expired blockhash, and an unaccountable signature are all reported as what they are. The sidecar builds no replacement, and the phone sends nothing to a wallet a second time. Another attempt is a new request, from the agent, approved by the owner.
-- **An UNKNOWN transfer has nothing to look up.** The phone lost the wallet before it reported anything, so no signature exists to ask about. A check says so and changes nothing; it stays UNKNOWN ([`docs/guides/troubleshooting.md`](guides/troubleshooting.md#a-transfer-whose-outcome-is-unknown)).
+- **Nothing replaces a transaction.** A failure on chain, an expired blockhash, and an unaccountable signature are all reported as what they are. The sidecar builds no replacement, and the phone never sends the same bytes to a wallet a second time. Another attempt is a new request, from the agent, approved by the owner — except a transaction proven never sent, which the owner may approve again as a new preparation ([reopening](#reopening)).
+- **An UNKNOWN transfer has nothing for the sidecar to look up.** The phone lost the wallet before it reported anything, so no signature exists to ask about. A sidecar check says so and changes nothing. The phone settles it instead: it keeps the approved bytes, and once their blockhash has expired it searches the wallet's history for them. Found, it reports `transaction_submission` (UNKNOWN → SUBMITTED); proven absent, `not_sent` (UNKNOWN → PENDING, [reopening](#reopening)), or `execution_failure` (UNKNOWN → FAILED), which an agent may act on, when the sidecar can't verify `not_sent` ([`docs/wiki/chain-confirmation.md`](wiki/chain-confirmation.md#a-wallet-that-never-answered)).
 - **Without an endpoint, nothing is checked.** A sidecar with no `SOLANA_RPC_URL` serves no transfer to begin with; one that had a request from before answers `CHAIN_UNAVAILABLE` to `CheckStatus`, and the request stays SUBMITTED.
 
 `Outcome.confirmation` carries `level`, `slot`, `chain_error`, `checked_at`, `checks`, `endpoint`, `matches_approval`, and `detail`. It is stored with the request, so a signature and every unsettled attempt survive a restart of the sidecar and of the phone. `requests/confirmation.ts` decides, `storage/request-store.ts` commits, and `solana/confirmation.ts` compares the bytes.
@@ -433,7 +455,7 @@ A `sign_message` request is the one wallet action with no transaction: it produc
   - An ack's text follows the Stage 1 text rules, and a note is at most 1024 UTF-8 bytes.
   - A whole `/mcp` body is at most 64 KiB; a larger one gets 413.
   - Each phone API message is at most 64 KiB; a larger one gets `resource_exhausted`.
-- **An agent polls `vault_get_request` until `terminal` is true.** An UNKNOWN request isn't finished, and the agent must not create a replacement for it. Neither is a SUBMITTED one: polling is also what makes the sidecar look, so a transfer reaches CONFIRMED or FAILED because somebody asked ([confirmation](#confirmation)).
+- **An agent polls `vault_get_request` until `terminal` is true.** An UNKNOWN request isn't finished, and the agent must not create a replacement for it: it may yet return to PENDING for the owner to approve again ([reopening](#reopening)). Neither is a SUBMITTED one: polling is also what makes the sidecar look, so a transfer reaches CONFIRMED or FAILED because somebody asked ([confirmation](#confirmation)).
 
 Every tool returns the same view in `structuredContent`:
 

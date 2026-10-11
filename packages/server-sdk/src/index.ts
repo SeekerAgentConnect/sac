@@ -34,6 +34,10 @@ export {
   privateRequest,
   type PrivateRequestDraft,
 } from "./requests/developer-api.ts";
+export {
+  WALLET_ADDED_PROGRAMS,
+  isApprovedMessage,
+} from "./requests/approved-message.ts";
 export { RequestFailure } from "./requests/failure.ts";
 export { isTerminal } from "./requests/lifecycle.ts";
 export { verifySignature } from "./requests/signature.ts";
@@ -111,6 +115,7 @@ export {
   REPLACEMENT_WARNING,
   decodeLandingFragment,
   decodePairingFragment,
+  encodeCompactPairingFragment,
   encodePairingFragment,
   landingUrlHasCredential,
   pairingLandingUrl,

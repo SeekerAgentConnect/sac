@@ -114,7 +114,7 @@ function readSource(env) {
     ? env.location.hash.slice(1)
     : env.location.hash;
   if (hash.length > 0) {
-    const decoded = decodePairingFragment(hash);
+    const decoded = decodePairingFragment(hash, env.trustedOrigin);
     if (!decoded.ok) {
       return {
         kind: "invalid",

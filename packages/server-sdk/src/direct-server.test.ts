@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, it } from "node:test";
 
 import { create } from "@bufbuild/protobuf";
-import { createClient, type Interceptor } from "@connectrpc/connect";
+import {
+  Code,
+  ConnectError,
+  createClient,
+  type Interceptor,
+} from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 
 import {
@@ -22,6 +28,13 @@ import {
   startPhoneApi,
   type RelayOutcome,
 } from "./index.ts";
+import {
+  ProviderUnavailable,
+  UnsupportedPreparation,
+  type ConfirmationProvider,
+  type TransferProvider,
+} from "./providers.ts";
+import { REOPENED_DETAIL } from "./storage/request-store.ts";
 import { temporaryDatabasePath } from "./testing/process.ts";
 
 describe("public direct-server API", () => {
@@ -343,6 +356,277 @@ describe("the gateway push relay", () => {
 
     await phoneApi.close();
     await direct.close();
+  });
+});
+
+/**
+ * not_sent (docs/protocol.md#reopening): the one result that moves a request backward, UNKNOWN to
+ * PENDING. The phone's word isn't enough, so the sidecar reads the chain itself through its
+ * ConfirmationProvider, and refuses — moving nothing — until the approved blockhash has expired.
+ */
+describe("reopening a transfer that was never sent", () => {
+  const WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW";
+  const RECIPIENT = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh";
+  const VALID_THROUGH = 100n;
+
+  /** A chain the test steers: its height, its network, and whether it answers. */
+  const chain = {
+    height: 50n,
+    network: Network.DEVNET,
+    unavailable: false,
+    built: 0,
+  };
+  const transfers: TransferProvider = {
+    checkAsset: () => Promise.resolve(),
+    buildTransfer: () => {
+      chain.built += 1;
+      const transaction = Uint8Array.of(9, chain.built);
+      return Promise.resolve({
+        transaction,
+        contentHash: new Uint8Array(
+          createHash("sha256").update(transaction).digest(),
+        ),
+        lastValidBlockHeight: VALID_THROUGH + BigInt(chain.built),
+        estimatedExpiryMs: Date.now() + 60_000,
+        feeLamports: 5000n,
+        rentLamports: 0n,
+      });
+    },
+  };
+  const confirmations: ConfirmationProvider = {
+    endpointUrl: "http://rpc.test/?api-key=secret",
+    assertNetwork: (network) => {
+      if (chain.unavailable) {
+        return Promise.reject(new ProviderUnavailable("rpc.test timed out"));
+      }
+      return network === chain.network
+        ? Promise.resolve()
+        : Promise.reject(
+            new UnsupportedPreparation("the endpoint serves another cluster"),
+          );
+    },
+    signatureStatus: () => Promise.resolve(undefined),
+    confirmedTransaction: () => Promise.resolve(undefined),
+    blockHeight: () => Promise.resolve(chain.height),
+    matchesApprovedTransaction: () => false,
+  };
+
+  async function open(confirmationProvider?: ConfirmationProvider) {
+    let publicOrigin = "http://127.0.0.1:1";
+    const direct = openDirectServer({
+      databasePath: temporaryDatabasePath(),
+      publicOrigin: () => publicOrigin,
+      supportedNetworks: [SolanaNetwork.DEVNET],
+      requestTtlSeconds: 86_400,
+      pendingLimit: 100,
+      pairingTokenTtlSeconds: 600,
+      liveCommandTimeoutSeconds: 30,
+      log: () => undefined,
+      transferProvider: transfers,
+      ...(confirmationProvider === undefined ? {} : { confirmationProvider }),
+    });
+    const phoneApi = await startPhoneApi(direct, {
+      host: "127.0.0.1",
+      port: 0,
+    });
+    publicOrigin = phoneApi.url;
+    const paired = await client(
+      PairingService,
+      phoneApi.url,
+      direct.pairing.issue().token,
+    ).pair({ serverUrl: phoneApi.url, deviceName: "Reopening test phone" });
+    const phone = client(RequestService, phoneApi.url, paired.phoneToken);
+    await phone.publishWallet({
+      connectionId: paired.connectionId,
+      binding: { wallet: WALLET, network: Network.DEVNET },
+    });
+    return {
+      direct,
+      phone,
+      connectionId: paired.connectionId,
+      close: async () => {
+        direct.beginShutdown();
+        await phoneApi.close();
+        await direct.close();
+      },
+    };
+  }
+
+  type Opened = Awaited<ReturnType<typeof open>>;
+
+  async function approve(
+    s: Opened,
+    ref: { connectionId: string; requestId: string },
+  ) {
+    const { prepared } = await s.phone.prepareRequest({ ref });
+    assert.ok(prepared !== undefined);
+    const { request } = await s.phone.submitResult({
+      ref,
+      result: {
+        case: "approval",
+        value: {
+          preparedVersion: prepared.version,
+          contentHash: prepared.contentHash,
+        },
+      },
+    });
+    assert.equal(request?.state, RequestState.PROCESSING);
+    return prepared;
+  }
+
+  /** A transfer approved and lost: the wallet never answered, so it is UNKNOWN. */
+  async function lost(s: Opened, key: string) {
+    const action = create(ActionSchema, {
+      kind: {
+        case: "transfer",
+        value: {
+          wallet: WALLET,
+          network: Network.DEVNET,
+          recipient: RECIPIENT,
+          asset: { kind: { case: "nativeSol", value: {} } },
+          amount: "1",
+        },
+      },
+    });
+    const { request } = s.direct.requests.createRequest(
+      privateRequest(action, "", key, 300),
+    );
+    const ref = {
+      connectionId: s.connectionId,
+      requestId: request.ref?.requestId ?? "",
+    };
+    await approve(s, ref);
+    await s.phone.submitResult({
+      ref,
+      result: { case: "unknownOutcome", value: { detail: "No answer." } },
+    });
+    return ref;
+  }
+
+  function notSent(
+    s: Opened,
+    ref: { connectionId: string; requestId: string },
+  ) {
+    return s.phone.submitResult({
+      ref,
+      result: {
+        case: "notSent",
+        value: {
+          detail: "Not in the wallet's history; the blockhash expired.",
+        },
+      },
+    });
+  }
+
+  async function refusal(
+    attempt: Promise<unknown>,
+  ): Promise<ConnectError | undefined> {
+    return attempt.then(
+      () => undefined,
+      (caught: unknown) => ConnectError.from(caught),
+    );
+  }
+
+  it("reopens only once the chain is past the approved blockhash, and the owner approves a new version", async () => {
+    chain.height = 50n;
+    const s = await open(confirmations);
+    try {
+      const ref = await lost(s, "reopen-1");
+      const seen: RequestState[] = [];
+      const stop = s.direct.requests.observe(ref.requestId, (request) => {
+        seen.push(request.state);
+      });
+
+      // The approved version can still land: retryable, and nothing moves.
+      const early = await refusal(notSent(s, ref));
+      assert.equal(early?.code, Code.Unavailable);
+      assert.match(early?.message ?? "", /can still land/);
+      assert.equal(
+        s.direct.requests.get(ref.requestId).state,
+        RequestState.UNKNOWN,
+      );
+
+      chain.height = 1000n;
+      const { request } = await notSent(s, ref);
+      assert.equal(request?.state, RequestState.PENDING);
+      assert.equal(request?.outcome?.detail, REOPENED_DETAIL);
+      assert.equal(request?.outcome?.approval, undefined);
+      assert.equal(request?.outcome?.confirmation, undefined);
+      // A retry is the same answer, not a second move.
+      assert.deepEqual((await notSent(s, ref)).request, request);
+      const listed = await s.phone.listPending({
+        connectionId: s.connectionId,
+      });
+      assert.ok(
+        listed.requests.some(
+          (pending) => pending.ref?.requestId === ref.requestId,
+        ),
+      );
+      await settle();
+      assert.equal(seen.at(-1), RequestState.PENDING);
+      stop();
+
+      const again = await approve(s, ref);
+      assert.ok(again.version > 1, "a fresh preparation, never the dead one");
+    } finally {
+      await s.close();
+    }
+  });
+
+  it("refuses, retryably, while the endpoint is down or serves another network", async () => {
+    chain.height = 1000n;
+    const s = await open(confirmations);
+    try {
+      const ref = await lost(s, "reopen-2");
+      chain.unavailable = true;
+      const down = await refusal(notSent(s, ref));
+      assert.equal(down?.code, Code.Unavailable);
+      chain.unavailable = false;
+      chain.network = Network.MAINNET;
+      const elsewhere = await refusal(notSent(s, ref));
+      assert.equal(elsewhere?.code, Code.Unavailable);
+      assert.match(elsewhere?.message ?? "", /another cluster/);
+      chain.network = Network.DEVNET;
+      assert.equal(
+        s.direct.requests.get(ref.requestId).state,
+        RequestState.UNKNOWN,
+      );
+    } finally {
+      chain.unavailable = false;
+      chain.network = Network.DEVNET;
+      await s.close();
+    }
+  });
+
+  it("refuses a request that isn't UNKNOWN as the request having moved on", async () => {
+    const s = await open(confirmations);
+    try {
+      const ref = await lost(s, "reopen-3");
+      chain.height = 1000n;
+      await notSent(s, ref);
+      await approve(s, ref);
+      const moved = await refusal(notSent(s, ref));
+      assert.equal(moved?.code, Code.FailedPrecondition);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it("answers Unimplemented on a sidecar with no chain to check", async () => {
+    const s = await open();
+    try {
+      // Without a ConfirmationProvider nothing reaches UNKNOWN through the chain, but the phone can
+      // still lose the wallet after an approval.
+      const ref = await lost(s, "reopen-4");
+      const error = await refusal(notSent(s, ref));
+      assert.equal(error?.code, Code.Unimplemented);
+      assert.equal(
+        s.direct.requests.get(ref.requestId).state,
+        RequestState.UNKNOWN,
+      );
+    } finally {
+      await s.close();
+    }
   });
 });
 

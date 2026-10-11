@@ -26,6 +26,7 @@ import {
   canTransition,
   decideResult,
   isOverdue,
+  isReopening,
   isTerminal,
   resultTarget,
   successState,
@@ -64,6 +65,7 @@ const RESULTS: readonly ResultCase[] = [
   "transactionSubmission",
   "executionFailure",
   "unknownOutcome",
+  "notSent",
 ];
 const STATES: readonly RequestState[] = RequestStateSchema.values
   .map((value): RequestState => value.number)
@@ -237,6 +239,7 @@ describe("the transition table", () => {
           "UNKNOWN -> REJECTED by phone",
           "UNKNOWN -> FAILED by phone",
           "UNKNOWN -> FAILED by sidecar",
+          "UNKNOWN -> PENDING by phone",
         ].sort(),
       );
     });
@@ -293,14 +296,29 @@ describe("the transition table", () => {
     }
   });
 
-  it("never moves a request backward: the transitions form no cycle", () => {
+  it("moves a request backward only by reopening: without it the transitions form no cycle", () => {
+    const backward = TRANSITIONS.filter(({ from, to }) =>
+      isReopening(from, to),
+    );
+    assert.deepEqual(
+      backward.map(({ from, to, by, kinds }) => [
+        name(from),
+        name(to),
+        by,
+        kinds,
+      ]),
+      [["UNKNOWN", "PENDING", "phone", ["transfer", "swap", "staking"]]],
+    );
+    const forward = TRANSITIONS.filter(
+      ({ from, to }) => !isReopening(from, to),
+    );
     const visiting = new Set<RequestState>();
     const done = new Set<RequestState>();
     const cyclic = (state: RequestState): boolean => {
       if (done.has(state)) return false;
       if (visiting.has(state)) return true;
       visiting.add(state);
-      const found = TRANSITIONS.some(
+      const found = forward.some(
         ({ from, to }) => from === state && cyclic(to),
       );
       visiting.delete(state);
@@ -401,6 +419,10 @@ describe("resultTarget", () => {
       ["transfer", RequestState.UNKNOWN, "unknownOutcome"],
       ["transfer", RequestState.SUBMITTED, "rejection"],
       ["transfer", RequestState.PROCESSING, "approval"],
+      ["transfer", RequestState.PENDING, "notSent"],
+      ["transfer", RequestState.PROCESSING, "notSent"],
+      ["transfer", RequestState.SUBMITTED, "notSent"],
+      ["signMessage", RequestState.UNKNOWN, "notSent"],
     ];
     for (const [kind, state, result] of refused) {
       assert.equal(
@@ -594,6 +616,49 @@ describe("decideResult", () => {
     );
   });
 
+  it("reopens an UNKNOWN transaction with not_sent, and never a message", () => {
+    const notSent = submission({
+      case: "notSent",
+      value: { detail: "never sent" },
+    });
+    for (const kind of ["transfer", "swap", "staking"] as const) {
+      assert.deepEqual(
+        decideResult(request(kind, RequestState.UNKNOWN), notSent),
+        { ok: true, to: RequestState.PENDING },
+        kind,
+      );
+    }
+    assert.deepEqual(
+      decideResult(request("signMessage", RequestState.UNKNOWN), notSent),
+      {
+        ok: false,
+        error: RequestError.INVALID_STATE,
+        message:
+          "not_sent doesn't apply to sign_message requests in state UNKNOWN",
+      },
+    );
+  });
+
+  it("refuses an approval of a version that was already approved once", () => {
+    const approval = submission({
+      case: "approval",
+      value: { preparedVersion: 2, contentHash: HASH_V2 },
+    });
+    assert.deepEqual(
+      decideResult(request("transfer"), approval, PREPARED_V2, Date.now(), 2),
+      {
+        ok: false,
+        error: RequestError.STALE_PREPARATION,
+        message:
+          "version 2 was already approved once and never sent; prepare the request again and have the owner review the new version",
+      },
+    );
+    assert.deepEqual(
+      decideResult(request("transfer"), approval, PREPARED_V2, Date.now(), 1),
+      { ok: true, to: RequestState.PROCESSING },
+    );
+  });
+
   it("refuses a result that conflicts with how the request already ended", () => {
     assert.deepEqual(
       decideResult(
@@ -693,6 +758,10 @@ describe("decideResult", () => {
           value: { detail: "x".repeat(1025) },
         }),
         "execution_failure.detail is 1025 UTF-8 bytes; the limit is 1024",
+      ],
+      [
+        submission({ case: "notSent", value: { detail: "x".repeat(1025) } }),
+        "not_sent.detail is 1025 UTF-8 bytes; the limit is 1024",
       ],
     ];
     for (const [malformed, message] of cases) {

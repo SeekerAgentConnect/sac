@@ -52,6 +52,7 @@ import {
 import {
   canTransition,
   decideResult,
+  isReopening,
   unpreparableReason,
   type ActionKind,
 } from "../requests/lifecycle.ts";
@@ -64,7 +65,7 @@ export const MAX_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 100;
 
-const { PENDING, CANCELLED, EXPIRED } = RequestState;
+const { PENDING, PROCESSING, CANCELLED, EXPIRED, UNKNOWN } = RequestState;
 // A PENDING request has no outcome yet, so expiry can give every one the same outcome.
 const EXPIRED_OUTCOME = toBinary(
   OutcomeSchema,
@@ -80,6 +81,14 @@ const WALLET_CHANGED_OUTCOME = toBinary(
   OutcomeSchema,
   create(OutcomeSchema, { detail: WALLET_CHANGED_DETAIL }),
 );
+
+/**
+ * Outcome.detail of a request reopened to PENDING (docs/protocol.md#reopening). The sidecar says
+ * it in its own words: it checked the expiry itself, and the phone's detail is kept with the
+ * accepted result.
+ */
+export const REOPENED_DETAIL =
+  "The last approval was never sent, and its blockhash has expired, so it never can be; nothing was spent. The request is waiting for the owner's approval again.";
 
 export interface RequestStoreOptions {
   /** The lifetime of a request whose agent doesn't choose one (REQUEST_TTL_SECONDS). */
@@ -110,6 +119,16 @@ export interface Submitted {
   readonly request: ActionRequest;
   /** True when the same result had already been accepted, so nothing changed. */
   readonly duplicate: boolean;
+}
+
+/**
+ * What the sidecar established on chain before a not_sent result may reopen a request: the
+ * approved version's blockhash has expired on the request's own network (ConfirmationTracker
+ * `proveNeverSendable`). The phone's word alone never moves a request back to PENDING.
+ */
+export interface NotSentProof {
+  /** The prepared version whose expiry was checked; it must still be the approved one. */
+  readonly approvedVersion: number;
 }
 
 export interface PendingQuery {
@@ -457,8 +476,17 @@ export class RequestStore {
    * A result identical to one already accepted changes nothing. Any other result must be one the
    * lifecycle allows from the current state, so a result that conflicts with how the request
    * ended fails with INVALID_STATE.
+   *
+   * A not_sent result moves an UNKNOWN request back to PENDING only with `proof` for the version
+   * the owner approved (docs/protocol.md#reopening). The reopened request keeps none of the dead
+   * attempt's approval, signature or confirmation, and if its deadline has already passed it
+   * expires at once, as any overdue PENDING request does.
    */
-  submit(connectionId: string, submission: SubmitResultRequest): Submitted {
+  submit(
+    connectionId: string,
+    submission: SubmitResultRequest,
+    proof?: NotSentProof,
+  ): Submitted {
     const requestId = requireRef(connectionId, submission.ref);
     const result = toBinary(
       SubmitResultRequestSchema,
@@ -469,20 +497,32 @@ export class RequestStore {
       const now = this.#now();
       this.#expireOverdue(now);
       const current = this.#find(requestId, connectionId);
-      const repeat = this.#db
-        .prepare(
-          "SELECT 1 AS found FROM results WHERE request_id = ? AND result = ?",
-        )
-        .get(requestId, result);
-      if (repeat !== undefined) return { request: current, duplicate: true };
+      if (this.#isRepeat(requestId, result)) {
+        return { request: current, duplicate: true };
+      }
       const decision = decideResult(
         current,
         submission,
         this.#latestPrepared(requestId),
         now,
+        this.#spentVersion(requestId),
       );
       if (!decision.ok) {
         throw new RequestFailure(decision.error, decision.message, current);
+      }
+      if (isReopening(current.state, decision.to)) {
+        const approved = current.outcome?.approval?.preparedVersion ?? 0;
+        if (
+          proof === undefined ||
+          approved === 0 ||
+          proof.approvedVersion !== approved
+        ) {
+          throw new RequestFailure(
+            RequestError.INVALID_STATE,
+            "not_sent can only reopen a request once the sidecar has checked on chain that the approved version's blockhash has expired",
+            current,
+          );
+        }
       }
       this.#move(
         requestId,
@@ -497,6 +537,8 @@ export class RequestStore {
            VALUES (?, (SELECT coalesce(max(seq), 0) + 1 FROM results WHERE request_id = ?), ?, ?, ?, ?)`,
         )
         .run(requestId, requestId, result, current.state, decision.to, now);
+      // A reopened request is PENDING again, so its deadline applies again.
+      if (isReopening(current.state, decision.to)) this.#expireOverdue(now);
       return { request: this.#find(requestId), duplicate: false };
     });
   }
@@ -839,6 +881,56 @@ export class RequestStore {
     return toRequest(row);
   }
 
+  /**
+   * Whether `result` repeats one already accepted in the request's current attempt. A reopening
+   * (docs/protocol.md#reopening) starts a new attempt, so a result from an earlier one — the same
+   * unknown_outcome detail, say — is a new result now. The reopening result itself still counts as
+   * a repeat until anything else is accepted, so a retried not_sent changes nothing.
+   */
+  #isRepeat(requestId: string, result: Uint8Array): boolean {
+    const marks = this.#db
+      .prepare(
+        `SELECT max(CASE WHEN from_state = ? AND to_state = ? THEN seq END) AS reopened,
+                max(seq) AS last
+         FROM results WHERE request_id = ?`,
+      )
+      .get(UNKNOWN, PENDING, requestId);
+    const reopened =
+      marks?.reopened === null || marks?.reopened === undefined
+        ? 0
+        : integer(marks.reopened);
+    const last =
+      marks?.last === null || marks?.last === undefined
+        ? 0
+        : integer(marks.last);
+    const repeat = this.#db
+      .prepare(
+        `SELECT 1 AS found FROM results
+         WHERE request_id = ? AND result = ? AND (seq > ? OR (seq = ? AND seq = ?))`,
+      )
+      .get(requestId, result, reopened, reopened, last);
+    return repeat !== undefined;
+  }
+
+  /** The newest prepared version an accepted approval named, or 0 when none did. */
+  #spentVersion(requestId: string): number {
+    let spent = 0;
+    for (const row of this.#db
+      .prepare(
+        "SELECT result FROM results WHERE request_id = ? AND from_state = ? AND to_state = ?",
+      )
+      .all(requestId, PENDING, PROCESSING)) {
+      const { result } = fromBinary(
+        SubmitResultRequestSchema,
+        blob(row.result),
+      );
+      if (result.case === "approval") {
+        spent = Math.max(spent, result.value.preparedVersion);
+      }
+    }
+    return spent;
+  }
+
   #latestPrepared(requestId: string): PreparedTransaction | undefined {
     const row = this.#db
       .prepare(
@@ -870,7 +962,11 @@ function toRequest(row: Row): ActionRequest {
   });
 }
 
-/** The outcome after an accepted result: its fields are added to, and never cleared. */
+/**
+ * The outcome after an accepted result: its fields are added to, and never cleared — except by a
+ * reopening (docs/protocol.md#reopening), which starts the request over and keeps nothing of the
+ * attempt that was never sent.
+ */
 function outcomeAfter(
   current: ActionRequest,
   submission: SubmitResultRequest,
@@ -891,6 +987,8 @@ function outcomeAfter(
     case "executionFailure":
     case "unknownOutcome":
       return withDetail(current.outcome, result.value.detail);
+    case "notSent":
+      return create(OutcomeSchema, { detail: REOPENED_DETAIL });
     case "rejection":
       return withDetail(
         current.outcome,

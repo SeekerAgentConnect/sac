@@ -631,3 +631,74 @@ describe("checking a request with nothing on chain", () => {
     assert.match(error.message, /nothing left to check on chain/);
   });
 });
+
+describe("reopening a transfer the wallet never sent", () => {
+  it("returns it to PENDING only past the approved blockhash, and the agent keeps polling", async () => {
+    const view = viewOf(
+      await callTool(agent, TRANSFER_TOOL, {
+        wallet,
+        network: "devnet",
+        recipient: RECIPIENT.toBase58(),
+        amount: "1000000",
+        idempotency_key: `confirm-not-sent-${++keys}`,
+      }),
+    );
+    const ref = {
+      connectionId: paired.connectionId,
+      requestId: view.request_id,
+    };
+    const { prepared } = await phone().prepareRequest({ ref });
+    assert.ok(prepared !== undefined);
+    await phone().submitResult({
+      ref,
+      result: {
+        case: "approval",
+        value: {
+          preparedVersion: prepared.version,
+          contentHash: prepared.contentHash,
+        },
+      },
+    });
+    await phone().submitResult({
+      ref,
+      result: {
+        case: "unknownOutcome",
+        value: { detail: "The wallet's answer never reached this phone." },
+      },
+    });
+    const notSent = () =>
+      phone().submitResult({
+        ref,
+        result: {
+          case: "notSent",
+          value: { detail: "No transaction carries the approved message." },
+        },
+      });
+
+    // The approved version can still land, so the sidecar refuses and nothing moves.
+    const early = await notSent().then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    assert.ok(early instanceof ConnectError);
+    assert.equal(early.code, Code.Unavailable);
+    assert.equal(
+      viewOf(
+        await callTool(agent, GET_REQUEST_TOOL, {
+          request_id: view.request_id,
+        }),
+      ).status,
+      "UNKNOWN",
+    );
+
+    chain.height = prepared.lastValidBlockHeight + 1n;
+    const { request } = await notSent();
+    assert.equal(request?.state, RequestState.PENDING);
+    const agentView = viewOf(
+      await callTool(agent, GET_REQUEST_TOOL, { request_id: view.request_id }),
+    );
+    assert.equal(agentView.status, "PENDING");
+    assert.equal(agentView.terminal, false);
+    assert.equal(agentView.signature, undefined);
+  });
+});

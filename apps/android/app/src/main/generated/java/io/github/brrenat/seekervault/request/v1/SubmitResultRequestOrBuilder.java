@@ -158,5 +158,28 @@ public interface SubmitResultRequestOrBuilder extends
    */
   io.github.brrenat.seekervault.request.v1.UnknownOutcome getUnknownOutcome();
 
+  /**
+   * <pre>
+   * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+   * user to approve again. The sidecar first checks for itself that the approved version's
+   * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+   * @return Whether the notSent field is set.
+   */
+  boolean hasNotSent();
+  /**
+   * <pre>
+   * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+   * user to approve again. The sidecar first checks for itself that the approved version's
+   * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+   * @return The notSent.
+   */
+  io.github.brrenat.seekervault.request.v1.NotSent getNotSent();
+
   public io.github.brrenat.seekervault.request.v1.SubmitResultRequest.ResultCase getResultCase();
 }

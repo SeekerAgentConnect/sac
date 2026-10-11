@@ -68,8 +68,15 @@ The trust standard is the direct server's (SAW-022), applied on the phone:
 
 1. **`getSignatureStatuses`**, batched per cluster (≤256 per call). `processed` is not a result.
 2. At `confirmed` or `finalized`, **`getTransaction`** (base64, `maxSupportedTransactionVersion: 0`)
-   and compare its message bytes with the approved message **byte for byte**. Only a match settles
-   anything:
+   and compare its message with the approved message. Only a match settles anything. A match is
+   the same bytes, or the same message with only the instructions a wallet adds of its own before
+   sending: compute-budget instructions and Lighthouse assertions
+   (`L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95`), which only bound or abort what was approved.
+   Everything else must be identical — version, signers and fee payer with the same writability,
+   blockhash, lookup tables, and every other instruction in order with the same program, data and
+   accounts (`transactions/ApprovedMessage.kt`; the servers use the same rule from
+   `@seekeragentconnect/server-sdk`'s `isApprovedMessage`). Seeker Wallet adds both kinds to a
+   staking transaction, which a byte comparison called another transaction (2026-10-11):
    - no error → **Confirmed**, with the level observed (`confirmed` or `finalized`) and the slot;
    - an error → **Failed on chain**, with the chain's own error;
    - a different message → **Unresolved · mismatch**. Never a success, never a failure.
@@ -88,6 +95,39 @@ status cache). A transaction is **Expired · never landed** only when all four h
   pruned its ledger since, or one that falls back on long-term storage and misses there, answers
   the search with nothing for a transaction that did land, so without that coverage the check stays
   inconclusive (`history_not_retained`) and ends unresolved rather than expired.
+
+### A wallet that never answered
+
+A direct transfer or staking action whose wallet never answered — the owner closed it, it showed an
+error and returned nothing, or the app died while it had the transaction — is `Unresolved` with no
+signature, and the server reads `UNKNOWN`. The capture taken before the wallet opened is kept, not
+dropped, and searched for on the same standard once the transaction can no longer land:
+
+- the first search is due three minutes after the capture, and waits while `isBlockhashValid` at
+  `finalized` still says the blockhash can be used;
+- the endpoint's own ledger has to reach back ten minutes before the capture, as above;
+- the wallet's history (`getSignaturesForAddress` at `finalized`, up to 5 pages of 1000) is read
+  back to ten minutes before the capture, and every transaction from then to thirteen minutes after
+  it (or with no block time) is fetched and compared with the approved message byte for byte, up to
+  100 of them.
+
+A match gives the record its signature: the stored answer becomes **Sent**, the server is told
+(`transaction_submission`, `UNKNOWN → SUBMITTED`), and it is followed like any other. No match means
+it was never sent and never can be: the answer becomes **Not sent · nothing was spent**, and the
+server is told `not_sent`. The server checks the expiry on its own endpoint and puts the request
+back to `PENDING` ([reopening](../protocol.md#reopening)); the phone drops its answer and the old
+capture, and the request is back in **Waiting** to review and approve again, with a fresh
+preparation. History keeps the attempt as "Not sent". A server from before `not_sent` refuses it as
+unknown, and is told `execution_failure` instead (`UNKNOWN → FAILED`), so its agent can ask again.
+A history too long to read, an endpoint whose ledger doesn't reach back, or a body not served yet
+is inconclusive and retried; it is never read as "not sent".
+
+How far back the ledger reaches is the block time of `minimumLedgerSlot`. A node that keeps pruning
+can have dropped that very block by the time its time is asked ("cleaned up"), or the slot can be
+skipped, so slots 100, 200 and 400 later are asked in turn. A later slot's time only ever claims
+less coverage. A transfer left unresolved
+by an earlier build, whose capture was dropped, is captured again on app start from its stored
+approval, which holds the same bytes.
 
 A request's or proposal's own expiry is not a transaction's expiry and is never used here. A record
 whose blockhash can't be read is never concluded expired.

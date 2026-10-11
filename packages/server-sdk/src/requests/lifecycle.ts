@@ -91,9 +91,11 @@ const TRANSACTION_KINDS: readonly ActionKind[] = [
 const MESSAGE_KINDS: readonly ActionKind[] = ["signMessage"];
 
 /**
- * Every allowed transition; anything else is refused. No state moves backward, and nothing leaves
- * a terminal state. ACK and message requests succeed as COMPLETED, transfers and swaps as
- * CONFIRMED.
+ * Every allowed transition; anything else is refused. Nothing leaves a terminal state, and no
+ * state moves backward but one: UNKNOWN back to PENDING, when the phone proves the approved
+ * transaction was never sent and the sidecar has checked that its blockhash has expired, so the
+ * owner can approve a fresh preparation (docs/protocol.md#reopening). ACK and message requests
+ * succeed as COMPLETED, transfers, swaps and staking actions as CONFIRMED.
  */
 export const TRANSITIONS: readonly Transition[] = [
   {
@@ -250,7 +252,22 @@ export const TRANSITIONS: readonly Transition[] = [
     kinds: TRANSACTION_KINDS,
     when: "the approved transaction's blockhash expired, and it never landed",
   },
+  {
+    // The one backward step (docs/protocol.md#reopening). It is safe because the approved bytes
+    // can never land once their blockhash has expired, which the sidecar checks for itself before
+    // it applies the move; the wallet is asked again only after the owner reviews a new version.
+    from: UNKNOWN,
+    to: PENDING,
+    by: "phone",
+    kinds: TRANSACTION_KINDS,
+    when: "the phone proved the approved transaction was never sent, and its blockhash has expired",
+  },
 ];
+
+/** Whether a move from `from` to `to` is the one backward step: reopening an UNKNOWN request. */
+export function isReopening(from: RequestState, to: RequestState): boolean {
+  return from === UNKNOWN && to === PENDING;
+}
 
 const TERMINAL: ReadonlySet<RequestState> = new Set([
   CONFIRMED,
@@ -278,9 +295,13 @@ const RESULTS: Readonly<
   transactionSubmission: { from: [PROCESSING, UNKNOWN], to: SUBMITTED },
   executionFailure: { from: [PROCESSING, UNKNOWN], to: FAILED },
   unknownOutcome: { from: [PROCESSING], to: UNKNOWN },
+  notSent: { from: [UNKNOWN], to: PENDING },
 };
 
-/** Whether a request in `state` is finished for good. UNKNOWN isn't: it can still be settled. */
+/**
+ * Whether a request in `state` is finished for good. UNKNOWN isn't: it can still be settled, or
+ * reopened to PENDING when the approved transaction is proven never sent.
+ */
 export function isTerminal(state: RequestState): boolean {
   return TERMINAL.has(state);
 }
@@ -351,6 +372,7 @@ export function invalidSubmissionReason(
         : `${snakeCase(result.case)}.signature must be 64 bytes (Ed25519)`;
     case "executionFailure":
     case "unknownOutcome":
+    case "notSent":
       return invalidNoteReason(
         `${snakeCase(result.case)}.detail`,
         result.value.detail,
@@ -373,8 +395,10 @@ export type ResultDecision =
 
 /**
  * Checks a result from the phone against the stored request it names, and says which state it
- * moves the request to. `latest` is the request's newest PreparedTransaction, for transfers and
- * swaps.
+ * moves the request to. `latest` is the request's newest PreparedTransaction, for transfers, swaps
+ * and staking actions. `spentVersion` is the newest version an earlier approval named (0 when none
+ * did): once approved, a version's bytes went to the wallet, so a request that was reopened
+ * (docs/protocol.md#reopening) can only be approved again for a newer preparation.
  *
  * Callers do what this doesn't:
  * - expire an overdue request first (`isOverdue`)
@@ -386,6 +410,7 @@ export function decideResult(
   submission: SubmitResultRequest,
   latest?: PreparedTransaction,
   nowMs: number = Date.now(),
+  spentVersion = 0,
 ): ResultDecision {
   const action = request.action;
   const kind = action?.kind.case;
@@ -410,7 +435,13 @@ export function decideResult(
     };
   }
   if (result.case === "approval") {
-    const mismatch = approvalMismatch(action, result.value, latest, nowMs);
+    const mismatch = approvalMismatch(
+      action,
+      result.value,
+      latest,
+      nowMs,
+      spentVersion,
+    );
     if (mismatch !== undefined) return mismatch;
   }
   if (
@@ -443,6 +474,7 @@ function approvalMismatch(
   approval: Approval,
   latest: PreparedTransaction | undefined,
   nowMs: number,
+  spentVersion: number,
 ): ResultDecision | undefined {
   if (action.kind.case === "signMessage") {
     const hash = createHash("sha256")
@@ -460,6 +492,13 @@ function approvalMismatch(
   }
   if (latest === undefined) {
     return stale("nothing has been prepared for this request yet");
+  }
+  if (latest.version <= spentVersion) {
+    // The request was reopened after this version was approved and never sent: its blockhash is
+    // dead, and the owner must review a new preparation before the wallet is asked again.
+    return stale(
+      `version ${latest.version} was already approved once and never sent; prepare the request again and have the owner review the new version`,
+    );
   }
   if (approval.preparedVersion !== latest.version) {
     return stale(
