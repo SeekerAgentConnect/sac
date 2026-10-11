@@ -31,3 +31,16 @@ Build a subscription-based prediction server that turns a user's own prompt, wri
 - Provide a complete walkthrough covering subscribing, writing a prompt, receiving the first proposals, editing the prompt, expiry and renewal.
 
 Prompt interpretation, market selection and subscription management belong to the prediction server; the gateway delivers the resulting feed and enforces access.
+
+## Any prediction market, whatever its outcomes
+
+Let the app take part in any prediction market, not only a single yes-or-no question. Today the prediction demo publishes only events that are one YES/NO market, and skips events of several outcome markets: match winners ("Giants vs. Commanders"), strike ladders, valuation ranges, "by October / by December" deadlines.
+
+- Publish an event as one proposal with all of its outcomes, instead of choosing one market to represent it.
+- On the phone, read the event's outcomes from the provider at review time and show them dynamically: each outcome's name, its YES and NO prices and whether it can be traded now. Nothing about the outcomes is fixed in the published document.
+- Let the owner choose the outcome as well as the side and the stake, and keep the approval on their own device.
+- Keep the liquidity rule per outcome: an outcome nobody bids for can be shown but not entered, so an owner can always get out of what they entered.
+- Show and close positions on any outcome of the event from the same review, including outcomes added by the provider after the proposal was published.
+- Lift the demo's `PREDICTION_OUTCOMES=two` restriction once the phone supports this.
+
+Outcome discovery stays the provider's; the publisher proposes the event, and the choice of outcome, side and stake belongs to the owner.
