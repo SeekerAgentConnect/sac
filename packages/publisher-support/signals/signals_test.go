@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/proto"
+
+	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 )
 
 var now = time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
@@ -108,9 +111,9 @@ func TestTheDocumentsTermsAreInKeyOrder(t *testing.T) {
 		ExpiresAt:  now.Add(time.Hour),
 		Terms:      swapTerms(),
 	}
-	document := Proposal(server, signal)
+	document := Request(server, signal)
 	keys := []string{}
-	for _, value := range document.GetValues() {
+	for _, value := range document.GetAction().GetParameters() {
 		keys = append(keys, value.GetKey())
 	}
 	expected := []string{InputDecimals, InputMint, MaxSlippageBps, OutputDecimals, OutputMint}
@@ -128,7 +131,7 @@ func TestTheDocumentsTermsAreInKeyOrder(t *testing.T) {
 	for _, key := range []string{MaxSlippageBps, OutputMint, InputMint, OutputDecimals, InputDecimals} {
 		shuffled.Terms[key] = signal.Terms[key]
 	}
-	second, err := proto.MarshalOptions{Deterministic: true}.Marshal(Proposal(server, shuffled))
+	second, err := proto.MarshalOptions{Deterministic: true}.Marshal(Request(server, shuffled))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,12 +141,81 @@ func TestTheDocumentsTermsAreInKeyOrder(t *testing.T) {
 }
 
 func TestADocumentNamesItsOwnChannelAndNothingElse(t *testing.T) {
-	document := Proposal(server, Signal{ProposalID: "x", Status: Open, Terms: swapTerms()})
-	if document.GetServerId() != server {
-		t.Fatalf("server %q", document.GetServerId())
+	document := Request(server, Signal{ProposalID: "x", Status: Open, Terms: swapTerms()})
+	if document.GetIdentity().GetSourceId() != server {
+		t.Fatalf("server %q", document.GetIdentity().GetSourceId())
 	}
-	if document.GetChannel() != "server/"+server {
-		t.Fatalf("channel %q", document.GetChannel())
+	if document.GetIdentity().GetScope() != "server/"+server ||
+		document.GetAudience().GetFeed().GetChannel() != "server/"+server {
+		t.Fatalf("channel %q", document.GetIdentity().GetScope())
+	}
+}
+
+// A document is request contract 2, and its action names the signal's own network (SEE-185). One
+// with no network says unspecified — which the gateway refuses and no phone executes — and never
+// Mainnet.
+func TestADocumentNamesItsNetworkUnderContractTwo(t *testing.T) {
+	for named, wire := range map[network.Network]serverv1.SolanaNetwork{
+		network.Mainnet: serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+		network.Devnet:  serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+		network.Testnet: serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET,
+		"":              serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED,
+	} {
+		document := Request(server, Signal{ProposalID: "x", Status: Open, Network: named,
+			Terms: swapTerms()})
+		if document.GetContractVersion() != 2 || ContractVersion != 2 {
+			t.Fatalf("contract %d", document.GetContractVersion())
+		}
+		if document.GetAction().GetNetwork() != wire {
+			t.Fatalf("%q became %s", named, document.GetAction().GetNetwork())
+		}
+	}
+}
+
+// Two signals that differ only by network are two statements and two documents: the same mint on
+// another cluster is another asset, so an idempotency key reused across networks is a conflict and
+// an update that moved the network would be a new document (SEE-185).
+func TestTheNetworkIsPartOfTheStatementAndTheFingerprint(t *testing.T) {
+	mainnet := Signal{ProposalID: "x", Status: Open, Network: network.Mainnet,
+		ExpiresAt: now.Add(time.Hour), Note: "trimming SOL into USDC", Terms: swapTerms()}
+	devnet := mainnet
+	devnet.Network = network.Devnet
+	if Statement(mainnet) == Statement(devnet) {
+		t.Fatal("two signals differing only by network have the same statement")
+	}
+	if Fingerprint(server, mainnet) == Fingerprint(server, devnet) {
+		t.Fatal("two signals differing only by network have the same fingerprint")
+	}
+	if Statement(mainnet) != Statement(mainnet) {
+		t.Fatal("a statement is not stable")
+	}
+}
+
+// A caller's network is read, never guessed: missing or unknown is bad_network, and a real network
+// the deployment does not declare is other_network — even when the deployment declares only one.
+func TestANetworkIsDeclaredAndDeclaredByTheManifest(t *testing.T) {
+	only := []network.Network{network.Mainnet}
+	for _, one := range []struct {
+		named     string
+		supported []network.Network
+		code      string
+	}{
+		{"", only, "bad_network"},
+		{"Mainnet", only, "bad_network"},
+		{"solana:mainnet", only, "bad_network"},
+		{"localnet", only, "bad_network"},
+		{"devnet", only, "other_network"},
+		{"mainnet", nil, "other_network"},
+		{"devnet", []network.Network{network.Mainnet, network.Devnet}, ""},
+		{"mainnet", only, ""},
+	} {
+		declared, fault := CheckNetwork(one.named, one.supported)
+		switch {
+		case one.code == "" && (fault != nil || declared.String() != one.named):
+			t.Fatalf("%q in %v: %v %v", one.named, one.supported, declared, fault)
+		case one.code != "" && (fault == nil || fault.Code != one.code || fault.Term != "network"):
+			t.Fatalf("%q in %v: expected %s, got %v", one.named, one.supported, one.code, fault)
+		}
 	}
 }
 

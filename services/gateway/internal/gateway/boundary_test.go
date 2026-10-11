@@ -224,6 +224,9 @@ func TestTheRulesReachForNothing(t *testing.T) {
 	expected := []string{
 		// Encoding typed common parameters for the protocol-1 proposal adapter.
 		"encoding/base64",
+		// Saying which rule an operator's client configuration broke, in the operator's words
+		// (SEE-185).
+		"fmt",
 		// The contract, and the two documents the rules are about.
 		"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1",
 		"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/proposal/v1",
@@ -232,9 +235,13 @@ func TestTheRulesReachForNothing(t *testing.T) {
 		// Comparing documents, and reading a timestamp as an instant.
 		"google.golang.org/protobuf/proto",
 		"google.golang.org/protobuf/types/known/timestamppb",
+		// Reading an RPC endpoint's URL to check its shape (SEE-185). Parsing only: nothing in the
+		// rules dials, and TestOnlyTheBrokerAndRelayCallOut holds that.
+		"net/url",
 		// The shapes an identity, a name and a piece of text are held to.
 		"regexp",
-		// Comparing two manifests' environments as sets (SEE-97).
+		// Sets and canonical order: a manifest's networks, a signal's network among them, and the
+		// client configuration's endpoints and fee accounts.
 		"slices",
 		"strconv",
 		"strings",
@@ -312,9 +319,16 @@ func TestTheStoreKeepsOnlyFeedState(t *testing.T) {
 	// publisher's decision takes. There is no wallet, no address, no signature, no device name and
 	// no decision in it: the publisher saw those and kept them, and a public feed never writes a
 	// row here at all.
+	//
+	// client_config is SEE-185's operator configuration: one row, by construction, holding the
+	// Solana RPC endpoint per network and the SAC swap fee that every app trusting this gateway
+	// reads. It is the operator's setting for the deployment and nothing else — there is no column
+	// in it for a subscriber, a device, a reader, a publisher or anything an owner decided; no read
+	// writes to it; and what it holds is public by rule, served identically to every caller, with a
+	// URL that carries user info refused before it can be stored.
 	expected := []string{
-		"access_grant", "channel_sequence", "manifest", "notice", "proposal", "publisher",
-		"publisher_credential", "relay_binding", "relay_installation",
+		"access_grant", "channel_sequence", "client_config", "manifest", "notice", "proposal",
+		"publisher", "publisher_credential", "relay_binding", "relay_installation",
 	}
 	if fmt.Sprint(names) != fmt.Sprint(expected) {
 		t.Fatalf("the store holds %v, expected %v", names, expected)
@@ -385,8 +399,19 @@ func TestTheContractIsBoundedAndSaysNothingAboutAnyone(t *testing.T) {
 			"page_size", "page_token",
 			"feeds", "next_page_token",
 			"server_id", "gateway_url", "channel", "display_name", "description", "access",
-			"supported_networks", "required_plugins", "environments", "protocol_version",
+			"supported_networks", "required_plugins", "protocol_version",
 			"settings_revision",
+			// The client configuration (SEE-185): the operator's RPC endpoint per network and the
+			// SAC swap fee — its rate, its network, the public address that owns the receiving
+			// accounts, and one receiving account per mint. Every one of them is about this
+			// deployment and set by its operator: the request has no field at all, the answer is
+			// the same for every caller, and the owner here is the operator's fee wallet, never a
+			// reader's. Nothing in it is a secret, by rule.
+			"config",
+			"revision", "rpc_endpoints", "swap_fee",
+			"network", "url",
+			"bps", "network", "owner", "accounts",
+			"mint", "token_account",
 		},
 		// What a subscriber receives (SEE-91): a sequence the gateway counted and a document a
 		// publisher published. A field here would be a field every listener on the channel sees.
@@ -578,6 +603,7 @@ func TestNeitherListenerServesTheOthersProcedures(t *testing.T) {
 		gatewayv1connect.FeedServiceGetFeedTopicsProcedure,
 		gatewayv1connect.FeedServiceGetFeedStatusProcedure,
 		gatewayv1connect.FeedServiceListRecommendedFeedsProcedure,
+		gatewayv1connect.FeedServiceGetClientConfigProcedure,
 	}
 	retiredProcedures := []string{
 		"/seekervault.gateway.v1.InvitationService/ResolveInvitation",

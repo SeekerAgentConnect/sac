@@ -23,6 +23,13 @@ the feed path. Only an input that is not a pairing code is offered to `FeedRefer
 feed reference goes only to feed onboarding, and each `FeedReferenceProblem` has feed-specific copy.
 Both parsers apply the same Android cleartext policy to the supplied host.
 
+**Only the build's gateway (SEE-185).** The app trusts exactly one gateway, the origin compiled in as
+`BuildConfig.GATEWAY_URL` ([client-config.md](client-config.md#the-trusted-gateway)). A reference
+naming any other gateway is refused before anything is asked of it
+(`FeedReferenceProblem.ForeignGateway`: "This feed is on another gateway…"), and a build with no
+gateway refuses every reference (`NoGateway`). Origins are compared normalized, so a trailing slash
+or the case of a host is not another gateway.
+
 ## What the owner confirms
 
 Before anything is stored, the existing Add connection sheet shows:
@@ -34,13 +41,13 @@ Before anything is stored, the existing Add connection sheet shows:
 
 **Cancel** returns to entry and writes nothing. **Add feed** calls `ConnectionRepository.addFeed`
 once. The gateway then supplies the manifest; the reference is never trusted to provide a display
-name, channel, environment or plugin requirement.
+name, channel, network or plugin requirement.
 
 ## Outcomes
 
 | Repository outcome | Owner-facing result |
 | --- | --- |
-| `Added` | Open the new connection. Its manifest display name, Sandbox or Production environment, and required client plugins are visible, and its **Wallet** picker opens so the owner chooses the wallet profile this feed uses, from those on a network the feed declares (SEE-174, [wallet-profiles.md](wallet-profiles.md#binding-a-connection)). |
+| `Added` | Open the new connection. Its manifest display name, the **Networks** its signals may run on, and required client plugins are visible. A public feed needs no wallet and opens straight to its sheet: each signal's operation chooses its wallet for the signal's network ([wallet-setup.md](../guides/wallet-setup.md#feed-operations)). A restricted feed opens the **Wallet** picker for its access identity, any saved profile, and then requests access with it ([restricted-feeds.md](restricted-feeds.md#one-wallet-per-feed)). |
 | `Already` | Explain that the feed is already present and nothing was stored; offer to open it. |
 | `Refused(ManifestProblem)` | Show the manifest problem code. Nothing is stored. |
 | `Failed(CheckOutcome)` | State the gateway/check failure. Only transient unreachable or failed checks offer **Retry**. |

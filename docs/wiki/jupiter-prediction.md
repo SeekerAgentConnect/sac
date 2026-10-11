@@ -77,7 +77,7 @@ Three ways out were possible: sign it anyway on a parameter-only review, refuse 
 
 `solana/` is that component: one read method (`getMultipleAccounts`), a table parser, and the rebuild. It names no provider, so any provider may use it; the swap asks for a format that needs no resolution and so never does, which also means the resolver is already in place if `asLegacyTransaction` is ever withdrawn.
 
-**What it costs, said plainly:** the review is then only as accurate as the configured endpoint. This is not offline verification and is not trustless — see [security.md](../security.md#resolving-a-lookup-table). The endpoint is the application's or its owner's — never a publisher's — and since SEE-184 it is the **mainnet** endpoint of the app's one resolver ([solana-rpc.md](solana-rpc.md)): the owner's setting (Wallet → **Solana RPC**), else `-Pseekervault.solanaRpc.mainnet=…`, else the legacy general `-Pseekervault.solanaRpc=…` once its genesis hash proves it is mainnet. A mainnet endpoint alone is enough. All are **empty by default** so a checkout reaches no cluster; with none, or with one that serves another cluster, no order is prepared and the review says why.
+**What it costs, said plainly:** the review is then only as accurate as the configured endpoint. This is not offline verification and is not trustless — see [security.md](../security.md#resolving-a-lookup-table). The endpoint is never a publisher's: it is the **mainnet** endpoint of the app's one resolver ([solana-rpc.md](solana-rpc.md)), which since SEE-185 comes only from the trusted gateway's client configuration ([client-config.md](client-config.md)). There is no build default and no setting on the phone. When the gateway configures no mainnet endpoint, or one that serves another cluster, no order is prepared and the review says why.
 
 ## What an order is made of
 
@@ -137,8 +137,8 @@ It appears only when the record holds an order account, which means only after a
 
 ## Limits, honestly
 
-- **Mainnet or nothing.** There is no devnet prediction market to point at, and the capability declares mainnet in both environments, so a wallet on another cluster is refused as `NetworkUnsupported` — a separate fact from an environment the provider does not serve.
-- **Sandbox gets the same work**, and stops before the wallet: the market is read, the order is built and reviewed, and nothing is signed or sent (SEE-97, [`docs/wiki/environments.md`](environments.md)). The provider never reads the environment — whether bytes are signed is core's.
+- **Mainnet or nothing.** There is no devnet prediction market to point at, and the capability declares mainnet only, for execution and preview alike, so a signal declaring another network is refused as `NetworkUnsupported`, and the wallet must be one chosen for mainnet.
+- **A preview gets the same work**, and stops before the wallet: the market is read, the order is built and reviewed, and nothing is signed or sent (SEE-97, SEE-185, [`docs/wiki/environments.md`](environments.md)). It is the owner's choice per operation (**Preview without sending**), and the provider never reads it — whether bytes are signed is core's.
 - **One minute of freshness**, as for a swap: a market's price moves and the transaction carries a recent blockhash.
 - **The keyless allowance is 0.5 requests a second, 30 a minute** — four calls per order at most (the market when the review opens, the market again, the order, the tables), which is ample for a person and not for polling. Nothing polls.
 - **Buying here; selling from History.** This action only buys. Selling the whole position is `prediction.sell`, reached from the purchase's History item and reviewed on its own bytes ([prediction positions](prediction-positions.md)).

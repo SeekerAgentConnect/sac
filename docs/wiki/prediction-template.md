@@ -51,7 +51,7 @@ flowchart TB
     end
     subgraph publisher["the publisher — examples/demo-prediction/ (SEE-96)"]
         Listing -- "bounded polling" --> Cycle["a discovery cycle:<br>filter, then reconcile"]
-        Cycle -- "PublishProposal, once per market" --> Gateway
+        Cycle -- "PublishRequest, once per market" --> Gateway
     end
     Gateway["the feed gateway (SEE-90)"]
     subgraph phones["each owner's own phone (SEE-89, SEE-94)"]
@@ -128,7 +128,7 @@ records carry.
 | `PREDICTION_FILTER` | the provider (`filter=`) | its own named filters: `new` (created in the last 24 hours), `live` (begun), `trending` (recent trade activity), `upcoming` (not begun) |
 | `PREDICTION_TAGS` | here | the event's own tags, compared **whole** and case-insensitively. A tag is a token the provider assigns (`nfl`, `fed-rates`), so half of one is not a match. Any one matching is enough |
 | `PREDICTION_KEYWORDS` | here | a **case-insensitive substring** of the event's title, bucket, subcategory and tags together with the market's own title, compared after Unicode (NFKC), case and whitespace normalization. Any one matching is enough. A substring deliberately: `eth` finds "Ethereum", and it also finds "Bethesda". Each keyword is also a **coverage bucket**; one that normalizes to an earlier one is dropped |
-| `PREDICTION_STATE` | here | `open` (default): only markets the provider would take an order for. `any`: also closed, cancelled and settled ones — **sandbox only** |
+| `PREDICTION_STATE` | here | `open` (default): only markets the provider would take an order for. `any`: also closed, cancelled and settled ones, which no phone can execute; logs a warning at startup |
 | `PREDICTION_LEAST_CLOSE_IN_MINUTES` / `PREDICTION_MOST_CLOSE_IN_MINUTES` | here | the market's own close time has to be that far away, inclusive at both edges. A market with **no** close time cannot be judged against a window, so it is skipped whenever one is set |
 | `PREDICTION_MOST_OPEN` | here | how many proposals to hold open at once — **one per event**, so this is how many events the feed shows. When more events match, the ones published are chosen for coverage first, then variety, then the soonest to close ([Selection](#selection-one-entry-per-event-chosen-for-coverage-see-177)) |
 
@@ -350,33 +350,37 @@ written against are committed as real captured answers in
 an opt-in test reads the live provider to notice when they change
 ([development/demos.md](../development/demos.md)).
 
-## Sandbox and production
+## One deployment, for previews and executions alike
 
-The environment is the publisher's half of the configuration and works exactly as it does for the
-other template: one deployment serves one environment, and the database is stamped with it, so a
-copied compose file pointed at an existing volume is refused at startup. A sandbox deployment
-discovers the same live markets from the same provider — nothing about a publisher is simulated,
-because nothing about a publisher executes anything. What changes is what a phone does with what it
-publishes (SEE-97, [environments.md](environments.md)), and `examples/demo-prediction/.env.example` is a
-sandbox for that reason.
+A deployment is no longer sandbox or production (SEE-185). Whether an owner previews a market's
+signal or places the order is their choice on the phone, one operation at a time
+([environments.md](environments.md)); nothing about a publisher is simulated, because nothing about
+a publisher executes anything. `PUBLISHER_ENVIRONMENT` is retired: a deployment that still sets it
+starts and logs one line saying it is ignored, and the database's environment stamp is dropped
+(store schema version 6), so a file created as either opens under the same publisher. An operator
+who ran a sandbox and a production deployment side by side keeps one.
 
-One filter has a rule about it attached: **`PREDICTION_STATE=any` is refused in production.**
-Publishing markets the provider will not take an order for is a deliberate sandbox exercise — the
-phone reads the market itself and refuses a closed one, whichever environment it is in — and the way
-it reaches production is a copied `.env`.
+**`PREDICTION_STATE=any`** is allowed in any deployment and logs a warning at startup. It publishes
+closed, cancelled and settled markets as Mainnet signals the provider will not take an order for,
+so no phone can execute them; it exists to exercise the closure path deliberately, and the phone
+reads the market itself and refuses a closed one whatever was published.
 
-## Solana Mainnet only
+## Solana Mainnet only, named on every signal
 
-Which Solana networks the template's wallet operations run on is a separate manifest field
-(`feed.supported_networks`, SEE-174, [server-manifests.md](server-manifests.md#supported-networks)), and a
-separate question from the environment: a sandbox deployment reads the same live Mainnet markets, so
-sandbox is not Devnet, and production is not Mainnet by definition. Jupiter's prediction markets
-settle on Mainnet and nowhere else, so the template fixes that in its own code:
-`PUBLISHER_SUPPORTED_NETWORKS` defaults to `mainnet`, may be narrowed to `none`, and refuses `devnet`
-or `testnet` at startup rather than let owners bind a Devnet wallet profile to markets it cannot
-trade. The phone offers only wallet profiles on a declared network when the feed is added, and signs
-nothing for a connection whose network the manifest does not list. A change to the setting moves the
-manifest's fingerprint, so the next start publishes a new revision.
+Which Solana networks the template's wallet operations may run on is a manifest field
+(`feed.supported_networks`, SEE-174, [server-manifests.md](server-manifests.md#supported-networks)),
+and it is capability information. What a phone executes on is the network **each signal names**
+(`action.network`, request contract 2, SEE-185). Jupiter's prediction markets settle on Mainnet and
+nowhere else, so every signal this template publishes names `mainnet`: a constant of its Jupiter
+provider (`internal/discovery` `Network`), never read off the manifest. The manifest is asked only
+whether it declares that network. `PUBLISHER_SUPPORTED_NETWORKS` defaults to `mainnet`, may be
+narrowed to `none` (then no market is published, each one reported as `other_network`), and refuses
+`devnet` or `testnet` at startup. The phone offers only wallet profiles on the signal's network. A
+change to the setting moves the manifest's fingerprint, so the next start publishes a new revision.
+
+A market published before SEE-185 has no network, and it is never given one. The next cycle that
+finds it withdraws that proposal and publishes the market again, as its next generation, with
+`mainnet`. `publishctl show <id>` prints a signal's `network`.
 
 ## A complete example
 
@@ -391,7 +395,6 @@ $ $EDITOR .env
 ```dotenv
 PUBLISHER_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
 PUBLISHER_GATEWAY_URL=https://feeds.example.com
-PUBLISHER_ENVIRONMENT=sandbox
 PUBLISHER_SUPPORTED_NETWORKS=mainnet  # the only network Jupiter's markets settle on
 BROADCAST_CREDENTIAL=…                # what the gateway's operator printed once
 PUBLISHER_API_TOKEN=…                 # openssl rand -base64 32

@@ -6,7 +6,6 @@ import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
@@ -68,7 +67,12 @@ class ConnectionsViewModelTest {
 
     @After fun resetMain() = Dispatchers.resetMain()
 
-    private fun viewModel() = ConnectionsViewModel(repository) { it == "127.0.0.1" }
+    private fun viewModel() =
+        ConnectionsViewModel(
+            repository,
+            cleartextPermitted = { it == "127.0.0.1" },
+            trustedGateway = GATEWAY,
+        )
 
     private fun text(code: PairingCode) =
         "seekervault://pair?v=1&url=${java.net.URLEncoder.encode(code.serverUrl, Charsets.UTF_8)}" +
@@ -102,7 +106,6 @@ class ConnectionsViewModelTest {
                         mode = ConnectionMode.GatewayFeed,
                         reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_B)),
                         required = listOf(PluginRequirement(PluginId("jupiter.swap"), 1..1)),
-                        environments = setOf(PluginEnvironment.Production),
                         name = "Copy trading",
                     )
                 ),
@@ -149,7 +152,13 @@ class ConnectionsViewModelTest {
     @Test
     fun publishesApplicationScopedLivenessWithoutScreenRefresh() {
         val updates = MutableStateFlow(ForegroundUpdatesState())
-        val viewModel = ConnectionsViewModel(repository, updates) { it == "127.0.0.1" }
+        val viewModel =
+            ConnectionsViewModel(
+                repository,
+                updates,
+                cleartextPermitted = { it == "127.0.0.1" },
+                trustedGateway = GATEWAY,
+            )
 
         updates.value =
             ForegroundUpdatesState(
@@ -168,6 +177,7 @@ class ConnectionsViewModelTest {
                 repository,
                 foregroundFeeds = feeds,
                 cleartextPermitted = { it == "127.0.0.1" },
+                trustedGateway = GATEWAY,
             )
 
         feeds.value =
@@ -204,6 +214,7 @@ class ConnectionsViewModelTest {
                     FeedOutcome.Added(feed)
                 },
                 cleartextPermitted = { it == "127.0.0.1" },
+                trustedGateway = GATEWAY,
             )
 
         val code = server.issue(URL)
@@ -277,6 +288,7 @@ class ConnectionsViewModelTest {
                         outcome
                     },
                     cleartextPermitted = { false },
+                    trustedGateway = GATEWAY,
                 )
             viewModel.onCode(feedText())
             viewModel.confirmFeed()
@@ -322,6 +334,7 @@ class ConnectionsViewModelTest {
                     FeedOutcome.Added(feed)
                 },
                 cleartextPermitted = { false },
+                trustedGateway = GATEWAY,
             )
 
         viewModel.onCode(feedText())

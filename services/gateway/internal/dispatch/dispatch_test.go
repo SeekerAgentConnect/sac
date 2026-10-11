@@ -351,9 +351,6 @@ func manifestDocument() *serverv1.ServerManifest {
 		ProtocolVersion:  1,
 		SettingsRevision: 3,
 		Mode:             serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_FEED,
-		Environments: []serverv1.ServerEnvironment{
-			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-		},
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: "https://feeds.example.com",
 			Channel:    channelA,

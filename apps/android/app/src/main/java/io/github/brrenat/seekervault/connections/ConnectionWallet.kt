@@ -16,6 +16,7 @@ import io.github.brrenat.seekervault.designsystem.ConnectionDetailRules
 import io.github.brrenat.seekervault.designsystem.ConnectionWalletPickerSheet
 import io.github.brrenat.seekervault.designsystem.FactRowValueStyle
 import io.github.brrenat.seekervault.designsystem.WalletPickerRowModel
+import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.wallet.BindOutcome
 import io.github.brrenat.seekervault.wallet.WalletNetwork
@@ -33,9 +34,18 @@ import io.github.brrenat.seekervault.wallet.profileName
  * ever read as "every network works".
  */
 fun compatibleProfiles(connection: Connection, profiles: List<WalletProfile>): List<WalletProfile> {
-    val supported = connection.server.manifest?.supportedNetworks.orEmpty()
+    val supported = signingNetworks(connection)
     return if (supported.isEmpty()) profiles else profiles.filter { it.network in supported }
 }
+
+/**
+ * The networks a connection's bound wallet must be on: a direct server's declared networks. A
+ * feed's bound profile is only its access identity (SEE-185) — an address proof no network enters —
+ * so any profile may be it, and each feed operation chooses its wallet for its signal's network.
+ */
+private fun signingNetworks(connection: Connection): Set<WalletNetwork> =
+    if (connection.mode == ConnectionMode.GatewayFeed) emptySet()
+    else connection.server.manifest?.supportedNetworks.orEmpty()
 
 /** The connection's wallet, as the navigation row on its detail sheet shows it. */
 @Composable
@@ -52,6 +62,29 @@ fun connectionWalletRow(readiness: WalletReadiness?): ConnectionDetailRules {
                 )
             } ?: stringResource(R.string.connection_wallet_none),
         caption = walletStateText(readiness),
+        tag = ConnectionsTags.WALLET_ROW,
+    )
+}
+
+/**
+ * A restricted feed's access identity, as its detail sheet shows it (SEE-185): the wallet whose
+ * address the publisher approved. It is only that — a feed operation chooses its own wallet for the
+ * network its signal names — so the row says so rather than calling it the feed's wallet.
+ */
+@Composable
+fun accessWalletRow(readiness: WalletReadiness?): ConnectionDetailRules {
+    val profile = readiness?.profile
+    return ConnectionDetailRules(
+        title = stringResource(R.string.connection_access_wallet_title),
+        supportingText =
+            profile?.let {
+                stringResource(
+                    R.string.connection_wallet_ready,
+                    profileName(it),
+                    networkText(it.network),
+                )
+            } ?: stringResource(R.string.connection_wallet_none),
+        caption = stringResource(R.string.connection_access_wallet_caption),
         tag = ConnectionsTags.WALLET_ROW,
     )
 }
@@ -127,7 +160,7 @@ fun bindingText(outcome: BindOutcome): String? =
     }
 
 @Composable
-private fun networksText(networks: Set<WalletNetwork>): String =
+internal fun networksText(networks: Set<WalletNetwork>): String =
     WalletNetwork.entries.filter { it in networks }.map { networkText(it) }.joinToString(" / ")
 
 /**
@@ -146,7 +179,7 @@ fun ConnectionWalletPicker(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val supported = connection.server.manifest?.supportedNetworks.orEmpty()
+    val supported = signingNetworks(connection)
     var chosen by rememberSaveable(connection.id) { mutableStateOf<String?>(null) }
     // A profile the owner just added for this connection is the one they meant.
     LaunchedEffect(wallet.added) {
@@ -159,12 +192,16 @@ fun ConnectionWalletPicker(
             ?.let { chosen = it }
     }
     val busy = wallet.busy
+    val feed = connection.mode == ConnectionMode.GatewayFeed
     val declared = supported.takeIf { it.isNotEmpty() }?.let { networksText(it) }
+    // A feed's wallet here is its access identity only (SEE-185): said instead of a network.
+    val accessOnly = stringResource(R.string.connection_wallet_picker_access_only)
     ConnectionWalletPickerSheet(
         title = stringResource(R.string.connection_wallet_picker_title, connection.label),
-        declaredNetwork = declared,
+        declaredNetwork = if (feed) accessOnly else declared,
         declaredNetworkLabel =
-            declared?.let { stringResource(R.string.connection_wallet_picker_uses, it) },
+            if (feed) accessOnly
+            else declared?.let { stringResource(R.string.connection_wallet_picker_uses, it) },
         noNetworkTitle = stringResource(R.string.connection_wallet_picker_no_network_title),
         noNetworkMessage = stringResource(R.string.connection_wallet_picker_no_networks),
         rows =

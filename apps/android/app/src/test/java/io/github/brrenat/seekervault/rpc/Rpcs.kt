@@ -2,10 +2,8 @@ package io.github.brrenat.seekervault.rpc
 
 import io.github.brrenat.seekervault.confirmations.ChainReader
 import io.github.brrenat.seekervault.request.v1.Network
-import io.github.brrenat.seekervault.rpc.storage.RpcSettingsStore
 import io.github.brrenat.seekervault.solana.NetworkAccounts
 import io.github.brrenat.seekervault.solana.SolanaAccounts
-import java.io.File
 
 /**
  * A fake chain that serves [network] and nothing else (SEE-184). Asking it about another network is
@@ -17,10 +15,13 @@ fun SolanaAccounts.serving(network: Network = Network.NETWORK_MAINNET): NetworkA
         this
     }
 
-/** The app's resolver over [defaults] and a fake chain reader, with its settings under [dir]. */
+/**
+ * The app's resolver over [endpoints] — what the trusted gateway's client configuration named for
+ * each network (SEE-185) — and a fake chain reader.
+ */
 fun testRpc(
-    dir: File,
-    defaults: RpcDefaults = RpcDefaults(),
+    endpoints: Map<Network, String> = emptyMap(),
+    allowLocalValidator: Boolean = false,
     accounts: (String) -> SolanaAccounts = { error("no account reads in this test") },
     reader: (String) -> ChainReader,
-): SolanaRpc = SolanaRpc(RpcSettingsStore(dir), defaults, reader, accounts)
+): SolanaRpc = SolanaRpc(endpoints, allowLocalValidator, reader, accounts)

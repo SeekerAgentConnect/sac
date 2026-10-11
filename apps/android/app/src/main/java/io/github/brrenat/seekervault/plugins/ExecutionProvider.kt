@@ -381,7 +381,45 @@ data class ActionOperation(
      */
     val request: ActionRequest? = null,
     val wallet: SelectedWallet? = null,
+    /**
+     * The SAC service fee this one operation may carry (SEE-173, SEE-185), decided by core and
+     * never by a provider: a feed operation's terms come from the trusted gateway's client
+     * configuration for [network], and a direct server's operation always carries
+     * [ServiceFeeTerms.None]. A provider applies what it is handed — it reads no configuration of
+     * its own — and the terms are pinned with the preparation, so a configuration that changes
+     * before signing means preparing again rather than a different rate or recipient.
+     */
+    val serviceFee: ServiceFeeTerms = ServiceFeeTerms.None,
 )
+
+/**
+ * A service fee's terms for one operation (SEE-173, SEE-185): a rate in whole basis points of the
+ * output, the public wallet that owns the receiving token accounts, and one receiving token account
+ * per output mint. Public values only; validated before they get here
+ * ([io.github.brrenat.seekervault.config.clientConfigFrom]).
+ */
+data class ServiceFeeTerms(
+    val bps: Int,
+    val owner: String?,
+    /** Output mint → the token account that receives the fee in that mint. */
+    val accounts: Map<String, String>,
+) {
+    /** Whether these terms charge anything at all. */
+    val charges: Boolean
+        get() = bps > 0 && owner != null && accounts.isNotEmpty()
+
+    companion object {
+        /** No fee, on any pair: every direct operation, and a gateway configured with none. */
+        val None: ServiceFeeTerms = ServiceFeeTerms(0, null, emptyMap())
+    }
+}
+
+/**
+ * The most a service fee may be: 100 basis points, one percent of the output. The swap program's
+ * own field would take 255; the gateway and this app both bound it here, so a typo in an operator's
+ * configuration cannot become a two-and-a-half percent cut.
+ */
+const val MOST_SERVICE_FEE_BPS: Int = 100
 
 /**
  * Why a provider could not prepare anything (SEE-93).
@@ -414,25 +452,24 @@ object PluginFailureCodes {
 }
 
 /**
- * Which promise is being kept when the owner approves (SEE-97, docs/wiki/environments.md).
+ * Whether one operation is executed or previewed (SEE-97, SEE-185, docs/wiki/environments.md).
  *
- * It belongs to a connection rather than to the app or to a provider. A server's manifest says
- * which environments it *serves*; the connection records the one it *keeps*, and only the owner
- * changes that — so no document a publisher republishes can move a demonstration onto real money,
- * and one phone holds a sandbox feed and a production one at the same time without either affecting
- * the other.
+ * It belongs to the operation: the owner chooses it when they act, with **Execute** or **Preview
+ * without sending**, and it is pinned in what they bind. It is no longer a property of a connection
+ * or of a publisher's deployment — one feed and one signal support both — and a direct server's
+ * operations are always [Production].
  *
- * Neither value is a Solana cluster and neither selects one. The cluster is the network the owner's
- * wallet is selected for, it is checked separately and always ([ActionOperation.network]), and
- * which clusters a provider serves is its own declaration ([ActionCapability.networks]): there is
- * no Jupiter test network to point [Sandbox] at, and inventing one would be worse than saying so.
+ * Neither value is a Solana cluster and neither selects one. The cluster is the one the signal
+ * declares, it is checked separately and always ([ActionOperation.network]), and which clusters a
+ * provider serves is its own declaration ([ActionCapability.networks]): there is no Jupiter test
+ * network to point [Sandbox] at, and inventing one would be worse than saying so.
  *
- * [code] is the word the publisher's own configuration, its API and its logs use, so an operator
- * and an owner are reading the same two words about the same deployment
- * (`publisher/internal/environment`).
+ * [code] is the word records keep for it.
  */
 enum class PluginEnvironment(val code: String) {
-    /** A real operation, on the network the owner's wallet is selected for. */
+    /**
+     * A real operation, on the network the signal declares: the wallet is asked to sign and send.
+     */
     Production("production"),
 
     /**

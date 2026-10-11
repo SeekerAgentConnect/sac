@@ -23,10 +23,9 @@ There is one implementation, and it is here.
 
 | Package | What it is |
 | --- | --- |
-| [`signals`](signals) | What a signal is, as pure data, and the one seam a demo supplies: `Kind` |
+| [`signals`](signals) | What a signal is, as pure data — including the Solana network it executes on, which every signal names (SEE-185) — and the one seam a demo supplies: `Kind` |
 | [`manifest`](manifest) | What a publisher says about itself, and the `seekervault://feed` reference a phone adds it from |
-| [`environment`](environment) | The production/sandbox stamp, and the two words the phone uses for it |
-| [`network`](network) | The Solana networks a deployment's wallet operations run on (SEE-174), as the manifest publishes them: `mainnet`, `devnet`, `testnet`, in canonical order |
+| [`network`](network) | The Solana networks a deployment's wallet operations run on (SEE-174), as the manifest publishes them: `mainnet`, `devnet`, `testnet`, in canonical order. Capability information only: each signal names its own network, which must be one of these |
 | [`markets`](markets) | The market records the store persists for a publisher that discovers its own signals |
 | [`store`](store) | The only place that speaks SQL: the signals, the market rows, the idempotency keys, the outbox |
 | [`gateway`](gateway) | The one thing that reaches out of a publisher's process: the gateway client and the retry judgment |
@@ -42,6 +41,22 @@ There is one implementation, and it is here.
 file is not importable and three copies of one fake gateway would be three opinions about what the
 real one does. Nothing that ships imports them, and there is a boundary test that fails if anything
 does.
+
+## What a signal says about its network (SEE-185)
+
+Every signal is published as request contract 2, whose action names the Solana network it executes
+on. The business API requires `network` (`mainnet`, `devnet` or `testnet`) on every create and
+update, and `publishctl create --network <name>` sends it; nothing is inferred, not even when the
+manifest declares a single network. The API's refusals are `bad_network` (400: missing or unknown),
+`other_network` (400: a network the manifest does not declare — the gateway's
+`GATEWAY_PROBLEM_OTHER_NETWORK`) and `network_fixed` (409: an update that names another network
+than the signal was created with). A signal stored before this (store schema version 6) has no
+network and is never given one: it is refused locally as `no_network` instead of being published,
+and it can still be withdrawn. The Stage 7.1 `PublishProposal` fallback is gone, because a proposal
+has no field for a network.
+
+`PUBLISHER_ENVIRONMENT` is retired: a deployment that still sets it starts and logs one warning
+(`config.Config.Warnings`). Preview versus execute is the owner's choice on the phone.
 
 ## Two deliberate design points
 

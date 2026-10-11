@@ -204,14 +204,14 @@
         "versionCode": 2,
         "previousVersionCode": 1,
         "apk": "sac-<version>.apk",
-        "releaseRequires": ["firebase", "solanaRpc", "relayUrl"]
+        "releaseRequires": ["firebase", "gatewayUrl"]
       },
       "vendors": [],
       "versionConstants": [],
       "toolchains": {
         "java": "21"
       },
-      "checks": ["pnpm check:android", "pnpm check:swap-fee-build"],
+      "checks": ["pnpm check:android"],
       "previousVersions": ["0.1.0"],
       "previousArtifacts": []
     }

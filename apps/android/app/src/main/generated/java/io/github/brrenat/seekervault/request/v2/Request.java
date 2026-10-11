@@ -9,6 +9,12 @@ package io.github.brrenat.seekervault.request.v2;
  * <pre>
  * Version 1 is the first common envelope contract. It is explicit on every document so a client
  * can keep an unknown request readable and dismissible without trying to execute it.
+ *
+ * Version 2 (SEE-185) is the current one: the action names the Solana network it executes on
+ * (ActionCapability.network), and that declaration is required. A version-1 document says nothing
+ * about a network, so a client keeps it readable and never executes it: the network is never
+ * inferred from a wallet, a manifest, or the assets a document names. The gateway accepts only
+ * version 2 for new publications.
  * </pre>
  *
  * Protobuf type {@code seekervault.request.v2.Request}
@@ -512,6 +518,12 @@ public  final class Request extends
    * <pre>
    * Version 1 is the first common envelope contract. It is explicit on every document so a client
    * can keep an unknown request readable and dismissible without trying to execute it.
+   *
+   * Version 2 (SEE-185) is the current one: the action names the Solana network it executes on
+   * (ActionCapability.network), and that declaration is required. A version-1 document says nothing
+   * about a network, so a client keeps it readable and never executes it: the network is never
+   * inferred from a wallet, a manifest, or the assets a document names. The gateway accepts only
+   * version 2 for new publications.
    * </pre>
    *
    * Protobuf type {@code seekervault.request.v2.Request}

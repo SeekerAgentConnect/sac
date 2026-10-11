@@ -184,6 +184,7 @@ No staking dashboard, no background monitoring of positions, no withdrawal remin
 staking feed, no automatic approval, and no staking contract of this project's own. `get_staking_status`
 exists for the agent, for preparation, and for the review — not to put a balance screen on the phone.
 
-Sandbox is unchanged by this ticket. Nothing in the staking path signs or broadcasts: that line is
+Staking is a direct server's, so it always executes for real: there is no preview of it (SEE-185).
+Nothing in the staking path signs or broadcasts: that line is
 still the wallet hand-off's alone, and `StageBoundaryTest` and `SkrChainTest` both hold the staking
 package to it.

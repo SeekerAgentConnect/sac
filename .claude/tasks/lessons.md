@@ -528,3 +528,25 @@
 - **Precedence is a selection, not a failover.** The old confirmation code fell through to the
   general endpoint when a per-cluster one failed. With an owner-chosen endpoint that would quietly
   read through something the owner didn't pick; report the chosen endpoint's failure instead.
+
+## One trusted gateway, and a network per signal (SEE-185)
+
+- **A new field an old client ignores is a reinterpretation, not an addition.** Adding
+  `ActionCapability.network` alone would have let an older phone read a devnet signal, drop the
+  field it doesn't know, and execute it on whatever network its wallet was bound to. The contract
+  version went to 2 instead, which an older phone refuses to execute. When a field changes what a
+  document *means*, version the document; reserve additive fields for facts an old reader may
+  safely not know.
+- **A projection into a poorer shape must leave out what it cannot carry.** The gateway's
+  protocol-1 proposal views would have stripped the network from a contract-2 signal and handed it
+  to clients that execute on their wallet's network. Omitting such documents from the legacy views
+  (not serving them cancelled, which shows a withdrawal nobody made) is the only faithful answer.
+- **A failed read of a configuration is not its zero value.** "No fee" and "couldn't ask" look the
+  same as an empty struct; keep them as different states (`ConfigAvailability.Unavailable` vs a
+  revision-0 configuration) all the way to the screen.
+- **Bind the terms an operation was prepared under, and compare terms rather than revisions.** A
+  revision moves for an RPC change that leaves the transaction identical; comparing the fee terms
+  for the operation's network is what decides whether the reviewed bytes still stand.
+- **"Rehearsal spends the proposal" was right for a deployment-level sandbox and wrong for a local
+  preview.** When a mode moves from the connection to the operation, re-ask every rule that was
+  written for the old owner of the mode — here, that a preview must not consume eligibility.

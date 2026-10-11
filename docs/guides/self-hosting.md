@@ -43,7 +43,12 @@ A public deployment needs resources the repository does not issue or operate:
 
 - DNS names and normally trusted certificates for the origins the phone uses;
 - public TCP reachability for the ports selected in the canonical guide;
-- a Solana RPC provider only when direct transfer preparation/confirmation is enabled;
+- a Solana RPC provider only when direct transfer preparation/confirmation is enabled on a direct
+  server;
+- for a feed gateway that apps are built against, the Solana RPC endpoints those apps read through,
+  set as the gateway's client configuration (`feed-gatewayctl client-config set-rpc` or the admin
+  page; public values only — front a provider that needs a secret key with your own proxy,
+  [client-config.md](../wiki/client-config.md));
 - a prediction provider for the Prediction demo (the documented keyless default is sufficient);
 - an external authorization server only when optional MCP OAuth is enabled; and
 - an operator-supplied Firebase project/credential only when optional wake-up hints are enabled.

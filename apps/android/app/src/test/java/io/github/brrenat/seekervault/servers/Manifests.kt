@@ -2,7 +2,6 @@ package io.github.brrenat.seekervault.servers
 
 import io.github.brrenat.seekervault.server.v1.ConnectionMode
 import io.github.brrenat.seekervault.server.v1.FeedAccess as WireAccess
-import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest
 import io.github.brrenat.seekervault.server.v1.SolanaNetwork
 import io.github.brrenat.seekervault.server.v1.directServer
@@ -35,7 +34,6 @@ fun directManifest(
     revision: Long = 1,
     protocol: Int = SERVER_PROTOCOL,
     required: List<Pair<String, IntRange>> = emptyList(),
-    environments: List<ServerEnvironment> = listOf(ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION),
     name: String = "",
     /** The networks it declares (SEE-174). None, by default: a server from before SEE-174. */
     networks: List<SolanaNetwork> = emptyList(),
@@ -49,7 +47,6 @@ fun directManifest(
         supportedNetworks.addAll(networks)
     }
     requiredPlugins.addAll(required.map(::requirement))
-    this.environments.addAll(environments)
     displayName = name
 }
 
@@ -61,7 +58,6 @@ fun feedManifest(
     revision: Long = 1,
     protocol: Int = SERVER_PROTOCOL,
     required: List<Pair<String, IntRange>> = listOf(SWAP_PLUGIN to 1..1),
-    environments: List<ServerEnvironment> = listOf(ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION),
     name: String = "",
     /**
      * Who may read the feed (SEE-156). Null leaves the field out, which is what every manifest
@@ -82,7 +78,6 @@ fun feedManifest(
         supportedNetworks.addAll(networks)
     }
     requiredPlugins.addAll(required.map(::requirement))
-    this.environments.addAll(environments)
     displayName = name
 }
 

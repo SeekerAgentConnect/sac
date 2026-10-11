@@ -25,6 +25,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"slices"
@@ -32,7 +33,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
@@ -63,15 +63,10 @@ type Config struct {
 	PublishURL string
 	// The credential the gateway issued this publisher.
 	Credential string
-	// Which promise this deployment's signals carry when an owner approves one (SEE-97). It is in
-	// the manifest, it is stamped into the database, and it is in every answer the API gives,
-	// because the way this gets confused is a copied compose file.
-	Environment environment.Environment
 	// The Solana networks this deployment's wallet operations run on (SEE-174), in canonical
-	// order. Empty declares none. It is a different question from the environment — a sandbox
-	// deployment simulates against Mainnet data — and it is published in the manifest, where a
-	// phone offers only wallet profiles on one of these networks and signs nothing for a
-	// connection whose network is not listed.
+	// order. Empty declares none. It is published in the manifest as capability information, and
+	// every signal names its own network, which must be one of these (SEE-185): it is never the
+	// network a signal is given when it names none.
 	Networks []network.Network
 	// The SQLite file: the signals this template holds, and what the gateway has confirmed about
 	// each of them.
@@ -92,6 +87,23 @@ type Config struct {
 	// so existing tests and deployments keep their previous behaviour. The CopyTrading demo sets
 	// a cap so a public trader UI cannot fill the store (SEE-126).
 	CreateLimit int
+	// Warnings are settings this build reads and ignores, each as one line a template logs at
+	// startup. They are not problems: a deployment that still sets a retired variable starts, and
+	// is told it can delete the line.
+	Warnings []string
+}
+
+// Retired are the settings a deployment may still have set and this build ignores, with the line
+// a template logs about each.
+//
+// PUBLISHER_ENVIRONMENT was a deployment's sandbox or production promise (SEE-97). It is gone
+// (SEE-185): whether an operation is previewed or executed is the owner's choice on the phone, per
+// operation, and a server no longer says. Refusing to start over it would take down a deployment
+// for a line that now means nothing, so it is ignored, and said to be.
+var Retired = map[string]string{
+	"PUBLISHER_ENVIRONMENT": "PUBLISHER_ENVIRONMENT is retired and ignored (SEE-185): sandbox " +
+		"and production are no longer a deployment setting, and preview or execute is chosen on " +
+		"the phone; delete it from this deployment's configuration",
 }
 
 // Defaults every setting that has one.
@@ -185,14 +197,10 @@ func LoadTemplate(lookup Lookup, template Template) (*Config, []string) {
 		note("PUBLISHER_DATABASE_PATH must be set to the file this template keeps its signals in, " +
 			"for example /data/publisher.db")
 	}
-	// The one setting with no default at all: a deployment that did not say which promise it
-	// keeps does not start, because the alternative is a demonstration that quietly spends money.
-	if named, ok := environment.Parse(strings.ToLower(text("PUBLISHER_ENVIRONMENT", ""))); ok {
-		config.Environment = named
-	} else {
-		note("PUBLISHER_ENVIRONMENT must be production or sandbox: it is what a phone is told " +
-			"this server promises when its owner approves a signal, and one deployment serves " +
-			"one of them")
+	for _, name := range slices.Sorted(maps.Keys(Retired)) {
+		if text(name, "") != "" {
+			config.Warnings = append(config.Warnings, Retired[name])
+		}
 	}
 	config.Networks = supportedNetworks(read, template)
 	// The phone's own rule for a server's name, which is a label on one line rather than prose.

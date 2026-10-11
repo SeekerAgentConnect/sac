@@ -126,7 +126,7 @@ func TestTheCatalogIsEveryCompleteListingAndNothingElse(t *testing.T) {
 		public.GetSupportedNetworks()[0] != serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET ||
 		len(public.GetRequiredPlugins()) != 1 ||
 		public.GetRequiredPlugins()[0].GetPluginId() != "jupiter.swap" ||
-		len(public.GetEnvironments()) != 1 || public.GetProtocolVersion() != rules.Protocol ||
+		public.GetProtocolVersion() != rules.Protocol ||
 		public.GetSettingsRevision() != 1 {
 		t.Fatalf("the public listing's compatibility metadata is %v", public)
 	}

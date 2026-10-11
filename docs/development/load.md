@@ -35,8 +35,8 @@ SEEKERVAULT_REDIS=/path/to/redis-server \
   Without it the harness runs one broker node on the memory engine, and the two-node scenarios are
   NOT RUN: Redis is what makes two nodes one broker.
 
-Nothing else is required. No network, no Docker daemon, no credential, no funds: both publishers run
-as sandbox, the documents are synthetic, and the push relay — when a profile turns it on — talks to
+Nothing else is required. No network, no Docker daemon, no credential, no funds: no
+deployment declares an environment (SEE-185), the documents are synthetic, and the push relay — when a profile turns it on — talks to
 a controlled stand-in on loopback.
 
 ## What a number means

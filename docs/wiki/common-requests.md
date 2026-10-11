@@ -10,7 +10,7 @@ Every request has eight explicit parts:
 
 | Part | Meaning |
 | --- | --- |
-| `contract_version` | The common envelope version. This release writes and executes version 1 only |
+| `contract_version` | The common envelope version. A feed signal is version 2 (SEE-185), whose `action.network` names the Solana network it executes on; a version-1 signal is readable and never executed. A direct request is adapted on the phone as version 1 and executes on its connection's own wallet and network binding |
 | `identity` | Source, source-owned scope, and a request ID stable across source revisions |
 | `lifecycle` | Ordered revision, source status, creation/update time, and absolute expiry |
 | `presentation` | Unverified title and description, plus `request` or `signal` |

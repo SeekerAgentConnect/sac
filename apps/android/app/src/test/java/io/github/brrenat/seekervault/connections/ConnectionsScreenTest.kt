@@ -24,7 +24,6 @@ import io.github.brrenat.seekervault.inbox.PendingItem
 import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.jupiter.USDC_MINT
 import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.policy.Allowlist
 import io.github.brrenat.seekervault.policy.GlobalPolicy
 import io.github.brrenat.seekervault.policy.PolicyAction
@@ -201,7 +200,6 @@ class ConnectionsScreenTest {
                                     channelFor(HOME.serverId),
                                 ),
                             required = emptyList(),
-                            environments = setOf(PluginEnvironment.Production),
                         )
                     ),
             )

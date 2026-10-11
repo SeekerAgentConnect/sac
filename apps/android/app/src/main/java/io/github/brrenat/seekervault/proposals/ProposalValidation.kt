@@ -10,6 +10,7 @@ import io.github.brrenat.seekervault.plugins.providerOf
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
 import io.github.brrenat.seekervault.proposal.v1.ProposalValue as WireProposalValue
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v2.Audience
 import io.github.brrenat.seekervault.request.v2.OwnerInputKind as WireInputKind
 import io.github.brrenat.seekervault.request.v2.PresentationCategory
@@ -111,7 +112,11 @@ enum class ProposalProblem(val code: String) {
 
 /** Validates the common feed envelope, then adapts it into the device's durable proposal record. */
 fun proposalFrom(message: WireRequest, expect: ProposalExpectation): ProposalResult {
-    if (message.contractVersion != 1) return invalid(ProposalProblem.UnsupportedContract)
+    // Version 1 has no network and stays readable as one that declares none; version 2 names it
+    // (SEE-185). Anything else is a contract this build does not read.
+    if (message.contractVersion !in SUPPORTED_REQUEST_CONTRACTS) {
+        return invalid(ProposalProblem.UnsupportedContract)
+    }
     if (
         !message.hasIdentity() ||
             !message.hasLifecycle() ||
@@ -292,9 +297,33 @@ fun proposalFrom(message: WireRequest, expect: ProposalExpectation): ProposalRes
             note = presentation.description,
             values = values.map { ProposalValue(it.first.key, it.first.text, it.second) },
             ownerInputs = inputs,
+            // Only a version-2 document can declare one; a version-1 document's network is not
+            // read even if one is present, because that contract never defined it.
+            network =
+                if (message.contractVersion >= NETWORK_CONTRACT)
+                    signalNetworkOf(action.networkValue)
+                else SignalNetwork.Missing,
         )
     )
 }
+
+/** The request contract versions this build reads (SEE-108, SEE-185). */
+val SUPPORTED_REQUEST_CONTRACTS: IntRange = 1..2
+
+/** The first request contract version whose action names its network (SEE-185). */
+const val NETWORK_CONTRACT: Int = 2
+
+/**
+ * A wire network value, read without guessing: unspecified is none, and anything unknown says so.
+ */
+fun signalNetworkOf(value: Int): SignalNetwork =
+    when (value) {
+        0 -> SignalNetwork.Missing
+        Network.NETWORK_MAINNET_VALUE -> SignalNetwork.Declared(Network.NETWORK_MAINNET)
+        Network.NETWORK_DEVNET_VALUE -> SignalNetwork.Declared(Network.NETWORK_DEVNET)
+        Network.NETWORK_TESTNET_VALUE -> SignalNetwork.Declared(Network.NETWORK_TESTNET)
+        else -> SignalNetwork.Unknown(value)
+    }
 
 /**
  * Validates [message] against the feed it arrived on ([expect]), and returns the proposal or the

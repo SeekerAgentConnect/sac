@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
@@ -24,7 +25,7 @@ const (
 var now = time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
 
 func stamp() Stamp {
-	return Stamp{ServerID: server, Environment: "production", GatewayURL: "https://feeds.example.com"}
+	return Stamp{ServerID: server, GatewayURL: "https://feeds.example.com"}
 }
 
 func opened(t *testing.T) *Store {
@@ -53,6 +54,7 @@ func swap() signals.Signal {
 		},
 		Operation: "swap",
 		PluginID:  "jupiter.swap",
+		Network:   network.Mainnet,
 	}
 }
 
@@ -141,10 +143,10 @@ func TestNothingAboutASubscriberHasAColumn(t *testing.T) {
 	}
 }
 
-// A database is a publisher's identity as much as its credential is, and sandbox and production
-// are different promises. Both are stamped into the file, because the way they get mixed up is a
-// copied compose file pointed at a volume that already exists.
-func TestTheFileRemembersWhoseItIsAndWhichEnvironment(t *testing.T) {
+// A database is a publisher's identity as much as its credential is, so the publisher is stamped
+// into the file, because the way two get mixed up is a copied compose file pointed at a volume that
+// already exists.
+func TestTheFileRemembersWhoseItIs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "publisher.db")
 	first, err := Open(path, stamp())
 	if err != nil {
@@ -159,13 +161,6 @@ func TestTheFileRemembersWhoseItIsAndWhichEnvironment(t *testing.T) {
 		moved.ServerID = other
 		if _, err := Open(path, moved); !errors.Is(err, ErrOtherServer) {
 			t.Fatalf("expected ErrOtherServer, got %v", err)
-		}
-	})
-	t.Run("the other environment is refused", func(t *testing.T) {
-		moved := stamp()
-		moved.Environment = "sandbox"
-		if _, err := Open(path, moved); !errors.Is(err, ErrOtherEnvironment) {
-			t.Fatalf("expected ErrOtherEnvironment, got %v", err)
 		}
 	})
 	t.Run("a gateway that moved is recorded, not refused", func(t *testing.T) {
@@ -688,6 +683,8 @@ func TestAPreUpgradeIdempotencyKeyStillReplaysAfterTitleMigration(t *testing.T) 
 	ctx := context.Background()
 	created := swap()
 	created.Title = ""
+	// A row from before networks were declared, as it was stored: it names none.
+	created.Network = ""
 	legacy := preUpgradeStatement(created)
 	if signals.Statement(created) != legacy {
 		t.Fatal("Statement must still match the pre-upgrade digest for an untitled create")
@@ -804,4 +801,127 @@ func preUpgradeStatement(signal signals.Signal) string {
 		fmt.Fprintf(digest, "%s=%s\n", key, signal.Terms[key])
 	}
 	return hex.EncodeToString(digest.Sum(nil))
+}
+
+// A file created by a version-5 build, as a sandbox or as a production deployment, opens under the
+// same publisher once environments are gone (SEE-185): the column is dropped, the server is still
+// checked, and the signal it held comes through with no network — never one inferred for it.
+func TestAVersionFiveDatabaseOfEitherEnvironmentOpensAndInfersNoNetwork(t *testing.T) {
+	for _, environment := range []string{"production", "sandbox"} {
+		t.Run(environment, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "publisher.db")
+			ctx := context.Background()
+			earlier, err := open(path, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, step := range steps[:5] {
+				if _, err := earlier.ExecContext(ctx, step); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := earlier.ExecContext(ctx,
+				`INSERT INTO deployment (id, schema_version, server_id, environment, gateway_url,
+				                         created_at_ms)
+				 VALUES (1, 5, ?, ?, 'https://feeds.example.com', ?)`,
+				server, environment, now.UnixMilli()); err != nil {
+				t.Fatal(err)
+			}
+			legacy := swap()
+			legacy.Network = ""
+			terms, err := json.Marshal(legacy.Terms)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := earlier.ExecContext(ctx,
+				`INSERT INTO signal (proposal_id, revision, status, operation, plugin_id,
+				                     created_at_ms, updated_at_ms, expires_at_ms, title, note,
+				                     terms, fingerprint, confirmed_revision, attempts, due_at_ms,
+				                     problem, detail)
+				 VALUES (?, 1, 'open', ?, ?, ?, ?, ?, '', ?, ?, ?, 0, 0, ?, '', '')`,
+				legacy.ProposalID, legacy.Operation, legacy.PluginID, now.UnixMilli(),
+				now.UnixMilli(), legacy.ExpiresAt.UnixMilli(), legacy.Note, string(terms),
+				signals.Fingerprint(server, legacy), now.UnixMilli()); err != nil {
+				t.Fatal(err)
+			}
+			if err := earlier.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			// Another publisher is still refused, whatever environment the file was.
+			moved := stamp()
+			moved.ServerID = other
+			if _, err := Open(path, moved); !errors.Is(err, ErrOtherServer) {
+				t.Fatalf("expected ErrOtherServer, got %v", err)
+			}
+
+			documents, err := Open(path, stamp())
+			if err != nil {
+				t.Fatalf("a %s database could not be opened: %v", environment, err)
+			}
+			t.Cleanup(func() { _ = documents.Close() })
+			var version int
+			if err := documents.reader.QueryRowContext(ctx,
+				`SELECT schema_version FROM deployment WHERE id = 1`).Scan(&version); err != nil {
+				t.Fatal(err)
+			}
+			if version != Version {
+				t.Fatalf("the file is at version %d", version)
+			}
+			var columns int
+			if err := documents.reader.QueryRowContext(ctx,
+				`SELECT count(*) FROM pragma_table_info('deployment') WHERE name = 'environment'`,
+			).Scan(&columns); err != nil || columns != 0 {
+				t.Fatalf("the environment column is still there (%d, %v)", columns, err)
+			}
+
+			held, err := documents.Signal(ctx, legacy.ProposalID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if held.Signal.Network != "" {
+				t.Fatalf("a network was inferred for a signal that never named one: %q",
+					held.Signal.Network)
+			}
+			// It is not given one afterwards, either.
+			named := legacy
+			named.Network = network.Mainnet
+			if _, _, err := documents.Update(ctx, legacy.ProposalID, named, now.Add(time.Minute)); !errors.Is(err, ErrNetworkFixed) {
+				t.Fatalf("expected ErrNetworkFixed, got %v", err)
+			}
+			// And it can still be withdrawn: a withdrawal names an identity, not a network.
+			if _, changed, err := documents.Cancel(ctx, legacy.ProposalID, now.Add(time.Minute)); err != nil || !changed {
+				t.Fatalf("withdrawal: changed %v (%v)", changed, err)
+			}
+		})
+	}
+}
+
+// Nothing new is stored without a network, and an update cannot move one (SEE-185).
+func TestANewSignalNamesItsNetworkAndKeepsIt(t *testing.T) {
+	documents := opened(t)
+	ctx := context.Background()
+	for _, named := range []network.Network{"", "localnet"} {
+		nameless := swap()
+		nameless.Network = named
+		if _, _, err := documents.Create(ctx, "key-"+string(named), "request", nameless); !errors.Is(err, ErrNoNetwork) {
+			t.Fatalf("%q: expected ErrNoNetwork, got %v", named, err)
+		}
+	}
+	created, _, err := documents.Create(ctx, "key-1", "request-1", swap())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Signal.Network != network.Mainnet {
+		t.Fatalf("stored network %q", created.Signal.Network)
+	}
+	moved := swap()
+	moved.Network = network.Devnet
+	if _, _, err := documents.Update(ctx, created.Signal.ProposalID, moved, now.Add(time.Minute)); !errors.Is(err, ErrNetworkFixed) {
+		t.Fatalf("expected ErrNetworkFixed, got %v", err)
+	}
+	listed, err := documents.Signals(ctx)
+	if err != nil || len(listed) != 1 || listed[0].Signal.Network != network.Mainnet {
+		t.Fatalf("listed %+v (%v)", listed, err)
+	}
 }

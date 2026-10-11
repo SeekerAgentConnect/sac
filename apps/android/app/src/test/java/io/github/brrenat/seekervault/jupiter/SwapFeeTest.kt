@@ -5,6 +5,7 @@ import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.plugins.ActionInspection
 import io.github.brrenat.seekervault.plugins.ReceiptKey
 import io.github.brrenat.seekervault.plugins.ServiceFeeStatus
+import io.github.brrenat.seekervault.plugins.ServiceFeeTerms
 import io.github.brrenat.seekervault.plugins.actions.SwapChoice
 import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import io.github.brrenat.seekervault.plugins.bpsPercent
@@ -80,51 +81,56 @@ class SwapFeeTest {
 
     private fun codes(inspection: ActionInspection) = inspection.findings.map { it.code }
 
-    // --- The build's policy ------------------------------------------------------------------
+    // --- The operation's terms (SEE-185) --------------------------------------------------
+
+    private fun terms(
+        bps: Int = 20,
+        owner: String? = FEE_OWNER,
+        vararg accounts: Pair<String, String>,
+    ) = ServiceFeeTerms(bps, owner, accounts.toMap())
 
     @Test
-    fun aBuildNobodyConfiguredChargesNothing() {
-        assertEquals(SwapFeePolicy.Off, SwapFeePolicy.fromBuild(0, "", ""))
-        assertFalse(SwapFeePolicy.fromBuild(0, "", "").enabled)
+    fun anOperationHandedNoTermsChargesNothing() {
+        assertEquals(SwapFeePolicy.Off, SwapFeePolicy.of(ServiceFeeTerms.None))
+        assertFalse(SwapFeePolicy.of(ServiceFeeTerms.None).enabled)
         // A rate with nothing to pay it to is no fee, not a fee to somewhere.
-        assertFalse(SwapFeePolicy.fromBuild(20, "", "").enabled)
-        assertFalse(SwapFeePolicy.fromBuild(20, FEE_OWNER, "").enabled)
+        assertFalse(SwapFeePolicy.of(terms(20, owner = null, SOL_MINT to FEE_ACCOUNT_SOL)).enabled)
+        assertFalse(SwapFeePolicy.of(terms(20, FEE_OWNER)).enabled)
+        assertFalse(SwapFeePolicy.of(terms(0, FEE_OWNER, SOL_MINT to FEE_ACCOUNT_SOL)).enabled)
     }
 
     @Test
-    fun aConfiguredBuildIsReadIntoOneAccountPerMint() {
+    fun theGatewaysTermsAreReadIntoOneAccountPerMint() {
         val policy =
-            SwapFeePolicy.fromBuild(
-                20,
-                FEE_OWNER,
-                " $SOL_MINT=$FEE_ACCOUNT_SOL , $USDC_MINT=$FEE_ACCOUNT_USDC ",
+            SwapFeePolicy.of(
+                terms(20, FEE_OWNER, SOL_MINT to FEE_ACCOUNT_SOL, USDC_MINT to FEE_ACCOUNT_USDC)
             )
         assertTrue(policy.enabled)
         assertEquals(20, policy.bps)
+        assertEquals(FEE_OWNER, policy.owner)
         assertEquals(FEE_ACCOUNT_SOL, policy.accounts[SOL_MINT])
         assertEquals(FEE_ACCOUNT_USDC, policy.accounts[USDC_MINT])
         assertNull("no account for a mint nobody configured", policy.accounts[JUP_MINT])
     }
 
     @Test
-    fun aMalformedConfigurationThatSlippedPastTheBuildFailsClosedToNoFee() {
-        val accounts = "$SOL_MINT=$FEE_ACCOUNT_SOL"
+    fun termsThatDoNotHoldWhenTheyReachTheProviderFailClosedToNoFee() {
+        val account = SOL_MINT to FEE_ACCOUNT_SOL
         val cases =
             listOf(
-                "a rate above the bound" to SwapFeePolicy.fromBuild(101, FEE_OWNER, accounts),
-                "a negative rate" to SwapFeePolicy.fromBuild(-5, FEE_OWNER, accounts),
-                "an owner that is not an address" to SwapFeePolicy.fromBuild(20, "nope", accounts),
-                "an entry without its account" to SwapFeePolicy.fromBuild(20, FEE_OWNER, SOL_MINT),
+                "a rate above the bound" to SwapFeePolicy.of(terms(101, FEE_OWNER, account)),
+                "a negative rate" to SwapFeePolicy.of(terms(-5, FEE_OWNER, account)),
+                "an owner that is not an address" to SwapFeePolicy.of(terms(20, "nope", account)),
                 "an account that is not an address" to
-                    SwapFeePolicy.fromBuild(20, FEE_OWNER, "$SOL_MINT=0OIl"),
-                "the same mint twice" to
-                    SwapFeePolicy.fromBuild(20, FEE_OWNER, "$accounts,$SOL_MINT=$FEE_ACCOUNT_USDC"),
+                    SwapFeePolicy.of(terms(20, FEE_OWNER, SOL_MINT to "0OIl")),
+                "a mint that is not an address" to
+                    SwapFeePolicy.of(terms(20, FEE_OWNER, "0OIl" to FEE_ACCOUNT_SOL)),
                 // One wallet address for every pair is exactly what the policy refuses: a fee is
                 // received by a token account for the fee's mint.
                 "the owner's wallet as the account" to
-                    SwapFeePolicy.fromBuild(20, FEE_OWNER, "$SOL_MINT=$FEE_OWNER"),
+                    SwapFeePolicy.of(terms(20, FEE_OWNER, SOL_MINT to FEE_OWNER)),
                 "the mint as its own account" to
-                    SwapFeePolicy.fromBuild(20, FEE_OWNER, "$SOL_MINT=$SOL_MINT"),
+                    SwapFeePolicy.of(terms(20, FEE_OWNER, SOL_MINT to SOL_MINT)),
             )
         for ((what, policy) in cases) assertEquals(what, SwapFeePolicy.Off, policy)
     }

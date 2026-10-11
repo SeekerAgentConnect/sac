@@ -87,9 +87,11 @@ who sent it and whether it matches your rules.
 Pair a direct server using its one-use link or QR code, or add a feed link from its publisher.
 Feeds can be **Public** or **Restricted**. For a Restricted feed, prove wallet ownership by signing
 an access message and wait for the publisher to approve your device. Each connection has its own
-status, history, rules and wallet: save several wallet profiles (different accounts, wallet apps, or
-the same address on Mainnet, Devnet or Testnet) and choose one per connection from those on a
-network its server supports.
+status, history and rules. Save several wallet profiles (different accounts, wallet apps, or the same
+address on Mainnet, Devnet or Testnet): a direct server uses the one you choose for it, from those
+on a network it supports, and a feed signal uses the wallet you choose for the network the signal
+names, remembered per feed and network. A Restricted feed's access wallet is separate from the
+wallets that execute its signals; a Public feed needs no wallet to add.
 
 <p align="center">
   <img src="docs/assets/readme/pairing.png" width="30%" alt="Pairing with a QR code" />
@@ -102,10 +104,12 @@ network its server supports.
 Built-in Jupiter plugins turn a feed signal into a swap or a prediction-market order with your own
 amount and side. The app reads the route and the transaction before handing it to the wallet.
 
-Feeds may offer **Sandbox** or **Production** environments. Sandbox lets you review and simulate
-without signing or sending; it is not a Solana test network. Production opens the wallet after
-approval. Publishers can use Restricted feeds for paid or private communities; billing and
-membership decisions stay in their own systems.
+Every signal names its Solana network. For each one you choose **Preview without sending** — the
+real transaction is prepared and checked, no wallet opens and the signal stays open — or execute
+it, which opens the wallet after approval. A preview is not a Solana test network. The app reads
+Solana through the RPC endpoints the SAC gateway configures, and any SAC swap fee is the gateway's
+setting, shown in the review; neither can be set by a publisher. Publishers can use Restricted feeds
+for paid or private communities; billing and membership decisions stay in their own systems.
 
 <p align="center">
   <img src="docs/assets/readme/feed-signal.png" width="30%" alt="Feed signal" />
@@ -158,7 +162,8 @@ Both policies use the same publication and delivery path.
 A direct server needs no gateway to pair or serve requests. It can optionally use the SAC push
 relay for content-free wake-ups; private request content and results still travel directly.
 When a reviewed action needs a signature, SAC opens the wallet app of the connection's own wallet
-profile, such as Seed Vault Wallet, through Mobile Wallet Adapter. Acknowledgements and Sandbox simulations finish without signing.
+profile, or of the wallet chosen for a feed signal's network, such as Seed Vault Wallet, through
+Mobile Wallet Adapter. Acknowledgements and previews finish without signing.
 
 Read [How it works](https://seekeragentconnect.github.io/docs/how-it-works) for the architecture
 and data boundaries, or [Build your own server](https://seekeragentconnect.github.io/docs/direct-or-feed)
@@ -242,6 +247,12 @@ pnpm agent ack "Hi" --wait  # acknowledge on the phone; no wallet signature need
 For the complete device setup, including USB forwarding for local development, follow the
 [MacBook + Seeker quickstart](docs/guides/macbook-seeker-quickstart.md). A remote phone needs a
 reachable HTTPS endpoint; direct live updates require HTTP/2 end to end.
+
+An Android build names one gateway and nothing else network-related:
+`-Pseekervault.gatewayUrl=https://…` (`SEEKERVAULT_GATEWAY_URL` for a release). Feeds, Discover, the
+push relay, Solana RPC endpoints and the SAC swap fee all come from that gateway, whose operator sets
+the last two with `feed-gatewayctl client-config` or its admin page
+([client-config.md](docs/wiki/client-config.md)). There are no RPC or fee build settings.
 
 More commands (`pnpm generate`, `pnpm test:integration`, `pnpm test:load`, `pnpm agent …`) are in
 `package.json` and [`docs/development/`](docs/development).

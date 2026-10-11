@@ -59,7 +59,8 @@ func openStore(t *testing.T) *Store {
 	if _, err := documents.writer.ExecContext(ctx,
 		`TRUNCATE `+Schema+`.relay_binding, `+Schema+`.relay_installation, `+Schema+`.notice,
 		         `+Schema+`.proposal, `+Schema+`.manifest, `+Schema+`.publisher_credential,
-		         `+Schema+`.channel_sequence, `+Schema+`.publisher RESTART IDENTITY CASCADE`); err != nil {
+		         `+Schema+`.channel_sequence, `+Schema+`.publisher, `+Schema+`.client_config
+		 RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 	return documents
@@ -85,9 +86,6 @@ func manifest(serverID string, revision uint64) *serverv1.ServerManifest {
 		ProtocolVersion:  1,
 		SettingsRevision: revision,
 		Mode:             serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_FEED,
-		Environments: []serverv1.ServerEnvironment{
-			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-		},
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: "https://feeds.example.com",
 			Channel:    "server/" + serverID,
@@ -560,6 +558,16 @@ func TestACredentialIdIsAHandleAndNotACredential(t *testing.T) {
 // an owner decided, and a phone woken through this relay goes and reads its own server for all of
 // that.
 //
+// access_grant is SEE-156's restricted feeds, argued for by name in the gateway's boundary test:
+// one row per device a publisher approved for its own channel, holding opaque references and a
+// session's digest, never a wallet, an address, a signature or a decision.
+//
+// client_config is SEE-185's operator configuration: one row, by construction, with the Solana RPC
+// endpoint per network and the SAC swap fee every app trusting this gateway reads. It is the
+// operator's setting for the deployment — nothing about a subscriber, a device, a reader or a
+// publisher, and nothing secret, since the rules refuse a URL with user info and every caller is
+// served the same answer.
+//
 // schema_version is this implementation's own and is not state about anyone: it is the one row
 // that says which migration has run, and it replaces SQLite's PRAGMA user_version. It is sealed
 // with the rest all the same, so "which tables have RLS" has a boring answer.
@@ -584,8 +592,8 @@ func TestTheStoreKeepsOnlyPublicFeedStateAndTheRelaysRouting(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := []string{
-		"channel_sequence", "manifest", "notice", "proposal", "publisher", "publisher_credential",
-		"relay_binding", "relay_installation", "schema_version",
+		"access_grant", "channel_sequence", "client_config", "manifest", "notice", "proposal",
+		"publisher", "publisher_credential", "relay_binding", "relay_installation", "schema_version",
 	}
 	if fmt.Sprint(names) != fmt.Sprint(expected) {
 		t.Fatalf("the store holds %v, expected %v", names, expected)
@@ -610,7 +618,8 @@ func TestNothingIsReachableThroughThePublicSchema(t *testing.T) {
 		`SELECT COUNT(*) FROM information_schema.tables
 		  WHERE table_schema = 'public' AND table_name IN (
 		    'publisher', 'publisher_credential', 'manifest', 'proposal', 'channel_sequence',
-		    'notice', 'relay_installation', 'relay_binding', 'schema_version')`).Scan(&loose); err != nil {
+		    'notice', 'relay_installation', 'relay_binding', 'access_grant', 'client_config',
+		    'schema_version')`).Scan(&loose); err != nil {
 		t.Fatal(err)
 	}
 	if loose != 0 {

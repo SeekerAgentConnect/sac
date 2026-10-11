@@ -54,17 +54,17 @@ type loginView struct {
 func (loginView) LoggedIn() bool { return false }
 
 type homeView struct {
-	Path        string
-	Name        string
-	Message     string
-	Error       string
-	Reference   string
-	Environment string
-	Query       Query
-	Signals     []Item
-	Coverage    *Coverage
-	Markets     []Market
-	Searched    bool
+	Path      string
+	Name      string
+	Message   string
+	Error     string
+	Reference string
+	Networks  string
+	Query     Query
+	Signals   []Item
+	Coverage  *Coverage
+	Markets   []Market
+	Searched  bool
 }
 
 // LoggedIn decides whether the frame draws the sidebar.

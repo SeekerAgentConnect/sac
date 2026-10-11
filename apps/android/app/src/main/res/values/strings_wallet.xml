@@ -85,6 +85,9 @@
 
     <!-- A connection's wallet (SEE-174). -->
     <string name="connection_wallet_title">Wallet</string>
+    <string name="connection_access_wallet_title">Access wallet</string>
+    <string name="connection_wallet_picker_access_only">Proves who you are to this feed\'s publisher. It signs no operation.</string>
+    <string name="connection_access_wallet_caption">Proves to this feed\'s publisher that you were approved. It signs no operation: each signal uses the wallet you choose for its network.</string>
     <string name="connection_wallet_none">Choose a wallet</string>
     <string name="connection_wallet_caption">This connection signs only with this wallet, on this network.</string>
     <string name="connection_wallet_ready">%1$s · %2$s</string>

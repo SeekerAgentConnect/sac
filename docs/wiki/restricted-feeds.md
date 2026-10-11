@@ -330,7 +330,7 @@ the one value that reads the feed — is sealed in its own vault, `noBackupFiles
 the same format and under the same Keystore key as a phone credential. Both are out of backups, for
 the reason the device key is.
 
-**Access belongs to the wallet it was proven with**, and that wallet is the feed's own
+**Access belongs to the wallet it was proven with**, and that wallet is the feed's access identity
 ([One wallet per feed](#one-wallet-per-feed)). Binding the feed to a different address does not
 inherit it. Asking again with that wallet starts a new request and drops the old session, so a
 wallet change can never silently reuse another wallet's authorization.
@@ -348,23 +348,32 @@ asked for, or that claims to last longer than thirty minutes, before the wallet 
 ## One wallet per feed
 
 Since SEE-174 the phone keeps several wallet profiles and binds each connection to one of them
-([wallet-profiles.md](wallet-profiles.md)). A restricted feed proves its reader with **the profile
-that feed is bound to** — `FeedAccessManager` asks `WalletRepository.accessWalletFor(connectionId)`,
-which answers that connection's own profile and never another's — and an access record counts only
-while it was proven with the address the feed is bound to now.
+([wallet-profiles.md](wallet-profiles.md)). Since SEE-185 a feed's bound profile is **only its access
+identity**: the address its publisher approved. It signs no operation. Each signal's operation uses
+the wallet chosen for the network the signal names, remembered per feed and network
+([wallet-setup.md](../guides/wallet-setup.md#feed-operations)), so changing the execution wallet never
+touches access, and changing the access identity never moves an operation. A public feed has no
+access identity and is added with no wallet. The detail sheet shows the identity as **Access wallet**
+("Proves to this feed's publisher that you were approved. It signs no operation…").
+
+A restricted feed proves its reader with **the profile that feed is bound to** — `FeedAccessManager`
+asks `WalletRepository.accessWalletFor(connectionId)`, which answers that connection's own profile
+and never another's — and an access record counts only while it was proven with the address the feed
+is bound to now. Any saved profile may be the identity: the picker for it filters by no network,
+because no network enters an address proof.
 
 - **Two feeds, two wallets, both readable.** Two restricted feeds bound to different addresses each
   hold their own access and session. A request, a refusal, a revocation or an expiry on one touches
   nothing of the other, and each one's stream and push are its own.
-- **Choosing the wallet comes first.** A restricted feed is added, its wallet is chosen in the
-  picker that opens next, and only then is access requested with that wallet. An invitation the
+- **Choosing the access identity comes first.** A restricted feed is added, its access identity is
+  chosen in the picker that opens next, and only then is access requested with that wallet. An invitation the
   feed's link carried is held in memory until then and redeemed straight after the request it
   belongs to; a process that dies before the wallet is chosen asks again without it.
 - **Same address, another network: the grant stays.** The proof is a message signature by the
   address over the publisher's challenge, and no Solana network enters it, so a feed rebound to a
   profile with the same address on another network keeps its grant and its session. The access
   proof ignores the server's declared networks for the same reason: a feed that declares none can
-  still be read, although nothing is signed for it.
+  still be read, although nothing is executed from it.
 - **Rebinding while access is being asked for.** The feed's profile is captured before the
   challenge is fetched, so the wallet repository checks — inside the wallet lock, before the wallet
   opens — that the feed still names that profile (`signAccessProof`). The check is the binding and

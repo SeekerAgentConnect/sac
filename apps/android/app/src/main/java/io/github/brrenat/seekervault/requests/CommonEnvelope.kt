@@ -5,6 +5,7 @@ import io.github.brrenat.seekervault.proposals.OwnerInputKind
 import io.github.brrenat.seekervault.proposals.Proposal
 import io.github.brrenat.seekervault.proposals.ProposalStatus
 import io.github.brrenat.seekervault.proposals.ProposalValueKind
+import io.github.brrenat.seekervault.proposals.SignalNetwork
 import io.github.brrenat.seekervault.request.v1.Action
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v1.Asset
@@ -105,6 +106,9 @@ fun Proposal.commonEnvelope(): Request =
                 .setCapabilityId(legacyOperationOf(action))
                 .setCapabilityVersion(capabilityVersion)
                 .setPluginId(plugin.value)
+                // The network the signal declared, and only that one (SEE-185): one that declared
+                // none, or one this build doesn't know, says so as unspecified.
+                .setNetworkValue((network as? SignalNetwork.Declared)?.network?.number ?: 0)
                 .addAllParameters(
                     values.map {
                         Value.newBuilder()

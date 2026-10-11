@@ -1,99 +1,136 @@
-# Sandbox and production (SEE-97)
+# Preview or execute (SEE-97, SEE-185)
 
-A publisher's feed is somebody else's server proposing that you spend your own money. Before that is worth doing at all, it has to be possible to watch the whole thing happen without spending any — and the demonstration has to be the real thing, or it demonstrates nothing.
+A publisher's feed is somebody else's server proposing that you spend your own money. Before that
+is worth doing at all, it has to be possible to watch the whole thing happen without spending any,
+and the demonstration has to be the real thing or it demonstrates nothing.
 
-That is what an **environment** is here: which promise is being kept when the owner approves.
+Since SEE-185 that is a **choice the owner makes on the phone, for one operation at a time**. A
+feed signal's review offers **Preview without sending** beside its approval. Nothing about it is a
+property of the publisher, its deployment, its manifest or the connection: there is no sandbox
+deployment, no `environments` in a manifest, and no environment switch on a feed. One deployment
+serves both, because the publisher's part is the same either way: it publishes a signal, and it
+never executes anything.
 
-| | **Production** | **Sandbox** |
+| | **Execute** | **Preview without sending** |
 | --- | --- | --- |
-| The market data | Real, live, from the provider | **The same.** Real, live, from the provider |
-| The transaction | Built by the execution provider, from this phone | **The same bytes**, built the same way |
-| The review | Every finding, every fact, read out of the bytes | **The same review** |
+| The market data | Real, live, from the provider | **The same** |
+| The transaction | Built by the execution provider, on this phone, for the chosen wallet | **The same bytes**, built the same way |
+| The review | Every finding and fact, read out of the bytes | **The same review** |
 | The owner's rules | Applied | **Applied** |
-| The wallet | Opened once, with exactly those bytes | **Never opened** |
-| What is sent | The signed transaction, to the network | **Nothing** |
+| The binding gate | Every check between the review and the binding | **The same gate** (`problemOf`) |
+| The wallet | Opened once, with exactly those bytes | **Never opened**: no wallet session exists |
+| What is sent | The signed transaction, to the signal's network | **Nothing** |
 | Afterwards | A signature, and an explorer link for its cluster | **No signature, and so no link** |
-| The record says | `Sent`, with the signature | `Simulated`, with no signature |
+| The signal | Consumed: one execution per proposal per device | **Still open**, and the preparation is dropped |
 
-The last four rows are the whole difference. Sandbox is not a smaller version of the operation and not a mock of it: it is the operation, carried out as far as an environment that performs nothing can carry it, and then stopped and labelled.
+A preview is not a smaller version of the operation and not a mock of it. It is the operation,
+carried out as far as possible without a wallet, then stopped and labelled.
 
-## It is not a network, and it does not choose one
+## When it is offered
 
-**An environment is not a Solana cluster.** The cluster is the network the owner's wallet is selected for, it is checked separately and always, and no environment changes it: a provider that refuses a wallet selected for devnet refuses it in sandbox too, because the bytes it builds are mainnet bytes either way (`docs/wiki/jupiter-swap.md`, `docs/wiki/jupiter-prediction.md`).
+The action appears only when the provider that would execute the signal serves a preview
+(`PluginEnvironment.Sandbox in ProviderCapabilities.environments`). Jupiter serves one for swaps and
+prediction orders. A provider that does not is executed or declined, never previewed.
 
-**A shared interface must not imply that a provider has a testnet**, so SEE-145 made the two declarations separate and kept them that way:
+A preview needs everything an execution needs up to the wallet:
 
-- **`ActionCapability.networks`** is the set of Solana clusters a provider serves an action on. Jupiter declares mainnet and only mainnet, in both environments.
-- **`ProviderCapabilities.environments`** is which of sandbox and production it serves the action in at all. A provider that serves both does the same work in each; the field exists for one that genuinely cannot serve one.
+- **A wallet chosen for the signal's network.** The transaction is prepared for that address, so a
+  preview without one would be a preview of nothing. The review's **Choose wallet** /
+  **Connect a wallet on &lt;network&gt;** applies to both
+  ([wallet-setup.md](../guides/wallet-setup.md#feed-operations)).
+- **A usable client configuration** from the trusted gateway, because the preparation reads the
+  chain and may carry the SAC fee ([client-config.md](client-config.md)).
+- **A signal that declares a network** its feed supports. A signal without one is readable and is
+  neither previewed nor executed.
 
-Neither is derived from the other, and they are **two separate refusals**: `NetworkUnsupported` when the wallet is selected for a cluster the provider does not serve, `EnvironmentUnsupported` when the connection keeps a promise it cannot keep. Both happen before anything is prepared, and telling an owner the wrong one of them would send them to change the wrong setting — a provider with no devnet is not a provider with no sandbox ([`docs/wiki/execution-providers.md`](execution-providers.md#an-environment-is-not-a-network)).
+## What a preview does, and doesn't
 
-There is no Jupiter devnet or testnet to point sandbox at. Neither the swap aggregator nor the prediction markets exist on another cluster, and this repository does not pretend otherwise — a sandbox that claimed to trade on a test network would be inventing a service the provider does not run. The app's existing devnet checks, for transfers and message signing, are about a different thing entirely and are unaffected (`README.md`, `docs/guides/transfers.md`).
+- **It is the same preparation.** The plugin reads the provider and builds the bytes, the phone
+  inspects them, the owner's rules are assessed, warnings must be acknowledged, and the binding is
+  bound with the wallet, the network, the fee terms and `environment = Sandbox`.
+- **It passes the same gate.** `ProposalRepository.recordPreview` applies every rule
+  `beginExecution` applies, under the same repository lock.
+- **It opens no wallet.** The branch in `OperationViewModel.go` stops before `wallet.withWallet`,
+  so there is no session in scope to sign with. That is why nothing can be signed, rather than a
+  flag checked beside a session.
+- **It is recorded beside the signal, not as its execution.** `ProposalRecord.preview` holds the
+  latest `ProposalPreview` (binding and time); the next preview replaces it. `ProposalRecord.execution`
+  is untouched.
+- **It doesn't consume the signal.** Its standing stays `Open`. The preparation is dropped, so
+  executing it afterwards starts from a fresh preparation (a fresh quote) and a fresh review.
+- **Nothing is fabricated.** No signature, no explorer confirmation, no fill, no position, and
+  nothing for the confirmation tracker to follow.
 
-**Nothing about a simulation is fabricated.** No transaction signature, no explorer confirmation, no fill, no profit, no position. A rehearsal has nothing to look up afterwards, and the app offers nothing: an explorer link needs a signature, and there is none.
-
-## Where it is decided
-
-**A manifest says which environments a server *serves*. A connection records which one it *keeps*.** Those are different facts, held in different places, and that is what makes a promotion to production something a person did.
-
-- A publisher's deployment serves exactly one (`packages/publisher-support/environment`). It is configured with `PUBLISHER_ENVIRONMENT`, published in its manifest, stamped into its database, and in every answer its own API gives. Two environments are two deployments, with their own server IDs, credentials and databases.
-- The shared gateway **refuses a manifest that changes the environments a server ID published before** (`GATEWAY_PROBLEM_OTHER_ENVIRONMENT`). A promise a higher revision can raise is not a promise: every subscribed phone caches a manifest by revision, so one document would move them all from a demonstration to real money without anybody looking at it.
-- The phone stores the environment **on the connection** (`Connection.environment`). A feed starts in sandbox whenever its publisher serves one, and only the owner moves it. A manifest that stops naming the environment a connection keeps makes that server *unsupported* — readable, and executing nothing — rather than moving the connection to the other one.
-- A **direct** connection is always production. A sandbox rehearsal is possible only where nobody is waiting for the answer: an agent that asked a paired sidecar for a signature can be told no, but it cannot be handed a simulation, and this app will not invent one for it.
-
-The owner's own sidecar is therefore unaffected by any of this, in both directions: it declares production, it keeps production, and no feed's setting reaches it.
+Preview and execute share the review's lock (`busy`), so the two are never in flight for the same
+review at once, nor beside a new preparation. The binding pins which of the two the owner asked
+for, so a preview can never be carried out as the real thing or the other way round. Duplicate
+execution protection is unchanged: one execution per proposal per device.
 
 ## What the owner sees
 
 | Where | What it says |
 | --- | --- |
-| A feed's details | The promise it keeps, in a word, with a sentence saying what that means — and, where its publisher serves both, the switch between them |
-| A proposal's review | A banner before anything else about the proposal, and an action that says `Simulate` rather than `Approve and swap` |
-| Afterwards | `Simulated. This feed is a sandbox, so nothing was signed and nothing was sent.` |
-| Activity | `Simulated`, beside the network it was bound to, with no signature and no explorer link |
+| The review | **Preview without sending** beside the approval, with a note that the wallet is not opened, nothing is signed or sent, and the signal stays open |
+| After a preview | "Previewed. Nothing was signed and nothing was sent, and this signal is still open. To execute it, prepare it again." |
+| Prediction review | "Preview without sending"; afterwards a notice to refresh the quote and approve to place the order |
+| History row | "Previewed on this phone · nothing sent", while the signal is still open |
+| History detail | Status "Previewed", and a **You previewed** timeline entry; an execution that follows gets its own entries |
+| Activity | `Simulated`, beside the network it was bound to, with no signature, until an execution replaces it |
+| Inbox | Every waiting item reads Production: whether it is previewed is decided when the owner acts |
 
-## Switching, and what it invalidates
+A record written before SEE-185, when a sandbox feed spent its proposal on a rehearsal, holds
+`ProposalOutcome.Simulated` as its execution. It still reads as what it was: nothing signed, nothing
+sent, and the proposal finished on that device. Nothing writes that outcome any more.
 
-A feed can be moved between the environments its publisher serves, and only by the owner. Switching invalidates what was in hand:
+## Direct connections
 
-- **The preparation is dropped.** What is on screen was prepared for the other promise, and bytes prepared as a rehearsal are not bytes anybody reviewed as a purchase. The owner prepares again, which fetches a fresh quote, and acknowledges again.
-- **A binding made under the other promise is refused**, on the far side of the wait for the wallet, where the preparation's expiry and the wallet selection are also checked (`BindingProblem.OtherEnvironment`). A switch that lands while an approval is in flight refuses rather than slips through.
-- **Nothing is deleted, and nothing has to be remembered.** The review, the preparation and the binding each say which environment they were made in, so they stop counting by themselves. An invalidation that had to be remembered in the switch is one that could be forgotten there.
+A **direct** connection always executes. An agent that asked a paired server for a signature can be
+told no, but it cannot be handed a simulation, and this app will not invent one for it. A direct
+manifest declares no environment ([server-manifests.md](server-manifests.md)).
 
-A rehearsal **spends the proposal**, exactly as declining in the wallet does: one execution per proposal per device, whatever came of it. The owner asked for what this connection promises, and they got it; a phone that then let the same proposal be executed for real would be treating what they asked for as not having counted.
+## It is not a network
 
-## Where the decision lives in the code
+**A preview is not a Solana cluster.** The network is the one the signal declares
+(`action.network`), and it is checked separately and always. A preview of a mainnet swap is a
+preview of mainnet bytes. There is no Jupiter devnet or testnet, and nothing here pretends
+otherwise.
+
+The two provider declarations stay separate, as SEE-145 made them:
+
+- **`ActionCapability.networks`**: the Solana clusters a provider serves an action on. Jupiter
+  declares mainnet only.
+- **`ProviderCapabilities.environments`**: whether the provider can execute it, preview it, or
+  both. Jupiter declares both.
+
+Neither is derived from the other ([execution-providers.md](execution-providers.md#an-environment-is-not-a-network)).
+
+## What changed in SEE-185
+
+| Before | Now |
+| --- | --- |
+| `ServerManifest.environments`, `ServerEnvironment`, `RecommendedFeed.environments` | Removed (field numbers reserved) |
+| `GATEWAY_PROBLEM_BAD_ENVIRONMENT`, `GATEWAY_PROBLEM_OTHER_ENVIRONMENT` | Removed (reserved); the gateway drops `environments` from stored manifests |
+| `PUBLISHER_ENVIRONMENT` and the publisher database's environment stamp | Retired: a deployment that still sets it starts and logs one warning |
+| Separate sandbox and production deployments | One deployment; an operator who ran both keeps one |
+| `Connection.environment`, the feed's environment switch, `BindingProblem.OtherEnvironment` | Removed |
+| A sandbox rehearsal spent the proposal | A preview leaves it open |
+
+## Where it lives in the code
 
 | Layer | File | What it holds |
 | --- | --- | --- |
-| Protocol | `packages/protocol/proto/seekervault/server/v1/manifest.proto` | `ServerEnvironment`, and the `environments` a manifest names |
-| Gateway | `services/gateway/internal/rules/manifest.go` | The environments may not change once published |
-| Publisher | `packages/publisher-support/environment/environment.go` | One type, one pair of words, shared by both templates |
-| Phone: the promise | `apps/android/.../plugins/ExecutionProvider.kt` | `PluginEnvironment`, `ProviderCapabilities.environments` (which promises a provider can keep) and `ActionCapability.networks` (which clusters it serves), declared apart |
-| Phone: the refusal | `apps/android/.../plugins/ProviderRegistry.kt` | `EnvironmentUnsupported` and `NetworkUnsupported`, told apart and both answered before anything is prepared |
-| Phone: the connection | `apps/android/.../connections/Connection.kt` | Which one this connection keeps, and the direct-is-production invariant |
-| Phone: the gate | `apps/android/.../proposals/ProposalBinding.kt` | The promise pinned in a binding, checked inside the wallet's own lock |
-| Phone: the act | `apps/android/.../operations/OperationViewModel.kt` | The one branch: a rehearsal has no wallet session in scope to sign with |
-| Phone: the record | `apps/android/.../activity/ActivityRecord.kt` | What the operation was bound under, beside the cluster |
+| Phone: the act | `apps/android/.../operations/OperationViewModel.kt` | `preview` / `act` / `go`: the one branch, before the wallet, and the shared lock |
+| Phone: the record | `apps/android/.../connections/ProposalRepository.kt` | `recordPreview`: the same gate as `beginExecution`, written as the preview |
+| Phone: the state | `apps/android/.../proposals/ProposalState.kt` | `ProposalPreview`, `ProposalRecord.preview`, legacy `ProposalOutcome.Simulated` |
+| Phone: the binding | `apps/android/.../proposals/ProposalBinding.kt` | `ExecutionBinding.environment`: execute or preview, pinned |
+| Phone: the provider | `apps/android/.../plugins/ExecutionProvider.kt` | `PluginEnvironment`, `ProviderCapabilities.environments` |
+| Phone: history | `apps/android/.../history/HistoryDetailMapping.kt`, `inbox/InboxScreen.kt` | "Previewed", "You previewed", the history row |
 
-**An execution provider does not read the environment to decide anything.** It prepares the same way in both, because whether bytes are signed is core's business — core holds the wallet — exactly as which cluster they are for is core's. A provider that decided for itself would be a second place for the answer to be wrong, and the demonstration would stop being a demonstration of the real thing. What a provider *does* declare is which environments it can serve at all, and `ProviderRegistry.resolve` reports one that cannot as unsupported rather than calling it for something it said it could not do — separately from the cluster check, which it answers in its own words.
+**An execution provider does not read the mode to decide anything.** It prepares the same way for
+both, because whether bytes are signed is core's business: core holds the wallet.
 
-## Two other things called "environment"
+## The other "environment"
 
-Neither is this.
-
-- **`BROADCAST_PUSH_ENVIRONMENT`** is one label inside a push topic name — `feed.<environment>.<server_id>` — chosen by the operator of a gateway deployment so that one Firebase project can serve two deployments without a sandbox publication waking a production subscriber. The gateway decides nothing about what a server promises, and holds no opinion about it (`docs/wiki/feed-gateway.md`).
-- **A Solana cluster** — mainnet, devnet, testnet — is which chain a signature belongs to. See above: separate question, separate field, and it is on every record next to this one.
-
-## Running it
-
-Both templates' examples are sandbox deployments, so that copying one and running it demonstrates the whole path without anybody's money. Production is a deliberate edit of one line, and the code has no default at all — a deployment that says nothing does not start.
-
-```sh
-# The examples: sandbox, because a demonstration is what an example should be
-grep PUBLISHER_ENVIRONMENT examples/demo-signals/.env.example examples/demo-prediction/.env.example
-```
-
-What a sandbox deployment publishes is real: a CopyTrading signal names real mints, and the Prediction template discovers real live markets from the provider's own API. Nothing about the publisher is simulated, because nothing about a publisher executes anything in the first place — what a publisher's environment changes is what every subscribed phone is told to expect when its owner approves (`docs/wiki/copytrading-template.md`, `docs/wiki/prediction-template.md`).
-
-Going to production is the owner's own deliberate check, with real funds, and it is recorded separately: `docs/testing/stage-7-1.md` has the device run, including what to look for in a sandbox rehearsal and what a first real operation costs.
+**`BROADCAST_PUSH_ENVIRONMENT`** is only a label inside a gateway's push topic names,
+`feed.<environment>.<server_id>`, so one Firebase project can serve two gateway deployments. It says
+nothing about whether an operation is previewed or executed ([feed-gateway.md](feed-gateway.md)).

@@ -9,7 +9,6 @@ import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.plugins.ParameterValue
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.jupiterLike
@@ -22,9 +21,12 @@ import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.WALLET
 import io.github.brrenat.seekervault.proposals.binding
 import io.github.brrenat.seekervault.proposals.choice
+import io.github.brrenat.seekervault.proposals.delivered
 import io.github.brrenat.seekervault.proposals.hash
+import io.github.brrenat.seekervault.proposals.signal
 import io.github.brrenat.seekervault.proposals.wireProposal
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
+import io.github.brrenat.seekervault.servers.ALL_NETWORKS
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.GATEWAY
@@ -112,7 +114,7 @@ class ProposalIsolationTest {
             knownSequence: Long,
         ): FeedSnapshot {
             asked += reference
-            return FeedSnapshot.Read(1L, answers)
+            return delivered(1L, answers)
         }
     }
 
@@ -159,7 +161,7 @@ class ProposalIsolationTest {
 
     @Test
     fun whatOneOwnerDoesIsInvisibleToTheOther() = runBlocking {
-        val published = wireProposal(revision = 2)
+        val published = signal(wireProposal(revision = 2))
         val first = Device("first", FEED_A)
         val second = Device("second", FEED_B)
         first.proposals.apply(FEED_A, published)
@@ -196,7 +198,7 @@ class ProposalIsolationTest {
 
     @Test
     fun twoDevicesKeepTheirOwnDecisionsThroughAReplayAndARestart() = runBlocking {
-        val published = wireProposal(revision = 2)
+        val published = signal(wireProposal(revision = 2))
         val first = Device("first", FEED_A)
         val second = Device("second", FEED_B)
         first.proposals.apply(FEED_A, published)
@@ -259,7 +261,10 @@ class ProposalIsolationTest {
     fun aPairedSidecarAnswersItsAgentWhileAFeedAnswersNobody() = runBlocking {
         val gateway = FakeConnectionGateway()
         val sidecar = gateway.serve(SIDECAR)
-        val feeds = FakeFeedGateway(feedManifest(serverId = SERVER_B, gateway = GATEWAY))
+        val feeds =
+            FakeFeedGateway(
+                feedManifest(serverId = SERVER_B, gateway = GATEWAY, networks = ALL_NETWORKS)
+            )
         val store = ProposalStore(File(folder.root, "files/proposals"))
         val history = ActivityLog(ActivityStore(File(folder.root, "files/activity")))
         val key: () -> SecretKey = softwareKey().let { k -> { k } }
@@ -295,7 +300,7 @@ class ProposalIsolationTest {
                 now = { clock },
                 io = Dispatchers.Unconfined,
             )
-        proposals.apply(feed, wireProposal())
+        proposals.apply(feed, signal(wireProposal()))
 
         // The agent's request is answered, and the answer goes back to the server that asked for
         // it. That is the existing workflow, and a feed on the same phone does not change it.
@@ -364,7 +369,10 @@ class ProposalIsolationTest {
     @Test
     fun aFeedIsExcludedFromEveryCallThePhoneMakesToAServer() = runBlocking {
         val gateway = FakeConnectionGateway()
-        val feeds = FakeFeedGateway(feedManifest(serverId = SERVER_B, gateway = GATEWAY))
+        val feeds =
+            FakeFeedGateway(
+                feedManifest(serverId = SERVER_B, gateway = GATEWAY, networks = ALL_NETWORKS)
+            )
         val store = ProposalStore(File(folder.root, "files/proposals"))
         val key: () -> SecretKey = softwareKey().let { k -> { k } }
         val repository =
@@ -400,7 +408,10 @@ class ProposalIsolationTest {
     @Test
     fun removingAFeedTakesItsProposalsAndLeavesWhatThisPhoneDid() = runBlocking {
         val gateway = FakeConnectionGateway()
-        val feeds = FakeFeedGateway(feedManifest(serverId = SERVER_B, gateway = GATEWAY))
+        val feeds =
+            FakeFeedGateway(
+                feedManifest(serverId = SERVER_B, gateway = GATEWAY, networks = ALL_NETWORKS)
+            )
         val store = ProposalStore(File(folder.root, "files/proposals"))
         val history = ActivityLog(ActivityStore(File(folder.root, "files/activity")))
         val key: () -> SecretKey = softwareKey().let { k -> { k } }
@@ -432,7 +443,7 @@ class ProposalIsolationTest {
                 now = { clock },
                 io = Dispatchers.Unconfined,
             )
-        proposals.apply(id, wireProposal())
+        proposals.apply(id, signal(wireProposal()))
         val chose = choice(1_000_000u)
         proposals.review(id, PROPOSAL_A, chose)
         proposals.beginExecution(
@@ -468,7 +479,8 @@ class ProposalIsolationTest {
                 mode = ConnectionMode.GatewayFeed,
                 reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_B)),
                 required = listOf(PluginRequirement(PluginId(SWAP_PLUGIN), 1..1)),
-                environments = setOf(PluginEnvironment.Production),
+                // Mainnet, the network every signal here declares (SEE-185).
+                supportedNetworks = setOf(WalletNetwork.Mainnet),
             )
     }
 }

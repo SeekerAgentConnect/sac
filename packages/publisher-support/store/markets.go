@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/markets"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
@@ -311,7 +312,8 @@ const selectTracked = `
 SELECT market.provider, market.market_id, market.event_id, market.title, market.state,
        market.close_at_ms, market.source_url, market.proposal_id, market.generation,
        market.first_seen_at_ms, market.last_seen_at_ms, market.last_checked_at_ms, market.pinned,
-       signal.revision, signal.status, signal.operation, signal.plugin_id, signal.created_at_ms,
+       signal.revision, signal.status, signal.operation, signal.plugin_id, signal.network,
+       signal.created_at_ms,
        signal.updated_at_ms, signal.expires_at_ms, signal.title, signal.note, signal.terms, signal.fingerprint,
        signal.confirmed_revision, signal.attempts, signal.due_at_ms, signal.problem, signal.detail
 FROM market
@@ -321,7 +323,7 @@ func trackedFrom(row scanner) (markets.Tracked, error) {
 	var (
 		tracked                               markets.Tracked
 		closeAt, firstSeen, lastSeen, checked int64
-		status, terms                         string
+		status, named, terms                  string
 		created, updated, expires, due        int64
 		pinned                                int
 	)
@@ -330,7 +332,7 @@ func trackedFrom(row scanner) (markets.Tracked, error) {
 		&tracked.Market.Title, &tracked.Market.State, &closeAt, &tracked.Market.SourceURL,
 		&tracked.Market.ProposalID, &tracked.Market.Generation, &firstSeen, &lastSeen, &checked,
 		&pinned, &tracked.Record.Signal.Revision, &status, &tracked.Record.Signal.Operation,
-		&tracked.Record.Signal.PluginID, &created, &updated, &expires,
+		&tracked.Record.Signal.PluginID, &named, &created, &updated, &expires,
 		&tracked.Record.Signal.Title, &tracked.Record.Signal.Note, &terms,
 		&tracked.Record.Signal.Fingerprint,
 		&tracked.Record.Publication.ConfirmedRevision, &tracked.Record.Publication.Attempts, &due,
@@ -346,6 +348,7 @@ func trackedFrom(row scanner) (markets.Tracked, error) {
 	// The signal is the market's, so it is read under the row's own proposal ID: the join is on it.
 	tracked.Record.Signal.ProposalID = tracked.Market.ProposalID
 	tracked.Record.Signal.Status = signals.Status(status)
+	tracked.Record.Signal.Network = network.Network(named)
 	tracked.Record.Signal.CreatedAt = instant(created)
 	tracked.Record.Signal.UpdatedAt = instant(updated)
 	tracked.Record.Signal.ExpiresAt = instant(expires)

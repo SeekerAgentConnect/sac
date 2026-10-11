@@ -29,7 +29,7 @@ No client SDK is required. The published contract is ordinary Connect JSON over 
 | Path | Responsibility |
 | --- | --- |
 | `cmd/feed-gateway` | Starts the read and publication listeners, outbox drainer, and retention sweep |
-| `cmd/feed-gatewayctl` | Local publisher registration, rotation, revocation, listing and removal, and the operator's password hash |
+| `cmd/feed-gatewayctl` | Local publisher registration, rotation, revocation, listing and removal, the client configuration every app reads, and the operator's password hash |
 | `internal/gateway` | Public read and authenticated publication business rules and Connect handlers |
 | `internal/admin` | The operator's password-protected browser administration, on its own listener; off unless a password is configured |
 | `internal/credential` | The one place a publishing credential is minted, hashed and named, and the one place a password is stretched |
@@ -254,12 +254,13 @@ whether a manifest and feed items have arrived — and offers:
 | **Add credential** | The same additive rotation as `rotate`: the existing credential keeps working until it is revoked, so the publisher switches without downtime |
 | **Revoke** | Ends one credential, or all of a publisher's. Enforced from the next publication. The manifest and feed items it already published stay on the feed |
 | **Forget server** | The destructive one, behind typing the publisher's own server ID back. Removes the registration, its credentials, its manifest and every feed item this gateway holds. Phones that already read them keep their own copies |
+| **Client configuration** | The gateway-wide settings every app reads (SEE-185): one Solana RPC endpoint per network and the SAC swap service fee. See [Client configuration](#client-configuration) |
 
 None of that restarts the gateway or changes its environment. A publisher registered in the browser
 can publish on its next request.
 
-The responsive dark shell keeps **Servers**, **Add server**, the gateway address and **Log out** in
-one sidebar. Adding a server opens a drawer; its credential is issued onto a separate page that can
+The responsive dark shell keeps **Servers**, **Add server**, **Client configuration**, the gateway
+address and **Log out** in one sidebar. Adding a server opens a drawer; its credential is issued onto a separate page that can
 be read once. Server detail is where capabilities are switched, credentials are added or revoked,
 and a registration is forgotten. Revoke and forget confirmations are in-page dialogs rather than
 browser pop-ups, and forgetting still stays disabled until the exact server ID is typed. The bundled
@@ -283,6 +284,44 @@ not survive container replacement: the registrations and credential hashes go wi
 documented recovery is to log in and register the publishers again. Lost publisher secrets cannot be
 recovered from hashes, and this page does not make storage durable.
 
+## Client configuration
+
+An app's build names exactly one gateway, and that gateway's operator sets what every such app reads
+through `FeedService.GetClientConfig` (SEE-185): the Solana RPC endpoint for mainnet, devnet and
+testnet, and the SAC swap service fee — its rate in whole basis points (0–100), the network it
+applies on, the owner wallet, and one receiving token account per output mint. A gateway that was
+never configured answers revision 0 with no endpoints and no fee; the default fee is zero. No
+publisher, manifest, signal or link can set or override any of it.
+
+**Everything in it is public.** It is read anonymously on the read listener, rate limited like every
+other read, and the answer is the same for every caller. A URL with a user name or password is
+refused, and so is a fragment; a path or query is kept as given and is exactly as public as the rest.
+If an RPC provider needs a secret key, put a proxy of your own in front of it and configure the
+proxy's URL here.
+
+Set it on the admin page (**Client configuration** in the sidebar: three endpoint fields, empty for
+none, and the fee form with accounts as one `mint=token_account` per line) or with the CLI:
+
+```sh
+./bin/feed-gatewayctl client-config show --database "$PWD/feed-gateway.db"
+./bin/feed-gatewayctl client-config set-rpc --database "$PWD/feed-gateway.db" \
+  --network mainnet --url https://rpc.example.com
+./bin/feed-gatewayctl client-config set-rpc --database "$PWD/feed-gateway.db" --network devnet   # removes it
+./bin/feed-gatewayctl client-config set-fee --database "$PWD/feed-gateway.db" \
+  --bps 20 --network mainnet --owner <FEE_WALLET> \
+  --account EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v=<FEE_USDC_ACCOUNT>
+./bin/feed-gatewayctl client-config set-fee --database "$PWD/feed-gateway.db" --bps 0         # no fee
+```
+
+Both surfaces validate through the same rules and save through the same store method. Endpoints are
+absolute `https://` URLs of at most 512 bytes (plain `http://` only to `localhost`, `127.0.0.1` or
+`[::1]`), at most one per network. A nonzero fee needs a network, an owner and at least one account;
+every address is a base58 public key, each mint is listed once, and an account is never the owner
+itself or its own mint — and anything set is checked even at 0 bps. A configuration that breaks a
+rule is refused whole: nothing is saved, and no rate or recipient is adjusted to fit. Every saved
+change moves the revision by exactly one; saving what is already held changes nothing and keeps the
+revision.
+
 ## Publish with plain HTTP and Connect JSON
 
 These calls need only `curl`; no generated client is involved. Set the externally advertised
@@ -303,7 +342,7 @@ Publish the manifest first:
 curl --fail-with-body "$PUBLISH_URL/seekervault.gateway.v1.PublisherService/PublishManifest" \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $PUBLISHER_CREDENTIAL" \
-  --data "{\"manifest\":{\"serverId\":\"$PUBLISHER_ID\",\"protocolVersion\":1,\"settingsRevision\":\"1\",\"mode\":\"CONNECTION_MODE_GATEWAY_FEED\",\"environments\":[\"SERVER_ENVIRONMENT_PRODUCTION\"],\"displayName\":\"Example feed\",\"feed\":{\"gatewayUrl\":\"$PUBLIC_GATEWAY\",\"channel\":\"$CHANNEL\"}}}"
+  --data "{\"manifest\":{\"serverId\":\"$PUBLISHER_ID\",\"protocolVersion\":1,\"settingsRevision\":\"1\",\"mode\":\"CONNECTION_MODE_GATEWAY_FEED\",\"displayName\":\"Example feed\",\"feed\":{\"gatewayUrl\":\"$PUBLIC_GATEWAY\",\"channel\":\"$CHANNEL\",\"supportedNetworks\":[\"SOLANA_NETWORK_MAINNET\"]}}}"
 # {"status":"PUBLISH_STATUS_STORED","settingsRevision":"1"}
 ```
 
@@ -348,6 +387,16 @@ The newer common contract uses `PublishRequest`, `CancelRequest`, `ListRequests`
 at the same Connect JSON paths. `PublishProposal` remains a compatibility adapter over the same row,
 revision gate, sequence, and outbox; it is used above because its compact shape makes the lifecycle
 clear.
+
+A common-contract signal is published at `contractVersion` 2 and names the Solana network its action
+executes on (`action.network`, SEE-185). The network is required and never inferred: a missing or
+unknown one is `bad_network`, any other contract version is `other_protocol`, and a network the
+publisher's held manifest does not list in `feed.supportedNetworks` — or a publisher with no manifest
+yet — is `other_network` (`failed_precondition`). One feed may publish successive signals for
+different networks, each within its manifest. A document from `PublishProposal` names no network:
+it is served, and a phone keeps it readable and never executes it. A network-declaring signal is
+never served through the protocol-1 `ListProposals`/`GetProposal` views, which cannot carry its
+network; it is read through `ListRequests`/`GetRequest`.
 
 ### Revisions, errors, and retries
 

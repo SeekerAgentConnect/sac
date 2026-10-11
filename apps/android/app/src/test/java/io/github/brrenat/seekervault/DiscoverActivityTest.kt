@@ -14,6 +14,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.connectrpc.okhttp.ConnectOkHttpClient
+import io.github.brrenat.seekervault.config.wireConfig
 import io.github.brrenat.seekervault.connections.ConnectionsTags
 import io.github.brrenat.seekervault.connections.FakeConnectionGateway
 import io.github.brrenat.seekervault.connections.LegacyUpdateTransport
@@ -42,6 +43,7 @@ import okhttp3.OkHttpClient
 import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -75,7 +77,10 @@ class DiscoverActivityTest {
         app.feeds = {
             ConnectFeedGateway(ConnectOkHttpClient.configureClient(OkHttpClient.Builder()).build())
         }
-        app.discoveryUrl = { origin }
+        app.gatewayUrl = { origin }
+        // The client configuration is the gateway's too (SEE-185); answered here, so the gateway
+        // below sees only what this test is about.
+        app.clientConfigFetch = { wireConfig(revision = 0) }
         app.feedCatalog = { FeedCatalog { url, _, token -> catalog(url, token) } }
     }
 
@@ -213,12 +218,13 @@ class DiscoverActivityTest {
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
 
-        // Added: the wallet is chosen next on the connection's own sheet, over Discover.
+        // Added: a public feed needs no wallet (SEE-185), so its own sheet opens over Discover
+        // with nothing to choose; each signal's operation chooses its wallet for its network.
         awaitAdded()
-        compose.onNodeWithTag(WalletTags.PICKER).assertExists()
+        compose.onNodeWithTag(WalletTags.PICKER).assertDoesNotExist()
         val added = app.connectionRepository.connections.value.single()
         assertEquals(SERVER_A, added.serverId)
-        compose.onNodeWithTag(ConnectionsTags.DIALOG_DISMISS).performClick()
+        assertNull(added.walletProfileId)
         compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
         compose.mainClock.advanceTimeBy(400)
 
@@ -256,7 +262,6 @@ class DiscoverActivityTest {
             .performScrollTo()
             .performSemanticsAction(SemanticsActions.OnClick)
         awaitAdded()
-        compose.onNodeWithTag(ConnectionsTags.DIALOG_DISMISS).performClick()
         compose.onNodeWithTag(ConnectionsTags.CLOSE).performClick()
         compose.mainClock.advanceTimeBy(400)
 

@@ -84,9 +84,10 @@ export interface OpenDirectServerOptions {
    * `parseSupportedNetworks`, so every server accepts the same names.
    *
    * List what the server actually runs against — a server whose chain reads and preparation only
-   * work on Mainnet says Mainnet — and never every network the protocol can name. It is separate
-   * from the environment: a production server may run on Devnet. UNSPECIFIED, unknown values and
-   * duplicates make opening fail; order doesn't matter, because it is published in canonical
+   * work on Mainnet says Mainnet — and never every network the protocol can name. A direct server
+   * declares no sandbox or production environment (SEE-185): whether a request is only previewed is
+   * the phone's choice, never the server's. UNSPECIFIED, unknown values and duplicates make opening
+   * fail; order doesn't matter, because it is published in canonical
    * order. Changing it moves the manifest's settings revision on the next start.
    */
   readonly supportedNetworks?: readonly SolanaNetwork[];

@@ -1,6 +1,5 @@
 package io.github.brrenat.seekervault.servers
 
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
 import io.github.brrenat.seekervault.wallet.WalletNetwork
@@ -35,7 +34,6 @@ class ServerManifestFixturesTest {
         assertEquals(3L, manifest.settingsRevision)
         assertEquals(ServerReference.Direct("https://vault.example.com"), manifest.reference)
         assertEquals(emptyList<PluginRequirement>(), manifest.required)
-        assertEquals(setOf(PluginEnvironment.Production), manifest.environments)
         assertEquals("", manifest.name)
         // What the sidecar is configured for, and nothing it merely could name (SEE-174).
         assertEquals(setOf(WalletNetwork.Mainnet), manifest.supportedNetworks)
@@ -73,10 +71,6 @@ class ServerManifestFixturesTest {
                 PluginRequirement(PluginId("jupiter.prediction"), 1..2),
             ),
             manifest.required,
-        )
-        assertEquals(
-            setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
-            manifest.environments,
         )
         // A name in another script, with an emoji: shown as it is, and never as this app's word
         // for the publisher.

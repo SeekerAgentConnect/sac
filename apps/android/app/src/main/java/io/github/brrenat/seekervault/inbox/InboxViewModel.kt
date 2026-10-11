@@ -601,7 +601,8 @@ class InboxViewModel(
                         action = owner.action,
                         schemaVersion = SWAP_SCHEMA_VERSION,
                         network = network,
-                        environment = environmentOf(key.connectionId),
+                        // A direct connection is always real execution (SEE-97, SEE-185).
+                        environment = PluginEnvironment.Production,
                     ),
             )
         }
@@ -623,23 +624,7 @@ class InboxViewModel(
      * nothing.
      */
     fun support(connectionId: String): ServerSupport =
-        serverSupport(
-            repository.connection(connectionId)?.server ?: ServerRecord.Unknown,
-            plugins,
-            environmentOf(connectionId),
-        )
-
-    /**
-     * Which promise this connection keeps (SEE-97). For everything this screen is about it is
-     * always [PluginEnvironment.Production], and the reason is a rule rather than a default: a
-     * direct connection cannot be anything else, because the agent that asked for a signature is
-     * waiting for one and cannot be handed a rehearsal (`Connection.environment`).
-     *
-     * It is read rather than assumed all the same, so that the one place this app decides what an
-     * approval means is the connection it is for.
-     */
-    private fun environmentOf(connectionId: String): PluginEnvironment =
-        repository.connection(connectionId)?.environment ?: PluginEnvironment.Production
+        serverSupport(repository.connection(connectionId)?.server ?: ServerRecord.Unknown, plugins)
 
     private fun preparedFor(key: RequestKey): PreparedTransaction? =
         (activity.value.preparations[key] as? Preparation.Ready)?.prepared

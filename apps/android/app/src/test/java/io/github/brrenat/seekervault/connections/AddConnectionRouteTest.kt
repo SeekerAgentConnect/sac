@@ -35,7 +35,6 @@ import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.GATEWAY
@@ -45,6 +44,7 @@ import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 import java.io.File
 import java.net.URLEncoder
 import java.time.Instant
@@ -92,6 +92,7 @@ class AddConnectionRouteTest {
                 feedOutcome
             },
             cleartextPermitted = { false },
+            trustedGateway = GATEWAY,
         )
     }
 
@@ -176,12 +177,10 @@ class AddConnectionRouteTest {
                         mode = ConnectionMode.GatewayFeed,
                         reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_B)),
                         required = listOf(PluginRequirement(PluginId("jupiter.swap"), 1..1)),
-                        environments =
-                            setOf(PluginEnvironment.Sandbox, PluginEnvironment.Production),
+                        supportedNetworks = setOf(WalletNetwork.Mainnet, WalletNetwork.Devnet),
                         name = "Copy trading",
                     )
                 ),
-            environment = PluginEnvironment.Sandbox,
         )
 
     private fun enter(text: String) {
@@ -307,7 +306,7 @@ class AddConnectionRouteTest {
     }
 
     @Test
-    fun anExistingFeedSaysNothingWasStoredAndShowsItsPromise() {
+    fun anExistingFeedSaysNothingWasStoredAndShowsTheNetworksItsSignalsMayUse() {
         feedOutcome = FeedOutcome.Already(feedConnection())
         show()
 
@@ -318,7 +317,9 @@ class AddConnectionRouteTest {
         compose
             .onNodeWithText(app.getString(R.string.feed_already_text, "Copy trading"))
             .assertExists()
-        compose.onNodeWithText("Sandbox").assertExists()
+        // What its signals may run on, never an environment it keeps (SEE-185).
+        compose.onNodeWithText(app.getString(R.string.feed_networks)).assertExists()
+        compose.onNodeWithText("Sandbox").assertDoesNotExist()
         compose.onNodeWithText("jupiter.swap").assertExists()
         assertEquals(1, feedCalls)
         assertTrue(paired.isEmpty())

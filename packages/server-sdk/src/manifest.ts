@@ -22,7 +22,6 @@ import { create, toJsonString } from "@bufbuild/protobuf";
 
 import {
   ConnectionMode,
-  ServerEnvironment,
   ServerManifestSchema,
   SolanaNetwork,
   type ServerManifest,
@@ -188,7 +187,6 @@ export function serverManifest(
         ),
       },
     },
-    environments: [ServerEnvironment.PRODUCTION],
   });
 }
 

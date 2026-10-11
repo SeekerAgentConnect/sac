@@ -335,7 +335,7 @@ Updates install only over an app signed with the same key, so the release key is
   `3b29a71fb3c5ff63c9b693f1e9e1fdc945bfd5231a2c1ec1537f4f7ad2164f28` — the value of
   `SAC_ANDROID_SIGNING_CERT_SHA256`, and what every published APK is verified against. Use that key
   for every release (the `sac-release.jks` procedure in
-  [swap-fee-config.md](swap-fee-config.md#sign-verify-and-install-the-release-apk)). Do not create
+  [Sign, verify and install a local build](#sign-verify-and-install-a-local-build)). Do not create
   another: an APK signed with a different key cannot update an installed app.
 - **Only a fresh fork of the project creates one:**
 
@@ -364,28 +364,66 @@ The keystore is restored only inside the signing step, with `umask 077`, and del
 equal the pinned SHA-256, or nothing is published. A real Android release with any of these missing
 fails immediately and clearly; it never falls back to a debug key or an unsigned APK.
 
+### Sign, verify and install a local build
+
+Official releases are signed by CI; this is for a build made locally or the unsigned candidate of a
+dry run. `assembleRelease` deliberately produces an **unsigned** APK. Use the same protected release
+keystore for every update to an installed app. Do not commit the keystore or its passwords. With
+Android SDK Build Tools and `adb` installed, sign the locally built artifact like this; `apksigner`
+prompts for the keystore/key passwords rather than exposing them in the command line:
+
+```bash
+export ANDROID_SDK_ROOT=/path/to/Android/Sdk
+export SAC_RELEASE_KEYSTORE=/path/to/sac-release.jks
+export SAC_RELEASE_KEY_ALIAS=sac-release
+
+BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+UNSIGNED=apps/android/app/build/outputs/apk/release/app-release-unsigned.apk
+ALIGNED=apps/android/app/build/outputs/apk/release/app-release-aligned.apk
+SIGNED=apps/android/app/build/outputs/apk/release/app-release-signed.apk
+
+"$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+"$BUILD_TOOLS/apksigner" sign \
+  --ks "$SAC_RELEASE_KEYSTORE" \
+  --ks-key-alias "$SAC_RELEASE_KEY_ALIAS" \
+  --out "$SIGNED" \
+  "$ALIGNED"
+"$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$SIGNED"
+adb install --replace "$SIGNED"
+```
+
+For a downloaded dry-run artifact, set `UNSIGNED` to the downloaded `.apk`; the remaining steps are
+identical. An unsigned release artifact is not installable as the normal app and must not be called
+a distributable release.
+
 ### Android build configuration
 
 The official app's configuration is **client configuration**: every value is compiled into the APK
 and readable by anybody who has it. It therefore lives in **repository variables** (Settings →
 Secrets and variables → Actions → Variables), never secrets, and
 [`scripts/release-android.mjs`](../../scripts/release-android.mjs) refuses what would make it a
-leak.
+leak. Since SEE-185 an APK carries one network setting, the trusted gateway. The Solana RPC endpoint
+for each network and the SAC swap fee are that gateway's client configuration, set by its operator
+and fetched by the app ([client-config.md](../wiki/client-config.md)); none of them is in the APK.
 
 | Variable | Feature | Notes |
 | -- | -- | -- |
 | `SEEKERVAULT_GOOGLE_SERVICES_JSON` | `firebase` — push | The **client** `google-services.json` from the Firebase console's Android app settings, for `io.github.brrenat.seekervault`. A service-account JSON is refused: it is the relay's/MCP server's server credential and never goes in an app. |
-| `SEEKERVAULT_SOLANA_RPC_MAINNET`, `_DEVNET`, `_TESTNET` | each network's initial endpoint — account reads and transaction confirmation; `_MAINNET` satisfies `solanaRpc` | https, no username/password. A query-string key is warned about: it ships in the APK. The owner can replace each on the phone ([solana-rpc.md](../wiki/solana-rpc.md)). |
-| `SEEKERVAULT_SOLANA_RPC` | legacy general endpoint; satisfies `solanaRpc` on its own | Same rules. Used for a network only after its genesis hash proves it; not needed beside `_MAINNET` (SEE-184). |
-| `SEEKERVAULT_RELAY_URL` | `relayUrl` — push relayed for direct servers | An https origin. |
-| `SEEKERVAULT_DISCOVERY_URL` | `discoveryUrl` — the Discover catalog | An https origin; unset means the relay's. |
-| `SEEKERVAULT_SWAP_FEE_BPS`, `SEEKERVAULT_SWAP_FEE_OWNER`, `SEEKERVAULT_SWAP_FEE_ACCOUNTS` | SAC swap fee | Unset means no fee; validated by Gradle ([swap-fee-config.md](swap-fee-config.md)). A fee needs `SEEKERVAULT_SOLANA_RPC_MAINNET` (or the legacy `SEEKERVAULT_SOLANA_RPC`). |
+| `SEEKERVAULT_GATEWAY_URL` | `gatewayUrl` — the one trusted gateway | An https origin with no path, query, user info or fragment, passed as `-Pseekervault.gatewayUrl` (`BuildConfig.GATEWAY_URL`). Feeds, the Discover catalog, the push relay for direct servers and the client configuration all come from it. |
 
-`android.releaseRequires` in the manifest lists the features a **real** release must have —
-currently `firebase`, `solanaRpc`, `relayUrl`. `solanaRpc` means a mainnet endpoint: the official
-build's chain reads (prediction orders, the swap fee) are mainnet's, so `SEEKERVAULT_SOLANA_RPC_MAINNET`
-alone satisfies it, and a general-only configuration still does. A real release missing one stops before building; a
-dry run builds anyway and warns. The APK's release notes record the configuration it was built with.
+These variables are **retired** and ignored: `SEEKERVAULT_SOLANA_RPC`,
+`SEEKERVAULT_SOLANA_RPC_MAINNET`, `_DEVNET`, `_TESTNET`, `SEEKERVAULT_RELAY_URL`,
+`SEEKERVAULT_DISCOVERY_URL`, `SEEKERVAULT_SWAP_FEE_BPS`, `SEEKERVAULT_SWAP_FEE_OWNER` and
+`SEEKERVAULT_SWAP_FEE_ACCOUNTS`. One that is still set produces a "retired and ignored" warning and
+changes nothing, so it can be deleted. Set the endpoints and the fee on the gateway instead
+(`feed-gatewayctl client-config set-rpc` / `set-fee`, or the admin page's **Client configuration**;
+[swap-fee-config.md](swap-fee-config.md) for the fee). `pnpm check:swap-fee-build` is removed with
+the build-time fee it checked.
+
+`android.releaseRequires` in the manifest lists the features a **real** release must have:
+currently `firebase` and `gatewayUrl`. A real release missing one stops before building; a dry run
+builds anyway and warns. The APK's release notes record the features it was built with, and say
+that the RPC endpoints and the swap fee come from the gateway's client configuration.
 
 ## Installing and verifying a release
 

@@ -2,6 +2,7 @@ package rules
 
 import (
 	"encoding/base64"
+	"slices"
 	"strconv"
 	"time"
 
@@ -11,17 +12,28 @@ import (
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/proposal/v1"
 	requestv2 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/request/v2"
+	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
 )
 
 const (
-	RequestContract uint32 = 1
-	MaxOwnerInputs         = 16
-	MaxInputOptions        = 16
+	// RequestContract is the only common-contract version this gateway accepts for a new
+	// publication (SEE-185): version 2, whose action names the Solana network it executes on.
+	RequestContract uint32 = 2
+	// LegacyRequestContract is what a document from before SEE-185 says, and what a protocol-1
+	// proposal is read as. It names no network, so a phone keeps it readable and never executes
+	// it; the gateway still serves the ones it holds and never accepts a new one.
+	LegacyRequestContract uint32 = 1
+	MaxOwnerInputs               = 16
+	MaxInputOptions              = 16
 )
 
 // Request validates the common envelope at the broadcast boundary. Feed documents must contain
 // only source-authored intent and declarations: an owner's answers and outcome have no field in
 // the contract, and DEVICE_LOCAL is the only result policy accepted here.
+//
+// The action's network is required and checked here only for being one this gateway knows. Whether
+// it is one the publisher's manifest declares is a question about what the gateway holds, so the
+// publication's own transaction asks it (internal/gateway, [NetworkDeclared]).
 func Request(message *requestv2.Request, expect Expectation) (*requestv2.Request, *Fault) {
 	if message == nil || message.GetContractVersion() != RequestContract {
 		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_PROTOCOL, "contract_version")
@@ -78,6 +90,13 @@ func Request(message *requestv2.Request, expect Expectation) (*requestv2.Request
 	if !IsPluginID(action.GetPluginId()) {
 		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_PLUGIN, "action.plugin_id")
 	}
+	// Never inferred, never defaulted: a document that names no network, or one this gateway does
+	// not know, is refused rather than stored as Mainnet or as whatever a phone happens to select.
+	// The assets and markets a signal names are identified by network plus address, so the same
+	// mint on another cluster is a different thing.
+	if !KnownNetwork(action.GetNetwork()) {
+		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK, "action.network")
+	}
 	parameters, failed := values(action.GetParameters())
 	if failed != nil {
 		return nil, failed
@@ -101,7 +120,7 @@ func Request(message *requestv2.Request, expect Expectation) (*requestv2.Request
 		},
 		Action: &requestv2.ActionCapability{
 			CapabilityId: action.GetCapabilityId(), CapabilityVersion: action.GetCapabilityVersion(),
-			PluginId: action.GetPluginId(), Parameters: parameters,
+			PluginId: action.GetPluginId(), Parameters: parameters, Network: action.GetNetwork(),
 		},
 		OwnerInputs: inputs,
 		Audience: &requestv2.Audience{Audience: &requestv2.Audience_Feed{
@@ -203,8 +222,52 @@ func decimal(value string) bool {
 	return true
 }
 
+// KnownNetwork says whether a Solana network is one this gateway knows: Mainnet, Devnet or Testnet.
+// Unspecified is never one, and neither is a value from a later version of the format — a phone
+// that knew it would be trusting a gateway that did not.
+func KnownNetwork(network serverv1.SolanaNetwork) bool {
+	switch network {
+	case serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+		serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+		serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET:
+		return true
+	}
+	return false
+}
+
+// NetworkDeclared is whether a signal's network is one its publisher's manifest declares
+// (SEE-185). A feed may publish successive signals for different networks, but only for ones it
+// says it supports, and a publisher with no manifest here yet has declared none — so its signal is
+// refused rather than relayed under a promise nobody made. The answer is the manifest the gateway
+// holds when the signal is stored, read in the same transaction.
+func NetworkDeclared(manifest *serverv1.ServerManifest, network serverv1.SolanaNetwork) *Fault {
+	if manifest == nil || !slices.Contains(manifest.GetFeed().GetSupportedNetworks(), network) {
+		return fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_NETWORK, "action.network")
+	}
+	return nil
+}
+
+// ProtocolOneMayShow is whether a stored document may be served through the protocol-1 proposal
+// views (ListProposals, GetProposal), given the network its common document declares.
+//
+// A protocol-1 proposal has no network, and a protocol-1 client executes what it reads on the
+// network of the wallet its connection is bound to. Projecting a network-declaring document into
+// that shape would drop the one declaration that makes it executable safely, and present it to a
+// client that would then sign on whichever network it is bound to. So such a document is not in the
+// legacy views at all — not served cancelled either, which would show an owner a withdrawal of
+// something they never saw. A client that reads the common contract sees it, with its network, and
+// a network-less document stays in both views exactly as it was.
+func ProtocolOneMayShow(network serverv1.SolanaNetwork) bool {
+	return network == serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED
+}
+
 // RequestFromProposal and ProposalFromRequest are the protocol-1 adapters. They contain no
 // lifecycle decision: both representations still pass through their native validators.
+//
+// A protocol-1 proposal says nothing about a network, so a request made from one is the legacy
+// contract with no network: readable on a phone, never executable, and never accepted by [Request]
+// as a new publication. ProposalFromRequest drops a network on the way back, which is why a
+// network-declaring document is kept out of the protocol-1 views ([ProtocolOneMayShow]).
 func RequestFromProposal(proposal *proposalv1.Proposal) *requestv2.Request {
 	status := requestv2.RequestStatus_REQUEST_STATUS_OPEN
 	if proposal.GetStatus() == proposalv1.ProposalStatus_PROPOSAL_STATUS_CANCELLED {
@@ -215,7 +278,7 @@ func RequestFromProposal(proposal *proposalv1.Proposal) *requestv2.Request {
 		parameters = append(parameters, &requestv2.Value{Key: value.GetKey(), Value: &requestv2.Value_Text{Text: value.GetText()}})
 	}
 	return &requestv2.Request{
-		ContractVersion: RequestContract,
+		ContractVersion: LegacyRequestContract,
 		Identity:        &requestv2.RequestIdentity{SourceId: proposal.GetServerId(), Scope: proposal.GetChannel(), RequestId: proposal.GetProposalId()},
 		Lifecycle:       &requestv2.RequestLifecycle{Revision: proposal.GetRevision(), Status: status, CreatedAt: proposal.GetCreatedAt(), UpdatedAt: proposal.GetUpdatedAt(), ExpiresAt: proposal.GetExpiresAt()},
 		Presentation:    &requestv2.Presentation{Title: proposal.GetOperation(), Description: proposal.GetPublisherNote(), Category: requestv2.PresentationCategory_PRESENTATION_CATEGORY_SIGNAL},

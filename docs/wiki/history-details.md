@@ -31,8 +31,9 @@ details opens the Inbox narrowed to that connection, with the card and its **Cle
 The order is fixed. An optional section with nothing to show is left out, with no placeholder.
 
 1. **Title and source**: the Signal chip for a feed's item, the source in the colour the owner gave
-   it, the title as the inbox shows it, then the environment and the network. A sandbox reads
-   **Sandbox · no funds moved**, in the past tense.
+   it, the title as the inbox shows it, then whether it was executed or previewed, and the network.
+   A preview (and a sandbox rehearsal recorded before SEE-185) reads **Sandbox · no funds moved**,
+   in the past tense.
 2. **Final status**: Approved, Declined, Dismissed, Expired or Cancelled by server, each with its own
    icon and one line saying who acted and where. A server's cancellation reason appears when it gave
    one. Approved never means the transaction succeeded; that is the execution result's job.
@@ -53,7 +54,7 @@ The order is fixed. An optional section with nothing to show is left out, with n
    button that copies it whole, and an explorer link for the transaction's own cluster.
 8. **Timeline**: only the events that were recorded, each at the time it was recorded.
 9. **Identifiers**: request or signal ID, market ID, signature, and any raw error.
-10. **Footnote**: the record doesn't change with today's rules or prices. For a sandbox, it notes
+10. **Footnote**: the record doesn't change with today's rules or prices. For a preview, it notes
     that nothing was signed or sent.
 
 The actions on the page are Back, copy, the explorer link, Send again, and Check status (which
@@ -81,13 +82,16 @@ SEE-165).
 
 It calls no rules engine, no quote service, no provider read and no setting. The two facts it takes
 from the connection are the owner's own name and colour for it. For a signal nothing was ever
-executed from, it also takes the environment the feed keeps, because a record with no binding has
-no environment of its own. A direct connection is always production
-([environments](environments.md)).
+executed from, nothing else: a record with no binding is a signal that waited, and reads as
+production, because whether an operation is previewed is chosen when the owner acts (SEE-185). A
+signal the owner only **previewed** is shown from its `ProposalRecord.preview`: status
+**Previewed**, "You previewed it on this phone. Nothing was signed or sent, and it is still waiting
+for you under Pending.", and a **You previewed** timeline entry; an execution that follows adds its
+own entries. A direct connection is always production ([environments](environments.md)).
 
 The owner's choice on a signal (side, amount, slippage) is put into words with the labels,
 options and decimals of the provider's compiled form (`OperationViewModel.parameterForm`). That
-form is resolved for the provider, environment and chain the choice was bound under, not for
+form is resolved for the provider, mode (execute or preview) and chain the choice was bound under, not for
 today's wallet. A key the form doesn't name is shown as stored.
 
 What the records don't hold is left out rather than guessed:

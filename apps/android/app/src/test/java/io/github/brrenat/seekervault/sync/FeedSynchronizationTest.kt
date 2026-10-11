@@ -5,7 +5,6 @@ import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.notifications.ProposalRef
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
@@ -266,7 +265,6 @@ class FeedSynchronizationTest {
                                     gatewayUrl = gateway,
                                     channel = channelFor(serverId),
                                 ),
-                            environments = setOf(PluginEnvironment.Production),
                         )
                     ),
             )

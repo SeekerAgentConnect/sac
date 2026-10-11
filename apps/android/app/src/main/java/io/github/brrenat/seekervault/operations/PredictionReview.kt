@@ -5,8 +5,6 @@ import android.text.format.DateFormat
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.designsystem.DailyLimitRowScope
 import io.github.brrenat.seekervault.designsystem.DailyLimitRowState
-import io.github.brrenat.seekervault.designsystem.EnvChipEnvironment
-import io.github.brrenat.seekervault.designsystem.EnvChipVerbosity
 import io.github.brrenat.seekervault.designsystem.FactRowValueStyle
 import io.github.brrenat.seekervault.designsystem.NetworkChipNetwork
 import io.github.brrenat.seekervault.designsystem.OwnerInputCardKind
@@ -35,7 +33,6 @@ import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFailureCodes
 import io.github.brrenat.seekervault.plugins.ProviderNoteTopic
 import io.github.brrenat.seekervault.plugins.actions.ActionPayload
@@ -59,6 +56,7 @@ import io.github.brrenat.seekervault.reviews.reviewVerdict
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
+import io.github.brrenat.seekervault.wallet.walletNetworkOf
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -139,7 +137,6 @@ fun OperationReview.toPredictionSheet(
     }
     val proposal = record.proposal
     val terms = (payload as? ActionPayload.PredictionBuy)?.payload
-    val sandbox = environment == PluginEnvironment.Sandbox
     val executed = record.execution != null
     val choosable = standing.executable && served && form.problem == null && !executed
     val stage = predictionStage(now)
@@ -173,15 +170,8 @@ fun OperationReview.toPredictionSheet(
             buildList {
                 add(ReviewSheetHeaderChip.Signal)
                 add(ReviewSheetHeaderChip.Feed(source.name, source.colour))
-                if (sandbox) {
-                    add(
-                        ReviewSheetHeaderChip.Environment(
-                            EnvChipEnvironment.Sandbox,
-                            EnvChipVerbosity.Short,
-                        )
-                    )
-                }
-                when (wallet?.network) {
+                // The network the signal declares, never the wallet's (SEE-185).
+                when (network?.let(::walletNetworkOf)) {
                     WalletNetwork.Mainnet ->
                         add(ReviewSheetHeaderChip.Network(NetworkChipNetwork.Mainnet))
                     WalletNetwork.Devnet ->
@@ -194,8 +184,10 @@ fun OperationReview.toPredictionSheet(
                     null -> Unit
                 }
             },
+        // Just previewed: nothing was signed or sent, and the signal is still open (SEE-185).
         sandboxNotice =
-            if (sandbox) resources.getString(R.string.prediction_sandbox_notice) else null,
+            if (previewed && !executed) resources.getString(R.string.prediction_previewed_notice)
+            else null,
         statusBlocks = statusBlocks(resources),
         yourPart =
             if (choosable) {
@@ -261,12 +253,17 @@ fun OperationReview.toPredictionSheet(
         confirmationChecked = acknowledged,
         primaryAction =
             ReviewSheetAction(
-                label =
-                    resources.getString(
-                        if (sandbox) R.string.prediction_simulate else R.string.prediction_approve
-                    ),
+                label = resources.getString(R.string.prediction_approve),
                 enabled = approvable,
             ),
+        // Preview without sending, beside the real thing and chosen here, per operation (SEE-185).
+        previewAction =
+            if (previewable && !executed) {
+                ReviewSheetAction(
+                    label = resources.getString(R.string.prediction_simulate),
+                    enabled = approvable,
+                )
+            } else null,
         secondaryAction =
             ReviewSheetAction(
                 label = resources.getString(R.string.prediction_dismiss),
@@ -278,7 +275,7 @@ fun OperationReview.toPredictionSheet(
         actionsShown = standing is ProposalStanding.Open,
         sections =
             listOf(
-                checksSection(stage, sandbox, resources),
+                checksSection(stage, resources),
                 aboutSection(zone, locale, resources),
                 providerSection(terms, source, resources),
                 technicalSection(stage, terms, wallet, resources),
@@ -565,7 +562,6 @@ private fun OperationReview.walletRow(
  */
 private fun OperationReview.checksSection(
     stage: PredictionStage,
-    sandbox: Boolean,
     resources: Resources,
 ): ReviewSheetSection {
     val read = inspection != null
@@ -602,8 +598,7 @@ private fun OperationReview.checksSection(
                 resources.getString(transaction),
             ),
         // Two "not configured" rows say less than one line does.
-        dailySpend =
-            assessment?.takeIf { !unset }?.let { dailySpendOf(it, sandbox, read, resources) },
+        dailySpend = assessment?.takeIf { !unset }?.let { dailySpendOf(it, read, resources) },
         infoBlocks =
             listOfNotNull(
                 ReviewSheetInfoBlock(
@@ -771,17 +766,12 @@ private fun linkRow(label: Int, url: String, resources: Resources) =
 
 private fun dailySpendOf(
     assessment: RequestAssessment,
-    sandbox: Boolean,
     read: Boolean,
     resources: Resources,
 ): ReviewSheetDailySpend? {
     val checks = assessment.decision.dailyChecks.takeIf { it.isNotEmpty() } ?: return null
     return ReviewSheetDailySpend(
-        title =
-            resources.getString(
-                if (sandbox) R.string.prediction_daily_title_sandbox
-                else R.string.policy_daily_title
-            ),
+        title = resources.getString(R.string.policy_daily_title),
         rows = checks.map { it.row(assessment.facts.decimals, read, resources) },
     )
 }

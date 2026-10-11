@@ -44,7 +44,6 @@ import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.feeds.FeedAvailability
 import io.github.brrenat.seekervault.feeds.FeedListenerState
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerSupport
@@ -92,11 +91,6 @@ fun ConnectionDetailsScreen(
      * being reachable itself (SEE-150).
      */
     availability: FeedAvailability = FeedAvailability.Unknown,
-    /**
-     * Moves this feed between the environments its publisher serves (SEE-97). Null for a direct
-     * connection, which is always production.
-     */
-    onEnvironment: ((PluginEnvironment) -> Unit)? = null,
 ) {
     val problem = hasProblem(connection, live, support, feed, availability)
     MessageEffect(message, onMessageShown)
@@ -214,7 +208,6 @@ fun ConnectionDetailsScreen(
                 Field(R.string.field_paired, formatInstant(connection.pairedAt), "paired")
                 Field(R.string.field_device_name, connection.deviceName, "deviceName")
                 if (connection.mode == ConnectionMode.GatewayFeed) {
-                    EnvironmentCard(connection, onEnvironment)
                     val required = connection.server.manifest?.required.orEmpty()
                     val requiredText =
                         if (required.isEmpty()) {
@@ -401,74 +394,6 @@ fun ConnectionDetailsScreen(
                 onRemove = onConfirmRemove,
                 onDismiss = onDismissDisconnect,
             )
-        }
-    }
-}
-
-/**
- * Which promise this gateway connection keeps, and the owner's switch between them when its server
- * serves both (SEE-97, docs/wiki/environments.md).
- *
- * A publisher that serves one environment leaves nothing to choose, and the row is then a statement
- * rather than a control: the promise is still said out loud, because "this feed is a demonstration"
- * and "this feed spends money" are the two things an owner most needs to know about it.
- */
-@Composable
-private fun EnvironmentCard(connection: Connection, onEnvironment: ((PluginEnvironment) -> Unit)?) {
-    val served = connection.server.manifest?.environments.orEmpty()
-    SeekerCard(Modifier.fillMaxWidth().testTag(ConnectionsTags.ENVIRONMENT)) {
-        Column(
-            Modifier.fillMaxWidth()
-                .padding(
-                    horizontal = SeekerTheme.dimensions.dp16,
-                    vertical = SeekerTheme.dimensions.dp14,
-                ),
-            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
-        ) {
-            Text(
-                stringResource(R.string.field_environment),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                stringResource(environmentText(connection.environment)),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                stringResource(environmentNote(connection.environment)),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            // Only where there is something to choose. A switch offered for an environment the
-            // publisher does not serve would be a button that can only fail.
-            if (onEnvironment != null && served.size > 1) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
-                ) {
-                    PluginEnvironment.entries
-                        .filter { it in served }
-                        .forEach { environment ->
-                            val current = environment == connection.environment
-                            SeekerButton(
-                                text = stringResource(environmentText(environment)),
-                                onClick = { onEnvironment(environment) },
-                                role =
-                                    if (current) SeekerButtonRole.Primary
-                                    else SeekerButtonRole.Neutral,
-                                enabled = !current,
-                                modifier =
-                                    Modifier.weight(1f)
-                                        .testTag(ConnectionsTags.environment(environment.code)),
-                            )
-                        }
-                }
-                Text(
-                    stringResource(R.string.connection_environment_switch_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }

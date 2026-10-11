@@ -7,7 +7,6 @@ import io.github.brrenat.seekervault.access.FeedAccessManager
 import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.feeds.FeedStatusState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedAccess
@@ -18,6 +17,7 @@ import io.github.brrenat.seekervault.servers.FeedReferences
 import io.github.brrenat.seekervault.servers.ManifestProblem
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.feedAccess
+import io.github.brrenat.seekervault.servers.feedSupport
 import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.servers.serverSupport
 import io.github.brrenat.seekervault.sync.ForegroundUpdatesState
@@ -238,6 +238,11 @@ class ConnectionsViewModel(
      */
     private val feedAccess: FeedAccessManager? = null,
     private val cleartextPermitted: (host: String) -> Boolean,
+    /**
+     * The one gateway this build trusts (SEE-185). A feed reference naming any other is refused
+     * before anything is asked of it.
+     */
+    private val trustedGateway: String,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConnectionsUiState())
     val state: StateFlow<ConnectionsUiState> = _state.asStateFlow()
@@ -248,12 +253,21 @@ class ConnectionsViewModel(
     init {
         viewModelScope.launch {
             repository.connections.collect { list ->
-                // Each connection against its own promise (SEE-97): one phone holds a sandbox
-                // feed and a production one at the same time, and support is a question about one
-                // connection rather than about the app.
+                // Each connection on its own: support is a question about one connection rather
+                // than about the app, and a feed held from a gateway this build no longer trusts
+                // is said to be one (SEE-185).
                 val support = list.associate { connection ->
                     connection.id to
-                        serverSupport(connection.server, plugins, connection.environment)
+                        if (connection.mode == ConnectionMode.GatewayFeed) {
+                            feedSupport(
+                                connection.serverUrl,
+                                connection.server,
+                                plugins,
+                                trustedGateway,
+                            )
+                        } else {
+                            serverSupport(connection.server, plugins)
+                        }
                 }
                 _state.update { it.copy(connections = list, support = support) }
             }
@@ -618,18 +632,6 @@ class ConnectionsViewModel(
         return null
     }
 
-    /**
-     * Moves a gateway connection between the environments its server serves (SEE-97,
-     * docs/wiki/environments.md).
-     *
-     * The answers that say no cannot be reached from the screen — it offers only what the publisher
-     * serves, and only for a feed — so there is nothing to report here: what the owner sees is the
-     * card itself, showing the promise that is now being kept.
-     */
-    fun setEnvironment(id: String, environment: PluginEnvironment) {
-        viewModelScope.launch { repository.setEnvironment(id, environment) }
-    }
-
     /** Stores the marker colour. The connection list flow repaints every open screen. */
     fun setColour(id: String, colour: ServerColour) {
         viewModelScope.launch { repository.setColour(id, colour) }
@@ -713,7 +715,9 @@ class ConnectionsViewModel(
             PairingCodeProblem.NotSeekerVault ->
                 if (isRetiredGatewayInvitation(text)) AddConnectionState.RetiredInvitation
                 else
-                    when (val feed = FeedReferences.parse(text, cleartextPermitted)) {
+                    when (
+                        val feed = FeedReferences.parse(text, trustedGateway, cleartextPermitted)
+                    ) {
                         is FeedReferenceResult.Valid ->
                             AddConnectionState.ConfirmFeed(feed.reference)
                         is FeedReferenceResult.Invalid ->

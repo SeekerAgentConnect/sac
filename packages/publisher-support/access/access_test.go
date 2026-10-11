@@ -137,7 +137,7 @@ func newFixture(t *testing.T, eligibility Eligibility) *fixture {
 
 func fixtureAt(t *testing.T, path string, eligibility Eligibility, fake *fakeGateway) *fixture {
 	t.Helper()
-	documents, err := store.Open(path, store.Stamp{ServerID: serverID, Environment: "sandbox",
+	documents, err := store.Open(path, store.Stamp{ServerID: serverID,
 		GatewayURL: "https://feeds.example.com"})
 	if err != nil {
 		t.Fatal(err)

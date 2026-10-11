@@ -109,7 +109,6 @@ class ResolveScopeTest {
             reference = ServerReference.Feed(GATEWAY, channelFor(serverId)),
             required =
                 listOf(PluginRequirement(examplePlugin, PROVIDER_CONTRACT..PROVIDER_CONTRACT)),
-            environments = setOf(PluginEnvironment.Production),
             supportedNetworks = WalletNetwork.entries.toSet(),
         )
 

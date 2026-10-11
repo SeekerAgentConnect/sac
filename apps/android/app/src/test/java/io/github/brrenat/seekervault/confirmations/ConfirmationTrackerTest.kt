@@ -20,8 +20,6 @@ import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.SigningOutcome
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.RequestState
-import io.github.brrenat.seekervault.rpc.RpcCheck
-import io.github.brrenat.seekervault.rpc.RpcDefaults
 import io.github.brrenat.seekervault.rpc.testRpc
 import io.github.brrenat.seekervault.solana.SolanaException
 import io.github.brrenat.seekervault.solana.SolanaProblem
@@ -64,13 +62,9 @@ class ConfirmationTrackerTest {
         ConfirmationTracker(
                 trackingStore,
                 log,
-                // The build's general endpoint, which proves the record's cluster before it counts.
-                testRpc(
-                    File(folder.root, "rpc"),
-                    RpcDefaults(general = "https://rpc.example.com/KEY"),
-                ) {
-                    chain
-                },
+                // The gateway's devnet endpoint, which proves the record's cluster before it
+                // counts.
+                testRpc(mapOf(Network.NETWORK_DEVNET to "https://rpc.example.com/KEY")) { chain },
             ) {
                 now
             }
@@ -441,14 +435,10 @@ class ConfirmationTrackerTest {
                 )
             val rpc =
                 testRpc(
-                    File(folder.root, "routing"),
-                    RpcDefaults(
-                        perNetwork =
-                            mapOf(
-                                MAINNET to "https://mainnet.example.com",
-                                Network.NETWORK_DEVNET to "https://mainnet.example.com",
-                            )
-                    ),
+                    mapOf(
+                        MAINNET to "https://mainnet.example.com",
+                        Network.NETWORK_DEVNET to "https://mainnet.example.com",
+                    )
                 ) { url ->
                     endpoints.getValue(url)
                 }
@@ -473,15 +463,23 @@ class ConfirmationTrackerTest {
             assertTrue(waiting > now)
 
             // Mainnet's endpoint changes: the devnet record is not touched, and not moved.
-            assertTrue(rpc.save(MAINNET, "https://mainnet-two.example.com") is RpcCheck.Serves)
+            rpc.apply(
+                mapOf(
+                    MAINNET to "https://mainnet-two.example.com",
+                    Network.NETWORK_DEVNET to "https://mainnet.example.com",
+                )
+            )
             assertEquals(waiting, check().nextCheckAt)
             assertEquals(Network.NETWORK_DEVNET, trackingStore.get(key)!!.network)
 
             // Devnet's is repaired: the record is due at once, and checked on devnet.
             devnet.status = SignatureStatus(11, ChainLevel.Finalized, null)
             devnet.body = ChainTransaction(11, signedWire(), null)
-            assertTrue(
-                rpc.save(Network.NETWORK_DEVNET, "https://devnet.example.com") is RpcCheck.Serves
+            rpc.apply(
+                mapOf(
+                    MAINNET to "https://mainnet-two.example.com",
+                    Network.NETWORK_DEVNET to "https://devnet.example.com",
+                )
             )
             assertEquals(now, check().nextCheckAt)
             routed.checkDue()
@@ -494,7 +492,7 @@ class ConfirmationTrackerTest {
     @Test
     fun aBuildWithNoEndpointChecksNothingAndSaysSo() = runBlocking {
         val none =
-            ConfirmationTracker(trackingStore, log, testRpc(File(folder.root, "none")) { chain }) {
+            ConfirmationTracker(trackingStore, log, testRpc { chain }) {
                 now
             }
         none.expect(submission())

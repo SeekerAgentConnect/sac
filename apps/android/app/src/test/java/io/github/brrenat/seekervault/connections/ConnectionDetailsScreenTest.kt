@@ -20,7 +20,6 @@ import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion
 import io.github.brrenat.seekervault.connections.ConnectionsScreenTest.Companion.VPS
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.feeds.FeedListenerState
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.policy.PolicyTags
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -52,7 +51,6 @@ class ConnectionDetailsScreenTest {
         live: ForegroundConnectionState? = null,
         support: ServerSupport? = null,
         feed: FeedListenerState? = null,
-        onEnvironment: ((PluginEnvironment) -> Unit)? = null,
     ) = compose.setContent {
         SeekerTheme {
             ConnectionDetailsScreen(
@@ -74,7 +72,6 @@ class ConnectionDetailsScreenTest {
                 live = live,
                 support = support,
                 feed = feed,
-                onEnvironment = onEnvironment,
             )
         }
     }
@@ -92,7 +89,6 @@ class ConnectionDetailsScreenTest {
                 reference =
                     ServerReference.Feed("https://gateway.example.com", channelFor(HOME.serverId)),
                 required = listOf(PluginRequirement(PluginId("jupiter.prediction"), 1..1)),
-                environments = setOf(PluginEnvironment.Production),
             )
         val feed =
             HOME.copy(
@@ -174,7 +170,7 @@ class ConnectionDetailsScreenTest {
     }
 
     private fun assertFeedHeadline(listener: FeedListenerState, status: Int, problem: Boolean) {
-        val connection = feed(setOf(PluginEnvironment.Production))
+        val connection = feed()
         show(
             connection,
             live = ForegroundConnectionState.Revoked,
@@ -193,8 +189,8 @@ class ConnectionDetailsScreenTest {
         )
     }
 
-    /** A feed of HOME's, whose publisher serves [served] (SEE-97). */
-    private fun feed(served: Set<PluginEnvironment>) =
+    /** A feed of HOME's. */
+    private fun feed() =
         HOME.copy(
             hasCredential = false,
             lastCheck = null,
@@ -211,59 +207,31 @@ class ConnectionDetailsScreenTest {
                                 "https://gateway.example.com",
                                 channelFor(HOME.serverId),
                             ),
-                        environments = served,
                     )
                 ),
-            environment =
-                if (PluginEnvironment.Sandbox in served) PluginEnvironment.Sandbox
-                else PluginEnvironment.Production,
         )
 
     @Test
-    fun aFeedSaysWhichPromiseItKeepsAndOffersTheSwitchOnlyWhereThereIsAChoice() {
-        // SEE-97. "This feed spends money" and "this feed is a demonstration" are the two things
-        // an owner most needs to know about a feed, so the word is on the screen either way, and
-        // the switch appears only where its publisher serves both.
-        show(feed(setOf(PluginEnvironment.Sandbox)), support = ServerSupport.Supported)
+    fun aFeedOffersNoEnvironmentAtAllBecauseEachOperationChoosesItsOwn() {
+        // SEE-185: preview or execution is chosen when the owner acts on one operation, never kept
+        // on a feed, so there is no promise to state here and no switch to offer.
+        show(feed(), support = ServerSupport.Supported)
 
-        compose.onNodeWithTag(ConnectionsTags.ENVIRONMENT).assertExists()
         compose
             .onNodeWithText(context.getString(R.string.connection_environment_sandbox))
-            .assertExists()
+            .assertDoesNotExist()
         compose
-            .onNodeWithTag(ConnectionsTags.environment(PluginEnvironment.Production.code))
+            .onNodeWithText(context.getString(R.string.connection_environment_production))
             .assertDoesNotExist()
     }
 
     @Test
-    fun aFeedThatServesBothLetsTheOwnerSwitchAndNobodyElse() {
-        val both = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox)
-        val chosen = mutableListOf<PluginEnvironment>()
-        show(
-            feed(both).copy(environment = PluginEnvironment.Sandbox),
-            support = ServerSupport.Supported,
-            onEnvironment = { chosen += it },
-        )
+    fun aFeedFromAGatewayThisBuildDoesNotTrustSaysSo() {
+        show(feed(), support = ServerSupport.OtherGateway)
 
         compose
-            .onNodeWithTag(ConnectionsTags.environment(PluginEnvironment.Production.code))
-            .performScrollTo()
-            .performClick()
-
-        assertEquals(listOf(PluginEnvironment.Production), chosen)
-        // The one it already keeps is not a button that does anything.
-        compose
-            .onNodeWithTag(ConnectionsTags.environment(PluginEnvironment.Sandbox.code))
-            .assertIsNotEnabled()
-    }
-
-    @Test
-    fun aDirectConnectionSaysNothingAboutEnvironmentsAtAll() {
-        // It is always production, and a row that could only ever say one thing is noise on the
-        // screen the private workflow uses (SEE-97).
-        show(HOME)
-
-        compose.onNodeWithTag(ConnectionsTags.ENVIRONMENT).assertDoesNotExist()
+            .onNodeWithTag(ConnectionsTags.STATUS)
+            .assertTextEquals(context.getString(R.string.connection_status_other_gateway))
     }
 
     @Test

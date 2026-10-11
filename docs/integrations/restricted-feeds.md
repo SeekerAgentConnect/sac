@@ -213,6 +213,12 @@ Two keys, kept apart on purpose
 
 That is why the owner sees one wallet prompt in the whole flow, and why you must not add a second.
 
+**The wallet you approve is an access identity, not the one that trades (SEE-185).** The phone uses
+it to read your feed and for nothing else. Each signal's operation runs with the wallet the owner
+chooses on the phone for the network the signal names, which may be a different address. Do not
+assume that a fill, a position or a balance at the approved address is a subscriber's activity, and
+do not gate access on what that address holds unless you mean exactly that address.
+
 A failed verification spends the challenge (`SpendChallenge`), because a challenge is one attempt
 whatever the attempt was. A status question whose signature does not verify is answered exactly like
 an unknown request, so a caller without the key learns nothing.

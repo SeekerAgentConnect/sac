@@ -29,7 +29,6 @@ import (
 
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/gateway/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/gateway/v1/gatewayv1connect"
-	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/proposal/v1"
 	requestv2 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
 )
@@ -143,8 +142,12 @@ func (g *Gateway) Manifest(ctx context.Context, document *serverv1.ServerManifes
 	return statusOf(answer.Msg.GetStatus()), nil
 }
 
-// Request publishes through the common contract. Proposal remains as a compatibility method for
-// callers built against the Stage 7.1 template, but the shipped drainer uses this operation.
+// Request publishes one signal through the common contract: a first publication, or a higher
+// revision of one already held.
+//
+// It is the only way this client publishes a signal (SEE-185). The Stage 7.1 PublishProposal
+// method is not offered: a Proposal has no field for the network an action executes on, and the
+// gateway accepts only request contract 2 for a new publication.
 func (g *Gateway) Request(ctx context.Context, document *requestv2.Request) (Status, error) {
 	ctx, cancel := context.WithTimeout(ctx, g.timeout)
 	defer cancel()
@@ -156,48 +159,18 @@ func (g *Gateway) Request(ctx context.Context, document *requestv2.Request) (Sta
 	return statusOf(answer.Msg.GetStatus()), nil
 }
 
+// WithdrawRequest takes a signal back. It sends an ID and a revision rather than a document,
+// because that is what the contract takes: a template that was redeployed may no longer hold what
+// it published, and the gateway is then the only thing that writes the transition.
+//
+// A request the gateway does not hold answers [Absent] rather than an error. It is the honest
+// reading of "withdraw something that was never published": there is nothing to withdraw, nobody
+// ever read it, and a template that treated it as a failure would retry it for ever.
 func (g *Gateway) WithdrawRequest(ctx context.Context, requestID string, revision uint64) (Status, error) {
 	ctx, cancel := context.WithTimeout(ctx, g.timeout)
 	defer cancel()
 	answer, err := g.client.CancelRequest(ctx,
 		carrying(g.credential, &gatewayv1.CancelRequestRequest{RequestId: requestID, Revision: revision}))
-	if err != nil {
-		refusal := classify(err)
-		if refusal.Problem == "no_such_proposal" {
-			return Absent, nil
-		}
-		return "", refusal
-	}
-	return statusOf(answer.Msg.GetStatus()), nil
-}
-
-// Proposal publishes one signal: a first publication, or a higher revision of one already held.
-func (g *Gateway) Proposal(ctx context.Context, document *proposalv1.Proposal) (Status, error) {
-	ctx, cancel := context.WithTimeout(ctx, g.timeout)
-	defer cancel()
-	answer, err := g.client.PublishProposal(ctx,
-		carrying(g.credential, &gatewayv1.PublishProposalRequest{Proposal: document}))
-	if err != nil {
-		return "", classify(err)
-	}
-	return statusOf(answer.Msg.GetStatus()), nil
-}
-
-// Withdraw takes a signal back. It sends an ID and a revision rather than a document, because that
-// is what the contract takes: a template that was redeployed may no longer hold what it published,
-// and the gateway is then the only thing that writes the transition.
-//
-// A proposal the gateway does not hold answers [Absent] rather than an error. It is the honest
-// reading of "withdraw something that was never published": there is nothing to withdraw, nobody
-// ever read it, and a template that treated it as a failure would retry it for ever.
-func (g *Gateway) Withdraw(ctx context.Context, proposalID string, revision uint64) (Status, error) {
-	ctx, cancel := context.WithTimeout(ctx, g.timeout)
-	defer cancel()
-	answer, err := g.client.CancelProposal(ctx,
-		carrying(g.credential, &gatewayv1.CancelProposalRequest{
-			ProposalId: proposalID,
-			Revision:   revision,
-		}))
 	if err != nil {
 		refusal := classify(err)
 		if refusal.Problem == "no_such_proposal" {

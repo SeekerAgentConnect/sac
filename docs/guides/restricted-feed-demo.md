@@ -125,7 +125,6 @@ cd examples/demo-signals
 PUBLISHER_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
-PUBLISHER_ENVIRONMENT=sandbox \
 PUBLISHER_DATABASE_PATH=./copytrading.db \
 PUBLISHER_AUTH_ORIGIN=http://127.0.0.1:8092 \
 BROADCAST_CREDENTIAL=<the credential feed-gatewayctl printed> \
@@ -202,10 +201,12 @@ signed-in name, so drive the page from a browser rather than a bare `curl`.
    restricted. After it is added, the publisher asks you to prove you control your wallet — by
    signing a message, not a transaction, which moves no funds — and then decides whether this
    device may read it."* Tap **Add feed**.
-2. **Choose the feed's wallet.** The **Wallet** picker opens next, offering the saved wallet
+2. **Choose the feed's access wallet.** The **Wallet** picker opens next, offering the saved wallet
    profiles on a network the feed declares (`mainnet` for the demo). The wallet chosen here is the
-   one this feed proves its reader with, and only this feed: another restricted feed can be bound to
-   another wallet and both stay readable
+   feed's **access identity**: the one this feed proves its reader with, and only this feed. It
+   signs no operation — since SEE-185 each signal's wallet is chosen at review for the signal's
+   network, and changing it never touches access. The detail sheet calls it **Access wallet**.
+   Another restricted feed can be bound to another wallet and both stay readable
    ([restricted-feeds.md#one-wallet-per-feed](../wiki/restricted-feeds.md#one-wallet-per-feed)).
 3. **The signature.** Binding a restricted feed to a wallet asks for access with it straight away
    ([`ConnectionsViewModel.afterWalletBound`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/connections/ConnectionsViewModel.kt));
@@ -231,7 +232,8 @@ signed-in name, so drive the page from a browser rather than a bare `curl`.
    grant yet"* — and then, once the syncer lands it, to *"Connected — the gateway admits this device
    until &lt;expiry&gt;, renewed while approved"*. The phone's status line stops talking about access
    and says whatever the ordinary feed status says.
-9. **A signal.** Create one on the signals page, or with `go run ./cmd/publishctl create` — the
+9. **A signal.** Create one on the signals page (Network: Mainnet), or with
+   `go run ./cmd/publishctl create --network mainnet` — the
    full swap invocation, with every `--term` it needs, is in
    [demos.md](../development/demos.md#running-them), and `PUBLISHER_API_URL` and
    `PUBLISHER_API_TOKEN` address it. It should reach that phone and no other. **(Not observed.)**

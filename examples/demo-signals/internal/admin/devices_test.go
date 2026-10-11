@@ -22,9 +22,9 @@ import (
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/access"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/api"
-	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/gateway"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/manifest"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/store"
 )
@@ -74,7 +74,7 @@ type accessBench struct {
 func newAccessBench(t *testing.T) *accessBench {
 	t.Helper()
 	documents, err := store.Open(filepath.Join(t.TempDir(), "publisher.db"), store.Stamp{
-		ServerID: devicesServer, Environment: "sandbox", GatewayURL: "https://feeds.example.com"})
+		ServerID: devicesServer, GatewayURL: "https://feeds.example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func newAccessBench(t *testing.T) *accessBench {
 		Settings: access.Settings{ServerID: devicesServer, GatewayURL: "https://feeds.example.com",
 			AuthOrigin: "https://auth.example.com"}})
 	settings := manifest.Settings{ServerID: devicesServer, GatewayURL: "https://feeds.example.com",
-		Environment: environment.Sandbox, Requirement: signals.Swap{}.Requirement(),
+		Networks: []network.Network{network.Mainnet}, Requirement: signals.Swap{}.Requirement(),
 		AuthOrigin: "https://auth.example.com"}
 	publisher := httptest.NewServer(api.New(api.Plan{
 		Documents: documents, Kind: signals.Swap{}, Settings: settings, Token: token, Log: log,

@@ -16,7 +16,6 @@ import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.feeds.FeedStatusState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.inbox.PendingItem
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.proposals.PROPOSAL_A
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.proposal
@@ -371,7 +370,6 @@ class ConnectionFeedAvailabilityTest {
                                 channelFor(HOME.serverId),
                             ),
                         required = emptyList(),
-                        environments = setOf(PluginEnvironment.Production),
                     )
                 ),
         )

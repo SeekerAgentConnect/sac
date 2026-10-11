@@ -11,6 +11,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { toJsonString } from "@bufbuild/protobuf";
+
 import {
   canonicalSupportedNetworks,
   manifestFingerprint,
@@ -21,6 +23,7 @@ import {
   SOLANA_NETWORK_NAMES,
 } from "./manifest.ts";
 import {
+  ServerManifestSchema,
   SolanaNetwork,
   type ServerManifest,
 } from "./gen/seekervault/server/v1/manifest_pb.js";
@@ -130,6 +133,29 @@ describe("the manifest's supported networks", () => {
     assert.deepEqual(
       declared(serverManifest({ serverId: "s", url: URL_A }, 1)),
       [],
+    );
+  });
+
+  it("says what a direct server is and nothing else, with no environment (SEE-185)", () => {
+    // Sandbox or production is not the server's to declare: a direct server is real execution,
+    // and previewing a request is the phone's choice. The canonical JSON is the whole manifest.
+    assert.deepEqual(
+      JSON.parse(
+        toJsonString(
+          ServerManifestSchema,
+          serverManifest(
+            { serverId: "s", url: URL_A, supportedNetworks: [MAINNET] },
+            3,
+          ),
+        ),
+      ),
+      {
+        serverId: "s",
+        protocolVersion: 1,
+        settingsRevision: "3",
+        mode: "CONNECTION_MODE_DIRECT",
+        direct: { url: URL_A, supportedNetworks: ["SOLANA_NETWORK_MAINNET"] },
+      },
     );
   });
 

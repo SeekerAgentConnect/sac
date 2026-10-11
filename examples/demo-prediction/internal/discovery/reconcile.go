@@ -13,8 +13,19 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/demo-prediction/internal/jupiter"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/ids"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/markets"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
+
+// Network is the Solana network every signal this template publishes executes on (SEE-185).
+//
+// It is a fact about the provider, not a setting: Jupiter's prediction markets exist and settle on
+// Solana Mainnet and nowhere else, so an order for one of them can only land there. It is named
+// here, on every signal, explicitly — never read off the manifest's networks, even though the
+// manifest of a default deployment declares exactly this one, because a network a signal did not
+// say is a network nobody chose. The deployment's networks are asked one question only: whether
+// they include this one (see [Reconciler.statement]).
+const Network = network.Mainnet
 
 // Source is the part of the provider a reconciliation uses: the listing, and one market by its own
 // identifier. It is an interface so that this package is written against two questions rather than
@@ -72,10 +83,13 @@ type Reconciler struct {
 	filters   Filters
 	deposit   Deposit
 	// The operator's own line, published above the generated one in every note. Optional.
-	note  string
-	log   *slog.Logger
-	now   func() time.Time
-	newID func() string
+	note string
+	// The networks the deployment's manifest declares, consulted only to check that [Network] is
+	// one of them: a signal on a network the manifest does not declare is one the gateway refuses.
+	networks []network.Network
+	log      *slog.Logger
+	now      func() time.Time
+	newID    func() string
 	// Asks the drainer for a pass, when a cycle changed anything. Publication is the drainer's
 	// (packages/publisher-support/publish): one path to the gateway, one place that decides what a failure was.
 	wake func()
@@ -91,10 +105,13 @@ type Plan struct {
 	Filters   Filters
 	Deposit   Deposit
 	Note      string
-	Log       *slog.Logger
-	Now       func() time.Time
-	NewID     func() string
-	Wake      func()
+	// The deployment's supported networks (config.Networks). Never the network a signal names:
+	// that is [Network], always.
+	Networks []network.Network
+	Log      *slog.Logger
+	Now      func() time.Time
+	NewID    func() string
+	Wake     func()
 }
 
 // New builds one.
@@ -118,6 +135,7 @@ func New(plan Plan) *Reconciler {
 		filters:   plan.Filters,
 		deposit:   plan.Deposit,
 		note:      plan.Note,
+		networks:  plan.Networks,
 		log:       plan.Log,
 		now:       now,
 		newID:     newID,
@@ -422,6 +440,25 @@ func (r *Reconciler) refresh(
 		r.unpublishable(cycle, one, fault)
 		return false, nil
 	}
+	if existing.Record.Signal.Network != signal.Network {
+		// A proposal held from before signals named their network (SEE-185). Its network is never
+		// filled in afterwards — that would be a statement it never made — so it is withdrawn, and
+		// the market is published again as its next generation, on the network this template's
+		// signals name. Its withdrawal still publishes: a withdrawal names an identity and a
+		// revision, not a document.
+		r.log.Info("a published market names no network; it is withdrawn and published again "+
+			"with one", "market", row.MarketID, "signal", row.ProposalID,
+			"held_network", existing.Record.Signal.Network.String(), "network", signal.Network.String())
+		withdrawn, err := r.withdraw(ctx, cycle, existing.Market, row.State, now)
+		if err != nil {
+			return false, err
+		}
+		published, err := r.discover(ctx, cycle, one, existing.Market, true, now)
+		if err != nil {
+			return false, err
+		}
+		return withdrawn || published, nil
+	}
 	_, moved, err := r.documents.Refresh(ctx, row, signal, now)
 	if err != nil {
 		return false, err
@@ -637,6 +674,14 @@ func (r *Reconciler) statement(one candidate, row markets.Market, now time.Time)
 		terms[signals.ProviderWebURL] = one.event.SourceURL
 	}
 
+	// The network is this template's own (see [Network]); the deployment's networks are asked only
+	// whether they declare it. A deployment that declares none — PUBLISHER_SUPPORTED_NETWORKS=none —
+	// publishes no market at all, and says so per market (`other_network`), rather than having its
+	// signals refused one by one at the gateway.
+	declared, fault := signals.CheckNetwork(string(Network), r.networks)
+	if fault != nil {
+		return signals.Signal{}, fault
+	}
 	written, expiry, checked, fault := signals.Check(r.kind,
 		note(r.note, one.event, one.market, expires), expires, now, terms)
 	if fault != nil {
@@ -647,6 +692,7 @@ func (r *Reconciler) statement(one candidate, row markets.Market, now time.Time)
 		Status:     signals.Open,
 		Operation:  r.kind.Operation(),
 		PluginID:   r.kind.Requirement().PluginID,
+		Network:    declared,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 		ExpiresAt:  expiry,

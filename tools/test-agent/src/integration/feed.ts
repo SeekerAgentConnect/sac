@@ -50,7 +50,6 @@ export interface Manifest {
   /** `CONNECTION_MODE_GATEWAY_FEED` for a publisher, and never anything else here. */
   readonly mode: string;
   readonly protocolVersion: number;
-  readonly environments?: readonly string[];
   readonly requiredPlugins?: readonly {
     readonly pluginId: string;
     readonly minContract: number;
@@ -60,6 +59,8 @@ export interface Manifest {
   readonly feed?: {
     readonly gatewayUrl: string;
     readonly channel: string;
+    /** The Solana networks its signals may name (SEE-174); a signal on another is refused. */
+    readonly supportedNetworks?: readonly string[];
   };
 }
 

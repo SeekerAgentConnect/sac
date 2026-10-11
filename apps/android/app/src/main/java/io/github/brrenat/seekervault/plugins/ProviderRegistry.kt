@@ -182,7 +182,7 @@ enum class UnsupportedReason(val code: String) {
      */
     NetworkUnsupported("network_unsupported"),
 
-    /** It serves the action, but not in the environment this connection keeps. */
+    /** It serves the action, but cannot preview it — only execute it, or the other way round. */
     EnvironmentUnsupported("environment_unsupported"),
 
     /**

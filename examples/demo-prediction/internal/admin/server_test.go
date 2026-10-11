@@ -30,6 +30,13 @@ func TestOperatorsLogInAndSeeTheFeedReference(t *testing.T) {
 	if !strings.Contains(home.body, "POLY-2589813") {
 		t.Fatalf("missing published market: %s", home.body)
 	}
+	// The networks the manifest declares, and no environment: a deployment is neither sandbox
+	// nor production any more (SEE-185).
+	if !strings.Contains(home.body, "<code>mainnet</code>") ||
+		strings.Contains(strings.ToLower(home.body), "sandbox") {
+		t.Fatalf("the sidebar does not show the declared networks, or still says sandbox: %s",
+			home.body)
+	}
 	if strings.Contains(home.body, token) || strings.Contains(home.body, "Authorization") {
 		t.Fatalf("API token leaked into HTML: %s", home.body)
 	}
@@ -321,7 +328,7 @@ func (s *stubAPI) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	case request.URL.Path == "/v1/manifest":
 		_ = json.NewEncoder(writer).Encode(map[string]any{
 			"reference": "seekervault://feed?v=1&gateway=https%3A%2F%2Ffeeds.example.com&server=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-			"manifest":  map[string]any{"environments": []string{"sandbox"}},
+			"manifest":  map[string]any{"supported_networks": []string{"mainnet"}},
 		})
 	case request.URL.Path == "/v1/discovery":
 		_ = json.NewEncoder(writer).Encode(map[string]any{

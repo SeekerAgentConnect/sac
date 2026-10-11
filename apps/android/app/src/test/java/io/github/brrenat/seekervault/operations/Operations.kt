@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.operations
 
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
+import io.github.brrenat.seekervault.config.FakeOperationConfig
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.FeedSnapshot
 import io.github.brrenat.seekervault.connections.ProposalFeed
@@ -23,7 +24,6 @@ import io.github.brrenat.seekervault.jupiter.usdcTerms
 import io.github.brrenat.seekervault.plugins.ExecutionProvider
 import io.github.brrenat.seekervault.plugins.JUPITER_PREDICTION
 import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
 import io.github.brrenat.seekervault.plugins.actions.SwapPayload
@@ -33,7 +33,9 @@ import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposals.PREDICTION
 import io.github.brrenat.seekervault.proposals.SWAP
+import io.github.brrenat.seekervault.proposals.signal
 import io.github.brrenat.seekervault.proposals.wireProposal
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.rpc.serving
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
@@ -45,7 +47,6 @@ import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
-import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.wallet.FakeConnectionWallets
 import io.github.brrenat.seekervault.wallet.FakeWalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletNetwork
@@ -118,9 +119,8 @@ class Phone(
                                 PluginRequirement(JUPITER_SWAP, 1..1),
                                 PluginRequirement(JUPITER_PREDICTION, 1..1),
                             ),
-                        environments = setOf(PluginEnvironment.Production),
-                        // Every network, so a test chooses the wallet's network and nothing else
-                        // decides it (SEE-174).
+                        // Every network, so each signal's own network is one its feed declares
+                        // and a test chooses it signal by signal (SEE-174, SEE-185).
                         supportedNetworks = WalletNetwork.entries.toSet(),
                     )
                 ),
@@ -128,29 +128,6 @@ class Phone(
 
     val connections = MutableStateFlow(listOf(connection))
     val loaded = MutableStateFlow(true)
-
-    /**
-     * Puts this phone's feed in [environment], the way the app gets there (SEE-97): the publisher
-     * serves it, and the owner keeps it.
-     *
-     * Both halves on purpose. A connection in an environment its server does not serve is
-     * unsupported and executes nothing, which is a different thing from a sandbox — so a test that
-     * wants a rehearsal has to say both, exactly as a real deployment does.
-     */
-    fun keeps(
-        environment: PluginEnvironment,
-        served: Set<PluginEnvironment> = setOf(environment),
-    ) {
-        val manifest = checkNotNull(connection.server.manifest)
-        connection =
-            connection.copy(
-                environment = environment,
-                server = ServerRecord.Known(manifest.copy(environments = served)),
-                // The owner's wallet binding is theirs, and moving the environment keeps it.
-                walletProfileId = connections.value.firstOrNull()?.walletProfileId,
-            )
-        connections.value = listOf(connection)
-    }
 
     val proposals =
         ProposalRepository(
@@ -189,6 +166,16 @@ class Phone(
         return profile
     }
 
+    /**
+     * The trusted gateway's client configuration as the operations see it (SEE-185): usable, with
+     * no fee, unless a test sets something else.
+     */
+    val config = FakeOperationConfig()
+
+    /** The wallet a feed operation on [network] would use now (SEE-185). */
+    fun operationWallet(network: Network = Network.NETWORK_MAINNET) =
+        wallet.feedWallet(CONNECTION, network)
+
     fun viewModel() =
         OperationViewModel(
             proposals = proposals,
@@ -198,6 +185,7 @@ class Phone(
             policies = evaluator,
             history = history,
             providers = plugins,
+            config = config,
             now = clock,
             io = Dispatchers.Unconfined,
         )
@@ -237,9 +225,21 @@ fun swapProposal(
             ) + extra.toList(),
     )
 
-/** The gateway's answers, and every question this phone asked it. */
+/**
+ * The gateway's answers, and every question this phone asked it.
+ *
+ * A document is delivered as a current publisher sends it (SEE-185): a signal at the request
+ * contract that names its network — [network], or the one [networks] gives its proposal ID. A null
+ * network delivers the legacy document itself, which declares none.
+ */
 class FakeFeed : ProposalFeed {
     var answers: List<WireProposal> = emptyList()
+
+    /** The network every signal declares unless [networks] names another for its proposal. */
+    var network: Network? = Network.NETWORK_MAINNET
+
+    /** A network per proposal ID, for the tests that hold signals on two networks at once. */
+    var networks: Map<String, Network?> = emptyMap()
 
     /**
      * What a particular channel answers, for the tests that hold two feeds at once.
@@ -253,7 +253,13 @@ class FakeFeed : ProposalFeed {
 
     override suspend fun snapshot(reference: FeedReference, knownSequence: Long): FeedSnapshot {
         asked += reference to knownSequence
-        return FeedSnapshot.Read(1L, answersByChannel[reference.channel] ?: answers)
+        val documents = answersByChannel[reference.channel] ?: answers
+        val declared = documents.map { it to networks.getOrElse(it.proposalId) { network } }
+        return FeedSnapshot.Read(
+            1L,
+            proposals = declared.filter { it.second == null }.map { it.first },
+            requests = declared.mapNotNull { (it, network) -> network?.let { n -> signal(it, n) } },
+        )
     }
 }
 

@@ -27,7 +27,7 @@ public class FeedServiceClient(
 ) : FeedServiceClientInterface {
   /**
    *  The manifest the publisher registered: what contract it speaks, which client plugins its
-   *  operations need, which environments it serves, and the channel it publishes on. The phone
+   *  operations need, which networks they run on, and the channel it publishes on. The phone
    *  validates all of it against the reference it added the feed from before storing any of it
    *  (SEE-88), so this method is asked, never believed.
    */
@@ -227,6 +227,29 @@ public class FeedServiceClient(
     "seekervault.gateway.v1.FeedService/ListRecommendedFeeds",
       io.github.brrenat.seekervault.gateway.v1.ListRecommendedFeedsRequest::class,
       io.github.brrenat.seekervault.gateway.v1.ListRecommendedFeedsResponse::class,
+      StreamType.UNARY,
+    ),
+  )
+
+
+  /**
+   *  The client configuration this gateway's operator set for every app that trusts it (SEE-185):
+   *  which Solana RPC endpoint the app reads each network through, and the SAC swap service fee.
+   *
+   *  The app's build names exactly one gateway, and this is the only place those settings come
+   *  from: no publisher, manifest, signal, link or direct server can set or override them. The
+   *  answer is the same for everyone and asking records nothing, so it is about the deployment and
+   *  never about the caller. Everything in it is readable by any client: an endpoint that needs a
+   *  secret credential is never configured here (an operator puts a proxy of their own in front of
+   *  such a provider instead).
+   */
+  override suspend fun getClientConfig(request: GetClientConfigRequest, headers: Headers): ResponseMessage<GetClientConfigResponse> = client.unary(
+    request,
+    headers,
+    MethodSpec(
+    "seekervault.gateway.v1.FeedService/GetClientConfig",
+      io.github.brrenat.seekervault.gateway.v1.GetClientConfigRequest::class,
+      io.github.brrenat.seekervault.gateway.v1.GetClientConfigResponse::class,
       StreamType.UNARY,
     ),
   )

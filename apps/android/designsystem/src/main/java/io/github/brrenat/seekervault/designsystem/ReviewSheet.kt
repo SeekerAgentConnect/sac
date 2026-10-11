@@ -188,6 +188,12 @@ data class ReviewSheetState(
     val confirmationCheckbox: String? = null,
     val primaryAction: ReviewSheetAction,
     val secondaryAction: ReviewSheetAction,
+    /**
+     * An optional neutral action under the primary row: a feed signal's "Preview without sending"
+     * (SEE-185), which prepares and checks the real transaction and sends nothing. Null draws
+     * nothing, so every other variant is unchanged.
+     */
+    val previewAction: ReviewSheetAction? = null,
     val footerCaption: String,
     val sublineStyle: ReviewSheetSublineStyle = ReviewSheetSublineStyle.Plain,
     /** What went differently from the ordinary review: an outcome, a failure, a refusal. */
@@ -222,6 +228,7 @@ fun ReviewSheet(
     onOpenLink: (String) -> Unit = {},
     onConfirmedChange: (Boolean) -> Unit = {},
     onRefreshQuote: () -> Unit = {},
+    onPreview: () -> Unit = {},
 ) {
     // A warning does not always come with a tick to go past it: one that blocks approval, or one
     // shown before there is anything to approve, is read and not consented to (SEE-180).
@@ -378,6 +385,20 @@ fun ReviewSheet(
                                 if (state.secondaryAction.enabled) SeekerButtonVariant.Neutral
                                 else SeekerButtonVariant.Disabled,
                             size = SeekerButtonSize.Lg,
+                        )
+                    }
+                    state.previewAction?.let { action ->
+                        SeekerButton(
+                            label = action.label,
+                            onClick = onPreview,
+                            variant =
+                                if (action.enabled && (!requiresConfirmation || confirmed)) {
+                                    SeekerButtonVariant.Neutral
+                                } else {
+                                    SeekerButtonVariant.Disabled
+                                },
+                            size = SeekerButtonSize.Lg,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     Text(

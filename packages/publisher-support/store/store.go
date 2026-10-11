@@ -45,12 +45,13 @@ import (
 
 	_ "modernc.org/sqlite" // the pure-Go SQLite driver, registered as "sqlite"
 
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
 // Version is the schema this build writes and reads. A file from a later version is refused rather
 // than guessed at, and a file from an earlier one is brought forward (see [steps]).
-const Version = 5
+const Version = 6
 
 var (
 	// ErrNewerSchema is returned by Open when the file was written by a later version.
@@ -59,11 +60,6 @@ var (
 	// publishers sharing one database would publish each other's signals under their own
 	// credential, so the file remembers whose it is.
 	ErrOtherServer = errors.New("the database belongs to another publisher")
-	// ErrOtherEnvironment is returned by Open when the file was created for the other environment.
-	// Sandbox and production are separate promises about what happens when an owner approves, and
-	// the way they get mixed up is a copied compose file pointed at an existing volume — so the
-	// isolation is stamped into the file rather than left to the configuration that opened it.
-	ErrOtherEnvironment = errors.New("the database was created for the other environment")
 	// ErrNoSignal is returned when nothing is held under that proposal ID.
 	ErrNoSignal = errors.New("no signal of that ID")
 	// ErrKeyReused is returned when an idempotency key was already used for a different request.
@@ -73,19 +69,26 @@ var (
 	// a phone that acted on it keeps its record for ever, and must never see the same identity
 	// open again.
 	ErrCancelled = errors.New("that signal was withdrawn")
+	// ErrNoNetwork is returned when a new signal names no network this build knows (SEE-185).
+	// Nothing new is stored without one: a signal that names none is one nobody can publish.
+	ErrNoNetwork = errors.New("a signal has to name the network it executes on")
+	// ErrNetworkFixed is returned when an update names another network than the signal's own
+	// (SEE-185). The assets a signal names are identified by network plus address, so the same
+	// terms on another cluster are another signal: publish a new one. A signal stored before
+	// networks were declared has none, and is never given one afterwards — that would be the
+	// network a document never said, written into it later.
+	ErrNetworkFixed = errors.New("a signal's network is fixed when it is created")
 )
 
 // Stamp is who the file belongs to. It is checked on every open, and the check is the isolation.
+//
+// It no longer names an environment (SEE-185): sandbox and production stopped being a property of
+// a deployment, so a file stamped with either one before opens under the same publisher, and the
+// column is dropped by version 6.
 type Stamp struct {
 	ServerID string
-	// Which promise the deployment that created this file keeps (SEE-97), as the word itself. It
-	// is deliberately not this module's Environment type: what makes the isolation work is
-	// comparing the text in the file with the text the configuration was read from, and a file
-	// holding a word nobody recognizes must be refused and named rather than parsed into one of
-	// the two.
-	Environment string
-	// The gateway this template publishes through. Unlike the two above it may change — a
-	// deployment moves domain — so it is recorded and updated rather than enforced. The manifest's
+	// The gateway this template publishes through. Unlike the server it may change — a deployment
+	// moves domain — so it is recorded and updated rather than enforced. The manifest's
 	// fingerprint notices, which is what moves its revision.
 	GatewayURL string
 }
@@ -172,7 +175,7 @@ func (s *Store) Close() error {
 // one module with one file format. A publisher who has been running the first template since Stage
 // 7.1 opens their database with a newer build and keeps their signals: refusing it, or quietly
 // creating a second file beside it, would both lose the outbox that makes a restart safe.
-var steps = []string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5}
+var steps = []string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6}
 
 const schemaV1 = `
 -- Whose file this is. One row, and it is checked on every open: a database is a publisher's
@@ -304,6 +307,22 @@ const schemaV3 = `
 ALTER TABLE signal ADD COLUMN title TEXT NOT NULL DEFAULT '';
 `
 
+// Version 6 is the signal's own network, and the end of the deployment's environment (SEE-185).
+//
+// A signal stored before this has no network, and it is not given one: the column's default is
+// empty, which is what "this signal never said" looks like, and nothing here or anywhere reads the
+// manifest's networks into it. Such a row is still the publisher's statement, readable and
+// withdrawable, but it is never published as an open document again (packages/publisher-support/
+// publish), because an executable document has to say where it executes.
+//
+// The environment column goes because nothing reads it any more. Dropping it rather than leaving
+// it is what lets a file created as a sandbox and one created as production both open: the stamp
+// that is checked is the server, and the gateway is recorded.
+const schemaV6 = `
+ALTER TABLE signal ADD COLUMN network TEXT NOT NULL DEFAULT '';
+ALTER TABLE deployment DROP COLUMN environment;
+`
+
 func (s *Store) migrate(ctx context.Context, stamp Stamp) error {
 	var present int
 	if err := s.writer.QueryRowContext(ctx,
@@ -323,11 +342,9 @@ func (s *Store) migrate(ctx context.Context, stamp Stamp) error {
 			}
 		}
 		if _, err := transaction.ExecContext(ctx,
-			`INSERT INTO deployment (id, schema_version, server_id, environment, gateway_url,
-			                         created_at_ms)
-			 VALUES (1, ?, ?, ?, ?, ?)`,
-			Version, stamp.ServerID, stamp.Environment, stamp.GatewayURL,
-			milliseconds(time.Now()),
+			`INSERT INTO deployment (id, schema_version, server_id, gateway_url, created_at_ms)
+			 VALUES (1, ?, ?, ?, ?)`,
+			Version, stamp.ServerID, stamp.GatewayURL, milliseconds(time.Now()),
 		); err != nil {
 			return fmt.Errorf("stamp the database: %w", err)
 		}
@@ -335,13 +352,12 @@ func (s *Store) migrate(ctx context.Context, stamp Stamp) error {
 	}
 
 	var (
-		version     int
-		serverID    string
-		environment string
+		version  int
+		serverID string
 	)
 	if err := s.writer.QueryRowContext(ctx,
-		`SELECT schema_version, server_id, environment FROM deployment WHERE id = 1`,
-	).Scan(&version, &serverID, &environment); err != nil {
+		`SELECT schema_version, server_id FROM deployment WHERE id = 1`,
+	).Scan(&version, &serverID); err != nil {
 		return fmt.Errorf("read the deployment: %w", err)
 	}
 	switch {
@@ -351,14 +367,11 @@ func (s *Store) migrate(ctx context.Context, stamp Stamp) error {
 	case serverID != stamp.ServerID:
 		return fmt.Errorf("%w: it is %s's, and PUBLISHER_SERVER_ID is %s",
 			ErrOtherServer, serverID, stamp.ServerID)
-	case environment != stamp.Environment:
-		return fmt.Errorf("%w: it is a %s database, and PUBLISHER_ENVIRONMENT is %s",
-			ErrOtherEnvironment, environment, stamp.Environment)
 	}
 	if version < Version {
-		// An older file, brought forward. Every step is additive — a table this build needs and
-		// that one did not have — so nothing already in the file is rewritten, and the signals and
-		// their two revisions come through untouched.
+		// An older file, brought forward. Every step but the environment's removal is additive — a
+		// table or a column this build needs and that one did not have — so nothing already in the
+		// file is rewritten, and the signals and their two revisions come through untouched.
 		transaction, err := s.writer.BeginTx(ctx, nil)
 		if err != nil {
 			return err
@@ -377,7 +390,7 @@ func (s *Store) migrate(ctx context.Context, stamp Stamp) error {
 			return err
 		}
 	}
-	// The gateway may move; the publisher and the environment may not.
+	// The gateway may move; the publisher may not.
 	_, err := s.writer.ExecContext(ctx,
 		`UPDATE deployment SET gateway_url = ? WHERE id = 1`, stamp.GatewayURL)
 	return err
@@ -548,6 +561,9 @@ func createIn(
 	if err != nil || held {
 		return record, held, err
 	}
+	if _, ok := network.Parse(string(signal.Network)); !ok {
+		return signals.Record{}, false, fmt.Errorf("%w: %q", ErrNoNetwork, signal.Network)
+	}
 
 	// A first publication is revision 1. Zero is never published, and the number is the store's
 	// to mint for the same reason the next one is: a caller that chose its own could publish a
@@ -560,12 +576,12 @@ func createIn(
 		return signals.Record{}, false, err
 	}
 	if _, err := transaction.ExecContext(ctx,
-		`INSERT INTO signal (proposal_id, revision, status, operation, plugin_id, created_at_ms,
-		                     updated_at_ms, expires_at_ms, title, note, terms, fingerprint,
-		                     confirmed_revision, attempts, due_at_ms, problem, detail)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, '', '')`,
+		`INSERT INTO signal (proposal_id, revision, status, operation, plugin_id, network,
+		                     created_at_ms, updated_at_ms, expires_at_ms, title, note, terms,
+		                     fingerprint, confirmed_revision, attempts, due_at_ms, problem, detail)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, '', '')`,
 		signal.ProposalID, signal.Revision, string(signal.Status), signal.Operation,
-		signal.PluginID, milliseconds(signal.CreatedAt), milliseconds(signal.UpdatedAt),
+		signal.PluginID, string(signal.Network), milliseconds(signal.CreatedAt), milliseconds(signal.UpdatedAt),
 		milliseconds(signal.ExpiresAt), signal.Title, signal.Note, string(terms), signal.Fingerprint,
 		milliseconds(signal.CreatedAt),
 	); err != nil {
@@ -642,9 +658,16 @@ func updateIn(
 	if held.Signal.Status == signals.Cancelled {
 		return signals.Record{}, false, ErrCancelled
 	}
+	// The network is stated again by every update, because an update is the whole statement, and
+	// it has to be the one the signal was created with — including on a row from before networks
+	// were declared, which has none and is never given one.
+	if next.Network != held.Signal.Network {
+		return signals.Record{}, false, fmt.Errorf("%w: it is %q, and the update names %q",
+			ErrNetworkFixed, held.Signal.Network, next.Network)
+	}
 	// The candidate is what is held with the caller's whole statement applied: an update replaces
 	// the terms, the expiry and the note, and changes nothing else. The identity, the creation
-	// time and the operation are not a caller's to move.
+	// time, the operation and the network are not a caller's to move.
 	candidate := held.Signal
 	candidate.ExpiresAt = next.ExpiresAt
 	candidate.Title = next.Title
@@ -843,7 +866,7 @@ func (s *Store) Refused(ctx context.Context, id string, problem, detail string) 
 }
 
 const selectSignal = `
-SELECT proposal_id, revision, status, operation, plugin_id, created_at_ms, updated_at_ms,
+SELECT proposal_id, revision, status, operation, plugin_id, network, created_at_ms, updated_at_ms,
        expires_at_ms, title, note, terms, fingerprint, confirmed_revision, attempts, due_at_ms,
        problem, detail
 FROM signal`
@@ -870,17 +893,20 @@ type scanner interface {
 func scanOne(row scanner) (signals.Record, error) {
 	var (
 		record                         signals.Record
-		status, terms                  string
+		status, named, terms           string
 		created, updated, expires, due int64
 	)
 	if err := row.Scan(&record.Signal.ProposalID, &record.Signal.Revision, &status,
-		&record.Signal.Operation, &record.Signal.PluginID, &created, &updated, &expires,
+		&record.Signal.Operation, &record.Signal.PluginID, &named, &created, &updated, &expires,
 		&record.Signal.Title, &record.Signal.Note, &terms, &record.Signal.Fingerprint,
 		&record.Publication.ConfirmedRevision, &record.Publication.Attempts, &due,
 		&record.Publication.Problem, &record.Publication.Detail); err != nil {
 		return signals.Record{}, err
 	}
 	record.Signal.Status = signals.Status(status)
+	// As written, and never resolved: an empty network is a row from before networks were
+	// declared, and it stays one.
+	record.Signal.Network = network.Network(named)
 	record.Signal.CreatedAt = instant(created)
 	record.Signal.UpdatedAt = instant(updated)
 	record.Signal.ExpiresAt = instant(expires)

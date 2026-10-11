@@ -10,6 +10,7 @@ import (
 
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1"
 	requestv2 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/request/v2"
+	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
 )
 
 func commonRequest(change ...func(*requestv2.Request)) *requestv2.Request {
@@ -30,6 +31,7 @@ func commonRequest(change ...func(*requestv2.Request)) *requestv2.Request {
 		Action: &requestv2.ActionCapability{
 			CapabilityId: "swap", CapabilityVersion: 1, PluginId: "jupiter.swap",
 			Parameters: []*requestv2.Value{{Key: "input_mint", Value: &requestv2.Value_Text{Text: "So111"}}},
+			Network:    serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
 		},
 		OwnerInputs: []*requestv2.OwnerInput{{
 			Key: "input_amount", Label: "Amount", Kind: requestv2.OwnerInputKind_OWNER_INPUT_KIND_AMOUNT,
@@ -100,16 +102,111 @@ func TestAFeedCanNeverReturnAnOwnersState(t *testing.T) {
 	}
 }
 
+// A protocol-1 proposal names no network, so the request made from it is the legacy contract with
+// none (SEE-185): readable, never executable, and never accepted as a new publication. The adapter
+// keeps everything else, and the way back is exact.
 func TestLegacyProposalAdapterKeepsIdentityRevisionAndTerms(t *testing.T) {
 	legacy := proposal()
 	adapted := RequestFromProposal(legacy)
-	stored, fault := Request(adapted, expectation())
-	if fault != nil {
-		t.Fatalf("legacy proposal did not adapt: %v", fault)
+	if adapted.GetContractVersion() != LegacyRequestContract ||
+		adapted.GetAction().GetNetwork() != serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED {
+		t.Fatalf("a protocol-1 proposal became contract %d on %v", adapted.GetContractVersion(),
+			adapted.GetAction().GetNetwork())
 	}
-	roundTrip := ProposalFromRequest(stored)
-	if !proto.Equal(roundTrip, legacy) {
+	if _, fault := Request(adapted, expectation()); fault == nil ||
+		fault.Problem != gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_PROTOCOL {
+		t.Fatalf("a network-less legacy document was accepted as a new publication: %v", fault)
+	}
+	if roundTrip := ProposalFromRequest(adapted); !proto.Equal(roundTrip, legacy) {
 		t.Fatalf("legacy migration changed the document:\n%s", roundTrip)
+	}
+}
+
+// Only contract 2 is published (SEE-185): version 1 says nothing about a network, and a version
+// from the future is one this gateway cannot vouch for.
+func TestOnlyTheCurrentContractIsPublished(t *testing.T) {
+	for _, version := range []uint32{0, LegacyRequestContract, RequestContract + 1} {
+		stored, fault := Request(commonRequest(func(r *requestv2.Request) {
+			r.ContractVersion = version
+		}), expectation())
+		if stored != nil || fault == nil ||
+			fault.Problem != gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_PROTOCOL ||
+			fault.Field != "contract_version" {
+			t.Fatalf("contract %d: stored=%v fault=%v", version, stored, fault)
+		}
+	}
+}
+
+// The network is required and never inferred (SEE-185): an action that names none, or one this
+// gateway does not know, is refused rather than stored as Mainnet. One it knows is kept exactly.
+func TestASignalNamesItsOwnNetwork(t *testing.T) {
+	for _, network := range []serverv1.SolanaNetwork{
+		serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED, serverv1.SolanaNetwork(4),
+	} {
+		stored, fault := Request(commonRequest(func(r *requestv2.Request) {
+			r.Action.Network = network
+		}), expectation())
+		if stored != nil || fault == nil ||
+			fault.Problem != gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK ||
+			fault.Field != "action.network" {
+			t.Fatalf("%v: stored=%v fault=%v", network, stored, fault)
+		}
+	}
+	for _, network := range []serverv1.SolanaNetwork{
+		serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+		serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+		serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET,
+	} {
+		stored, fault := Request(commonRequest(func(r *requestv2.Request) {
+			r.Action.Network = network
+		}), expectation())
+		if fault != nil {
+			t.Fatalf("%v was refused: %v", network, fault.Problem)
+		}
+		// The rebuild copies it: a field-by-field copy that forgot it would publish a document that
+		// no phone could ever execute.
+		if stored.GetAction().GetNetwork() != network {
+			t.Fatalf("%v was stored as %v", network, stored.GetAction().GetNetwork())
+		}
+	}
+}
+
+// A signal's network must be one its publisher's manifest declares, and a publisher with no
+// manifest has declared none (SEE-185).
+func TestASignalsNetworkMustBeDeclared(t *testing.T) {
+	declared, fault := Manifest(manifest(func(m *serverv1.ServerManifest) {
+		m.GetFeed().SupportedNetworks = []serverv1.SolanaNetwork{
+			serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET, serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
+		}
+	}), expectation())
+	if fault != nil {
+		t.Fatal(fault.Problem)
+	}
+	for _, one := range []struct {
+		name     string
+		manifest *serverv1.ServerManifest
+		network  serverv1.SolanaNetwork
+		accepted bool
+	}{
+		{"mainnet, declared", declared, serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET, true},
+		{"devnet, declared", declared, serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET, true},
+		{"testnet, not declared", declared, serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET, false},
+		{"no manifest at all", nil, serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET, false},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			fault := NetworkDeclared(one.manifest, one.network)
+			if one.accepted != (fault == nil) {
+				t.Fatalf("answered %v", fault)
+			}
+			if fault != nil && (fault.Problem != gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_NETWORK ||
+				fault.Field != "action.network") {
+				t.Fatalf("refused as %v (%s)", fault.Problem, fault.Field)
+			}
+		})
+	}
+	if !ProtocolOneMayShow(serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED) ||
+		ProtocolOneMayShow(serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET) {
+		t.Fatal("the protocol-1 view would show a network-declaring document")
 	}
 }
 

@@ -70,17 +70,28 @@ object CatalogFeeds {
      */
     fun page(
         answer: ListRecommendedFeedsResponse,
+        trustedGateway: String,
         cleartextPermitted: (host: String) -> Boolean,
     ): CatalogPage =
         CatalogPage(
             feeds =
-                answer.feedsList.mapNotNull { from(it, cleartextPermitted) }.distinctBy { it.key },
+                answer.feedsList
+                    .mapNotNull { from(it, trustedGateway, cleartextPermitted) }
+                    .distinctBy { it.key },
             nextPageToken = answer.nextPageToken.takeIf { it.isNotEmpty() },
         )
 
-    fun from(wire: RecommendedFeed, cleartextPermitted: (host: String) -> Boolean): CatalogFeed? {
+    fun from(
+        wire: RecommendedFeed,
+        /** The one gateway this build trusts (SEE-185): a card naming another is left out. */
+        trustedGateway: String,
+        cleartextPermitted: (host: String) -> Boolean,
+    ): CatalogFeed? {
         if (!isConnectionId(wire.serverId)) return null
         if (FeedReferences.gatewayUrlProblem(wire.gatewayUrl, cleartextPermitted) != null) {
+            return null
+        }
+        if (FeedReferences.trustedGatewayProblem(wire.gatewayUrl, trustedGateway) != null) {
             return null
         }
         if (wire.channel != channelFor(wire.serverId)) return null

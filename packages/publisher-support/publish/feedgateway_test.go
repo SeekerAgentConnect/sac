@@ -33,7 +33,9 @@ import (
 // What it proves, and what nothing else here can:
 //
 //   - the gateway accepts the manifest this template builds — the mode, the channel, the origin,
-//     the plugin requirement and the environment, all of which it validates separately;
+//     the plugin requirement and the networks, all of which it validates separately;
+//   - it accepts a signal on a network that manifest declares, as request contract 2, and refuses
+//     one on a network it does not (SEE-185);
 //   - **two independent readers get byte-identical documents**, which is the automated half of
 //     "two phones see the same proposal while choosing their own amounts" (the device half is the
 //     owner's run, docs/testing/stage-7-1.md);
@@ -52,14 +54,13 @@ func TestGatewayAcceptsWhatThisTemplatePublishes(t *testing.T) {
 	settings := manifest.Settings{
 		ServerID:    publishertest.ServerID,
 		GatewayURL:  origin,
-		Environment: "production",
+		Networks:    []network.Network{network.Mainnet},
 		Requirement: signals.Swap{}.Requirement(),
 		DisplayName: "Copy trading desk",
 	}
 	documents, err := store.Open(filepath.Join(directory, "publisher.db"), store.Stamp{
-		ServerID:    settings.ServerID,
-		Environment: settings.Environment.String(),
-		GatewayURL:  settings.GatewayURL,
+		ServerID:   settings.ServerID,
+		GatewayURL: settings.GatewayURL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -124,15 +125,39 @@ func TestGatewayAcceptsWhatThisTemplatePublishes(t *testing.T) {
 	if !strings.Contains(first, created.Signal.ProposalID) {
 		t.Fatalf("the feed does not hold the signal:\n%s", first)
 	}
+	// As request contract 2, on the network the signal named (SEE-185).
+	if !strings.Contains(first, `"contractVersion":2`) ||
+		!strings.Contains(first, `"network":"SOLANA_NETWORK_MAINNET"`) {
+		t.Fatalf("the feed does not say where the signal executes:\n%s", first)
+	}
+	content := strings.ToLower(publishertest.WithoutDeclarations(t, first))
 	for _, absent := range []string{"wallet", "amount", "payer", "decision", "signature",
 		"result"} {
-		if strings.Contains(strings.ToLower(first), absent) {
+		if strings.Contains(content, absent) {
 			t.Fatalf("the document a phone reads mentions %q:\n%s", absent, first)
 		}
 	}
 
+	// A signal on a network the manifest does not declare is refused for good, and nothing is
+	// inferred for one that names none.
+	devnet := publishertest.Swap()
+	devnet.ProposalID = "1e2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b"
+	devnet.Network = network.Devnet
+	for want, document := range map[string]*signals.Signal{"other_network": &devnet} {
+		_, err := client.Request(ctx, signals.Request(publishertest.ServerID, *document))
+		refusal, ok := err.(*gateway.Refusal)
+		if !ok || refusal.Problem != want || !refusal.Permanent {
+			t.Fatalf("a devnet signal was answered %v, expected %s", err, want)
+		}
+	}
+	nameless := devnet
+	nameless.Network = ""
+	if _, err := client.Request(ctx, signals.Request(publishertest.ServerID, nameless)); err == nil {
+		t.Fatal("the real gateway accepted a signal that names no network")
+	}
+
 	// The same document again, which is what a retry and a restart both send.
-	status, err := client.Proposal(ctx, signals.Proposal(publishertest.ServerID, created.Signal))
+	status, err := client.Request(ctx, signals.Request(publishertest.ServerID, created.Signal))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,11 +176,11 @@ func TestGatewayAcceptsWhatThisTemplatePublishes(t *testing.T) {
 		t.Fatalf("%+v (%v)", refusal, err)
 	}
 	after := publishertest.ReadFeed(t, origin, signals.ChannelFor(publishertest.ServerID), nil)
-	if !strings.Contains(after, "PROPOSAL_STATUS_CANCELLED") {
+	if !strings.Contains(after, "REQUEST_STATUS_CANCELLED") {
 		t.Fatalf("the feed does not show the withdrawal:\n%s", after)
 	}
 	// And withdrawing again at the same revision is the retry, which is not an event.
-	if status, err := client.Withdraw(ctx, created.Signal.ProposalID,
+	if status, err := client.WithdrawRequest(ctx, created.Signal.ProposalID,
 		withdrawn.Signal.Revision); err != nil || status != gateway.Unchanged {
 		t.Fatalf("%s (%v)", status, err)
 	}
@@ -184,7 +209,6 @@ func TestGatewayRefusesAManifestForAnotherGateway(t *testing.T) {
 	elsewhere := manifest.Settings{
 		ServerID:    publishertest.ServerID,
 		GatewayURL:  "https://feeds.example.com",
-		Environment: "production",
 		Requirement: signals.Swap{}.Requirement(),
 	}
 	_, err = client.Manifest(context.Background(), manifest.Document(elsewhere, 1))
@@ -220,7 +244,6 @@ func TestGatewayServesTheNetworksOfAPublisherThatLostItsState(t *testing.T) {
 	before := manifest.Settings{
 		ServerID:    publishertest.ServerID,
 		GatewayURL:  running.Origin,
-		Environment: "production",
 		Requirement: signals.Swap{}.Requirement(),
 		DisplayName: "Copy trading desk",
 	}
@@ -231,9 +254,8 @@ func TestGatewayServesTheNetworksOfAPublisherThatLostItsState(t *testing.T) {
 	after := before
 	after.Networks = []network.Network{network.Mainnet}
 	documents, err := store.Open(filepath.Join(running.Directory, "redeployed.db"), store.Stamp{
-		ServerID:    after.ServerID,
-		Environment: after.Environment.String(),
-		GatewayURL:  after.GatewayURL,
+		ServerID:   after.ServerID,
+		GatewayURL: after.GatewayURL,
 	})
 	if err != nil {
 		t.Fatal(err)

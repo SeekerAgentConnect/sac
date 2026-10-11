@@ -1,13 +1,16 @@
 package io.github.brrenat.seekervault.requests
 
 import com.google.protobuf.timestamp
+import io.github.brrenat.seekervault.proposals.NETWORK_CONTRACT
 import io.github.brrenat.seekervault.proposals.PROPOSAL_A
 import io.github.brrenat.seekervault.proposals.PUBLISHED
 import io.github.brrenat.seekervault.proposals.ProposalExpectation
 import io.github.brrenat.seekervault.proposals.ProposalProblem
 import io.github.brrenat.seekervault.proposals.ProposalResult
 import io.github.brrenat.seekervault.proposals.ProposalValueKind
+import io.github.brrenat.seekervault.proposals.SUPPORTED_REQUEST_CONTRACTS
 import io.github.brrenat.seekervault.proposals.SWAP
+import io.github.brrenat.seekervault.proposals.SignalNetwork
 import io.github.brrenat.seekervault.proposals.proposal
 import io.github.brrenat.seekervault.proposals.proposalFrom
 import io.github.brrenat.seekervault.proposals.wireProposal
@@ -154,6 +157,96 @@ class CommonEnvelopeTest {
             (proposalFrom(returned, ProposalExpectation(SERVER_B)) as ProposalResult.Invalid)
                 .problem,
         )
+    }
+
+    /** [commonFeedRequest] at contract [version], its action naming [network] by wire value. */
+    private fun signalAt(version: Int, network: Int): Request =
+        commonFeedRequest()
+            .toBuilder()
+            .setContractVersion(version)
+            .setAction(commonFeedRequest().action.toBuilder().setNetworkValue(network))
+            .build()
+
+    private fun networkOf(message: Request): SignalNetwork =
+        (proposalFrom(message, ProposalExpectation(SERVER_B)) as ProposalResult.Valid)
+            .proposal
+            .network
+
+    @Test
+    fun aContractTwoSignalDeclaresItsNetworkAndNothingElseDecidesIt() {
+        // SEE-185: the request contract that names the network. A known value is that network,
+        // unspecified is none, and a value this build does not know is said as unknown — never
+        // read as mainnet.
+        assertEquals(
+            SignalNetwork.Declared(Network.NETWORK_MAINNET),
+            networkOf(signalAt(2, Network.NETWORK_MAINNET_VALUE)),
+        )
+        assertEquals(
+            SignalNetwork.Declared(Network.NETWORK_DEVNET),
+            networkOf(signalAt(2, Network.NETWORK_DEVNET_VALUE)),
+        )
+        assertEquals(
+            SignalNetwork.Declared(Network.NETWORK_TESTNET),
+            networkOf(signalAt(2, Network.NETWORK_TESTNET_VALUE)),
+        )
+        assertEquals(SignalNetwork.Missing, networkOf(signalAt(2, 0)))
+        assertEquals(SignalNetwork.Unknown(77), networkOf(signalAt(2, 77)))
+        assertEquals(2, SUPPORTED_REQUEST_CONTRACTS.last)
+        assertEquals(2, NETWORK_CONTRACT)
+    }
+
+    @Test
+    fun aContractOneSignalDeclaresNoNetworkEvenIfOneIsPresent() {
+        // That contract never defined the field, so whatever is in it is not read.
+        assertEquals(SignalNetwork.Missing, networkOf(signalAt(1, Network.NETWORK_MAINNET_VALUE)))
+        assertEquals(SignalNetwork.Missing, networkOf(signalAt(1, 0)))
+        // And a legacy proposal document has no network at all.
+        assertEquals(
+            SignalNetwork.Missing,
+            (proposalFrom(wireProposal(), ProposalExpectation(SERVER_B)) as ProposalResult.Valid)
+                .proposal
+                .network,
+        )
+    }
+
+    @Test
+    fun aContractThisBuildDoesNotReadIsRefused() {
+        listOf(0, 3, 99).forEach { version ->
+            assertEquals(
+                "contract $version",
+                ProposalProblem.UnsupportedContract,
+                (proposalFrom(
+                        signalAt(version, Network.NETWORK_MAINNET_VALUE),
+                        ProposalExpectation(SERVER_B),
+                    )
+                        as ProposalResult.Invalid)
+                    .problem,
+            )
+        }
+    }
+
+    @Test
+    fun theDeclaredNetworkSurvivesTheEnvelopeAndBack() {
+        // What the phone re-emits says the network the signal declared, and only that one.
+        val read =
+            (proposalFrom(
+                    signalAt(2, Network.NETWORK_DEVNET_VALUE),
+                    ProposalExpectation(SERVER_B),
+                )
+                    as ProposalResult.Valid)
+                .proposal
+        assertEquals(Network.NETWORK_DEVNET_VALUE, read.commonEnvelope().action.networkValue)
+        assertEquals(
+            read,
+            (proposalFrom(read.commonEnvelope(), ProposalExpectation(SERVER_B))
+                    as ProposalResult.Valid)
+                .proposal,
+        )
+        // An unknown value is re-emitted as unspecified, never as a guess.
+        val unknown =
+            (proposalFrom(signalAt(2, 77), ProposalExpectation(SERVER_B)) as ProposalResult.Valid)
+                .proposal
+        assertEquals(0, unknown.commonEnvelope().action.networkValue)
     }
 
     private fun commonFeedRequest(): Request =

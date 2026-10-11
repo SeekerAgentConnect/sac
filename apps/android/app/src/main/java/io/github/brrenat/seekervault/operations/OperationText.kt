@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.operations
 
 import androidx.annotation.StringRes
 import io.github.brrenat.seekervault.R
+import io.github.brrenat.seekervault.config.ConfigProblem
 import io.github.brrenat.seekervault.designsystem.HistoryDetailRow
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterForm
@@ -11,6 +12,7 @@ import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.UnsupportedReason
 import io.github.brrenat.seekervault.plugins.receiptRows
 import io.github.brrenat.seekervault.proposals.BindingProblem
+import io.github.brrenat.seekervault.proposals.NetworkReason
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
@@ -43,6 +45,11 @@ object OperationTags {
     const val UNSUPPORTED = "operations.unsupported"
     const val AFTERWARDS = "operations.afterwards"
     const val SANDBOX = "operations.sandbox"
+    const val PREVIEW = "operations.preview"
+    const val PREVIEWED = "operations.previewed"
+    const val NETWORK = "operations.network"
+    const val WALLET = "operations.wallet"
+    const val CHOOSE_WALLET = "operations.chooseWallet"
     const val REFERENCES = "operations.references"
     const val ABOUT = "operations.about"
     const val RECEIPT = "operations.receipt"
@@ -63,6 +70,12 @@ fun standingText(standing: ProposalStanding): Int =
         is ProposalStanding.Cancelled -> R.string.operation_standing_cancelled
         is ProposalStanding.Expired -> R.string.operation_standing_expired
         is ProposalStanding.Unsupported -> R.string.operation_standing_unsupported
+        is ProposalStanding.NetworkUnusable ->
+            when (standing.reason) {
+                NetworkReason.Missing -> R.string.operation_standing_network_missing
+                NetworkReason.Unknown -> R.string.operation_standing_network_unknown
+                NetworkReason.NotDeclared -> R.string.operation_standing_network_not_declared
+            }
     }
 
 /** What became of the one operation this device executed. */
@@ -87,6 +100,20 @@ fun problemText(problem: OperationProblem): Int =
         is OperationProblem.WalletChanged -> R.string.operation_problem_wallet_changed
         is OperationProblem.Gone -> R.string.operation_problem_gone
         is OperationProblem.Binding -> bindingText(problem.problem)
+        is OperationProblem.FeeTermsChanged -> R.string.operation_problem_fee_terms_changed
+        is OperationProblem.ConfigUnavailable -> configText(problem.problem)
+    }
+
+/**
+ * Why there is no client configuration a feed operation may be prepared or signed with (SEE-185).
+ * Never "no fee": a configuration that could not be read is not one that charges nothing.
+ */
+@StringRes
+fun configText(problem: ConfigProblem): Int =
+    when (problem) {
+        ConfigProblem.NoGateway -> R.string.operation_config_no_gateway
+        is ConfigProblem.Unreachable -> R.string.operation_config_unreachable
+        is ConfigProblem.Invalid -> R.string.operation_config_invalid
     }
 
 /**
@@ -134,7 +161,7 @@ fun bindingText(problem: BindingProblem): Int =
         BindingProblem.NoWallet -> R.string.operation_binding_no_wallet
         BindingProblem.OtherWallet -> R.string.operation_binding_other_wallet
         BindingProblem.OtherNetwork -> R.string.operation_binding_other_network
-        BindingProblem.OtherEnvironment -> R.string.operation_binding_other_environment
+        BindingProblem.NetworkUnusable -> R.string.operation_binding_network_unusable
     }
 
 /**

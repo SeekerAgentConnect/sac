@@ -11,7 +11,8 @@
 // publisher's developer-supplied host as a column on the registration it belongs to (SEE-141);
 // version 5 adds capabilities to a registration and its credentials, and the two records the push
 // relay needs (SEE-144); version 8 adds whether the operator lists a feed in the app's Discover
-// catalog, and its public description (SEE-176).
+// catalog, and its public description (SEE-176); version 9 adds the operator's client configuration
+// and retires the environments stored manifests still carried (SEE-185).
 //
 // The relay's two tables are the first private state this store has held since version 3 retired
 // the old routing, and they are deliberately not a return of it. What was removed routed requests
@@ -60,7 +61,7 @@ import (
 // Version is the schema this build writes and reads. There is one, and a file from a later version
 // is refused rather than guessed at: an old binary reading a new file could silently ignore a
 // column that a rule depends on.
-const Version = 8
+const Version = 9
 
 // ErrNewerSchema is returned by Open when the file was written by a later version of the gateway.
 var ErrNewerSchema = errors.New("the database was written by a newer gateway")
@@ -203,6 +204,11 @@ func (s *Store) migrate(ctx context.Context) error {
 				migration = schemaV7
 			case 8:
 				migration = schemaV8
+			case 9:
+				if err := retireEnvironments(ctx, tx.tx); err != nil {
+					return fmt.Errorf("retire manifest environments: %w", err)
+				}
+				migration = schemaV9
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -256,6 +262,69 @@ func retirePrivateManifests(ctx context.Context, tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+// retireEnvironments removes the environments field (ServerManifest field 6, reserved since SEE-185)
+// from every manifest the gateway holds.
+//
+// The current contract no longer has the field, so a stored manifest that still carries it decodes
+// with it as an unknown field — and the gateway would then serve it to phones, which it otherwise
+// never does with a field it did not validate, and would call a publisher's identical republication
+// a revision conflict, because the stored document would no longer equal the one rebuilt from it.
+// Every stored manifest was rebuilt field by field by rules.Manifest, so field 6 is the only unknown
+// one any of them can hold, and discarding the unknown fields is discarding exactly it. Nothing is
+// fanned out: no phone needs to be told that a field it no longer reads has gone.
+func retireEnvironments(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `SELECT server_id, document FROM manifest`)
+	if err != nil {
+		return err
+	}
+	rewritten := map[string][]byte{}
+	for rows.Next() {
+		var serverID string
+		var document []byte
+		if err := rows.Scan(&serverID, &document); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		cleaned, changed, err := withoutUnknownFields(document)
+		if err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("decode manifest for %s: %w", serverID, err)
+		}
+		if changed {
+			rewritten[serverID] = cleaned
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for serverID, document := range rewritten {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE manifest SET document = ? WHERE server_id = ?`, document, serverID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// withoutUnknownFields is a stored manifest with every field the current contract does not know
+// removed, and whether there was any.
+func withoutUnknownFields(document []byte) ([]byte, bool, error) {
+	var manifest serverv1.ServerManifest
+	if err := proto.Unmarshal(document, &manifest); err != nil {
+		return nil, false, err
+	}
+	if len(manifest.ProtoReflect().GetUnknown()) == 0 {
+		return document, false, nil
+	}
+	manifest.ProtoReflect().SetUnknown(nil)
+	cleaned, err := proto.Marshal(&manifest)
+	return cleaned, err == nil, err
 }
 
 // The schema, in one statement per table and with the reasoning where a column carries a rule.
@@ -573,6 +642,29 @@ CREATE INDEX access_grant_by_expiry ON access_grant(expires_at_ms);
 const schemaV8 = `
 ALTER TABLE publisher ADD COLUMN show_in_recommendations INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE publisher ADD COLUMN public_description TEXT NOT NULL DEFAULT '';
+`
+
+// Version 9 is the operator's client configuration (SEE-185): the Solana RPC endpoint per network
+// and the SAC swap service fee every app that trusts this gateway reads (FeedService
+// .GetClientConfig).
+//
+// One row, enforced by the key rather than remembered: there is one configuration per gateway, and
+// a second row would be a second answer to a question every client must get the same answer to.
+// The document is the configuration as rules.ClientConfig canonicalized it, without its revision —
+// the revision is the column, so there is one place it is kept and "save the same thing again" is
+// a comparison of documents. It is a protobuf blob for the reason a manifest is: what is served is
+// what was validated, byte for byte.
+//
+// It is operator configuration and nothing else. Nothing in it is about a subscriber, a device, a
+// publisher or a reader; no read writes to it; and nothing in it is a secret — the rules refuse a
+// URL with user info, and everything here is served to anyone who asks.
+const schemaV9 = `
+CREATE TABLE client_config (
+  singleton     INTEGER PRIMARY KEY CHECK (singleton = 1),
+  revision      INTEGER NOT NULL,
+  document      BLOB NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
 `
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }

@@ -1,6 +1,9 @@
 package io.github.brrenat.seekervault.rpc
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.brrenat.seekervault.config.ClientConfigRepository
+import io.github.brrenat.seekervault.config.storage.ClientConfigStore
+import io.github.brrenat.seekervault.config.wireConfig
 import io.github.brrenat.seekervault.confirmations.GENESIS_HASHES
 import io.github.brrenat.seekervault.confirmations.HttpChainReader
 import io.github.brrenat.seekervault.jupiter.EVENT_ID
@@ -36,7 +39,7 @@ import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
 import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import io.github.brrenat.seekervault.plugins.actions.predictionPayloadFrom
 import io.github.brrenat.seekervault.request.v1.Network
-import io.github.brrenat.seekervault.rpc.storage.RpcSettingsStore
+import io.github.brrenat.seekervault.server.v1.SolanaNetwork
 import io.github.brrenat.seekervault.solana.AccountSnapshot
 import io.github.brrenat.seekervault.solana.HttpSolanaAccounts
 import io.github.brrenat.seekervault.solana.SolanaAccounts
@@ -47,6 +50,7 @@ import java.net.InetAddress
 import java.time.Instant
 import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
@@ -60,7 +64,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -71,14 +74,15 @@ import org.junit.runner.RunWith
 
 /**
  * The app's one Solana resolver against real JSON-RPC endpoints whose every answer the test
- * controls (SEE-184).
+ * controls (SEE-184), fed by the trusted gateway's client configuration (SEE-185).
  *
  * Two local servers stand in for two clusters, each identified only the way a real one is — by its
  * genesis hash — and every read goes through the same HTTP clients the app uses. What is proven: a
  * mainnet read and a devnet read in flight together reach their own endpoints; an endpoint serving
- * another cluster is refused for account reads and for confirmation reads alike; a setting changed
- * at runtime applies to the very next read and drops what was proven about the old one; settings
- * outlive the process; and the build's legacy general endpoint serves only the cluster it proves.
+ * another cluster is refused for account reads and for confirmation reads alike; a configuration
+ * applied at runtime is used for the very next read and drops every proof about the old one, while
+ * the same configuration again changes nothing; and only a debug build's devnet or testnet endpoint
+ * may be a local validator.
  */
 @RunWith(AndroidJUnit4::class)
 class SolanaRpcTest {
@@ -100,22 +104,17 @@ class SolanaRpcTest {
     }
 
     private fun rpc(
-        defaults: RpcDefaults,
-        dir: File = File(folder.root, "rpc"),
+        vararg endpoints: Pair<Network, Cluster>,
+        allowLocalValidator: Boolean = false,
         changed: MutableList<Network>? = null,
     ): SolanaRpc =
         SolanaRpc(
-                RpcSettingsStore(dir),
-                defaults.copy(allowCleartext = true),
+                endpoints.associate { (network, cluster) -> network to cluster.url },
+                allowLocalValidator,
                 reader = { url -> HttpChainReader(http, url) },
                 accounts = { url -> HttpSolanaAccounts(http, url) },
             )
             .also { rpc -> changed?.let { list -> rpc.onChange { list += it } } }
-
-    private fun perNetwork(vararg endpoints: Pair<Network, Cluster>) =
-        RpcDefaults(
-            perNetwork = endpoints.associate { (network, cluster) -> network to cluster.url }
-        )
 
     private fun failure(block: suspend () -> Unit): SolanaException = runBlocking {
         try {
@@ -130,7 +129,7 @@ class SolanaRpcTest {
     fun aMainnetAndADevnetOperationRunTogetherEachThroughItsOwnEndpoint() = runBlocking {
         mainnet.accounts = mapOf(FEE_ACCOUNT_SOL to tokenAccount(SOL_MINT, FEE_OWNER))
         devnet.accounts = mapOf(FEE_ACCOUNT_SOL to tokenAccount(USDC_MINT, FEE_OWNER))
-        val rpc = rpc(perNetwork(MAINNET to mainnet, DEVNET to devnet))
+        val rpc = rpc(MAINNET to mainnet, DEVNET to devnet)
 
         // Both in flight at once, as a mainnet feed and a devnet direct server would be.
         val (fromMainnet, fromDevnet, devnetStatus) =
@@ -162,8 +161,8 @@ class SolanaRpcTest {
 
     @Test
     fun withOnlyAMainnetEndpointPredictionTablesResolveAndTheSwapFeeIsVerifiedThroughTheSameOne() {
-        // The general endpoint is empty: before SEE-184 this build could not read an account.
-        val rpc = rpc(perNetwork(MAINNET to mainnet))
+        // Only mainnet is configured: a prediction resolves its tables through that endpoint.
+        val rpc = rpc(MAINNET to mainnet)
         val prediction = FakePrediction()
         prediction.answersOrder = { terms, choice, owner ->
             val built =
@@ -205,8 +204,8 @@ class SolanaRpcTest {
 
     @Test
     fun anEndpointServingAnotherClusterIsRefusedForAccountReadsAndForConfirmations() = runBlocking {
-        // The devnet setting points at a mainnet endpoint.
-        val rpc = rpc(perNetwork(DEVNET to mainnet))
+        // The configuration's devnet endpoint is a mainnet one.
+        val rpc = rpc(DEVNET to mainnet)
 
         assertEquals(
             SolanaProblem.WrongNetwork,
@@ -215,179 +214,158 @@ class SolanaRpcTest {
         assertEquals(SolanaProblem.WrongNetwork, failure { rpc.readerFor(DEVNET) }.problem)
         // Nothing but the question of which chain it is was ever asked of it.
         assertEquals(emptyList<String>(), mainnet.reads())
-        assertEquals(RpcCheck.OtherNetwork(mainnet.host, MAINNET), rpc.check(DEVNET))
-        // And it cannot be saved as the devnet endpoint either.
-        assertEquals(
-            RpcCheck.OtherNetwork(mainnet.host, MAINNET),
-            rpc.save(DEVNET, mainnet.url),
-        )
-        assertNull(rpc.settings.value[DEVNET])
+        // And it is never used for the network it does serve, which nobody configured it for.
+        assertEquals(SolanaProblem.NoEndpoint, failure { rpc.readerFor(MAINNET) }.problem)
     }
 
     @Test
-    fun anEndpointReplacedAtRuntimeIsUsedForTheNextReadAndTheOldProofIsDropped() = runBlocking {
+    fun applyingChangedEndpointsDropsEveryProofAndTellsOnlyTheNetworksThatChanged() = runBlocking {
         val changed = mutableListOf<Network>()
         devnet.accounts = mapOf(FEE_ACCOUNT_SOL to tokenAccount(SOL_MINT, FEE_OWNER))
         otherDevnet.accounts = mapOf(FEE_ACCOUNT_SOL to tokenAccount(USDC_MINT, FEE_OWNER))
-        val rpc = rpc(perNetwork(MAINNET to mainnet, DEVNET to devnet), changed = changed)
+        val rpc = rpc(MAINNET to mainnet, DEVNET to devnet, changed = changed)
         rpc.on(DEVNET).accounts(listOf(FEE_ACCOUNT_SOL))
         rpc.readerFor(MAINNET)
         assertEquals(1, devnet.count("getGenesisHash"))
+        assertEquals(1, mainnet.count("getGenesisHash"))
 
-        // The owner points devnet somewhere else. No restart, no rebuild.
-        assertEquals(RpcCheck.Serves(otherDevnet.host), rpc.save(DEVNET, otherDevnet.url))
+        // The same endpoints again: nothing changes, nobody is told, and every proof stands.
+        rpc.apply(mapOf(MAINNET to mainnet.url, DEVNET to " ${devnet.url} "))
+        assertEquals(emptyList<Network>(), changed)
+        rpc.on(DEVNET).accounts(listOf(FEE_ACCOUNT_SOL))
+        rpc.readerFor(MAINNET)
+        assertEquals(1, devnet.count("getGenesisHash"))
+        assertEquals(1, mainnet.count("getGenesisHash"))
 
+        // The operator points devnet somewhere else. No restart, no rebuild.
+        rpc.apply(mapOf(MAINNET to mainnet.url, DEVNET to otherDevnet.url))
         assertEquals(listOf(DEVNET), changed)
-        assertEquals(RpcSource.Owner, rpc.endpoint(DEVNET)?.source)
+        assertEquals(otherDevnet.url, rpc.endpoint(DEVNET)?.url)
+        assertEquals(mapOf(MAINNET to mainnet.url, DEVNET to otherDevnet.url), rpc.endpoints.value)
         assertEquals(
             tokenAccount(USDC_MINT, FEE_OWNER),
             rpc.on(DEVNET).accounts(listOf(FEE_ACCOUNT_SOL)).single(),
         )
-        assertEquals(1, devnet.count("getMultipleAccounts"))
-        assertEquals(1, otherDevnet.count("getMultipleAccounts"))
-
-        // Reset: the build's endpoint again, proven again rather than trusted from before.
-        rpc.reset(DEVNET)
-        assertEquals(listOf(DEVNET, DEVNET), changed)
-        assertEquals(RpcSource.Build, rpc.endpoint(DEVNET)?.source)
-        rpc.on(DEVNET).accounts(listOf(FEE_ACCOUNT_SOL))
-        assertEquals(2, devnet.count("getGenesisHash"))
         assertEquals(2, devnet.count("getMultipleAccounts"))
+        assertEquals(1, otherDevnet.count("getMultipleAccounts"))
+        // Every proof went, not only devnet's: mainnet is proven again before it is read again.
+        rpc.readerFor(MAINNET)
+        assertEquals(2, mainnet.count("getGenesisHash"))
 
-        // A cluster whose endpoint was replaced by somebody else's chain is refused at once, even
+        // A cluster whose endpoint now serves somebody else's chain is refused at once, even
         // though the same URL was proven a moment ago: a change drops every proof.
-        devnet.genesis = GENESIS_HASHES.getValue(MAINNET)
-        rpc.reset(MAINNET) // nothing set, so nothing changes and nothing is told
-        assertEquals(listOf(DEVNET, DEVNET), changed)
-        assertTrue(rpc.save(MAINNET, mainnet.url) is RpcCheck.Serves)
+        otherDevnet.genesis = GENESIS_HASHES.getValue(MAINNET)
+        rpc.apply(mapOf(MAINNET to mainnet.url, DEVNET to otherDevnet.url, TESTNET to devnet.url))
+        assertEquals(listOf(DEVNET, TESTNET), changed)
         assertEquals(SolanaProblem.WrongNetwork, failure { rpc.readerFor(DEVNET) }.problem)
+
+        // A network the configuration drops has no endpoint at all, and is told so.
+        rpc.apply(mapOf(MAINNET to mainnet.url))
+        assertEquals(listOf(DEVNET, TESTNET, DEVNET, TESTNET), changed)
+        assertNull(rpc.endpoint(DEVNET))
+        assertEquals(SolanaProblem.NoEndpoint, failure { rpc.readerFor(DEVNET) }.problem)
     }
 
     @Test
-    fun theOwnersSettingsOutliveTheProcessAndResetRestoresTheBuildDefault() = runBlocking {
-        val dir = File(folder.root, "rpc")
-        val first = rpc(perNetwork(DEVNET to devnet), dir)
-        assertTrue(first.save(DEVNET, otherDevnet.url) is RpcCheck.Serves)
-
-        // A new process: the same files, a new resolver.
-        val second = rpc(perNetwork(DEVNET to devnet), dir)
-        assertEquals(
-            RpcEndpoint(DEVNET, otherDevnet.url, RpcSource.Owner, allowUnknownGenesis = false),
-            second.endpoint(DEVNET),
-        )
-        // Proven again by the new process — once when it was saved, once now — never assumed.
-        second.readerFor(DEVNET)
-        assertEquals(2, otherDevnet.count("getGenesisHash"))
-
-        second.reset(DEVNET)
-        val third = rpc(perNetwork(DEVNET to devnet), dir)
-        assertEquals(RpcSource.Build, third.endpoint(DEVNET)?.source)
-        assertEquals(devnet.url, third.endpoint(DEVNET)?.url)
-        // A network with no build endpoint goes back to having none at all.
-        assertTrue(third.save(MAINNET, mainnet.url) is RpcCheck.Serves)
-        third.reset(MAINNET)
-        assertNull(third.endpoint(MAINNET))
-    }
-
-    @Test
-    fun aGeneralOnlyBuildServesTheClusterItProvesAndNoOther() = runBlocking {
-        mainnet.accounts = mapOf(FEE_ACCOUNT_SOL to tokenAccount(SOL_MINT, FEE_OWNER))
-        val rpc = rpc(RpcDefaults(general = mainnet.url))
-
-        assertEquals(RpcSource.General, rpc.endpoint(MAINNET)?.source)
-        assertEquals(1, rpc.on(MAINNET).accounts(listOf(FEE_ACCOUNT_SOL)).size)
-        // The same endpoint is not devnet's just because it is the only one.
-        assertEquals(
-            SolanaProblem.WrongNetwork,
-            failure { rpc.on(DEVNET).accounts(listOf(FEE_ACCOUNT_SOL)) }.problem,
-        )
-        assertEquals(SolanaProblem.WrongNetwork, failure { rpc.readerFor(TESTNET) }.problem)
-        assertEquals(listOf("getMultipleAccounts"), mainnet.reads())
-    }
-
-    @Test
-    fun theOwnersSettingComesFirstThenTheNetworksOwnThenTheGeneralOneWithNoFailover() =
+    fun theTrustedGatewaysConfigurationFeedsTheResolverAndAChangeAppliesWithoutARestart() =
         runBlocking {
+            mainnet.accounts = mapOf(FEE_ACCOUNT_SOL to tokenAccount(SOL_MINT, FEE_OWNER))
+            devnet.accounts = mapOf(FEE_ACCOUNT_SOL to tokenAccount(USDC_MINT, FEE_OWNER))
+            otherDevnet.accounts = mapOf(FEE_ACCOUNT_SOL to tokenAccount(SOL_MINT, OWNER))
+            var answer =
+                wireConfig(
+                    revision = 1,
+                    rpc =
+                        listOf(
+                            SolanaNetwork.SOLANA_NETWORK_MAINNET to mainnet.url,
+                            SolanaNetwork.SOLANA_NETWORK_DEVNET to devnet.url,
+                        ),
+                )
+            val config =
+                ClientConfigRepository(
+                    gatewayUrl = "https://gateway.example.com",
+                    store = ClientConfigStore(File(folder.root, "config")),
+                    fetch = { answer },
+                    allowCleartext = true,
+                    io = Dispatchers.Unconfined,
+                )
+            config.refresh()
+            // Wired the way the application wires it: built from what is held, then kept in step.
             val rpc =
-                rpc(RpcDefaults(perNetwork = mapOf(DEVNET to devnet.url), general = mainnet.url))
-            assertEquals(RpcSource.Build, rpc.endpoint(DEVNET)?.source)
-            assertEquals(RpcSource.General, rpc.endpoint(MAINNET)?.source)
-            assertTrue(rpc.save(DEVNET, otherDevnet.url) is RpcCheck.Serves)
-            assertEquals(RpcSource.Owner, rpc.endpoint(DEVNET)?.source)
+                SolanaRpc(
+                    initial = config.current?.rpc.orEmpty(),
+                    allowLocalValidator = false,
+                    reader = { url -> HttpChainReader(http, url) },
+                    accounts = { url -> HttpSolanaAccounts(http, url) },
+                )
+            config.onChange { _, current -> rpc.apply(current.rpc) }
 
-            // The owner's endpoint goes away: the failure is reported, never covered by another.
-            otherDevnet.server.close()
-            val problem = failure { rpc.readerFor(DEVNET) }.problem
-            assertEquals(SolanaProblem.Unreachable, problem)
-            assertEquals(0, devnet.count())
-            assertEquals(0, mainnet.count())
+            // Two networks at once, each through its own endpoint.
+            val (fromMainnet, fromDevnet) =
+                withTimeout(30_000) {
+                    listOf(
+                            async { rpc.on(MAINNET).accounts(listOf(FEE_ACCOUNT_SOL)) },
+                            async { rpc.on(DEVNET).accounts(listOf(FEE_ACCOUNT_SOL)) },
+                        )
+                        .awaitAll()
+                }
+            assertEquals(tokenAccount(SOL_MINT, FEE_OWNER), fromMainnet.single())
+            assertEquals(tokenAccount(USDC_MINT, FEE_OWNER), fromDevnet.single())
+            assertEquals(1, devnet.count("getGenesisHash"))
+
+            // The operator moves devnet. The next refresh applies it in this process.
+            answer =
+                wireConfig(
+                    revision = 2,
+                    rpc =
+                        listOf(
+                            SolanaNetwork.SOLANA_NETWORK_MAINNET to mainnet.url,
+                            SolanaNetwork.SOLANA_NETWORK_DEVNET to otherDevnet.url,
+                        ),
+                )
+            config.refresh()
+            assertEquals(otherDevnet.url, rpc.endpoint(DEVNET)?.url)
             assertEquals(
-                RpcCheck.Failed(otherDevnet.host, SolanaProblem.Unreachable),
-                rpc.check(DEVNET),
+                tokenAccount(SOL_MINT, OWNER),
+                rpc.on(DEVNET).accounts(listOf(FEE_ACCOUNT_SOL)).single(),
             )
+            assertEquals(1, otherDevnet.count("getGenesisHash"))
+            // The genesis cache went with the change: mainnet is proven again too.
+            rpc.on(MAINNET).accounts(listOf(FEE_ACCOUNT_SOL))
+            assertEquals(2, mainnet.count("getGenesisHash"))
+
+            // An answer naming an endpoint that serves another cluster for devnet is applied —
+            // it is a well-formed configuration — and refused by the proof, never used.
+            answer =
+                wireConfig(
+                    revision = 3,
+                    rpc =
+                        listOf(
+                            SolanaNetwork.SOLANA_NETWORK_MAINNET to mainnet.url,
+                            SolanaNetwork.SOLANA_NETWORK_DEVNET to mainnet.url,
+                        ),
+                )
+            config.refresh()
+            assertEquals(
+                SolanaProblem.WrongNetwork,
+                failure { rpc.on(DEVNET).accounts(listOf(FEE_ACCOUNT_SOL)) }.problem,
+            )
+            assertEquals(2, mainnet.count("getMultipleAccounts"))
         }
 
     @Test
-    fun aLocalValidatorIsAcceptedOnlyWhereADebugBuildExplicitlyConfiguredOne() = runBlocking {
+    fun aLocalValidatorIsAcceptedOnlyForADebugBuildsDevnetOrTestnet() = runBlocking {
         val validator = devnet.apply { genesis = "LocalValidatorGenesisHash1111111111111111111" }
-        val debug =
-            rpc(
-                RpcDefaults(
-                    perNetwork = mapOf(DEVNET to validator.url, MAINNET to validator.url),
-                    allowLocalValidator = true,
-                ),
-                File(folder.root, "debug"),
-            )
+        val debug = rpc(DEVNET to validator, MAINNET to validator, allowLocalValidator = true)
         debug.readerFor(DEVNET)
-        assertEquals(RpcCheck.Serves(validator.host, localValidator = true), debug.check(DEVNET))
+        assertEquals(true, debug.endpoint(DEVNET)?.allowUnknownGenesis)
         // Never mainnet's.
+        assertEquals(false, debug.endpoint(MAINNET)?.allowUnknownGenesis)
         assertEquals(SolanaProblem.WrongNetwork, failure { debug.readerFor(MAINNET) }.problem)
 
-        // Never through the general endpoint, which was configured for no network in particular.
-        val general =
-            rpc(
-                RpcDefaults(general = validator.url, allowLocalValidator = true),
-                File(folder.root, "g"),
-            )
-        assertEquals(SolanaProblem.WrongNetwork, failure { general.readerFor(DEVNET) }.problem)
-
         // And never in a release build.
-        val release = rpc(perNetwork(DEVNET to validator), File(folder.root, "release"))
+        val release = rpc(DEVNET to validator)
         assertEquals(SolanaProblem.WrongNetwork, failure { release.readerFor(DEVNET) }.problem)
-    }
-
-    @Test
-    fun aUrlThatCannotBeAnEndpointIsRefusedBeforeAnythingIsAsked() = runBlocking {
-        val release =
-            SolanaRpc(
-                RpcSettingsStore(File(folder.root, "rpc")),
-                RpcDefaults(),
-                reader = { error("nothing is asked") },
-                accounts = { error("nothing is asked") },
-            )
-        assertEquals(RpcCheck.Invalid(RpcUrlProblem.Empty), release.save(DEVNET, "  "))
-        assertEquals(RpcCheck.Invalid(RpcUrlProblem.NotAUrl), release.save(DEVNET, "devnet"))
-        assertEquals(
-            RpcCheck.Invalid(RpcUrlProblem.NotHttps),
-            release.save(DEVNET, "http://rpc.example.com"),
-        )
-        assertEquals(
-            RpcCheck.Invalid(RpcUrlProblem.Credentials),
-            release.save(DEVNET, "https://user:secret@rpc.example.com"),
-        )
-        assertNull(release.problemOf("https://rpc.example.com/?api-key=public"))
-        assertTrue(release.settings.value.isEmpty())
-        // Nothing reached the disk.
-        assertFalse(File(folder.root, "rpc").exists())
-    }
-
-    @Test
-    fun aStoredFileThisBuildCannotReadFallsBackToTheBuildsEndpoints() {
-        val dir = File(folder.root, "rpc").apply { mkdirs() }
-        File(dir, "settings.json").writeText("""{"version":99,"endpoints":{"devnet":"x"}}""")
-        assertTrue(RpcSettingsStore(dir).read().isEmpty())
-        File(dir, "settings.json").writeText("not json")
-        assertTrue(RpcSettingsStore(dir).read().isEmpty())
     }
 
     // ---

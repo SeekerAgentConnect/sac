@@ -25,7 +25,6 @@ import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginDestination
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFinding
 import io.github.brrenat.seekervault.plugins.PreparedOperation
@@ -37,6 +36,7 @@ import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.binding
 import io.github.brrenat.seekervault.proposals.proposal
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
@@ -88,7 +88,8 @@ class ProposalScreensTest {
         served: Boolean = true,
         failure: OperationFailure? = null,
         problem: OperationProblem? = null,
-        environment: PluginEnvironment = PluginEnvironment.Production,
+        previewable: Boolean = false,
+        previewed: Boolean = false,
     ): OperationReview =
         OperationReview(
             connectionId = CONNECTION,
@@ -96,7 +97,10 @@ class ProposalScreensTest {
             generation = 1,
             record = record(),
             standing = standing,
-            environment = environment,
+            // The network the signal declares, and the one its wallet is chosen for (SEE-185).
+            network = Network.NETWORK_MAINNET,
+            previewable = previewable,
+            previewed = previewed,
             form =
                 if (served) swapInputs(terms, SWAP_CAPABILITY)
                 else io.github.brrenat.seekervault.plugins.ParameterForm(),
@@ -147,17 +151,25 @@ class ProposalScreensTest {
         compose.onNodeWithTag(tag).assertIsDisplayed()
     }
 
-    private fun showReview(review: OperationReview) = compose.setContent {
+    private var previews = 0
+    private var walletChoices = 0
+
+    private fun showReview(
+        review: OperationReview,
+        wallet: SelectedWallet? =
+            SelectedWallet(
+                "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+                WalletNetwork.Mainnet,
+                selectedAt = now,
+            ),
+    ) = compose.setContent {
         SeekerTheme {
             ProposalReviewScreen(
                 review = review,
                 label = "A trader",
-                wallet =
-                    SelectedWallet(
-                        "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
-                        WalletNetwork.Mainnet,
-                        selectedAt = now,
-                    ),
+                wallet = wallet,
+                onPreview = { previews++ },
+                onChooseWallet = { walletChoices++ },
                 now = now,
                 onChoose = { key, value -> chosen += key to value },
                 onPrepare = { prepares++ },
@@ -418,26 +430,55 @@ class ProposalScreensTest {
     }
 
     @Test
-    fun aSandboxReviewSaysSoAndDoesNotOfferToApproveAnything() {
-        // SEE-97's "unmistakable", on the one screen where it matters: the owner is about to press
-        // a button, and a rehearsal and a purchase must not look the same.
-        showReview(review(prepared = true, environment = PluginEnvironment.Sandbox))
+    fun aPreviewIsOfferedBesideApprovalAndNeverInsteadOfIt() {
+        // SEE-185: preview or execution is the owner's choice for this one operation, made here.
+        showReview(review(prepared = true, previewable = true))
 
-        shown(OperationTags.SANDBOX)
-        compose.onNodeWithText(context.getString(R.string.operation_sandbox)).assertIsDisplayed()
         shown(OperationTags.APPROVE)
+        compose.onNodeWithText(context.getString(R.string.operation_approve)).assertIsDisplayed()
+        shown(OperationTags.PREVIEW)
         compose.onNodeWithText(context.getString(R.string.operation_simulate)).assertIsDisplayed()
-        compose.onNodeWithText(context.getString(R.string.operation_approve)).assertDoesNotExist()
+        compose.onNodeWithTag(OperationTags.PREVIEW).performClick()
+        assertEquals(1, previews)
+        assertEquals(0, approvals)
+        compose.onNodeWithTag(OperationTags.SANDBOX).assertDoesNotExist()
     }
 
     @Test
-    fun aProductionReviewSaysNothingAboutSandboxAndOffersToApprove() {
+    fun aProviderThatCannotPreviewIsOfferedOnlyTheRealThing() {
         showReview(review(prepared = true))
 
-        compose.onNodeWithTag(OperationTags.SANDBOX).assertDoesNotExist()
+        compose.onNodeWithTag(OperationTags.PREVIEW).assertDoesNotExist()
         shown(OperationTags.APPROVE)
         compose.onNodeWithText(context.getString(R.string.operation_approve)).assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.operation_simulate)).assertDoesNotExist()
+    }
+
+    @Test
+    fun aPreviewThatJustHappenedIsSaidFirst() {
+        showReview(review(previewable = true, previewed = true))
+
+        shown(OperationTags.PREVIEWED)
+        compose.onNodeWithText(context.getString(R.string.operation_previewed)).assertIsDisplayed()
+    }
+
+    @Test
+    fun theSignalsNetworkAndTheWalletChosenForItAreStatedBeforeAnythingIsPrepared() {
+        showReview(review())
+
+        shown(OperationTags.NETWORK)
+        shown(OperationTags.CHOOSE_WALLET)
+        compose.onNodeWithTag(OperationTags.CHOOSE_WALLET).performClick()
+        assertEquals(1, walletChoices)
+    }
+
+    @Test
+    fun withNoWalletOnTheSignalsNetworkTheOwnerIsAskedToChooseOneAndNothingCanBePrepared() {
+        showReview(review(), wallet = null)
+
+        shown(OperationTags.WALLET)
+        compose.onNodeWithTag(OperationTags.PREPARE).assertDoesNotExist()
+        shown(OperationTags.CHOOSE_WALLET)
     }
 
     @Test

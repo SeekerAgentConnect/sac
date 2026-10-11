@@ -53,4 +53,35 @@ public interface ActionCapabilityOrBuilder extends
    * <code>repeated .seekervault.request.v2.Value parameters = 4 [json_name = "parameters"];</code>
    */
   int getParametersCount();
+
+  /**
+   * <pre>
+   * The Solana network this action executes on (SEE-185). Required from contract version 2: the
+   * assets and markets a document names are identified by network plus address, so the same mint
+   * or market on another cluster is a different thing. One feed may publish successive documents
+   * for different networks, each within the manifest's supported_networks; a connection is never
+   * bound to one execution network. SOLANA_NETWORK_UNSPECIFIED, or a value a client does not know,
+   * leaves the document readable and not executable — never read as Mainnet or as the network of
+   * whichever wallet the owner selects.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.SolanaNetwork network = 5 [json_name = "network"];</code>
+   * @return The enum numeric value on the wire for network.
+   */
+  int getNetworkValue();
+  /**
+   * <pre>
+   * The Solana network this action executes on (SEE-185). Required from contract version 2: the
+   * assets and markets a document names are identified by network plus address, so the same mint
+   * or market on another cluster is a different thing. One feed may publish successive documents
+   * for different networks, each within the manifest's supported_networks; a connection is never
+   * bound to one execution network. SOLANA_NETWORK_UNSPECIFIED, or a value a client does not know,
+   * leaves the document readable and not executable — never read as Mainnet or as the network of
+   * whichever wallet the owner selects.
+   * </pre>
+   *
+   * <code>.seekervault.server.v1.SolanaNetwork network = 5 [json_name = "network"];</code>
+   * @return The network.
+   */
+  io.github.brrenat.seekervault.server.v1.SolanaNetwork getNetwork();
 }

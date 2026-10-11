@@ -12,7 +12,6 @@ func Environment() map[string]string {
 	return map[string]string{
 		"PUBLISHER_SERVER_ID":     ServerID,
 		"PUBLISHER_GATEWAY_URL":   "https://feeds.example.com",
-		"PUBLISHER_ENVIRONMENT":   "production",
 		"PUBLISHER_DATABASE_PATH": "/data/publisher.db",
 		"PUBLISHER_API_TOKEN":     strings.Repeat("t", 43),
 		"BROADCAST_CREDENTIAL":    strings.Repeat("c", 43),

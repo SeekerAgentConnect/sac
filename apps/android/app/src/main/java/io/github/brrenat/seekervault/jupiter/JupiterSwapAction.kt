@@ -61,8 +61,6 @@ internal class JupiterSwapAction(
     private val api: JupiterProvider,
     private val capability: ActionCapability,
     private val now: () -> Instant,
-    /** The build's SAC service fee (SEE-173). Off unless the APK was built with one. */
-    private val fee: SwapFeePolicy = SwapFeePolicy.Off,
     /**
      * Where a configured fee account is verified before it is used: the application's own endpoint
      * for the swap's network, the same one every other mainnet read uses (SEE-184).
@@ -96,8 +94,10 @@ internal class JupiterSwapAction(
                 is SwapChoiceResult.Invalid ->
                     throw PluginFailure(read.problem.code, read.problem.message)
             }
-        // The fee is decided before anything is quoted, from the build's policy and the chain,
-        // and then bound to the bytes with the quote: nothing later can change it (SEE-173).
+        // The fee is decided before anything is quoted, from the terms core handed this operation
+        // (the gateway's for a feed swap, none for a direct one) and the chain, and then bound to
+        // the bytes with the quote: nothing later can change it (SEE-173, SEE-185).
+        val fee = SwapFeePolicy.of(operation.serviceFee)
         val decided =
             if (fee.enabled && chain != null) {
                 decideSwapFee(fee, payload.outputMint, chain.on(wallet.network.network))

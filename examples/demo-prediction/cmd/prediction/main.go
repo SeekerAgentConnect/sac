@@ -73,19 +73,20 @@ func run(log *slog.Logger) error {
 	description := manifest.Settings{
 		ServerID:    settings.ServerID,
 		GatewayURL:  settings.GatewayURL,
-		Environment: settings.Environment,
 		Networks:    settings.Networks,
 		Requirement: kind.Requirement(),
 		DisplayName: settings.DisplayName,
 	}
 
+	// A setting this build ignores is said once, at startup, rather than refused: a deployment that
+	// still sets a retired variable is told it can delete the line (SEE-185).
+	for _, warning := range settings.Warnings {
+		log.Warn(warning)
+	}
+
 	documents, err := store.Open(settings.DatabasePath, store.Stamp{
-		ServerID: settings.ServerID,
-		// The word itself: what the file is stamped with is text, and the store compares it
-		// without knowing the vocabulary, so a file that holds anything else is refused and named
-		// rather than interpreted.
-		Environment: settings.Environment.String(),
-		GatewayURL:  settings.GatewayURL,
+		ServerID:   settings.ServerID,
+		GatewayURL: settings.GatewayURL,
 	})
 	if err != nil {
 		return fmt.Errorf("open %s: %w", settings.DatabasePath, err)
@@ -134,9 +135,12 @@ func run(log *slog.Logger) error {
 		Kind:      kind,
 		Filters:   predicting.Filters,
 		Deposit:   predicting.Deposit,
-		Note:      predicting.Note,
-		Log:       log,
-		Now:       time.Now,
+		// What the manifest declares, asked only whether it includes the network this template's
+		// signals name (discovery.Network). It never chooses that network (SEE-185).
+		Networks: settings.Networks,
+		Note:     predicting.Note,
+		Log:      log,
+		Now:      time.Now,
 		// A cycle that changed something asks the drainer for a pass. Publication stays one path,
 		// in one package, whoever asked for it (packages/publisher-support/publish).
 		Wake: drainer.Wake,
@@ -155,7 +159,8 @@ func run(log *slog.Logger) error {
 		"channel", signals.ChannelFor(settings.ServerID),
 		"gateway", settings.GatewayURL,
 		"publishing_to", settings.PublishURL,
-		"environment", settings.Environment,
+		"networks", settings.Networks,
+		"signal_network", discovery.Network,
 		"operation", kind.Operation(),
 		"plugin", kind.Requirement().PluginID,
 		"settings_revision", revision,

@@ -614,8 +614,6 @@ class ForegroundFeedManagerTest {
                         gatewayUrl = gateway,
                         channel = channelFor(serverId),
                     ),
-                environments =
-                    setOf(io.github.brrenat.seekervault.plugins.PluginEnvironment.Production),
             )
     }
 }

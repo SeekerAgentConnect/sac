@@ -10,10 +10,13 @@
  * (`integration/provider.ts`, serving this repository's committed captures) and the wallet, which
  * is a throwaway key pair producing the same Ed25519 signature a wallet app would.
  *
- * **Nothing here spends anything, reaches a network, or needs a credential.** Both deployments run
- * as sandbox, every address in the run is loopback, there is no wallet app for anything to reach,
- * and the provider stand-in serves no order, fill or settlement route at all — a template that
- * asked for one would be recorded asking for a path that does not exist, and would fail the run.
+ * **Nothing here spends anything, reaches a network, or needs a credential.** Every signal names
+ * Mainnet, as a real one must (SEE-185), but nothing in the run executes one: every address is
+ * loopback, there is no wallet app for anything to reach, and the provider stand-in serves no
+ * order, fill or settlement route at all — a template that asked for one would be recorded asking
+ * for a path that does not exist, and would fail the run. A publisher declares no sandbox or
+ * production environment any more; previewing an operation instead of executing it is the
+ * phone's choice, and that half is on the phone.
  *
  * What it cannot do is the phone: the Android client is another runtime, and its half of every
  * scenario below is under `apps/android/app/src/test` (`pnpm check:android`, and the cross-component
@@ -66,7 +69,6 @@ import {
   publish,
   publishctl,
   register,
-  run,
   startGateway,
   startTemplate,
   type Gateway,
@@ -106,6 +108,11 @@ const MESSAGE = "SEE-98: one request, answered to the agent that asked for it";
 /** The two mints a published swap signal names. Both are public facts and nobody's business. */
 const SOL = "So11111111111111111111111111111111111111112";
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+/**
+ * The network every signal in this run executes on (SEE-185). A signal must name one, and the
+ * gateway refuses one its manifest does not declare; both mints above are Mainnet's.
+ */
+const ON_MAINNET = ["--network", "mainnet"];
 
 let root: string;
 let gatewayDatabase: string;
@@ -212,6 +219,7 @@ before(async () => {
   swapProposal = created(
     await publish(BINARIES.publishctl, template(signals), [
       "create",
+      ...ON_MAINNET,
       "--in",
       "2h",
       "--note",
@@ -291,10 +299,10 @@ describe("what a phone reads from a feed", () => {
     assert.equal(manifest?.serverId, copytrading.id);
     assert.equal(manifest?.mode, "CONNECTION_MODE_GATEWAY_FEED");
     assert.equal(manifest?.protocolVersion, 1);
-    assert.deepEqual(manifest?.environments, ["SERVER_ENVIRONMENT_SANDBOX"]);
     assert.deepEqual(manifest?.feed, {
       gatewayUrl: gateway.origin,
       channel: channelFor(copytrading.id),
+      supportedNetworks: ["SOLANA_NETWORK_MAINNET"],
     });
     assert.deepEqual(manifest?.requiredPlugins, [
       { pluginId: "jupiter.swap", minContract: 1, maxContract: 1 },
@@ -560,6 +568,7 @@ describe("the transport", () => {
     const first = created(
       await publish(BINARIES.publishctl, template(signals), [
         "create",
+        ...ON_MAINNET,
         "--in",
         "2h",
         "--key",
@@ -574,6 +583,7 @@ describe("the transport", () => {
     const again = created(
       await publish(BINARIES.publishctl, template(signals), [
         "create",
+        ...ON_MAINNET,
         "--in",
         "2h",
         "--key",
@@ -604,6 +614,7 @@ describe("the transport", () => {
     const answer = JSON.parse(
       await publish(BINARIES.publishctl, template(signals), [
         "create",
+        ...ON_MAINNET,
         "--in",
         "3s",
         "--key",
@@ -888,49 +899,23 @@ describe("mixed mode: the owner's own sidecar, while two feeds are live", () => 
   });
 });
 
-describe("the two environments", () => {
-  it("published both deployments as sandbox, and say so in their own answers", async () => {
+describe("no environment", () => {
+  // Sandbox or production is no longer something a publisher declares (SEE-185): there is one
+  // feed, and whether an operation is only previewed is a choice the owner makes on the phone.
+  // The scenario this block used to hold — a production process refused on a sandbox database —
+  // has nothing left to express: neither the process nor its database has an environment.
+  it("is published by either deployment, in its manifest or in its own status", async () => {
     for (const server of [copytrading, prediction]) {
       const answered = await alice.manifest(server.id);
-      assert.deepEqual(answered.value.manifest?.environments, [
-        "SERVER_ENVIRONMENT_SANDBOX",
-      ]);
+      assert.ok(answered.ok, answered.text);
+      assert.doesNotMatch(answered.text, /environment|SANDBOX|PRODUCTION/i);
     }
     for (const which of [signals, markets]) {
       const status = JSON.parse(
         await publish(BINARIES.publishctl, template(which), ["status"]),
-      ) as { environment?: string };
-      assert.equal(status.environment, "sandbox");
+      ) as Record<string, unknown>;
+      assert.equal("environment" in status, false, JSON.stringify(status));
     }
-  });
-
-  it("refuses to start a production deployment on a sandbox database", async () => {
-    const tried = await run(
-      BINARIES.copytrading,
-      [],
-      {
-        ...deployment(copytrading, "copytrading", "copy trading, renamed"),
-        PUBLISHER_ENVIRONMENT: "production",
-        PUBLISHER_API_ADDRESS: "127.0.0.1:0",
-      },
-      // It must stop, and quickly: the check is the first thing `store.Open` does. Bounding the
-      // wait is what makes a deployment that wrongly kept running fail this rather than hang it.
-      15_000,
-    );
-    assert.equal(
-      tried.timedOut,
-      false,
-      "a production process kept running on a sandbox database",
-    );
-    assert.notEqual(
-      tried.code,
-      0,
-      "a production process opened a sandbox database",
-    );
-    assert.match(
-      `${tried.stdout}${tried.stderr}`,
-      /it is a sandbox database, and PUBLISHER_ENVIRONMENT is production/,
-    );
   });
 });
 
@@ -1047,7 +1032,7 @@ function deployment(
     PUBLISHER_SERVER_ID: server.id,
     PUBLISHER_GATEWAY_URL: gateway.origin,
     PUBLISHER_PUBLISH_URL: gateway.publishTo,
-    PUBLISHER_ENVIRONMENT: "sandbox",
+    PUBLISHER_SUPPORTED_NETWORKS: "mainnet",
     PUBLISHER_DATABASE_PATH: join(at, "publisher.db"),
     PUBLISHER_API_TOKEN: API_TOKEN,
     PUBLISHER_DISPLAY_NAME: name,

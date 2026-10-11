@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -222,7 +223,23 @@ func (s *Server) create(writer http.ResponseWriter, request *http.Request) {
 		s.redirectErr(writer, request, "the form could not be read")
 		return
 	}
-	_, err := s.api.create(createInput{
+	// The network is checked against the manifest's own list before the API is asked, so a
+	// tampered form is refused here; the API checks it again (SEE-185). Nothing is defaulted: a
+	// form that names no network publishes nothing.
+	feed, err := s.api.feed()
+	if err != nil {
+		s.creates.Undo("create:" + name)
+		s.redirectErr(writer, request, err.Error())
+		return
+	}
+	chosen := request.FormValue("network")
+	if !slices.Contains(feed.Networks, chosen) {
+		s.creates.Undo("create:" + name)
+		s.redirectErr(writer, request, "choose one of the Solana networks this publisher declares")
+		return
+	}
+	_, err = s.api.create(createInput{
+		Network:   chosen,
 		Pair:      request.FormValue("pair"),
 		Slippage:  request.FormValue("slippage"),
 		ExpiresIn: request.FormValue("expires"),
@@ -308,13 +325,13 @@ func (s *Server) renderHome(writer http.ResponseWriter, request *http.Request, n
 		fail = listErr.Error()
 	}
 	s.page(writer, http.StatusOK, homePage, homeView{
-		Path:        s.path,
-		Name:        name,
-		Message:     ok,
-		Error:       fail,
-		Reference:   feed.Reference,
-		Environment: feed.Environment,
-		Signals:     items,
+		Path:      s.path,
+		Name:      name,
+		Message:   ok,
+		Error:     fail,
+		Reference: feed.Reference,
+		Networks:  feed.Networks,
+		Signals:   items,
 	})
 }
 

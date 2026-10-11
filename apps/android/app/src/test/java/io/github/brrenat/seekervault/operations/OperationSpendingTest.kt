@@ -119,7 +119,7 @@ class OperationSpendingTest {
         }
         phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 7 }))
 
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
 
         val expected =
             ReviewedSpending.Outgoing(owner, Network.NETWORK_MAINNET, USDC_MINT, 6_000_000UL)
@@ -163,7 +163,7 @@ class OperationSpendingTest {
         // wallet app — and this approval queues behind it.
         val release = CompletableDeferred<Unit>()
         val other = launch(Dispatchers.Unconfined) { phone.wallet.withWallet { release.await() } }
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
         assertTrue(checkNotNull(model.review.value).sending)
 
         // While it waits, that transfer is recorded: 5 USDC from the same wallet, on the same day.
@@ -187,11 +187,11 @@ class OperationSpendingTest {
 
         // Going ahead now needs the owner's word for the new reason, and then the wallet is asked
         // exactly once.
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
         assertEquals(OperationProblem.NotAcknowledged, model.review.value?.problem)
         assertTrue(phone.adapter.sendings.isEmpty())
         model.acknowledge(true)
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
         assertEquals(1, phone.adapter.sendings.size)
         val record = phone.history.records.value.single { it.kind == ActivityKind.Operation }
         assertEquals(true, record.policy?.approvedAnyway)

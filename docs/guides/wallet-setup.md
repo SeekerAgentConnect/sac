@@ -16,7 +16,7 @@ If a screen, a page, or an agent ever asks you for one, it isn't part of this pr
 
 | | Where it goes |
 | --- | --- |
-| Each wallet profile's **address** (a public key) and **network** | Kept on the phone. A direct sidecar is told only the address and network of the profile **its own connection** uses, so its agents can read it. A feed is told nothing. |
+| Each wallet profile's **address** (a public key) and **network** | Kept on the phone. A direct sidecar is told only the address and network of the profile **its own connection** uses, so its agents can read it. A feed is told nothing; a restricted feed's publisher sees only the access wallet's address, in the proof you sign. |
 | Each wallet's **authorization** for this app | Kept on the phone only, encrypted, never backed up, never sent to a sidecar, a feed or a log. Every profile and the authorization it signs with are kept in one sealed record, so this phone can never hold one wallet's authorization beside another wallet's address. |
 | Your **seed phrase** or **private keys** | Never asked for, never seen, never stored |
 
@@ -30,7 +30,8 @@ on one Solana network — Mainnet, Devnet or Testnet:
 
 - **Different accounts** are different profiles, whether they are in one wallet app or several.
 - **The same address on another network** is another profile. "Main account on Mainnet" and "Main
-  account on Devnet" sit side by side, and each connection uses the one it was given.
+  account on Devnet" sit side by side, and each connection or feed operation uses the one it was
+  given.
 - **The same account, in the same wallet app, on the same network** is one profile. Connecting it
   again refreshes that profile rather than adding a duplicate, and every connection that uses it
   keeps using it.
@@ -38,8 +39,8 @@ on one Solana network — Mainnet, Devnet or Testnet:
 The **Wallet** tab lists them as cards, each with its network, account name and connection usage.
 Tap a card to expand it; opening one closes the previous card and reveals the full address, wallet
 app, date, and profile actions. There is no "active" wallet: a profile does nothing until a
-connection is given it
-([One wallet per connection](#one-wallet-per-connection)). How the phone stores and checks all of
+connection is given it ([One wallet per connection](#one-wallet-per-connection)) or it is chosen
+for a feed's operations on its network ([Feed operations](#feed-operations)). How the phone stores and checks all of
 this is in [`../wiki/wallet-profiles.md`](../wiki/wallet-profiles.md).
 
 ## 1. Open Seed Vault Wallet
@@ -93,20 +94,25 @@ On each profile:
 
 ## One wallet per connection
 
-Every connection — a paired sidecar or a feed — signs with **one** profile, chosen for it, and with
-nothing else. Two connections can use two different wallets at the same time, and several can share
-one.
+Every paired sidecar signs with **one** profile, chosen for it, and with nothing else. Two
+connections can use two different wallets at the same time, and several can share one. A feed is
+different since SEE-185: its signals are signed with the wallet chosen per operation for each
+signal's network ([Feed operations](#feed-operations)), and the profile a restricted feed is given
+here is only its **access wallet**.
 
-**Choosing it.** Right after you add a connection, the app opens its modal **Wallet** picker. Every
-saved profile remains visible. Profiles on a network the server does not support are disabled and
-explain why; choose a compatible one to enable **Use this wallet**. **Add a Mainnet wallet** (or the
-server's declared network) opens the same add-wallet sheet with that network already selected. A
-server that declared no network shows an orange explanation, allows any profile for its restricted
-feed access proof, and still cannot sign until it declares a network. Cancelling leaves every
-profile and connection as it was; you can choose later.
+**Choosing it.** Right after you pair a sidecar, or add a restricted feed, the app opens its modal
+**Wallet** picker. A public feed is added with no wallet and the picker does not open. Every saved
+profile remains visible. For a sidecar, profiles on a network the server does not support are
+disabled and explain why; choose a compatible one to enable **Use this wallet**. **Add a Mainnet
+wallet** (or the server's declared network) opens the same add-wallet sheet with that network
+already selected. A sidecar that declared no network shows an orange explanation and cannot sign
+until it declares one. For a restricted feed any profile may be chosen, because the access proof
+names no network. Cancelling leaves every profile and connection as it was; you can choose later.
 
 **Seeing it.** The connection's page has a **Wallet** row showing the profile it uses, with the full
-address, the wallet app and the network. Reviews and the wallet handoff name the same wallet app.
+address, the wallet app and the network. On a restricted feed the row is **Access wallet**: "Proves
+to this feed's publisher that you were approved. It signs no operation…". Reviews and the wallet
+handoff name the wallet app of the wallet that will sign.
 
 **Changing it** is the deliberate **Wallet** row on the connection's page, and it uses the same
 picker. Wallet-app selection belongs only to the add-wallet sheet. See
@@ -126,6 +132,45 @@ What the connection's Wallet row can say:
 A profile on a network the server doesn't list can't be chosen for it at all. Even a server that
 lists several networks may not support every action on each of them: the app still checks the
 specific action and provider when it prepares a review.
+
+## Feed operations
+
+A feed signal names the Solana network it executes on, and the wallet that executes it is chosen for
+that network, on the phone, per operation (SEE-185). There is no wallet "for the feed": one feed may
+send a Mainnet signal and a Devnet signal, and each uses a wallet on its own network.
+
+**What the review shows.** Beside the signal's terms, the review has a **Network** row
+("Mainnet · from this signal") and a **Wallet** row with the wallet that will be used. **Choose
+wallet** opens **Wallet for Mainnet** (or the signal's network) over the review: every saved profile
+is listed, and only authorized profiles on that network can be chosen. With no wallet on that
+network, the review says "No wallet on Mainnet is chosen for this feed" and offers **Connect a wallet
+on Mainnet**, which opens the add-wallet sheet with that network selected.
+
+**Which wallet is used.** In order:
+
+1. the wallet you last chose for **this feed on this network**, if it is still saved, authorized and
+   on that network;
+2. otherwise, if you never chose one, the only authorized profile you have on that network;
+3. otherwise none, and the review asks you to choose or connect one.
+
+A remembered choice that stops working (removed, reconnected, or on another network) chooses
+nothing. No other account is put in its place. Your choice is remembered per feed and per network on
+this phone (`files/feed-wallets/feed-wallets.json`), is never sent to the publisher or the gateway,
+and applies to that feed's next signal on the same network.
+
+**What changing it does.** Anything already prepared for the previous wallet — a quote, a
+transaction, a review waiting for approval — is dropped, and the signal is prepared again for the new
+one. The wallet is checked again inside the wallet lock just before it opens, so a choice that
+changed meanwhile signs nothing. Changing it never changes who may read the feed.
+
+**Access is separate.** A restricted feed's **Access wallet** is the address its publisher approved.
+It reads the feed and signs no operation: you can execute that feed's signals with another wallet,
+and changing either one leaves the other alone. A public feed needs no wallet at all to be added or
+read.
+
+**What can't be executed.** A signal that names no network (older feeds, or any document from before
+SEE-185), one the app doesn't know, or one the feed doesn't declare stays readable and says why, and
+nothing is prepared for it. The app never guesses its network from your wallet.
 
 ## 3. Check the address and the network
 
@@ -211,12 +256,12 @@ changes that connection alone:
   don't involve a wallet, such as the demo acknowledgements, are left alone. If the sidecar can't be
   reached, the choice is saved, it is retried, and nothing is signed for that connection until the
   sidecar confirms.
-- **A feed** is told nothing. Anything already prepared for the previous wallet — a quote, a
-  transaction, a review waiting for approval — is dropped, and signals are prepared again for the
-  new one. Nothing is signed with the old wallet.
-- **A restricted feed** keeps its access when the new profile has the same address, because access
-  belongs to the address. A different address asks the publisher for access again
-  ([restricted-feed-demo.md](restricted-feed-demo.md)).
+- **A feed's** operation wallet is not changed here: it is chosen in each signal's review, per
+  network ([Feed operations](#feed-operations)).
+- **A restricted feed's** access wallet is changed here. The feed keeps its access when the new
+  profile has the same address, because access belongs to the address. A different address asks the
+  publisher for access again ([restricted-feed-demo.md](restricted-feed-demo.md)). No operation
+  moves.
 
 Approvals go to the new profile's wallet app. Adding, renaming or reconnecting a profile never
 changes a connection's wallet, tells no sidecar anything, and cancels nothing.

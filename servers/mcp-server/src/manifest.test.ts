@@ -18,7 +18,6 @@ import {
 
 import {
   ConnectionMode,
-  ServerEnvironment,
   ServerManifestSchema,
   SolanaNetwork,
 } from "@seekeragentconnect/server-sdk/protocol";
@@ -145,7 +144,6 @@ describe("the server manifest", () => {
     // An acknowledgement, a message signature and a transfer are the app's own actions, so this
     // server asks for nothing to be installed. It also claims no name of its own.
     assert.deepEqual(manifest.requiredPlugins, []);
-    assert.deepEqual(manifest.environments, [ServerEnvironment.PRODUCTION]);
     assert.equal(manifest.displayName, "");
   });
 

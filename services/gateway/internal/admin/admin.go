@@ -74,6 +74,9 @@ type Store interface {
 	storage.PublisherAdminStore
 	Manifest(context.Context, string) (*storage.StoredManifest, error)
 	Sequence(context.Context, string) (uint64, error)
+	// ClientConfig is the gateway-wide client configuration (SEE-185), which this surface shows and
+	// replaces through PublisherAdminStore.SaveClientConfig.
+	ClientConfig(context.Context) (*storage.StoredClientConfig, error)
 	// RelayStatus is the aggregate a relay server's page shows. It is counts and instants by
 	// construction: there is no query behind it that could return a device target, a push handle
 	// or an installation identity, so this surface cannot show one by accident (SEE-144).
@@ -172,6 +175,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST "+at+"/servers/{server}/rotate", s.guarded(s.rotateCredential))
 	mux.HandleFunc("POST "+at+"/servers/{server}/revoke", s.guarded(s.revokeCredential))
 	mux.HandleFunc("POST "+at+"/servers/{server}/forget", s.guarded(s.forgetServer))
+	mux.HandleFunc("GET "+at+"/client-config", s.guarded(s.showClientConfig))
+	mux.HandleFunc("POST "+at+"/client-config/rpc", s.guarded(s.saveRPC))
+	mux.HandleFunc("POST "+at+"/client-config/fee", s.guarded(s.saveFee))
 	mux.HandleFunc("GET "+at+"/assets/{file}", s.serveAsset)
 	return mux
 }

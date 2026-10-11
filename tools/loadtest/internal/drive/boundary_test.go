@@ -201,24 +201,10 @@ func TestOnlyThePushStandInMakesAKey(t *testing.T) {
 	}
 }
 
-// A publisher a run creates promises sandbox, always. A phone that somehow read one of these feeds
-// must never be told it is looking at a production publisher (SEE-97).
-func TestEveryPublisherItCreatesIsSandbox(t *testing.T) {
-	documents := NewSynthetic(ID("boundary"), "http://127.0.0.1:8090", 512, 1)
-	manifest := documents.Manifest(1, "load test")
-	environments := manifest.GetEnvironments()
-	if len(environments) != 1 || environments[0].String() != "SERVER_ENVIRONMENT_SANDBOX" {
-		t.Fatalf("a synthetic manifest promises %v", environments)
-	}
-	for name, contents := range code(t) {
-		if strings.Contains(contents, "SERVER_ENVIRONMENT_PRODUCTION") {
-			t.Errorf("%s names the production environment", name)
-		}
-	}
-}
-
-// And it declares no Solana network (SEE-174): nothing a run publishes is meant to reach a wallet,
-// and a phone signs nothing for a feed that names no network.
+// A publisher a run creates declares no Solana network (SEE-174): nothing a run publishes is meant
+// to reach a wallet, and a phone signs nothing for a feed that names no network. Its proposals are
+// the protocol-1 kind, which carry no network at all, so since SEE-185 a phone never executes one
+// either way — there is no environment label left to promise sandbox with, and none is needed.
 func TestEveryPublisherItCreatesDeclaresNoNetwork(t *testing.T) {
 	documents := NewSynthetic(ID("boundary"), "http://127.0.0.1:8090", 512, 1)
 	if networks := documents.Manifest(1, "load test").GetFeed().GetSupportedNetworks(); len(networks) != 0 {

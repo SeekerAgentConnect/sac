@@ -57,9 +57,11 @@ import (
 	"fmt"
 	"time"
 
+	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+	"google.golang.org/protobuf/proto"
 )
 
 // Version is the schema this build writes and reads. A database written by a later version is
@@ -69,7 +71,7 @@ import (
 // The lineage is this implementation's own and starts at 1. It is not SQLite's version 5 renamed:
 // nothing has ever migrated between the two, and a Postgres database is created at the shape the
 // current release needs rather than by replaying five years of somebody else's history.
-const Version = 4
+const Version = 5
 
 // Schema is the namespace every statement in this package qualifies. It is deliberately not
 // public: see the package comment.
@@ -237,6 +239,11 @@ func (s *Store) migrate(ctx context.Context) error {
 				migration = schemaV3
 			case 4:
 				migration = schemaV4
+			case 5:
+				if err := retireEnvironments(ctx, tx.tx); err != nil {
+					return fmt.Errorf("retire manifest environments: %w", err)
+				}
+				migration = schemaV5
 			}
 			if _, err := tx.tx.ExecContext(ctx, migration); err != nil {
 				return fmt.Errorf("apply schema version %d: %w", version+1, err)
@@ -417,6 +424,75 @@ const schemaV4 = `
 ALTER TABLE ` + Schema + `.publisher ADD COLUMN show_in_recommendations BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE ` + Schema + `.publisher ADD COLUMN public_description TEXT NOT NULL DEFAULT '';
 `
+
+// schemaV5 is the operator's client configuration (SEE-185), the same single-row table the SQLite
+// store adds at its version 9, where the reasoning is written out: one row by construction, the
+// canonical document without its revision, and the revision as the column. It is operator
+// configuration served to anyone — nothing about a subscriber, a device or a publisher, and nothing
+// secret — and it is sealed like every other table here, so the publishable key reads no row of it
+// either. The version also retires the environments stored manifests still carry
+// (retireEnvironments).
+const schemaV5 = `
+CREATE TABLE ` + Schema + `.client_config (
+  singleton     BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+  revision      BIGINT NOT NULL,
+  document      BYTEA NOT NULL,
+  updated_at_ms BIGINT NOT NULL
+);
+
+ALTER TABLE ` + Schema + `.client_config ENABLE ROW LEVEL SECURITY;
+`
+
+// retireEnvironments removes the environments field (ServerManifest field 6, reserved since SEE-185)
+// from every manifest the gateway holds, for the reason the SQLite store's migration of the same
+// name gives: a field the contract no longer has would otherwise be served as an unknown field and
+// turn a publisher's identical republication into a revision conflict. Every stored manifest was
+// rebuilt by rules.Manifest, so field 6 is the only unknown field one can hold.
+func retireEnvironments(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `SELECT server_id, document FROM `+Schema+`.manifest`)
+	if err != nil {
+		return err
+	}
+	rewritten := map[string][]byte{}
+	for rows.Next() {
+		var serverID string
+		var document []byte
+		if err := rows.Scan(&serverID, &document); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		var manifest serverv1.ServerManifest
+		if err := proto.Unmarshal(document, &manifest); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("decode manifest for %s: %w", serverID, err)
+		}
+		if len(manifest.ProtoReflect().GetUnknown()) == 0 {
+			continue
+		}
+		manifest.ProtoReflect().SetUnknown(nil)
+		cleaned, err := proto.Marshal(&manifest)
+		if err != nil {
+			_ = rows.Close()
+			return err
+		}
+		rewritten[serverID] = cleaned
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for serverID, document := range rewritten {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE `+Schema+`.manifest SET document = $1 WHERE server_id = $2`,
+			document, serverID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func milliseconds(at time.Time) int64 { return at.UTC().UnixMilli() }
 
