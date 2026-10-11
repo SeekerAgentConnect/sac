@@ -21,6 +21,7 @@ import io.github.brrenat.seekervault.operations.OperationViewModel
 import io.github.brrenat.seekervault.policy.GlobalPolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.positions.PositionsViewModel
+import io.github.brrenat.seekervault.rpc.RpcSettingsViewModel
 import io.github.brrenat.seekervault.wallet.WalletViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,6 +79,15 @@ class MainActivity : ComponentActivity() {
     }
 
     /** The Discover tab's catalog (SEE-176): reads only, from the build's configured gateway. */
+    private val rpcSettings: RpcSettingsViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                val app = application as SeekerVaultApplication
+                RpcSettingsViewModel(app.rpc, io = app.connectionIo)
+            }
+        }
+    }
+
     private val discover: DiscoverViewModel by viewModels {
         viewModelFactory {
             initializer {
@@ -101,7 +111,7 @@ class MainActivity : ComponentActivity() {
                     app.policyEvaluator,
                     app.activityLog,
                     plugins = app.providerRegistry,
-                    chain = app.solanaAccounts(),
+                    chain = app.rpc,
                     io = app.connectionIo,
                 )
             }
@@ -207,6 +217,7 @@ class MainActivity : ComponentActivity() {
                     arrivals = (application as SeekerVaultApplication).arrivals,
                     discover = discover,
                     discoveryUrl = (application as SeekerVaultApplication).discoveryUrl(),
+                    rpcSettings = rpcSettings,
                 )
             }
         }

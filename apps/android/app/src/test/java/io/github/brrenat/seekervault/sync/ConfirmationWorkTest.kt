@@ -19,13 +19,13 @@ import io.github.brrenat.seekervault.activity.CONNECTION
 import io.github.brrenat.seekervault.activity.REQUEST
 import io.github.brrenat.seekervault.activity.WALLET
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
-import io.github.brrenat.seekervault.confirmations.ChainEndpoints
 import io.github.brrenat.seekervault.confirmations.ConfirmationTracker
 import io.github.brrenat.seekervault.confirmations.Submission
 import io.github.brrenat.seekervault.confirmations.TrackingOrigin
 import io.github.brrenat.seekervault.confirmations.storage.TrackingStore
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.rpc.testRpc
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -172,7 +172,7 @@ class ConfirmationWorkTest {
         ConfirmationTracker(
             TrackingStore(File(folder.root, "confirmations")),
             ActivityLog(ActivityStore(File(folder.root, "activity"))),
-            ChainEndpoints(emptyList()) { error("no chain in this test") },
+            testRpc(File(folder.root, "rpc")) { error("no chain in this test") },
         ) {
             now
         }

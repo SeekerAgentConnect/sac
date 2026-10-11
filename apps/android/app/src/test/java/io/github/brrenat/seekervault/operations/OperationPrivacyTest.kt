@@ -27,6 +27,7 @@ import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.proposal
 import io.github.brrenat.seekervault.requests.commonEnvelope
+import io.github.brrenat.seekervault.rpc.serving
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.PluginRequirement
 import io.github.brrenat.seekervault.servers.SERVER_B
@@ -365,7 +366,7 @@ class OperationPrivacyTest {
             JupiterExecutionProvider(
                 HttpJupiterProvider(OkHttpClient(), providerUrl),
                 HttpJupiterPrediction(OkHttpClient(), providerUrl),
-                OrderChain(),
+                OrderChain().serving(),
             ) {
                 clock
             }

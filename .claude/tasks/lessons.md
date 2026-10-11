@@ -515,3 +515,16 @@
   five tabs are peers. Don't parameterise what a peer screen may hide in the bar; if a screen truly
   needs different chrome, it is a different scaffold (`DetailScreenScaffold`), and each tab's
   screen test asserts the full tab list.
+
+## One route per network (SEE-184)
+
+- **A text-scanning boundary test sees names, not meanings.** `WalletTags.SOLANA_RPC` — a test tag —
+  tripped `StageBoundaryTest`'s "only the composition root names `SOLANA_RPC`" check. The check was
+  right to be blunt; the fix was renaming the tag (`RPC_SETTINGS`), not loosening the scan. Before
+  naming a constant after a build field, grep the boundary tests for that word.
+- **Two reads in flight together may each prove an endpoint once.** The genesis cache has no
+  single-flight, so concurrent first reads can each ask `getGenesisHash`. Assert "later reads don't
+  ask again", not "asked exactly once", unless the code really serialises the proof.
+- **Precedence is a selection, not a failover.** The old confirmation code fell through to the
+  general endpoint when a per-cluster one failed. With an owner-chosen endpoint that would quietly
+  read through something the owner didn't pick; report the chosen endpoint's failure instead.

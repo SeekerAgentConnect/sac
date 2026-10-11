@@ -17,8 +17,6 @@ import io.github.brrenat.seekervault.access.OkHttpFeedAccessApi
 import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
-import io.github.brrenat.seekervault.confirmations.ChainEndpoint
-import io.github.brrenat.seekervault.confirmations.ChainEndpoints
 import io.github.brrenat.seekervault.confirmations.ConfirmationTracker
 import io.github.brrenat.seekervault.confirmations.HttpChainReader
 import io.github.brrenat.seekervault.confirmations.storage.TrackingStore
@@ -67,8 +65,10 @@ import io.github.brrenat.seekervault.push.RelayClient
 import io.github.brrenat.seekervault.push.RelayRegistrationManager
 import io.github.brrenat.seekervault.push.storage.RelayStore
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.rpc.RpcDefaults
+import io.github.brrenat.seekervault.rpc.SolanaRpc
+import io.github.brrenat.seekervault.rpc.storage.RpcSettingsStore
 import io.github.brrenat.seekervault.solana.HttpSolanaAccounts
-import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.sync.BackgroundSyncScheduler
 import io.github.brrenat.seekervault.sync.ConfirmationScheduler
 import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
@@ -239,7 +239,7 @@ class SeekerVaultApplication : Application() {
             JupiterExecutionProvider(
                 swapApi = HttpJupiterProvider(httpClient),
                 predictionApi = HttpJupiterPrediction(httpClient),
-                chain = solanaAccounts(),
+                chain = rpc,
                 // The build's SAC service fee, off unless this APK was built with one (SEE-173,
                 // docs/development/swap-fee-config.md). Public addresses and a rate, nothing else.
                 swapFee =
@@ -253,43 +253,46 @@ class SeekerVaultApplication : Application() {
     }
 
     /**
-     * Where the app reads accounts from the chain (SEE-94).
+     * Where this phone asks each Solana network (SEE-184, docs/wiki/solana-rpc.md): the one
+     * resolver behind every on-device chain read — the account reads that verify a transaction
+     * before it is signed, and the reads that follow it afterwards.
      *
-     * It exists for one purpose — resolving the address lookup tables a prediction order's
-     * transaction names, without which the phone cannot see what it would be signing — and it is
-     * **the application's endpoint, never a publisher's**: nothing in a manifest, a proposal or a
-     * provider's answer can set it. A build with none configured prepares no order and says so
-     * (`BuildConfig.SOLANA_RPC`, docs/wiki/jupiter-prediction.md#why-the-phone-reads-the-chain).
+     * For each network, the owner's own setting, else this build's endpoint for that network, else
+     * this build's general one (`BuildConfig.SOLANA_RPC`), which must prove the network by its
+     * genesis hash before it is used for it. All three are the **application's**: nothing in a
+     * manifest, a proposal or a provider's answer can set them. A change made in the settings sheet
+     * applies at once, here and in background work, without a restart. Tests replace it.
      */
-    var solanaAccounts: () -> SolanaAccounts = {
-        HttpSolanaAccounts(httpClient, BuildConfig.SOLANA_RPC)
+    var solanaRpc: () -> SolanaRpc = {
+        SolanaRpc(
+            store = RpcSettingsStore(File(filesDir, "rpc")),
+            defaults =
+                RpcDefaults(
+                    perNetwork =
+                        mapOf(
+                            Network.NETWORK_MAINNET to BuildConfig.SOLANA_RPC_MAINNET,
+                            Network.NETWORK_DEVNET to BuildConfig.SOLANA_RPC_DEVNET,
+                            Network.NETWORK_TESTNET to BuildConfig.SOLANA_RPC_TESTNET,
+                        ),
+                    general = BuildConfig.SOLANA_RPC,
+                    // A local test validator, explicitly configured, in a debug build only.
+                    allowLocalValidator = BuildConfig.DEBUG,
+                    allowCleartext = BuildConfig.DEBUG,
+                ),
+            reader = { url -> HttpChainReader(httpClient, url) },
+            accounts = { url -> HttpSolanaAccounts(httpClient, url) },
+        )
     }
 
     /**
-     * Where the phone asks about its own sent transactions (SEE-165,
-     * docs/wiki/chain-confirmation.md#endpoints): the per-cluster endpoints this build was
-     * configured with, and the general one, each used for a cluster only once its genesis hash says
-     * it serves it. Like [solanaAccounts], it is the application's and never a server's. Tests
-     * replace it with a fake chain.
+     * The process's one resolver. Account reads (SEE-94) and confirmation reads (SEE-165) both go
+     * through it, so a cluster's verification and its confirmations always reach the same proven
+     * endpoint.
      */
-    var chainEndpoints: () -> ChainEndpoints = {
-        ChainEndpoints(
-            listOf(
-                ChainEndpoint(BuildConfig.SOLANA_RPC_MAINNET, Network.NETWORK_MAINNET),
-                ChainEndpoint(
-                    BuildConfig.SOLANA_RPC_DEVNET,
-                    Network.NETWORK_DEVNET,
-                    allowUnknownGenesis = BuildConfig.DEBUG,
-                ),
-                ChainEndpoint(
-                    BuildConfig.SOLANA_RPC_TESTNET,
-                    Network.NETWORK_TESTNET,
-                    allowUnknownGenesis = BuildConfig.DEBUG,
-                ),
-                ChainEndpoint(BuildConfig.SOLANA_RPC, network = null),
-            )
-        ) { url ->
-            HttpChainReader(httpClient, url)
+    val rpc: SolanaRpc by lazy {
+        solanaRpc().also { rpc ->
+            // A repaired endpoint resumes that network's waiting checks, and only that network's.
+            rpc.onChange { network -> confirmations.endpointChanged(network) }
         }
     }
 
@@ -302,7 +305,7 @@ class SeekerVaultApplication : Application() {
         ConfirmationTracker(
                 store = TrackingStore(File(filesDir, "confirmations")),
                 history = activityLog,
-                endpoints = chainEndpoints(),
+                endpoints = rpc,
             )
             .also { tracker -> activityLog.onClear(tracker::clear) }
     }
@@ -366,10 +369,7 @@ class SeekerVaultApplication : Application() {
                 tracking = confirmations,
                 chainChecks = { confirmations.checks.value },
                 io = connectionIo,
-                chain =
-                    chainEndpoints().let { endpoints ->
-                        { network -> endpoints.readerFor(network) }
-                    },
+                chain = { network -> rpc.readerFor(network) },
             )
             .also { tracker -> activityLog.onClear(tracker::clear) }
     }

@@ -27,14 +27,14 @@ recipient. The phone reads them from `BuildConfig` only.
 | `seekervault.swapFee.bps` | `SEEKERVAULT_SWAP_FEE_BPS` | `0` | Whole basis points of the swap's output: `0`–`100` (1%). `20` = 0.2%. `0` turns the fee off. |
 | `seekervault.swapFee.owner` | `SEEKERVAULT_SWAP_FEE_OWNER` | empty | The public wallet address that owns every receiving token account. |
 | `seekervault.swapFee.accounts` | `SEEKERVAULT_SWAP_FEE_ACCOUNTS` | empty | Comma-separated `<mint>=<token account>` pairs: the account that receives the fee **in that mint**. |
-| `seekervault.solanaRpc` | — | empty | The app's read-only Solana endpoint. **Required when the rate is not zero**: the phone reads each fee account through it before using it. The full URL is embedded in and extractable from the APK; use only a public endpoint or an intentionally client-distributed, appropriately limited key. |
+| `seekervault.solanaRpc.mainnet` (or the legacy `seekervault.solanaRpc`) | `SEEKERVAULT_SOLANA_RPC_MAINNET` (release workflow) | empty | The app's read-only mainnet endpoint. **One of the two is required when the rate is not zero**: the phone reads each fee account through it before using it, through the same resolver as every other mainnet read ([solana-rpc.md](../wiki/solana-rpc.md)); the owner can later replace it on the phone. The general one is used only once it proves it is mainnet. The full URL is embedded in and extractable from the APK; use only a public endpoint or an intentionally client-distributed, appropriately limited key. |
 
 **Precedence.** A Gradle property (`-P…`, `gradle.properties`, or `ORG_GRADLE_PROJECT_…`) wins over
 its environment variable; an empty value counts as unset.
 
 **Bounds and validation, at configuration time.** The build fails with `Invalid SAC swap fee
 configuration: …` when the rate is not a whole number from 0 to 100; when a nonzero rate has no
-owner, no accounts or no `seekervault.solanaRpc`; when any address is not a base58 public key; when
+owner, no accounts, or neither `seekervault.solanaRpc.mainnet` nor `seekervault.solanaRpc`; when any address is not a base58 public key; when
 an entry is not `mint=account`; when a mint is listed twice; or when an account is the owner wallet
 itself or the mint itself. Anything set is validated even at rate 0, so a half-finished setting is
 caught early. The program's own field would accept up to 255 bps; the app's bound is 100.
@@ -78,7 +78,7 @@ A fee-enabled APK (placeholders — substitute your own public values):
 
 ```bash
 apps/android/gradlew -p apps/android :app:assembleRelease \
-  -Pseekervault.solanaRpc=https://<your-mainnet-rpc> \
+  -Pseekervault.solanaRpc.mainnet=https://<your-mainnet-rpc> \
   -Pseekervault.swapFee.bps=20 \
   -Pseekervault.swapFee.owner=<FEE_WALLET> \
   -Pseekervault.swapFee.accounts=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v=<FEE_USDC_ACCOUNT>,So11111111111111111111111111111111111111112=<FEE_WSOL_ACCOUNT>
@@ -90,7 +90,7 @@ The same with environment variables (CI):
 export SEEKERVAULT_SWAP_FEE_BPS=20
 export SEEKERVAULT_SWAP_FEE_OWNER=<FEE_WALLET>
 export SEEKERVAULT_SWAP_FEE_ACCOUNTS=<MINT>=<ACCOUNT>,<MINT>=<ACCOUNT>
-apps/android/gradlew -p apps/android :app:assembleRelease -Pseekervault.solanaRpc=https://<your-mainnet-rpc>
+apps/android/gradlew -p apps/android :app:assembleRelease -Pseekervault.solanaRpc.mainnet=https://<your-mainnet-rpc>
 ```
 
 An explicit zero-fee build, overriding anything in the environment:
@@ -100,15 +100,16 @@ apps/android/gradlew -p apps/android :app:assembleRelease -Pseekervault.swapFee.
 ```
 
 `BuildConfig.SWAP_FEE_BPS`, `SWAP_FEE_OWNER` and `SWAP_FEE_ACCOUNTS` carry the validated, normalized
-values (owner and accounts are empty whenever the rate is 0). `BuildConfig.SOLANA_RPC` carries the
-complete RPC URL, including any query or path key, so treating that URL as a CI secret does not keep
+values (owner and accounts are empty whenever the rate is 0). `BuildConfig.SOLANA_RPC_MAINNET` (and
+`SOLANA_RPC`) carry the complete RPC URL, including any query or path key, so treating that URL as a CI secret does not keep
 it secret from APK recipients.
 
 **CI.** `.github/workflows/release.yml` builds the official APK for an `android-vX.Y.Z` tag. It
 reads `SEEKERVAULT_SWAP_FEE_BPS`, `SEEKERVAULT_SWAP_FEE_OWNER` and `SEEKERVAULT_SWAP_FEE_ACCOUNTS`
 from **repository variables** (public values, not secrets; unset means no fee) and the Solana
-endpoint from the `SEEKERVAULT_SOLANA_RPC` **repository variable** (with the per-network
-`SEEKERVAULT_SOLANA_RPC_MAINNET`/`_DEVNET`/`_TESTNET` beside it). Like the rest of the client
+endpoints from the `SEEKERVAULT_SOLANA_RPC_MAINNET`/`_DEVNET`/`_TESTNET` **repository variables**
+(the legacy general `SEEKERVAULT_SOLANA_RPC` still works, and is no longer needed beside a mainnet
+one). Like the rest of the client
 configuration, that endpoint is extractable from the APK: set it only to a public endpoint or a
 client key that is intended for distribution and has suitable limits. Do not put a provider key
 that must remain secret there. The workflow records the fee configuration in the run summary,

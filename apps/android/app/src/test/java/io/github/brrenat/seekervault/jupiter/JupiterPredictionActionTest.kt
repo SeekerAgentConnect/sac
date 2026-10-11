@@ -21,6 +21,7 @@ import io.github.brrenat.seekervault.plugins.actions.PredictionPayloadResult
 import io.github.brrenat.seekervault.plugins.actions.PredictionTermNames
 import io.github.brrenat.seekervault.plugins.actions.predictionPayloadFrom
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.rpc.serving
 import io.github.brrenat.seekervault.solana.SolanaProblem
 import io.github.brrenat.seekervault.transactions.Verdict
 import io.github.brrenat.seekervault.wallet.SelectedWallet
@@ -71,7 +72,7 @@ class JupiterPredictionActionTest {
     }
 
     private fun plugin(at: Instant = Instant.ofEpochSecond(2_000)) =
-        JupiterExecutionProvider(NoSwaps, provider, chain) { at }
+        JupiterExecutionProvider(NoSwaps, provider, chain.serving()) { at }
 
     /** A swap API that is never reached: these cases are all about the other action. */
     private object NoSwaps : JupiterProvider {
@@ -508,7 +509,9 @@ class JupiterPredictionActionTest {
         val mine = plugin()
         val theirApi = FakePrediction()
         val theirs =
-            JupiterExecutionProvider(NoSwaps, theirApi, chain) { Instant.ofEpochSecond(2_000) }
+            JupiterExecutionProvider(NoSwaps, theirApi, chain.serving()) {
+                Instant.ofEpochSecond(2_000)
+            }
         val second = "7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDpvcMwJeK"
 
         val one = runBlocking { mine.prepare(subject(), chose(yes = true, stake = 5_000_000UL)) }
