@@ -34,7 +34,7 @@ because they have the same words in their titles.
 
 | | What it does |
 | --- | --- |
-| `capabilities` | Who it is, which actions it serves, at which schema versions, on which Solana clusters, in which environments, in which assets and within which limits |
+| `capabilities` | Who it is, which actions it serves, at which schema versions, on which Solana clusters, whether it can execute them, preview them or both, in which assets and within which limits |
 | `inputs` | What the owner has to choose. Reaches nothing and cannot fail, so a review opens with its fields already on it |
 | `resolve` | What the provider says about the action *now* — a market's state, tightened constraints. A read, and nothing else. It suspends, so it may be superseded: see [below](#a-read-answers-the-review-that-asked) |
 | `prepare` | Builds the operation for the owner's explicit choice, and returns the exact bytes that would be signed |
@@ -43,8 +43,9 @@ because they have the same words in their titles.
 | `status` | Optional, and answered honestly. See [below](#the-status-query-nothing-polls) |
 
 What a provider is **not** given is the point of the interface. It receives an `ActionOperation`:
-the action, its own identity, the environment, the cluster the owner's wallet is selected for, the
-typed payload, and the wallet's public address. No credential, no wallet authorization token, no
+the action, its own identity, whether it is executed or previewed, the cluster it runs on (for a
+feed signal, the network the signal declares), the typed payload, the wallet's public address, and
+the SAC fee terms core decided for it (`serviceFee`, [client-config.md](client-config.md)). No credential, no wallet authorization token, no
 way to reach a sidecar, and no means of approving or sending anything. It hands back bytes and a
 reading of them, and the owner's hand on the wallet is still the only thing that executes either.
 
@@ -89,39 +90,44 @@ a refusal rather than a licence to pick one.
 | `ActionUnsupported` | That provider does not do this at all |
 | `SchemaUnsupported` | Not at this version of the action's payload |
 | `NetworkUnsupported` | Not on the cluster the owner's wallet is selected for |
-| `EnvironmentUnsupported` | Not in the environment this connection keeps |
+| `EnvironmentUnsupported` | It can't be executed by this provider (a preview it can't serve is simply not offered) |
 | `AssetUnsupported` | Not in the asset the document names |
 | `NameMismatch` | It names a legacy capability that was published for something else |
 
 Each is a different thing to be told, because the owner would do a different thing about each:
-update the app, connect a wallet on another cluster, switch the connection's environment, go back
+update the app, connect a wallet on the signal's cluster, go back
 to the publisher about a signal that disagrees with itself, or nothing at all. Every one of them happens **before anything is prepared**, and long before anything
 is signed.
 
-An owner with no wallet connected has no cluster yet, so `NETWORK_UNSPECIFIED` skips the cluster
-check: "you have not connected a wallet" is not "this venue does not serve your network". Preparing
-then fails with `no_wallet`, which is the plain way to say it, and the binding re-checks the cluster
-against the selected wallet on the far side of the wait.
+A feed signal's cluster is the network the signal declares (`action.network`, SEE-185), never the
+network of whichever wallet is selected. A signal that declares none this build can use is not
+resolved at all: it is readable and never executed (`ProposalStanding.NetworkUnusable`). An owner
+with no wallet chosen for that network still gets an honest cluster check; preparing then fails
+with `no_wallet`, and the binding re-checks that the wallet is on the signal's network on the far
+side of the wait.
 
 ## An environment is not a network
 
 A shared interface must not imply that a provider has a testnet, so the two are separate
 declarations and separate refusals:
 
-- `ProviderCapabilities.environments` is Sandbox and Production — **which promise is kept when the
-  owner approves** (SEE-97, [environments.md](environments.md)). A provider does the same work in
-  both; what stops in sandbox is core, at the wallet.
+- `ProviderCapabilities.environments` is Production and Sandbox: whether the provider can
+  **execute** an action, **preview** it, or both. Since SEE-185 a preview is the owner's choice per
+  operation (**Preview without sending**, [environments.md](environments.md)), offered only when the
+  provider serves Sandbox. A provider does the same work for both; what stops in a preview is core,
+  at the wallet.
 - `ActionCapability.networks` is the set of Solana clusters. Jupiter declares mainnet and only
-  mainnet, in both environments, because there is no devnet Jupiter and inventing one would be
-  worse than saying so.
+  mainnet, for execution and preview alike, because there is no devnet Jupiter and inventing one
+  would be worse than saying so.
 
-A provider with no devnet is not a provider with no sandbox, and telling an owner the wrong one of
-those would send them to change the wrong setting.
+A provider with no devnet is not a provider that can't preview, and telling an owner the wrong one
+of those would send them to do the wrong thing.
 
 ## What a review is bound to
 
 Before the wallet is opened, an `ExecutionBinding` pins the exact prepared bytes' hash, the
-proposal revision, the owner's choice, the wallet, the cluster, the environment, the boundary
+proposal revision, the owner's choice, the wallet (and, since SEE-185, the exact wallet profile),
+the cluster (which must be the signal's), whether it is an execution or a preview, the boundary
 contract, the preparation's own version — and, since SEE-145, **the execution provider, the action,
 the action's schema version and the instrument**. Any of them changing means the owner would be
 signing something other than what they reviewed, so each is refused by name:
@@ -234,7 +240,8 @@ drives the wallet ([prediction positions](prediction-positions.md)).
    nowhere else.
 2. **Declare what it promises.** A `ProviderCapabilities` with your `ExecutionProviderId`,
    `PROVIDER_CONTRACT`, one `ActionCapability` per action you serve (schema versions, Solana
-   clusters, accepted assets, limits), the environments you serve, `statusQueries`, and any
+   clusters, accepted assets, limits), whether you can serve a preview as well as an execution,
+`statusQueries`, and any
    bundled-plugin names you want manifests to be able to require. Declare only what is true: an
    overstated cluster or asset becomes a refusal from an API halfway through an order instead of a
    sentence on a screen.

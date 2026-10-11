@@ -351,8 +351,10 @@ routing field — the same distinction this guide already makes for a target.
 **Where it is sent.** `feed.<environment>.<server_id>`, and the phone is *told* the name rather
 than working it out: `FeedService.GetFeedTopics` answers it for the channels a phone holds feed
 references for. A name derived on both sides would drift into silence rather than into an error. The
-environment (`production` or `sandbox`) scopes every topic so one Firebase project can serve both
-kinds of deployment.
+deployment's topic label (`BROADCAST_PUSH_ENVIRONMENT`, `production` or `sandbox`) scopes every
+topic so one Firebase project can serve more than one deployment. It is only a label: since SEE-185 a
+manifest names no environment, and whether an operation is previewed or executed is the owner's
+choice on the phone.
 
 A topic name is public and proves nothing. Do not treat one as evidence of access: what arrives on
 it is the news that a public broadcast changed, with no document in it at all.
@@ -498,15 +500,17 @@ the internet keeps both halves of its publishing surface and both halves of its 
 
 ### Configure Android for it
 
-The app registers with **one** relay: the origin its build was given.
+The app registers with **one** relay: the trusted gateway its build was given (SEE-185), the same
+origin it reads feeds, the Discover catalog and its client configuration from
+([client-config.md](../wiki/client-config.md)).
 
 ```sh
 apps/android/gradlew -p apps/android :app:assembleDebug \
-  -Pseekervault.relayUrl=https://feeds.example.com
+  -Pseekervault.gatewayUrl=https://feeds.example.com
 ```
 
 Empty by default, and empty means the app enrolls with no relay at all — every other push path is
-unchanged. A server may *advertise* a relay over its authenticated connection, and the app ignores
+unchanged. (`-Pseekervault.relayUrl` is retired.) A server may *advertise* a relay over its authenticated connection, and the app ignores
 the advertisement unless it names exactly this origin. That rule is what stops an advertisement
 from being a way to collect device registrations: a server naming an address of its own gets
 nothing, because nothing is sent there.

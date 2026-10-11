@@ -47,7 +47,7 @@ This is the whole shape of the stage in one path, and the line in the middle of 
 flowchart TB
     subgraph publisher["the publisher — examples/demo-signals/ (SEE-95)"]
         Strategy["a trader, a script,<br>or a strategy engine"] -- "POST /v1/requests" --> Template["the template"]
-        Template -- "PublishProposal, once" --> Gateway
+        Template -- "PublishRequest, once" --> Gateway
     end
     Gateway["the feed gateway (SEE-90)"]
     subgraph phones["each owner's own phone (SEE-89, SEE-93)"]
@@ -69,18 +69,18 @@ A worked example, end to end, with nothing left out:
 1. **The gateway's operator registers the publisher.** `feed-gatewayctl register --server <uuid>`
    prints one credential, once. That is the only act that grants the ability to publish, and it has
    no network surface at all.
-2. **The template starts** with that credential, the gateway's origin, its own API token and an
-   environment (`production` or `sandbox`). It publishes its manifest — `protocol_version` 1, mode
-   `gateway_feed`, `required_plugins: [jupiter.swap 1..1]`, one environment, its channel with
-   `supported_networks: [mainnet]` — and
+2. **The template starts** with that credential, the gateway's origin and its own API token. It
+   publishes its manifest — `protocol_version` 1, mode `gateway_feed`,
+   `required_plugins: [jupiter.swap 1..1]`, its channel with `supported_networks: [mainnet]` — and
    prints the one line a subscriber needs:
    `seekervault://feed?v=1&gateway=…&server=…`. That reference carries no secret, so it can go in a
    README or a QR code.
 3. **The trader publishes a signal**, through the CLI or with `curl`:
-   `{"expires_at": "…", "note": "trimming SOL into USDC on the bounce", "terms": {"input_mint":
+   `{"network": "mainnet", "expires_at": "…", "note": "trimming SOL into USDC on the bounce", "terms": {"input_mint":
    "So111…112", "input_decimals": "9", "output_mint": "EPjF…Dt1v", "output_decimals": "6",
    "max_slippage_bps": "50"}}`. The template validates it by the phone's own rules, mints a
-   proposal ID and revision 1, stores it, and publishes it once.
+   proposal ID and revision 1, stores it, and publishes it once as a request contract 2 document
+   whose action names `mainnet`.
 4. **Two owners add the feed** by scanning or pasting the reference. Each phone reads the manifest,
    checks that it carries `jupiter.swap` within a contract range the build supports, and starts
    reading the channel. Both read the identical document.
@@ -184,39 +184,45 @@ become a publication loop. The manifest is the one exception — a start is a de
 clears the manifest's refusal and tries once, because a publisher whose manifest is not there is a
 publisher nobody can subscribe to at all.
 
-## Sandbox and production are separate deployments
+## One deployment, for previews and executions alike
 
-The environment is one setting with no default, it is the single value in the manifest's
-`environments`, and **the database is stamped with it**. Opening a production file with a sandbox
-configuration is refused at startup, as is opening another publisher's file — because the way these
-get mixed up is not a typo in an argument, it is a copied compose file pointed at a volume that
-already exists.
+A deployment is no longer sandbox or production (SEE-185). Whether an owner previews a signal or
+executes it is their choice on the phone, one operation at a time
+([environments.md](environments.md)), so the template has nothing to declare about it and one
+deployment serves both. `PUBLISHER_ENVIRONMENT` is retired: a deployment that still sets it starts
+and logs one line saying it is ignored. The database no longer carries an environment stamp — store
+schema version 6 drops it — so a file created as either opens under the same publisher; the stamp
+that is checked is the server ID. An operator who ran a sandbox and a production deployment side by
+side keeps one of them and retires the other's registration.
 
-What sandbox means for a *publisher* is a declaration rather than a behaviour: this template signs
-nothing and executes nothing, so what changes is what every subscribed phone does when its owner
-approves — the same live signal, the same review, the same bytes, and then no wallet and no
-signature (SEE-97, [environments.md](environments.md)). One deployment serves one environment; two
-environments are two deployments, with their own server IDs, credentials and databases, and the
-gateway refuses a manifest that tries to change the environments a server ID already published.
+## Every signal names its network
 
-The shipped `.env.example` is a sandbox, so that copying it and running it demonstrates the whole
-path without anybody's money. Production is a deliberate edit of that line; the code itself still
-has no default, so a deployment that says nothing does not start.
+The manifest says which Solana networks the template's wallet operations may run on
+(`feed.supported_networks`, SEE-174, [server-manifests.md](server-manifests.md#supported-networks)).
+That list is capability information. What a phone executes on is the network **each signal names**:
+the API's `network` field (`mainnet`, `devnet` or `testnet`), required on every create and update,
+which `publishctl create|update --network <name>` sends. The template publishes it as the request
+document's `action.network` (request contract 2), and it is part of the signal's statement and
+fingerprint. Nothing infers it, not even when the manifest declares a single network.
 
-## It runs on Solana Mainnet, whatever the environment
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `bad_network` | 400 | missing, or not `mainnet`, `devnet` or `testnet` |
+| `other_network` | 400 | a network this deployment's manifest does not declare; the gateway would refuse it with `OTHER_NETWORK` |
+| `network_fixed` | 409 | an update that names another network than the signal was created with |
 
-The manifest also says which Solana networks the template's wallet operations run on
-(`feed.supported_networks`, SEE-174, [server-manifests.md](server-manifests.md#supported-networks)), and
-that is a separate question from the environment: sandbox is not Devnet — a sandbox deployment
-publishes the same live Mainnet swaps and each phone simulates the execution — and production is not
-Mainnet by definition. Jupiter swaps execute on Mainnet and nowhere else, so the template says so in
-its own code: `PUBLISHER_SUPPORTED_NETWORKS` defaults to `mainnet`, may be narrowed to `none` (a feed
-no phone signs anything for), and refuses `devnet` or `testnet` at startup, because a deployment that
-declared one would have owners bind a Devnet wallet profile and sign transactions that cannot land.
-The phone offers only wallet profiles on a declared network when the feed is added, and refuses to
-sign for a connection whose network the manifest does not list. The networks, unlike the
-environment, may change between revisions: changing the setting moves the manifest's fingerprint, so
-the next start publishes a new revision that every phone re-reads.
+Jupiter swaps execute on Mainnet and nowhere else, so this template's signals name `mainnet` and its
+manifest says so in code: `PUBLISHER_SUPPORTED_NETWORKS` defaults to `mainnet`, may be narrowed to
+`none` (a feed that can publish no signal at all, because every network is then `other_network`),
+and refuses `devnet` or `testnet` at startup, because a deployment that declared one would invite
+signals whose transactions cannot land. The trader page offers only the networks the manifest
+declares, with Mainnet selected. The networks may change between revisions: changing the setting
+moves the manifest's fingerprint, so the next start publishes a new revision that every phone
+re-reads.
+
+A signal stored before SEE-185 has no network, and none is given to it. It stays readable and can be
+withdrawn, but it is never published as an open document again: the publisher refuses it locally
+with the problem `no_network`. Withdraw it and publish a new signal with `--network mainnet`.
 
 ## The API is the one path in
 
@@ -233,7 +239,7 @@ rather than being the default. TLS keeps the token off the wire; nothing makes h
 
 ## Where it is kept
 
-One SQLite file, four tables: the deployment's stamp, the manifest's revision and fingerprint, the
+One SQLite file, four tables: the deployment's stamp (its server ID and gateway), the manifest's revision and fingerprint, the
 signals, and the idempotency keys. `signal` has a column for every part of the document a subscriber
 reads and for what the gateway has confirmed about it, and for nothing else.
 
@@ -250,8 +256,8 @@ A publisher cannot lose a subscriber's financial history, because it never has o
 It does: publish a versioned manifest and a channel's signals; accept, update and withdraw a swap
 signal through an authenticated API or a CLI, with stable idempotency keys; validate by the phone's
 own rules before anything is broadcast; retry a lost publication with the identical document, across
-a restart; report honestly what has and has not been published; and keep sandbox and production
-apart in the file as well as in the manifest.
+a restart; report honestly what has and has not been published; and say on every signal which Solana network
+it executes on.
 
 It does not: monitor a wallet, detect anybody's trades, execute anything, hold a key, sign anything,
 read the feed it publishes to, learn who is subscribed, collect a decision or a result, or deliver
@@ -265,7 +271,7 @@ two phones is the owner's device run
 ## The demo trader page (SEE-126)
 
 `cmd/copytrading-admin` is a **client** of this API, not a second write path. It serves a
-password-gated HTML page for hackathon judges: create, list, cancel and retry sandbox swap signals.
+password-gated HTML page for hackathon judges: create, list, cancel and retry swap signals, each on a network the manifest declares.
 The publisher token never enters the browser. Beside the feed reference the page also draws it as a
 QR code (SEE-163), so a phone pairs by pointing SAC's camera at the screen instead of typing, and
 the Devices page draws each live invitation the same way — single use and bound to that one device,

@@ -53,7 +53,10 @@ The Android signing certificate's SHA-256 is
 with the same key, so this value is the one to compare against for `0.0.1` and for every update.
 The official `0.0.1` build has push (Firebase) and Solana RPC configured and uses
 `https://seeker-gateway-sg8g3.ondigitalocean.app` as its relay and Discover catalog; the release
-notes record each build's configuration.
+notes record each build's configuration. From SEE-185 an app build names exactly one gateway
+(`SEEKERVAULT_GATEWAY_URL`) and carries no RPC endpoint or fee: it reads its feeds, catalog, relay,
+Solana RPC endpoints and SAC swap fee from that gateway
+([client-config.md](../wiki/client-config.md)).
 
 ---
 

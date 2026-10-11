@@ -2,7 +2,7 @@
 # Publish (or cancel) a CopyTrading test signal through the deployed demo's /trader admin page.
 # Runbook: docs/development/emulator-e2e.md
 #
-#   scripts/demo-signal.sh create [note] [pair=usdc-sol|sol-usdc] [expires=15m|1h|2h|4h]
+#   scripts/demo-signal.sh create [note] [pair=usdc-sol|sol-usdc] [expires=15m|1h|2h|4h] [network=mainnet]
 #   scripts/demo-signal.sh cancel <signal-id>
 #   scripts/demo-signal.sh list
 #
@@ -39,7 +39,8 @@ listing() {
 login
 case "${1:-}" in
   create)
-    post --data-urlencode "pair=${3:-usdc-sol}" --data "slippage=50" \
+    # Every signal names its network (SEE-185); the CopyTrading demo publishes on mainnet.
+    post --data-urlencode "pair=${3:-usdc-sol}" --data "slippage=50" --data "network=${5:-mainnet}" \
       --data-urlencode "expires=${4:-1h}" --data-urlencode "note=${2:-agent test signal}" \
       "$BASE/trader/create"
     listing | head -3

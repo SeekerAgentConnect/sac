@@ -55,7 +55,9 @@ table only and cannot reset the listing or the description.
   nothing across the boundary. A bad size or token is `bad_page_size` / `bad_cursor`.
 - **Each item** is an explicit public DTO built field by field: server ID, gateway origin, channel,
   display name, description, the **registered** access policy (with its authentication origin),
-  supported networks, required plugins, environments, protocol version and settings revision. No
+  supported networks, required plugins, protocol version and settings revision. (Field 9,
+  `environments`, is retired and reserved since SEE-185: a feed no longer says sandbox or
+  production.) No
   operator label or host, credential, check-in, grant, session, subscriber or device data, and no
   feed content. `TestTheContractIsBoundedAndSaysNothingAboutAnyone` pins the field list.
 - **Freshness.** Nothing is cached — every call reads the store — and answers carry
@@ -63,10 +65,13 @@ table only and cannot reset the listing or the description.
 
 ## The app's side
 
-- **Configuration.** The catalog gateway is `BuildConfig.DISCOVERY_URL`, from
-  `-Pseekervault.discoveryUrl=https://…` and otherwise the build's `seekervault.relayUrl` (the
-  gateway the build already trusts). Nothing about the catalog is hardcoded in the APK. A build with
-  neither shows "No catalog configured". The tab works on a fresh install with no connection and no
+- **Configuration.** The catalog is read from the one gateway the build trusts,
+  `BuildConfig.GATEWAY_URL` from `-Pseekervault.gatewayUrl=https://…` (SEE-185,
+  [client-config.md](client-config.md#the-trusted-gateway)) — the same gateway the app reads feeds,
+  the push relay and its client configuration from. There is no separate catalog setting. A build
+  with no gateway shows "No catalog configured". A card that names any other gateway is left out of
+  the list (`CatalogFeed.from`), and adding a feed from another gateway is refused
+  (`FeedReferenceProblem.ForeignGateway`). The tab works on a fresh install with no connection and no
   wallet.
 - **States.** Loading, empty, failure with **Retry**, **Refresh** (a failed refresh keeps what was
   shown), and pagination (the next page loads as the end comes into view, or with **Load more**; a
@@ -86,10 +91,12 @@ table only and cannot reset the listing or the description.
   prefilled (`FeedReferences.format`), from Discover and returning to it. Everything after is the
   existing flow: the confirmation, `ConnectionRepository.addFeed` (which reads and validates the
   current manifest, so a stale card is revalidated and a restricted listing keeps its
-  restricted-access floor), duplicate detection, then the wallet picker on the new connection's
-  sheet with SEE-174's network filtering. For a restricted feed, binding a wallet sends the access
-  request through `FeedAccessManager` (the signed challenge is feed-access authentication, not a
-  transaction); cancelling the signature, a rejection or a publisher failure leaves the card on its
+  restricted-access floor), and duplicate detection. A public feed is added with no wallet and
+  opens its connection sheet: each signal's operation chooses its own wallet for the signal's
+  network ([wallet-setup.md](../guides/wallet-setup.md#feed-operations)). A restricted feed opens the
+  wallet picker for its **access identity**, and choosing one sends the access request through
+  `FeedAccessManager` (the signed challenge is feed-access authentication, not a transaction; any
+  saved profile may be the identity, since no network enters an address proof); cancelling the signature, a rejection or a publisher failure leaves the card on its
   real state. Pending state is the persisted access record, so it survives restart; the existing
   20-second check and invitation redemption move it on.
 - **No banner burst.** A feed added from Discover is a new connection like any other: its first

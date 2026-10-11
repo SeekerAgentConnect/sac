@@ -20,7 +20,7 @@ transaction; the tracker has no way to reach a wallet and no RPC method that sen
 | Direct SKR staking: stake, unstake, cancel unstake, withdraw | Yes | Same. Staking records now keep their wallet and cluster (`ReviewedStaking`), so they get an explorer link and are checked on the right cluster. |
 | Feed operation: swap, prediction buy, any bundled provider's transaction | Yes | Same, whatever the provider: Jupiter's `status` stays `Unsupported` and is not needed. |
 | Acknowledgement, message signature | No | Nothing reached a chain. |
-| Sandbox rehearsal | No | Nothing was signed or sent. |
+| Preview ("Preview without sending") | No | Nothing was signed or sent. |
 | Declined / failed in the wallet | No | Nothing was sent; the capture is dropped. |
 | Wallet answer lost (no signature) | No lookup | There is no signature to look up. History says so and points at the wallet's own history. |
 
@@ -103,26 +103,26 @@ What is stored about an endpoint is its **host** only; a configured URL can carr
 
 ## Endpoints
 
-The phone's own, never a server's or a publisher's, and since SEE-184 the **same resolver** the
-cluster's account reads use ([solana-rpc.md](solana-rpc.md)): for each cluster, the owner's setting
-(Wallet → **Solana RPC**), else the build's endpoint for that cluster, else the build's general one.
+Never a server's or a publisher's, and since SEE-184 the **same resolver** the cluster's account
+reads use ([solana-rpc.md](solana-rpc.md)). Since SEE-185 the endpoint for each cluster is the one
+the trusted gateway's client configuration names ([client-config.md](client-config.md)), set by the
+gateway's operator:
 
 ```
-apps/android/gradlew -p apps/android :app:assembleDebug \
-  -Pseekervault.solanaRpc.mainnet=https://… \
-  -Pseekervault.solanaRpc.devnet=https://… \
-  -Pseekervault.solanaRpc.testnet=https://…
+feed-gatewayctl client-config set-rpc --network mainnet --url https://…
+feed-gatewayctl client-config set-rpc --network devnet --url https://…
+feed-gatewayctl client-config set-rpc --network testnet --url https://…
 ```
 
-The build values are initial defaults, all empty by default. The general `-Pseekervault.solanaRpc`
-(SEE-94) is used for a cluster only when neither of the others is set, and only once its **genesis
-hash** proves it serves that cluster. It is a selection, not a failover: the endpoint chosen is the
-one asked, and its failure is reported rather than covered by another. An endpoint that serves a
-*different known* cluster is refused (**wrong cluster**). A genesis hash no cluster has — a local
-`solana-test-validator` — is accepted only for an explicitly configured devnet or testnet endpoint
-in a **debug** build. With no endpoint for a cluster the record says so and waits.
+There is no build default, no owner setting and no fallback: the endpoint configured is the one
+asked, and its failure is reported rather than covered by another. Confirmation reads use the cached
+configuration whatever its age, so a sent transaction is still followed while the gateway is
+unreachable. Before anything read counts, the endpoint's **genesis hash** must prove it serves that
+cluster. An endpoint that serves a *different known* cluster is refused (**wrong cluster**). A
+genesis hash no cluster has — a local `solana-test-validator` — is accepted only for a devnet or
+testnet endpoint in a **debug** build. With no endpoint for a cluster the record says so and waits.
 
-**Changing an endpoint** on the phone takes effect at once: cached proofs are dropped, and that
+**A changed endpoint** in the gateway's configuration takes effect as soon as the app fetches it: cached proofs are dropped, and that
 cluster's records whose last check stopped at the endpoint are due immediately through the new one
 (`ConfirmationTracker.endpointChanged`). Records of other clusters are untouched, and a record is
 never moved to another cluster: the one pinned when its transaction was sent is the only one it is
@@ -220,16 +220,18 @@ Automated (JVM, Robolectric), all with a scripted chain — no public cluster, n
   context and its explorer link, a lost staking answer as Unknown, the chain field and the cleared
   marker round-tripping.
 - `StageBoundaryTest.theConfirmationReaderOnlyReads` — the four JSON-RPC methods, no send or
-  wallet, endpoints from `BuildConfig` in the composition root.
+  wallet, endpoints from the gateway's client configuration in the composition root.
 
 Device / emulator:
 
 - **NOT RUN** — emulator run against a controlled `solana-test-validator`, process death, reboot,
   background WorkManager scheduling under Doze, and force-stop catch-up. The environment this
   ticket was implemented in had no KVM access for the emulator and no Solana validator installed.
-  To run it: start `solana-test-validator`, `adb reverse tcp:8899 tcp:8899`, build with
-  `-Pseekervault.solanaRpc.devnet=http://127.0.0.1:8899` (a debug build: only it allows loopback
-  cleartext, and only it accepts the validator's unknown genesis), pair a direct server whose `SOLANA_RPC_URL` is the same
+  To run it: start `solana-test-validator`, `adb reverse tcp:8899 tcp:8899`, set the gateway's
+  devnet endpoint with `feed-gatewayctl client-config set-rpc --network devnet --url
+  http://127.0.0.1:8899` (the gateway allows plain `http://` to loopback only), run a debug build
+  with `-Pseekervault.gatewayUrl` naming that gateway (only a debug build allows loopback cleartext
+  and accepts the validator's unknown genesis), pair a direct server whose `SOLANA_RPC_URL` is the same
   validator, approve a devnet transfer, stop the server and gateway, and watch History settle.
   Record the observed background timing rather than assuming one.
 - Flows that can't run on a test cluster — SKR staking (mainnet-only program) and Jupiter swap /

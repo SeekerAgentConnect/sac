@@ -6,7 +6,9 @@ no other — the first time, every time, and after the app has been restarted (S
 The owner-facing steps are in
 [docs/guides/wallet-setup.md](../guides/wallet-setup.md#2-connect). Since SEE-174 the phone keeps
 several wallet profiles, each with its own route, and an approval opens the wallet app of the profile
-**its own connection** uses ([wallet-profiles.md](wallet-profiles.md)). What the automated checks cover,
+**its own connection** uses ([wallet-profiles.md](wallet-profiles.md)) — or, for a feed signal since
+SEE-185, of the profile chosen for that feed and the signal's network
+([wallet-setup.md](../guides/wallet-setup.md#feed-operations)). What the automated checks cover,
 and what only a device can settle, is in
 [docs/testing/wallet-lifecycle.md](../testing/wallet-lifecycle.md#wallet-targeting).
 

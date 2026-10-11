@@ -62,7 +62,8 @@ One file per proposal holds both, and they belong to different people:
 | --- | --- |
 | The validated document, replaced whole on a new revision | The dismissal, and the revision it was made at |
 | `status`, `expires_at` — whether it still stands | The review: the exact revision read, and what the owner chose |
-| | The execution: what was bound, and what the wallet did |
+| The network it executes on (`Proposal.network`, SEE-185) | The execution: what was bound, and what the wallet did |
+| | The latest preview, if the owner previewed it (`ProposalRecord.preview`, SEE-185) |
 
 Nothing here says "completed". Availability is the publisher's — `proposalAvailability` reads its
 status and its expiry — and standing is this device's. One owner acting changes nothing for anyone
@@ -80,6 +81,7 @@ when it was written, and would be wrong the moment the clock moved.
 | `Cancelled` | The publisher withdrew it | no |
 | `Expired` | Its own absolute expiry passed | no |
 | `Unsupported` | This build doesn't support the publisher's server (SEE-88) | no |
+| `NetworkUnusable` | The signal names no network (`Missing`: contract 1, a `PublishProposal` document, or unspecified), one this build doesn't know (`Unknown`), or one its feed's manifest doesn't declare (`NotDeclared`) (SEE-185). Readable, with the reason; the network is never inferred | no |
 | `Open` | The publisher stands behind it and this device has done nothing | yes |
 
 ## Delivery is not trustworthy about repetition
@@ -102,6 +104,17 @@ transport being careful:
 
 A gateway that couldn't be reached leaves every record exactly as it was.
 
+### The signal's network
+
+A signal names the Solana network it executes on (`action.network`, request contract 2, SEE-185),
+and that is the only source of an operation's network. Nothing reads it from a wallet, from the
+manifest's `supported_networks` or from the assets the terms name: the same mint on another cluster
+is a different asset. `ProposalValidation` reads contract 1 and 2; a contract-1 document's network is
+`SignalNetwork.Missing` even if the field is present, because that contract never defined it. One
+feed may publish successive signals for different networks, and the review shows the signal's
+network ("… · from this signal") with the wallet chosen for it
+([wallet-setup.md](../guides/wallet-setup.md#feed-operations)).
+
 ### Dismissal
 
 A dismissal is final for the proposal's **identity**, not just for its revision. A replayed delivery
@@ -114,21 +127,21 @@ publisher with something else to propose publishes another proposal, which is an
 
 [`proposals/ProposalBinding.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/proposals/ProposalBinding.kt).
 Because a proposal is common, the thing an owner executes never is. It is the terms *as they stood*,
-with the parameters *this* owner chose, from the wallet *they* had selected, prepared by the plugin
-*this build* carries, as one particular set of bytes. All five are pinned in an `ExecutionBinding`
-before the wallet is opened, and `bindingProblem` is the whole gate:
+with the parameters *this* owner chose, from the wallet *they* had selected for the signal's network,
+prepared by the plugin *this build* carries, as one particular set of bytes. All five are pinned in
+an `ExecutionBinding` before the wallet is opened — the network as the signal's own and the wallet
+as the exact `walletProfileId` (SEE-185) — and `bindingProblem` is the whole gate:
 
 | Problem | What moved |
 | --- | --- |
-| `already_executed`, `dismissed`, `proposal_refused`, `proposal_cancelled`, `proposal_expired`, `server_unsupported` | The standing — asked for, not decided again, so what the owner sees and what the gate allows cannot drift apart |
+| `already_executed`, `dismissed`, `proposal_refused`, `proposal_cancelled`, `proposal_expired`, `server_unsupported`, `network_unusable` | The standing — asked for, not decided again, so what the owner sees and what the gate allows cannot drift apart |
 | `not_reviewed` | Nothing was reviewed here |
 | `proposal_changed` | The binding, or the review, is for another revision |
 | `choice_changed` | The parameters aren't the ones the owner reviewed |
 | `other_plugin`, `other_contract` | Another plugin prepared the bytes, or one at a boundary version this build doesn't call |
 | `nothing_prepared` | No preparation, or no content hash to bind to |
 | `preparation_expired` | What was prepared can no longer be included |
-| `no_wallet`, `other_wallet`, `other_network` | The wallet selected now isn't the one bound |
-| `other_environment` | The promise moved: the owner switched the feed between sandbox and production while this was in hand (SEE-97, [environments.md](environments.md)) |
+| `no_wallet`, `other_wallet`, `other_network` | The wallet chosen now for the signal's network isn't the one bound (another profile, or another address), or the binding names another network than the signal declares |
 
 Every rule is in that one function rather than spread between a repository and a screen, because a
 rule in two places is a rule that gets forgotten in one of them. None of them is a warning to be
@@ -154,6 +167,12 @@ decline, and not on a new revision. A proposal that has already put an operation
 wallet must not become spendable again because the publisher republished it. A publisher that wants
 a second operation publishes a second proposal.
 
+**A preview is not an execution (SEE-185).** Previewing passes the same preparation, inspection,
+rules and binding gate, under the same repository lock, and is then written as the record's latest
+`ProposalPreview` rather than as its execution. Nothing is signed or sent, the standing stays
+`Open`, and what was prepared is dropped, so executing afterwards starts from a fresh preparation
+([environments.md](environments.md)).
+
 An execution the app closed on is settled as **unresolved**, and never as a failure: the wallet may
 well have sent the transaction. The wallet is not asked again either way, and nothing retries
 signing or submission automatically anywhere in this path.
@@ -175,7 +194,7 @@ gateway was ever asked.
 
 An execution is written to **Activity** as it happens, as `ActivityKind.Operation` with a
 `ReviewedOperation`: the operation and the plugin as codes, the proposal revision, the wallet and
-cluster, which promise it was bound under (SEE-97), the preparation version, and the parameters this
+cluster, whether it was executed or previewed, the preparation version, and the parameters this
 owner chose. It is the binding, written down — so recording it records what was executed rather than
 an account of it.
 
@@ -188,12 +207,14 @@ The outcomes are the transfer path's own, because the facts are the same shape:
 | declined | `DeclinedInWallet` |
 | failed, and said so | `NotSigned` |
 | never answered | `Unknown` |
-| **not asked at all** | `Simulated` — the feed is a sandbox, so nothing was signed and nothing was sent (SEE-97) |
+| **not asked at all** | `Simulated` — a preview: nothing was signed and nothing was sent |
 
-A simulated execution spends the proposal exactly as a declined one does: one execution per proposal
-per device, whatever came of it. It carries no signature, and so it offers no explorer link — a
-rehearsal has nothing to look up, and this app invents neither
-([environments.md](environments.md)).
+A preview does not spend the proposal (SEE-185): the owner can preview again or execute it. History
+shows it as "Previewed on this phone · nothing sent", with a "You previewed" timeline entry. It
+carries no signature, and so it offers no explorer link — a rehearsal has nothing to look up, and
+this app invents neither ([environments.md](environments.md)). A record written before SEE-185 with
+the outcome `ProposalOutcome.Simulated` is a sandbox execution that did spend its proposal, and it
+still reads as one.
 
 Since SEE-165 the phone follows a proposal's transaction to the chain itself, from the bytes it
 captured before the wallet was opened, and records `Confirmed`, `ChainFailed` or an honest

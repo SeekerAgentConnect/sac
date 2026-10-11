@@ -52,16 +52,20 @@ and never print them:
 
 ```sh
 scripts/emulator.sh setup     # once per host; several GB; idempotent
-scripts/emulator.sh build     # :app:assembleDebug with -Pseekervault.relayUrl=<gateway>
+scripts/emulator.sh build     # :app:assembleDebug with -Pseekervault.gatewayUrl=<gateway>
 scripts/emulator.sh start     # boots AVD "sac" and waits for sys.boot_completed
 scripts/emulator.sh install   # installs and launches the debug APK
 scripts/emulator.sh ui        # what is on screen now
 ```
 
-The Discover tab (SEE-176) reads its catalog from `seekervault.discoveryUrl`, which defaults to the
-same relay URL, so this build shows the deployed gateway's recommended feeds. Point it elsewhere by
-passing `-Pseekervault.discoveryUrl=<origin>` through to `build` (for a local gateway, a debug build
-accepts `http://127.0.0.1:<port>` over `adb reverse`).
+The build trusts one gateway (SEE-185): `SEEKER_GATEWAY_URL`, else the older name
+`SEEKER_RELAY_URL`, else the deployed DigitalOcean gateway. Feeds, the Discover tab's catalog
+(SEE-176), the push relay and the client configuration — the Solana RPC endpoint per network and
+the SAC swap fee ([client-config.md](../wiki/client-config.md)) — all come from it, and a feed link
+naming another gateway is refused. For a local gateway, set `SEEKER_GATEWAY_URL=http://127.0.0.1:<port>`
+and `adb reverse` the port; a debug build accepts plain HTTP to `127.0.0.1` only. The app reads no
+chain until that gateway configures an endpoint for the network: check with
+`feed-gatewayctl client-config show` against the gateway's database.
 
 A cold build takes about 5 minutes and a boot about 1 minute. After changing app code, run `build`
 and `install` again; `install -r` keeps the app's data and pairings. To start from nothing, run
@@ -134,7 +138,11 @@ node scripts/mcp-call.mjs https://seeker-mcp-r9qqm.ondigitalocean.app MCP_SEEKER
 `vault_sign_message` and `vault_transfer` reach the app, but the emulator can't complete them
 because it has no wallet. Test them only up to the review screen. The server's Solana RPC is devnet.
 
-**Feed signal (CopyTrading demo).** The environment is sandbox, so no funds can move:
+**Feed signal (CopyTrading demo).** The signal is a mainnet swap, and since SEE-185 every signal
+names its network (the demo's create form refuses one without it). The emulator has no wallet, so a
+signal can be followed up to its review, which shows the network and offers **Choose wallet** /
+**Connect a wallet on Mainnet**. On a device with a wallet, **Preview without sending**
+prepares and inspects it without signing anything ([environments.md](../wiki/environments.md)):
 
 ```sh
 scripts/demo-signal.sh create "agent test" usdc-sol 1h   # prints the new signal's row

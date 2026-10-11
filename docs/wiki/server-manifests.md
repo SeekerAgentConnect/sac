@@ -21,10 +21,14 @@ A publisher does not write one by hand: the templates build and publish it from 
 | `settings_revision` | Changes whenever anything else in the manifest does, and never goes backwards |
 | `mode` | `direct` or `gateway_feed`. Never absent, and never inferred |
 | `required_plugins` | Plugin IDs with the contract range each one is needed at |
-| `environments` | `production`, `sandbox`, or both — which the server *serves*; the connection records which one it *keeps* ([environments.md](environments.md)) |
 | `display_name` | The name the server calls itself. Optional, bounded, and never verified |
 | `direct` / `feed` | One reference, selected by the mode: a URL, or a gateway origin and channel |
 | `direct.supported_networks` / `feed.supported_networks` | The Solana networks the server's wallet operations run on (SEE-174). Inside the reference, not beside it; see [Supported networks](#supported-networks) |
+
+Field 6, `environments`, is retired and reserved (SEE-185), with the `ServerEnvironment` enum. A
+server no longer says whether it is a sandbox or production: whether an operation is previewed or
+executed is the owner's choice on the phone ([environments.md](environments.md)). The gateway's
+storage migration drops the field from the manifests it already holds.
 
 The `oneof` is the last field group in the message on purpose. Where a oneof's bytes land in a serialized message is not settled by the protobuf spec — one runtime writes it in field-number order, another writes it after the fields around it — and last is the position every runtime agrees on, which is what lets the cross-runtime fixtures compare bytes at all.
 
@@ -49,11 +53,11 @@ authorizes no signing. `docs/architecture.md` has the whole picture.
 
 [`servers/ManifestValidation.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/servers/ManifestValidation.kt) is the only way a manifest becomes something the app will hold, and every rule has one `ManifestProblem` of its own. They fall into three groups.
 
-**Identity.** The manifest has to be about the server this connection already trusts (`other_server`, `bad_server_id`), at the origin it already goes to (`other_endpoint`, `bad_endpoint`), in the mode it is already in (`other_mode`, `no_mode`). Nothing in a manifest can move a connection: it confirms where the phone is talking and can never redirect it. In particular **a connection can never change mode** — a mode is never guessed, and a missing one is refused rather than read as the more permissive case.
+**Identity.** The manifest has to be about the server this connection already trusts (`other_server`, `bad_server_id`), at the origin it already goes to (`other_endpoint`, `bad_endpoint`), in the mode it is already in (`other_mode`, `no_mode`). Nothing in a manifest can move a connection: it confirms where the phone is talking and can never redirect it. A feed's origin is also always the one gateway the app's build names (SEE-185, [client-config.md](client-config.md#the-trusted-gateway)): a feed reference or Discover card naming another gateway is refused before any manifest is asked for, so a manifest naming another gateway is one the phone never accepts. In particular **a connection can never change mode** — a mode is never guessed, and a missing one is refused rather than read as the more permissive case.
 
 **Ownership.** A feed's channel is `server/<server_id>` for the manifest's *own* identity, so a publisher can name only its own channel (`foreign_channel`). The gateway enforces the same rule when it accepts a publication (SEE-90).
 
-**Boundedness.** A revision that can be ordered and doesn't go backwards (`no_revision`, `stale_revision`), at most sixteen well-formed plugin names with usable contract ranges (`bad_plugin`, `duplicate_plugin`, `too_many_plugins`), environments named explicitly (`bad_environment`), supported networks that are never unspecified, never repeated and at most eight (`bad_network`, [below](#supported-networks)), and a short, printable name (`bad_name`). A plugin ID is a name: lowercase dot-separated segments, never a URL, a package, or anything loadable.
+**Boundedness.** A revision that can be ordered and doesn't go backwards (`no_revision`, `stale_revision`), at most sixteen well-formed plugin names with usable contract ranges (`bad_plugin`, `duplicate_plugin`, `too_many_plugins`), supported networks that are never unspecified, never repeated and at most eight (`bad_network`, [below](#supported-networks)), and a short, printable name (`bad_name`). A plugin ID is a name: lowercase dot-separated segments, never a URL, a package, or anything loadable.
 
 One thing is deliberately **not** a refusal: a `protocol_version` this build doesn't speak. The server made a perfectly good statement about a contract this app can't act on, which is something to tell the owner — the app needs an update — rather than a fault to report against the server. Only version zero, which is never published, is malformed.
 
@@ -68,7 +72,7 @@ The phone caches the manifest by validated identity and revision:
 
 A server that can't be reached leaves the record exactly as it was: not hearing an answer is not an answer.
 
-The manifest is cached because it is the server's data. **Support is not cached**, ever: a verdict written to disk would outlive the build that reached it, and installing a version of the app that carries a plugin would leave yesterday's "missing" sitting in a file. `serverSupport(record, registry, environment)` is a pure function over the compiled registry and the connection's own environment, called on every read.
+The manifest is cached because it is the server's data. **Support is not cached**, ever: a verdict written to disk would outlive the build that reached it, and installing a version of the app that carries a plugin would leave yesterday's "missing" sitting in a file. `serverSupport(record, registry)` is a pure function over the compiled registry, called on every read. For a feed, `feedSupport` asks first whether the feed is held from the gateway this build trusts; one from any other gateway (a build that changed gateways) is `ServerSupport.OtherGateway`: readable, never executable.
 
 ## Supported networks
 
@@ -80,12 +84,24 @@ clusters, so a runtime may convert between the two by number; the enum is declar
 than imported because the gateway and the publisher templates never compile the private request
 contract. "Network" means a Solana cluster and nothing else: no other blockchain can be named.
 
-It is what the phone decides wallets by. Each connection is bound to exactly one saved wallet
-profile ([wallet-profiles.md](wallet-profiles.md)), and the phone offers only profiles on a declared
-network when the owner chooses one, refuses to bind a profile on any other, and signs nothing for a
-connection whose bound network the manifest doesn't list. A multi-network server doesn't make every
-action multi-network: the execution provider for each operation is still asked about the feed's own
-network when it is prepared ([execution-providers.md](execution-providers.md)).
+It is **capability information, never a selection** (SEE-185). What it decides depends on the mode:
+
+- **Direct.** The connection is bound to exactly one saved wallet profile
+  ([wallet-profiles.md](wallet-profiles.md)). The phone offers only profiles on a declared network,
+  refuses to bind a profile on any other, and signs nothing for a connection whose bound network the
+  manifest doesn't list. Its requests run on the binding's network.
+- **Gateway feed.** Each signal names its own network (`action.network`, request contract 2), and
+  the network must be one this list declares. The gateway refuses a signal for any other
+  (`GATEWAY_PROBLEM_OTHER_NETWORK`), and the phone refuses to execute one
+  (`ProposalStanding.NetworkUnusable`, `NotDeclared`). The wallet is chosen on the phone per
+  operation, for the signal's network ([wallet-setup.md](../guides/wallet-setup.md#feed-operations)).
+  A feed connection's own wallet profile, when it has one, is only the access identity of a
+  restricted feed ([restricted-feeds.md](restricted-feeds.md)).
+
+A multi-network server doesn't make every action multi-network: the execution provider for each
+operation is still asked about that operation's network when it is prepared
+([execution-providers.md](execution-providers.md)). Nothing infers a signal's network from this
+list, even when it names a single network.
 
 ### What it means
 
@@ -97,17 +113,16 @@ network when it is prepared ([execution-providers.md](execution-providers.md)).
   never reach a wallet — informational or acknowledge-only — which must not claim a network just to
   fill the field. An up-to-date phone shows such a connection, keeps its requests and history
   readable, and signs nothing for it (`WalletReadiness.NetworksUnknown`): the owner is told that the
-  server hasn't declared which networks it supports and has to be updated. A connection may still
-  be bound to a profile, because a restricted feed proves its reader with one
-  ([restricted-feeds.md](restricted-feeds.md#one-wallet-per-feed)).
-- **Network is not environment.** `production` is not Mainnet and `sandbox` is not Devnet or
-  Testnet: a sandbox deployment may simulate against Mainnet data, and a production one may execute
-  on Devnet. The two fields are configured, published and validated separately
-  ([environments.md](environments.md)).
-- **A server that stops listing a network doesn't move anyone.** A connection bound to a profile on
-  a network the new manifest no longer names becomes `NetworkUnsupported`: it stays bound, signs
-  nothing, and waits for the owner to choose a profile on a supported network. Nothing is rebound
-  automatically.
+  server hasn't declared which networks it supports and has to be updated. A restricted feed still
+  proves its reader with an access identity ([restricted-feeds.md](restricted-feeds.md)), which
+  needs no declared network.
+- **It is not a preview switch.** Previewing a signal rather than executing it is the owner's choice
+  per operation ([environments.md](environments.md)), on whatever network the signal names.
+- **A server that stops listing a network doesn't move anyone.** A direct connection bound to a
+  profile on a network the new manifest no longer names becomes `NetworkUnsupported`: it stays
+  bound, signs nothing, and waits for the owner to choose a profile on a supported network. A feed
+  signal on that network becomes `NetworkUnusable` (`NotDeclared`) and is not executed. Nothing is
+  rebound automatically, and no signal is moved to another network.
 
 ### Where it lives, and why
 
@@ -145,7 +160,10 @@ the same revision. The gateway refuses a value it doesn't know (`GATEWAY_PROBLEM
 field `feed.supported_networks`) rather than dropping it, because relaying a narrower list than the
 publisher wrote would change the claim without telling anyone, and it carries the list through the
 field-by-field rebuild of the feed reference and through the copy a restricted feed's access policy
-is stamped onto ([feed-gateway.md](feed-gateway.md)). The phone, reading a manifest a later format
+is stamped onto ([feed-gateway.md](feed-gateway.md)). Since SEE-185 the gateway also checks each
+signal's `action.network` against the list in the manifest it holds, in the publication's own
+transaction (`GATEWAY_PROBLEM_OTHER_NETWORK` = 56, field `action.network`, also when it holds no
+manifest yet). The phone, reading a manifest a later format
 wrote, **skips** a network it doesn't know instead of refusing the manifest: no profile on this
 phone can be on that network, so it could never be offered or signed for, and the networks it does
 know are still what the server said. Unspecified, a repeat or more than eight entries are
@@ -153,9 +171,9 @@ know are still what the server said. Unspecified, a repeat or more than eight en
 
 ### Revisions
 
-Unlike the environments, the networks **may change on a higher revision**. Adding Devnet changes what
-a server can do, not what an owner already agreed to: each connection is bound to one profile, and a
-network that disappears makes that connection `NetworkUnsupported` rather than moving it. A change
+The networks **may change on a higher revision**. Adding Devnet changes what a server can do, not
+what an owner already agreed to: a network that disappears makes a direct connection
+`NetworkUnsupported`, and a feed's signals on it unusable, rather than moving either. A change
 must still move `settings_revision`: the server SDK and publisher support fingerprint the manifest
 with the list in it, so a changed list is the next revision on the next start and the same list in
 any order keeps the revision. An empty list is left out of the fingerprinted document, so a server
@@ -211,21 +229,23 @@ change.
 | --- | --- | --- |
 | `ManifestRefused` | The server published something this phone refused | no |
 | `ProtocolUnsupported` | The server speaks a contract this build doesn't: update the app | no |
-| `EnvironmentUnsupported` | The server doesn't serve the environment this connection keeps (SEE-97) | no |
+| `OtherGateway` | A feed held from a gateway other than the one this build trusts (SEE-185) | no |
 | `PluginMissing` | This build carries no plugin with a required ID | no |
 | `PluginIncompatible` | It carries one, at a contract version the server doesn't work with | no |
 | `Supported` | Everything the server requires is here | yes |
 | `LegacyDirect` | A direct server that publishes no manifest, and so requires nothing | yes |
 | `Unknown` | Not asked yet | yes |
 
-Missing is reported before incompatible because they are different things to be told and the first is the plainer fact. Whether a plugin serves a particular operation in a particular environment is a question about one request, not about the server, and the registry answers it per request (SEE-86).
+Missing is reported before incompatible because they are different things to be told and the first is the plainer fact. Whether a plugin serves a particular operation on a particular network is a question about one request, not about the server, and the registry answers it per request (SEE-86).
 
 `Unknown` being executable is deliberate rather than lenient. It can only describe a direct
 connection the owner paired and could always act on; gateway connections always arrive with a
 validated manifest. An operation a plugin *would* serve still resolves to nothing without one.
-Server support is also not the whole answer to "can this be signed": since SEE-174 a connection
-signs only when its own wallet profile is ready, which needs a network the manifest declares
-([Supported networks](#supported-networks), [wallet-profiles.md](wallet-profiles.md#readiness)).
+Server support is also not the whole answer to "can this be signed": since SEE-174 a direct
+connection signs only when its own wallet profile is ready, which needs a network the manifest
+declares, and since SEE-185 a feed signal executes only on a declared network it names, with a wallet
+chosen for that network ([Supported networks](#supported-networks),
+[wallet-profiles.md](wallet-profiles.md#readiness)).
 
 ### Viewing without executing
 
@@ -257,8 +277,9 @@ calls `ConnectionRepository.addFeed`. [`FeedGateway`](../../apps/android/app/src
 connection has a validated feed manifest, and a manifest a connection holds always agrees with its
 mode. `ConnectionStore` is at version 7 (version 7, SEE-174, adds the connection's wallet profile and the manifest's supported networks). Versions 2–4 containing the retired literal
 `gateway_private` are rewritten to an inert retirement marker without a mode, credential, or cached
-manifest. Other older files remain readable, with a connection written before the environment
-version treated as production.
+manifest. Other older files remain readable. The `environment` a version 3–7 record holds, and the
+`environments` of a manifest cached before SEE-185, are ignored: preview or execution is chosen per
+operation now, and the version did not move for a field no reader needs.
 
 `Connection.usable` still means "the phone can call this connection's sidecar" and therefore
 requires direct mode. Feed work checks exactly `GatewayFeed`; retired records match neither path.

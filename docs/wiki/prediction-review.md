@@ -33,8 +33,10 @@ in four collapsed sections):
 3. Sub-line — where the order is placed, under the provider's required name, and when the market
    closes: `Jupiter Prediction · Powered by Jupiter · closes Oct 2, 10:05 PM`. The market's ID is
    metadata and sits under Technical details.
-4. Chips — `Sandbox` (only when sandboxed) and the network (mainnet neutral, devnet orange).
-5. Sandbox card, only in sandbox.
+4. Chips — the network the signal declares (mainnet neutral, devnet orange), never the wallet's
+   (SEE-185).
+5. Previewed notice, only right after **Preview without sending**: nothing was signed or sent, the
+   signal is still open, and placing the order means refreshing the quote and approving it.
 6. Status blocks, only when something went differently: not open any more, unsupported, or why an
    approval stopped. What stopped a quote is not here (see 9).
 7. Your part · side and amount — summary only, with **Choose side and amount** / **Change**.
@@ -74,7 +76,8 @@ in four collapsed sections):
 13. `Expires Oct 2, 2026, 10:05 PM.`
 
 Footer: the warning checkbox only for a current, approvable quote with an orange verdict, then
-**Approve and trade** (sandbox: **Simulate the trade**) and a tonal **Dismiss**, then "Dismissing
+**Approve and trade**, a neutral **Preview without sending** under it when the provider serves a
+preview (SEE-185, [environments.md](environments.md)), and a tonal **Dismiss**, then "Dismissing
 keeps the decision on this phone. CopyTrading is never told either way."
 
 ## Display rules

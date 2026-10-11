@@ -17,8 +17,9 @@ independent sources publish to one gateway. One `publishctl` is enough for both 
 ships its own three-line build of the same shared client, so the binary that drives one drives the
 other.
 
-It needs no network, no Docker daemon, no credential and no funds: both publisher deployments run
-as `sandbox`, the provider is this repository's own committed captures served back on loopback, and
+It needs no network, no Docker daemon, no credential and no funds: the
+publishers' signals name `mainnet` and no deployment declares an environment (SEE-185), the provider
+is this repository's own committed captures served back on loopback, and
 the wallet is a throwaway key pair. Nothing in it is ever signed by a real wallet or sent to a
 cluster.
 
