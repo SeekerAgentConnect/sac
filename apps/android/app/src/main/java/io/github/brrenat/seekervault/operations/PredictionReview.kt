@@ -56,6 +56,7 @@ import io.github.brrenat.seekervault.reviews.reviewVerdict
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.WalletNetwork
+import io.github.brrenat.seekervault.wallet.networkLabel
 import io.github.brrenat.seekervault.wallet.walletNetworkOf
 import java.time.Instant
 import java.time.ZoneId
@@ -242,6 +243,26 @@ fun OperationReview.toPredictionSheet(
         // The wallet stays in view: with several profiles, which one pays is part of the decision
         // (SEE-174).
         factRows = listOfNotNull(walletRow(wallet, resources)),
+        // Which wallet signs stays the owner's to change while the signal is open, not only before
+        // the first one is chosen; choosing another drops what was prepared for the old one
+        // (SEE-185).
+        walletAction =
+            network
+                ?.let(::walletNetworkOf)
+                ?.takeIf { choosable }
+                ?.let {
+                    ReviewSheetAction(
+                        label =
+                            if (wallet != null)
+                                resources.getString(R.string.operation_choose_wallet)
+                            else
+                                resources.getString(
+                                    R.string.operation_connect_wallet,
+                                    resources.getString(networkLabel(it)),
+                                ),
+                        enabled = !sending && !preparing,
+                    )
+                },
         expiry = longTime(proposal.expiresAt, zone, locale),
         confirmationCheckbox =
             if (needsAcknowledging) {

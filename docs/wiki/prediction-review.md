@@ -60,6 +60,10 @@ in four collapsed sections):
     bytes in the view model until the provider answers, but the sheet shows none of them meanwhile:
     no old quote rows, verdict, blocker, payer or accounts — only the loading card.
 11. Wallet — the feed's wallet, or the payer read out of the bytes once there are any (SEE-174).
+    Under it, while the signal is open, **Choose wallet** (or **Connect a wallet on …** with none
+    chosen yet) opens the Operation wallet picker over the review (`ReviewSheetState.walletAction`,
+    SEE-185), so a wallet already chosen or remembered can still be changed; choosing another drops
+    what was prepared for the old one.
 12. Four collapsed sections (`ReviewSheetSection`, each a button that says Expanded/Collapsed, at
     least a touch target tall, whose open state survives recomposition and quote updates):
     - **Limits and checks** — summary such as `Daily limits not set · transaction read in full`;

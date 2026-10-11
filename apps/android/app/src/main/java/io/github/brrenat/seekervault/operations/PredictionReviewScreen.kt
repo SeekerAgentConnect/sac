@@ -81,6 +81,11 @@ fun PredictionReviewScreen(
     modifier: Modifier = Modifier,
     /** Previews the prepared order without sending it (SEE-185). */
     onPreview: () -> Unit = {},
+    /**
+     * Opens the picker for the wallet that signs on the signal's network (SEE-185), offered while
+     * the signal is open whether or not one is chosen already.
+     */
+    onChooseWallet: () -> Unit = {},
 ) {
     val resources = LocalContext.current.resources
     val clipboard = LocalClipboard.current
@@ -112,6 +117,7 @@ fun PredictionReviewScreen(
         onConfirmedChange = onAcknowledge,
         onRefreshQuote = onPrepare,
         onPreview = onPreview,
+        onChooseWallet = onChooseWallet,
         modifier = modifier.testTag(PredictionReviewTags.SHEET),
     )
 }

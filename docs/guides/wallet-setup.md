@@ -144,7 +144,9 @@ send a Mainnet signal and a Devnet signal, and each uses a wallet on its own net
 wallet** opens **Wallet for Mainnet** (or the signal's network) over the review: every saved profile
 is listed, and only authorized profiles on that network can be chosen. With no wallet on that
 network, the review says "No wallet on Mainnet is chosen for this feed" and offers **Connect a wallet
-on Mainnet**, which opens the add-wallet sheet with that network selected.
+on Mainnet**, which opens the add-wallet sheet with that network selected. A prediction review
+offers the same **Choose wallet** under its wallet row for as long as the signal is open, including
+after a wallet was chosen or remembered and a quote was prepared for it.
 
 **Which wallet is used.** In order:
 

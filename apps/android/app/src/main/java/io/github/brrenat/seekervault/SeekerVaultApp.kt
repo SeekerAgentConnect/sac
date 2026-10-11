@@ -1152,6 +1152,13 @@ private fun RequestReviewRoute(
                         }
                     },
                     onPreview = { operations.preview(open.wallet) },
+                    // Changing a wallet already chosen goes through the same picker; what was
+                    // prepared for the old one is dropped by the view model (SEE-185).
+                    onChooseWallet = {
+                        open.network?.let(::walletNetworkOf)?.let {
+                            navigator.openOperationWallet(identity, it)
+                        }
+                    },
                     onPrepare = operations::prepare,
                     onApprove = {
                         if (open.requiresWalletHandoff) {

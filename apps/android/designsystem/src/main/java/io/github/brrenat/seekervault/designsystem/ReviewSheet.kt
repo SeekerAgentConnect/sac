@@ -183,6 +183,12 @@ data class ReviewSheetState(
     val dailySpend: ReviewSheetDailySpend? = null,
     val infoBlocks: List<ReviewSheetInfoBlock> = emptyList(),
     val factRows: List<ReviewSheetFactRow> = emptyList(),
+    /**
+     * An optional neutral action under the fact rows: a feed signal's "Choose wallet" (SEE-185),
+     * which opens the picker for the wallet that signs on the signal's network, whether or not one
+     * is already chosen. Null draws nothing, so every other variant is unchanged.
+     */
+    val walletAction: ReviewSheetAction? = null,
     val note: ReviewSheetNote? = null,
     val expiry: String,
     val confirmationCheckbox: String? = null,
@@ -229,6 +235,7 @@ fun ReviewSheet(
     onConfirmedChange: (Boolean) -> Unit = {},
     onRefreshQuote: () -> Unit = {},
     onPreview: () -> Unit = {},
+    onChooseWallet: () -> Unit = {},
 ) {
     // A warning does not always come with a tick to go past it: one that blocks approval, or one
     // shown before there is anything to approve, is read and not consented to (SEE-180).
@@ -329,6 +336,17 @@ fun ReviewSheet(
                 state.dailySpend?.let { ReviewSheetDailySpend(it) }
                 state.infoBlocks.forEach { ReviewSheetInfoBlock(it) }
                 state.factRows.forEach { ReviewSheetFactRow(it, onCopy, onOpenLink) }
+                state.walletAction?.let { action ->
+                    SeekerButton(
+                        label = action.label,
+                        onClick = onChooseWallet,
+                        variant =
+                            if (action.enabled) SeekerButtonVariant.Neutral
+                            else SeekerButtonVariant.Disabled,
+                        size = SeekerButtonSize.Md,
+                        modifier = Modifier.fillMaxWidth().testTag(ReviewSheetTags.WALLET_ACTION),
+                    )
+                }
                 state.note?.let { ReviewSheetNote(it) }
                 state.sections.forEach { section ->
                     key(section.key) { ReviewSheetSection(section, onCopy, onOpenLink) }
@@ -703,6 +721,8 @@ private fun ReviewSheetSection(
 
 /** Test tags the review sheet sets on its own parts. */
 object ReviewSheetTags {
+    const val WALLET_ACTION = "review-sheet.wallet-action"
+
     fun section(key: String): String = "review-sheet.section.$key"
 }
 
