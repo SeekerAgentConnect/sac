@@ -356,6 +356,26 @@ class AppNavigationTest {
     }
 
     @Test
+    fun theSolanaRpcSheetOpensOverWalletOnlyAndSurvivesARestore() {
+        val navigator = AppNavigator()
+        // Over Home it is not an edge: where each network is asked lives with the wallets.
+        assertFalse(navigator.openRpcSettings())
+        assertTrue(navigator.selectTab(AppScreen.Wallet))
+        assertTrue(navigator.openRpcSettings())
+        assertEquals(
+            NavigationState(AppScreen.Wallet, listOf(AppSheet.RpcSettings)),
+            navigator.state,
+        )
+        assertFalse(navigator.openRpcSettings())
+        assertEquals(
+            navigator.state,
+            decodeNavigationState(encodeNavigationState(navigator.state)),
+        )
+        assertTrue(navigator.back())
+        assertEquals(NavigationState(AppScreen.Wallet), navigator.state)
+    }
+
+    @Test
     fun discoverRoutesSurviveASaveAndRestore() {
         listOf(
                 NavigationState(AppScreen.Discover),

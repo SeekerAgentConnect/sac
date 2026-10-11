@@ -226,6 +226,10 @@ class StageBoundaryTest {
                 // addresses, amounts, the provider's words for a state, a sale's signature and a
                 // hash of the bytes approved — never a URL and never a transaction.
                 File(main, "java/io/github/brrenat/seekervault/positions/storage"),
+                // The owner's own Solana endpoint per network (SEE-184): URLs the owner typed and
+                // the app proved by genesis hash before saving. Nothing a server sends is kept
+                // here.
+                File(main, "java/io/github/brrenat/seekervault/rpc/storage"),
             )
         val syncPackage = File(main, "java/io/github/brrenat/seekervault/sync")
         val storagePackages =
@@ -417,6 +421,8 @@ class StageBoundaryTest {
                 .sorted()
         assertEquals(
             listOf(
+                // The protocol's network, so every read names the cluster it is about (SEE-184).
+                "io.github.brrenat.seekervault.request.v1",
                 "io.github.brrenat.seekervault.transactions",
                 "io.github.brrenat.seekervault.wallet",
             ),
@@ -451,14 +457,11 @@ class StageBoundaryTest {
             sources.filter { provider.containsMatchIn(it.readText()) }.map { it.name },
         )
         // And the endpoint is the application's own. Nothing a server sends can set it: it comes
-        // from the build, through the composition root, and no manifest, proposal or provider
-        // answer reaches it.
+        // from the build or the owner's own setting, through the one resolver the composition root
+        // builds (SEE-184), and no manifest, proposal or provider answer reaches it.
         val composition = File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt")
-        assertTrue(
-            composition
-                .readText()
-                .contains("HttpSolanaAccounts(httpClient, BuildConfig.SOLANA_RPC)")
-        )
+        assertTrue(composition.readText().contains("HttpSolanaAccounts(httpClient, url)"))
+        assertTrue(composition.readText().contains("general = BuildConfig.SOLANA_RPC,"))
         assertEquals(
             listOf("SeekerVaultApplication.kt"),
             File(main, "java")
@@ -493,6 +496,30 @@ class StageBoundaryTest {
                 .flatMap { it.walk().filter { file -> file.extension == "kt" } }
                 .filter { Regex("""https?://""").containsMatchIn(withoutComments(it)) }
                 .map { it.name },
+        )
+    }
+
+    @Test
+    fun everyChainReadGoesThroughTheOneResolver() {
+        // SEE-184: account reads and confirmation reads share one network-aware resolver, so a
+        // network's verification and its confirmations always reach the same proven endpoint. No
+        // other code may build a reader of its own, or keep an endpoint setting of its own: a
+        // second route would be a second place a network could be asked at the wrong endpoint.
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        fun builders(call: String) =
+            sources
+                .filter { Regex("""(?<!class )\b$call\(""").containsMatchIn(withoutComments(it)) }
+                .map { it.name }
+                .sorted()
+        assertEquals(listOf("SeekerVaultApplication.kt"), builders("HttpSolanaAccounts"))
+        assertEquals(listOf("SeekerVaultApplication.kt"), builders("HttpChainReader"))
+        assertEquals(listOf("SeekerVaultApplication.kt"), builders("RpcSettingsStore"))
+        assertEquals(listOf("SeekerVaultApplication.kt"), builders("SolanaRpc"))
+        val composition =
+            File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt").readText()
+        assertTrue(composition.contains("reader = { url -> HttpChainReader(httpClient, url) }"))
+        assertTrue(
+            composition.contains("accounts = { url -> HttpSolanaAccounts(httpClient, url) }")
         )
     }
 

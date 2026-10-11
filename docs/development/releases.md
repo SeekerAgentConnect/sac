@@ -375,14 +375,16 @@ leak.
 | Variable | Feature | Notes |
 | -- | -- | -- |
 | `SEEKERVAULT_GOOGLE_SERVICES_JSON` | `firebase` — push | The **client** `google-services.json` from the Firebase console's Android app settings, for `io.github.brrenat.seekervault`. A service-account JSON is refused: it is the relay's/MCP server's server credential and never goes in an app. |
-| `SEEKERVAULT_SOLANA_RPC` | `solanaRpc` — prediction orders, account reads | https, no username/password. A query-string key is warned about: it ships in the APK. |
-| `SEEKERVAULT_SOLANA_RPC_MAINNET`, `_DEVNET`, `_TESTNET` | per-cluster transaction confirmation | Optional; same rules. |
+| `SEEKERVAULT_SOLANA_RPC_MAINNET`, `_DEVNET`, `_TESTNET` | each network's initial endpoint — account reads and transaction confirmation; `_MAINNET` satisfies `solanaRpc` | https, no username/password. A query-string key is warned about: it ships in the APK. The owner can replace each on the phone ([solana-rpc.md](../wiki/solana-rpc.md)). |
+| `SEEKERVAULT_SOLANA_RPC` | legacy general endpoint; satisfies `solanaRpc` on its own | Same rules. Used for a network only after its genesis hash proves it; not needed beside `_MAINNET` (SEE-184). |
 | `SEEKERVAULT_RELAY_URL` | `relayUrl` — push relayed for direct servers | An https origin. |
 | `SEEKERVAULT_DISCOVERY_URL` | `discoveryUrl` — the Discover catalog | An https origin; unset means the relay's. |
-| `SEEKERVAULT_SWAP_FEE_BPS`, `SEEKERVAULT_SWAP_FEE_OWNER`, `SEEKERVAULT_SWAP_FEE_ACCOUNTS` | SAC swap fee | Unset means no fee; validated by Gradle ([swap-fee-config.md](swap-fee-config.md)). A fee needs `SEEKERVAULT_SOLANA_RPC`. |
+| `SEEKERVAULT_SWAP_FEE_BPS`, `SEEKERVAULT_SWAP_FEE_OWNER`, `SEEKERVAULT_SWAP_FEE_ACCOUNTS` | SAC swap fee | Unset means no fee; validated by Gradle ([swap-fee-config.md](swap-fee-config.md)). A fee needs `SEEKERVAULT_SOLANA_RPC_MAINNET` (or the legacy `SEEKERVAULT_SOLANA_RPC`). |
 
 `android.releaseRequires` in the manifest lists the features a **real** release must have —
-currently `firebase`, `solanaRpc`, `relayUrl`. A real release missing one stops before building; a
+currently `firebase`, `solanaRpc`, `relayUrl`. `solanaRpc` means a mainnet endpoint: the official
+build's chain reads (prediction orders, the swap fee) are mainnet's, so `SEEKERVAULT_SOLANA_RPC_MAINNET`
+alone satisfies it, and a general-only configuration still does. A real release missing one stops before building; a
 dry run builds anyway and warns. The APK's release notes record the configuration it was built with.
 
 ## Installing and verifying a release

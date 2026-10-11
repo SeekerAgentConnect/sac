@@ -41,6 +41,7 @@ import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.request.v1.StakingOperation
 import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
+import io.github.brrenat.seekervault.rpc.serving
 import io.github.brrenat.seekervault.servers.ALL_NETWORKS
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.directManifest
@@ -850,7 +851,7 @@ class InboxViewModelTest {
             wallet,
             evaluator,
             history,
-            chain = chain,
+            chain = chain.serving(),
             io = Dispatchers.Unconfined,
         )
 

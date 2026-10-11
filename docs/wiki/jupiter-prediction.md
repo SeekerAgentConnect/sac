@@ -77,7 +77,7 @@ Three ways out were possible: sign it anyway on a parameter-only review, refuse 
 
 `solana/` is that component: one read method (`getMultipleAccounts`), a table parser, and the rebuild. It names no provider, so any provider may use it; the swap asks for a format that needs no resolution and so never does, which also means the resolver is already in place if `asLegacyTransaction` is ever withdrawn.
 
-**What it costs, said plainly:** the review is then only as accurate as the configured endpoint. This is not offline verification and is not trustless — see [security.md](../security.md#resolving-a-lookup-table). The endpoint is the application's or its host's (`-Pseekervault.solanaRpc=…`), is **empty by default** so a checkout reaches no cluster, and a build without one prepares no order and says so.
+**What it costs, said plainly:** the review is then only as accurate as the configured endpoint. This is not offline verification and is not trustless — see [security.md](../security.md#resolving-a-lookup-table). The endpoint is the application's or its owner's — never a publisher's — and since SEE-184 it is the **mainnet** endpoint of the app's one resolver ([solana-rpc.md](solana-rpc.md)): the owner's setting (Wallet → **Solana RPC**), else `-Pseekervault.solanaRpc.mainnet=…`, else the legacy general `-Pseekervault.solanaRpc=…` once its genesis hash proves it is mainnet. A mainnet endpoint alone is enough. All are **empty by default** so a checkout reaches no cluster; with none, or with one that serves another cluster, no order is prepared and the review says why.
 
 ## What an order is made of
 

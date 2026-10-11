@@ -110,7 +110,8 @@
     <string name="jupiter_failure_other_event">The provider says this market belongs to a different event than the signal describes, so nothing was prepared.</string>
     <string name="jupiter_failure_other_provider">The provider says this market comes from a different source than the signal describes, so nothing was prepared.</string>
     <string name="jupiter_failure_other_signer">The provider wants a signature from an account other than your wallet. Nothing was prepared.</string>
-    <string name="jupiter_failure_no_rpc">This build has no Solana endpoint configured, so the transaction\'s accounts cannot be read and nothing can be prepared.</string>
+    <string name="jupiter_failure_no_rpc">No Solana RPC is set for this network, so the transaction\'s accounts cannot be read and nothing can be prepared. Set one in Wallets → Solana RPC.</string>
+    <string name="jupiter_failure_rpc_wrong_network">The Solana RPC set for this network serves another network, so the transaction\'s accounts were not read. Nothing was prepared. Check it in Wallets → Solana RPC.</string>
     <string name="jupiter_failure_rpc_unreachable">The Solana endpoint could not be reached, so the transaction\'s accounts could not be read. Nothing was prepared.</string>
     <string name="jupiter_failure_rpc_rate_limited">The Solana endpoint is asking for fewer requests. Wait a moment and prepare again.</string>
     <string name="jupiter_failure_rpc_refused">The Solana endpoint refused the request, so the transaction\'s accounts could not be read.</string>

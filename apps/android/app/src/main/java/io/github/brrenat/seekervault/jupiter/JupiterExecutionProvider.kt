@@ -26,7 +26,7 @@ import io.github.brrenat.seekervault.plugins.ProviderCapabilities
 import io.github.brrenat.seekervault.plugins.SWAP_ACTION
 import io.github.brrenat.seekervault.plugins.SWAP_SCHEMA_VERSION
 import io.github.brrenat.seekervault.plugins.actions.ActionPayload
-import io.github.brrenat.seekervault.solana.SolanaAccounts
+import io.github.brrenat.seekervault.solana.NetworkAccounts
 import java.time.Instant
 
 /**
@@ -50,7 +50,11 @@ import java.time.Instant
 class JupiterExecutionProvider(
     swapApi: JupiterProvider,
     predictionApi: JupiterPrediction,
-    chain: SolanaAccounts,
+    /**
+     * The application's account reads, by network (SEE-184). Every read names the network the
+     * operation, or the held position, was bound to; the application decides where it is asked.
+     */
+    chain: NetworkAccounts,
     /**
      * The SAC service fee this APK was built with (SEE-173, docs/development/swap-fee-config.md).
      * The application passes it from `BuildConfig`; nothing a feed or a server sends can.

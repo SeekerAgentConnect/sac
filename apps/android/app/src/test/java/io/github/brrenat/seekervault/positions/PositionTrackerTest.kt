@@ -30,6 +30,7 @@ import io.github.brrenat.seekervault.jupiter.wallet
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import io.github.brrenat.seekervault.positions.storage.PositionStore
+import io.github.brrenat.seekervault.rpc.serving
 import io.github.brrenat.seekervault.solana.SolanaException
 import io.github.brrenat.seekervault.solana.SolanaProblem
 import io.github.brrenat.seekervault.transactions.recentBlockhashOf
@@ -70,7 +71,9 @@ class PositionTrackerTest {
     private val api = FakePrediction()
     private val sale = saleTransaction()
     private val registry =
-        ProviderRegistry.of(JupiterExecutionProvider(NoSwaps, api, FakeChain(sale.tables)) { now })
+        ProviderRegistry.of(
+            JupiterExecutionProvider(NoSwaps, api, FakeChain(sale.tables).serving()) { now }
+        )
     private val tracking = RecordingTracking()
     private var chainChecks: Map<RequestKey, ChainCheck> = emptyMap()
     private var selected: SelectedWallet? = wallet()

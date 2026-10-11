@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Solana RPC sheet over the Wallet tab (SEE-184, design/components/rpc-endpoint-card). -->
+    <string name="rpc_open">Solana RPC</string>
+    <string name="rpc_title">Solana RPC</string>
+    <string name="rpc_explanation">This phone reads each Solana network through its own endpoint: to check a transaction before you sign it, and to follow it afterwards. Networks are separate, so a mainnet feed and a devnet server work side by side.</string>
+    <string name="rpc_caption">Only you and this build set these; no server or feed can. An endpoint is used for a network only after its genesis hash names that network. History shows only its host.</string>
+    <string name="rpc_close">Close</string>
+    <string name="rpc_network_mainnet">mainnet</string>
+    <string name="rpc_network_devnet">devnet</string>
+    <string name="rpc_network_testnet">testnet</string>
+    <string name="rpc_in_use_owner">%1$s · your setting</string>
+    <string name="rpc_in_use_build">%1$s · this build\'s endpoint</string>
+    <string name="rpc_in_use_general">%1$s · this build\'s general endpoint</string>
+    <string name="rpc_in_use_none">No endpoint set</string>
+    <string name="rpc_field_label">Your %1$s endpoint</string>
+    <string name="rpc_field_placeholder">https://…</string>
+    <string name="rpc_save">Check and save</string>
+    <string name="rpc_reset">Use build default</string>
+    <string name="rpc_status_checking">Checking…</string>
+    <string name="rpc_status_serves">Serves Solana %1$s.</string>
+    <string name="rpc_status_local_validator">A local validator, accepted because this is a debug build.</string>
+    <string name="rpc_status_none">Nothing is set, so %1$s transactions that need the chain can\'t be prepared or followed.</string>
+    <string name="rpc_status_other_network">It serves Solana %1$s, not %2$s. Nothing it says counts for %2$s.</string>
+    <string name="rpc_status_unknown_chain">It serves a chain that isn\'t Solana %1$s.</string>
+    <string name="rpc_status_unreachable">It couldn\'t be reached.</string>
+    <string name="rpc_status_rate_limited">It is asking for fewer requests. Try again in a moment.</string>
+    <string name="rpc_status_refused">It refused the request.</string>
+    <string name="rpc_status_unusable">Its answer couldn\'t be used.</string>
+    <string name="rpc_not_saved">Not saved. %1$s</string>
+    <string name="rpc_url_empty">Enter the endpoint\'s URL.</string>
+    <string name="rpc_url_not_a_url">That isn\'t a URL.</string>
+    <string name="rpc_url_not_https">Use an https:// address.</string>
+    <string name="rpc_url_credentials">Remove the username and password from the URL.</string>
+</resources>

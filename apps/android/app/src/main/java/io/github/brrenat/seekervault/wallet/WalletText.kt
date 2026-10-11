@@ -11,6 +11,8 @@ object WalletTags {
     const val CONNECT = "walletConnect"
     const val ADD = "walletAdd"
     const val ADD_SHEET = "walletAddSheet"
+    /** Opens the Solana RPC sheet (SEE-184). */
+    const val RPC_SETTINGS = "walletRpcSettings"
     const val ADD_PROBLEM = "walletAddProblem"
     const val DISCONNECT = "walletDisconnect"
     const val PROBLEM = "walletProblem"

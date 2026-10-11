@@ -76,75 +76,23 @@ val GENESIS_HASHES: Map<Network, String> =
     )
 
 /**
- * One configured endpoint, and the clusters it may be asked about.
+ * Where each cluster is asked about this phone's own transactions (SEE-165).
  *
- * [network] is null for the build's general endpoint (`seekervault.solanaRpc`), which is asked
- * about a record only once its genesis hash names that record's cluster. A per-cluster endpoint
- * (`seekervault.solanaRpc.devnet` and so on) must not serve a *different known* cluster either; a
- * genesis hash nobody knows — a local test validator — is accepted only when [allowUnknownGenesis]
- * says this build was configured for one, which only a debug build is.
+ * The application's one resolver ([io.github.brrenat.seekervault.rpc.SolanaRpc], SEE-184) is the
+ * implementation: the same endpoint, proven the same way, that the cluster's account reads use. A
+ * record is only ever asked about on the cluster it was bound to, and an endpoint that cannot be
+ * shown to serve that cluster is never asked at all.
  */
-data class ChainEndpoint(
-    val url: String,
-    val network: Network?,
-    val allowUnknownGenesis: Boolean = false,
-)
-
-/** Where each cluster is asked, given the endpoints this build was configured with. */
-class ChainEndpoints(
-    private val endpoints: List<ChainEndpoint>,
-    private val reader: (String) -> ChainReader,
-) {
-    private val genesis = mutableMapOf<String, String>()
-    private val readers = mutableMapOf<String, ChainReader>()
-
-    /** Whether any endpoint could ever be asked about [network]. */
-    fun configured(network: Network): Boolean = endpoints.any {
-        it.url.isNotEmpty() && (it.network == null || it.network == network)
-    }
+interface ChainEndpoints {
+    /** Whether an endpoint is set for [network] at all — no call is made to say so. */
+    fun configured(network: Network): Boolean
 
     /**
      * A reader that serves [network], proven by its genesis hash. Throws [SolanaException]:
-     * [SolanaProblem.NoEndpoint] when nothing is configured for it, and the endpoint's own problem
-     * — or [WRONG_CLUSTER] — when the one configured can't be shown to serve it.
+     * [SolanaProblem.NoEndpoint] when nothing is set for it, [SolanaProblem.WrongNetwork] when the
+     * one set serves another cluster, and the endpoint's own problem when it can't be asked.
      */
-    suspend fun readerFor(network: Network): ChainReader {
-        val candidates =
-            endpoints
-                .filter { it.url.isNotEmpty() }
-                .filter { it.network == network || it.network == null }
-                // A cluster's own endpoint first: it is the one somebody chose for it.
-                .sortedBy { if (it.network == network) 0 else 1 }
-        if (candidates.isEmpty()) throw SolanaException(SolanaProblem.NoEndpoint)
-        var failure: SolanaException? = null
-        for (endpoint in candidates) {
-            val client =
-                synchronized(readers) { readers.getOrPut(endpoint.url) { reader(endpoint.url) } }
-            val hash =
-                try {
-                    synchronized(genesis) { genesis[endpoint.url] }
-                        ?: client.genesisHash().also {
-                            synchronized(genesis) { genesis[endpoint.url] = it }
-                        }
-                } catch (e: SolanaException) {
-                    failure = failure ?: e
-                    continue
-                }
-            val served = GENESIS_HASHES.entries.firstOrNull { it.value == hash }?.key
-            when {
-                served == network -> return client
-                served == null && endpoint.network == network && endpoint.allowUnknownGenesis ->
-                    return client
-                else -> failure = failure ?: SolanaException(SolanaProblem.Refused, WRONG_CLUSTER)
-            }
-        }
-        throw checkNotNull(failure)
-    }
-
-    companion object {
-        /** The detail a [SolanaProblem.Refused] carries when an endpoint serves another cluster. */
-        const val WRONG_CLUSTER = "the endpoint serves another cluster"
-    }
+    suspend fun readerFor(network: Network): ChainReader
 }
 
 /**

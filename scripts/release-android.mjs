@@ -89,7 +89,10 @@ export function androidReleaseConfig(environment, applicationId) {
 
   const features = {
     firebase: googleServices !== null,
-    solanaRpc: Boolean(solanaRpc),
+    // The official build's chain reads are mainnet's (prediction orders, the swap fee): a mainnet
+    // endpoint satisfies it on its own (SEE-184), and a general-only build still does, because the
+    // app proves the general endpoint's cluster before using it for any network.
+    solanaRpc: Boolean(networks.mainnet || solanaRpc),
     solanaRpcNetworks: NETWORKS.filter((network) => networks[network]),
     relayUrl,
     discoveryUrl,

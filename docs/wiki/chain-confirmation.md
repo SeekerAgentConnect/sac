@@ -103,7 +103,9 @@ What is stored about an endpoint is its **host** only; a configured URL can carr
 
 ## Endpoints
 
-The phone's own, from the build, never a server's or a publisher's:
+The phone's own, never a server's or a publisher's, and since SEE-184 the **same resolver** the
+cluster's account reads use ([solana-rpc.md](solana-rpc.md)): for each cluster, the owner's setting
+(Wallet → **Solana RPC**), else the build's endpoint for that cluster, else the build's general one.
 
 ```
 apps/android/gradlew -p apps/android :app:assembleDebug \
@@ -112,12 +114,19 @@ apps/android/gradlew -p apps/android :app:assembleDebug \
   -Pseekervault.solanaRpc.testnet=https://…
 ```
 
-All empty by default. The general `-Pseekervault.solanaRpc` (SEE-94) is also used, but for a
-cluster only once its **genesis hash** proves it serves that cluster. A per-cluster endpoint that
-serves a *different known* cluster is refused (**wrong cluster**). A genesis hash no cluster has — a
-local `solana-test-validator` — is accepted only for an explicitly configured devnet or testnet
-endpoint in a **debug** build. With no endpoint for a cluster the record says so and waits; a later
-build that has one picks it up on start.
+The build values are initial defaults, all empty by default. The general `-Pseekervault.solanaRpc`
+(SEE-94) is used for a cluster only when neither of the others is set, and only once its **genesis
+hash** proves it serves that cluster. It is a selection, not a failover: the endpoint chosen is the
+one asked, and its failure is reported rather than covered by another. An endpoint that serves a
+*different known* cluster is refused (**wrong cluster**). A genesis hash no cluster has — a local
+`solana-test-validator` — is accepted only for an explicitly configured devnet or testnet endpoint
+in a **debug** build. With no endpoint for a cluster the record says so and waits.
+
+**Changing an endpoint** on the phone takes effect at once: cached proofs are dropped, and that
+cluster's records whose last check stopped at the endpoint are due immediately through the new one
+(`ConfirmationTracker.endpointChanged`). Records of other clusters are untouched, and a record is
+never moved to another cluster: the one pinned when its transaction was sent is the only one it is
+asked about.
 
 ## When checks run
 

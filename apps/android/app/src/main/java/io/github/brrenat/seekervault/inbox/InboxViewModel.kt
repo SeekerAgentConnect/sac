@@ -40,7 +40,7 @@ import io.github.brrenat.seekervault.skr.StakingInspection
 import io.github.brrenat.seekervault.skr.inspectStaking
 import io.github.brrenat.seekervault.skr.readSkrPosition
 import io.github.brrenat.seekervault.skr.staking
-import io.github.brrenat.seekervault.solana.SolanaAccounts
+import io.github.brrenat.seekervault.solana.NetworkAccounts
 import io.github.brrenat.seekervault.transactions.TransferInspection
 import io.github.brrenat.seekervault.transactions.inspectTransfer
 import io.github.brrenat.seekervault.transactions.transfer
@@ -292,14 +292,15 @@ class InboxViewModel(
      */
     private val plugins: ProviderRegistry = ProviderRegistry.of(),
     /**
-     * This phone's own Solana endpoint, used to read a staking position for itself (SEE-146).
+     * This phone's own Solana endpoints, used to read a staking position for itself (SEE-146) on
+     * the network the request is bound to (SEE-184).
      *
      * Null when none is configured, and then a staking review says what it could not read rather
      * than taking the server's word for a share price. An unstake or a withdrawal is refused in
      * that state; a stake is still fully readable, because its amount and all of its accounts come
      * from the bytes and from this app's own derivations.
      */
-    private val chain: SolanaAccounts? = null,
+    private val chain: NetworkAccounts? = null,
     /**
      * How long the app waits for the wallet before it gives up on an approval. It is the owner's
      * own time in the wallet app, so it is generous; a wallet that never answers at all must still
@@ -754,7 +755,7 @@ class InboxViewModel(
                     // the server built the transaction could make an honest unstake look wrong.
                     val position =
                         if (staking == null) null
-                        else chain?.let { readSkrPosition(it, staking.wallet) }
+                        else chain?.let { readSkrPosition(it.on(staking.network), staking.wallet) }
                     val prepared = repository.prepare(key)
                     val selected = wallet.walletFor(key.connectionId)
                     if (staking == null) {

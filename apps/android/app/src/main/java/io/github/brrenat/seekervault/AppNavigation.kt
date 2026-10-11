@@ -148,6 +148,9 @@ sealed interface AppSheet {
 
     data object GlobalRules : AppSheet
 
+    /** Where this phone asks each Solana network (SEE-184), over the Wallet tab. */
+    data object RpcSettings : AppSheet
+
     /** [assetId] is null for Add and identifies an existing draft row for Edit. */
     data class AssetEditor(
         val connectionId: String,
@@ -251,6 +254,8 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
 
     fun openGlobalRules(): Boolean = push(AppSheet.GlobalRules)
 
+    fun openRpcSettings(): Boolean = push(AppSheet.RpcSettings)
+
     fun openAssetEditor(
         connectionId: String,
         kind: AssetEditorKind,
@@ -335,6 +340,7 @@ private fun NavigationState.canPush(sheet: AppSheet): Boolean =
             (sheets.isEmpty() && screen == AppScreen.Wallet) ||
                 (sheets.size == 2 && sheets.last() is AppSheet.ConnectionWallet)
         is AppSheet.CatalogDetail -> sheets.isEmpty() && screen == AppScreen.Discover
+        AppSheet.RpcSettings -> sheets.isEmpty() && screen == AppScreen.Wallet
         is AppSheet.OwnerInput ->
             sheets.size == 1 &&
                 (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity
@@ -419,6 +425,7 @@ internal fun encodeNavigationState(state: NavigationState): List<String> = build
                 add(sheet.connectionId)
             }
             AppSheet.GlobalRules -> add(SHEET_GLOBAL_RULES)
+            AppSheet.RpcSettings -> add(SHEET_RPC)
             is AppSheet.AssetEditor -> {
                 add(SHEET_ASSET)
                 add(sheet.connectionId)
@@ -468,6 +475,7 @@ internal fun decodeNavigationState(saved: List<String>): NavigationState? = runC
                 SHEET_CATALOG -> AppSheet.CatalogDetail(cursor.next(), cursor.next())
                 SHEET_RULES -> AppSheet.ConnectionRules(cursor.next())
                 SHEET_GLOBAL_RULES -> AppSheet.GlobalRules
+                SHEET_RPC -> AppSheet.RpcSettings
                 SHEET_ASSET -> {
                     val connectionId = cursor.next()
                     val kind = enumValueOf<AssetEditorKind>(cursor.next())
@@ -565,6 +573,7 @@ private const val SHEET_ADD_WALLET = "add_wallet"
 private const val SHEET_CATALOG = "catalog_detail"
 private const val SHEET_RULES = "connection_rules"
 private const val SHEET_GLOBAL_RULES = "global_rules"
+private const val SHEET_RPC = "rpc_settings"
 private const val SHEET_ASSET = "asset_editor"
 private const val SHEET_ADDRESS = "address_editor"
 private const val IDENTITY_PRIVATE = "private"

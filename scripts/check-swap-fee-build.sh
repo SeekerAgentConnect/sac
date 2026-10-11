@@ -73,6 +73,14 @@ expect_field SWAP_FEE_BPS 15
 expect_field SWAP_FEE_ACCOUNTS "\"$USDC=$USDC_ACCOUNT\""
 echo "ok: a fee build from environment variables"
 
+# A mainnet endpoint alone verifies the fee accounts; no general endpoint is needed (SEE-184).
+generate -Pseekervault.solanaRpc.mainnet="$RPC" -Pseekervault.swapFee.bps=20 \
+  -Pseekervault.swapFee.owner="$OWNER" -Pseekervault.swapFee.accounts="$USDC=$USDC_ACCOUNT"
+expect_field SWAP_FEE_BPS 20
+expect_field SOLANA_RPC '""'
+expect_field SOLANA_RPC_MAINNET "\"$RPC\""
+echo "ok: a fee build with only a mainnet endpoint"
+
 # A property wins over its environment variable.
 SEEKERVAULT_SWAP_FEE_BPS=15 SEEKERVAULT_SWAP_FEE_OWNER="$OWNER" \
   SEEKERVAULT_SWAP_FEE_ACCOUNTS="$USDC=$USDC_ACCOUNT" \
@@ -92,6 +100,9 @@ expect_refused "a rate with no accounts" generate -Pseekervault.solanaRpc="$RPC"
   -Pseekervault.swapFee.bps=20 -Pseekervault.swapFee.owner="$OWNER"
 expect_refused "a rate with no Solana endpoint" generate -Pseekervault.swapFee.bps=20 \
   -Pseekervault.swapFee.owner="$OWNER" -Pseekervault.swapFee.accounts="$USDC=$USDC_ACCOUNT"
+expect_refused "a rate with only a devnet endpoint" generate -Pseekervault.swapFee.bps=20 \
+  -Pseekervault.solanaRpc.devnet="$RPC" -Pseekervault.swapFee.owner="$OWNER" \
+  -Pseekervault.swapFee.accounts="$USDC=$USDC_ACCOUNT"
 expect_refused "an owner that is not an address" generate "${full[@]}" \
   -Pseekervault.swapFee.bps=20 -Pseekervault.swapFee.owner=not-an-address
 expect_refused "an entry without an account" generate "${full[@]}" \

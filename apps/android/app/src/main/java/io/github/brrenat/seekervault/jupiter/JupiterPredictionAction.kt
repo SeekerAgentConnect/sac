@@ -23,7 +23,7 @@ import io.github.brrenat.seekervault.plugins.actions.predictionBuyInputs
 import io.github.brrenat.seekervault.plugins.actions.predictionChoiceFrom
 import io.github.brrenat.seekervault.solana.LookupException
 import io.github.brrenat.seekervault.solana.LookupProblem
-import io.github.brrenat.seekervault.solana.SolanaAccounts
+import io.github.brrenat.seekervault.solana.NetworkAccounts
 import io.github.brrenat.seekervault.solana.SolanaException
 import io.github.brrenat.seekervault.solana.SolanaProblem
 import java.time.Duration
@@ -58,7 +58,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal class JupiterPredictionAction(
     private val api: JupiterPrediction,
-    private val chain: SolanaAccounts,
+    private val chain: NetworkAccounts,
     private val capability: ActionCapability,
     private val now: () -> Instant,
 ) {
@@ -255,7 +255,8 @@ internal class JupiterPredictionAction(
                     wallet = wallet,
                     transaction = order.transaction,
                     version = version,
-                    chain = chain,
+                    // The wallet's network, checked above: the app's endpoint for it, proven.
+                    chain = chain.on(wallet.network.network),
                 )
             } catch (e: SolanaException) {
                 throw PluginFailure(e.problem.code, e.problem.message, e.detail)
@@ -365,6 +366,7 @@ internal val SolanaProblem.message: Int
     get() =
         when (this) {
             SolanaProblem.NoEndpoint -> R.string.jupiter_failure_no_rpc
+            SolanaProblem.WrongNetwork -> R.string.jupiter_failure_rpc_wrong_network
             SolanaProblem.Unreachable -> R.string.jupiter_failure_rpc_unreachable
             SolanaProblem.RateLimited -> R.string.jupiter_failure_rpc_rate_limited
             SolanaProblem.Refused -> R.string.jupiter_failure_rpc_refused
