@@ -83,6 +83,9 @@ class FakeConnectionGateway : ConnectionGateway {
         var loseNextResponse = false
         /** How many requests one ListPending page holds. */
         var pageSize = 100
+
+        /** False for a sidecar from before `not_sent`, which refuses it as an unknown result. */
+        var knowsNotSent = true
         /** What the chain will say about a request the next time the phone checks (SAW-022). */
         val onChain = mutableMapOf<String, Confirmed>()
         /** How many times the phone has asked this server to check a status. */
@@ -372,6 +375,29 @@ class FakeConnectionGateway : ConnectionGateway {
                 settled[connectionId]?.get(requestId)
                     ?: throw GatewayException(GatewayException.Kind.NotFound, "no such request")
             if (accepted[key] == submission.resultCase) return now
+            // Proven never sent: back to PENDING with the old attempt's outcome cleared, for a new
+            // approval of a new preparation (docs/protocol.md#reopening).
+            if (submission.resultCase == SubmitResultRequest.ResultCase.NOT_SENT) {
+                if (!knowsNotSent) {
+                    throw GatewayException(GatewayException.Kind.Rejected, "result is missing")
+                }
+                if (now.state != RequestState.REQUEST_STATE_UNKNOWN) {
+                    throw GatewayException(
+                        GatewayException.Kind.InvalidState,
+                        "moved on",
+                        request = now,
+                    )
+                }
+                val reopened =
+                    now.toBuilder()
+                        .setState(RequestState.REQUEST_STATE_PENDING)
+                        .clearOutcome()
+                        .build()
+                settled.getValue(connectionId).remove(requestId)
+                pending.getOrPut(connectionId) { mutableListOf() }.add(reopened)
+                accepted.remove(key)
+                return reopened
+            }
             // An approved message or transfer is PROCESSING, and what the wallet did settles it.
             // An outcome the phone couldn't determine leaves it UNKNOWN, which a later report can
             // still settle, exactly as the real lifecycle allows.

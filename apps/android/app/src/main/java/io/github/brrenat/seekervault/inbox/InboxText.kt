@@ -410,6 +410,7 @@ private fun approvedText(result: LocalResult): String {
                 else R.string.status_declined_in_wallet
             )
         is SigningOutcome.Failed -> stringResource(R.string.status_not_signed, outcome.detail)
+        SigningOutcome.NotSent -> stringResource(R.string.status_not_sent)
         // A message that never came back was never signed. A transfer that never came back may
         // have been sent, and this phone says exactly that rather than either of the easy answers.
         is SigningOutcome.Unresolved ->
@@ -472,6 +473,7 @@ private fun answerSummary(result: LocalResult): Int =
                     }
                 SigningOutcome.Declined -> R.string.answer_declined_in_wallet
                 is SigningOutcome.Failed -> R.string.answer_not_signed
+                SigningOutcome.NotSent -> R.string.answer_not_sent
                 is SigningOutcome.Unresolved ->
                     if (result.request.transfer() != null) R.string.answer_unknown
                     else R.string.answer_unresolved

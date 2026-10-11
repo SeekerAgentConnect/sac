@@ -111,9 +111,31 @@ and that is the only source of an operation's network. Nothing reads it from a w
 manifest's `supported_networks` or from the assets the terms name: the same mint on another cluster
 is a different asset. `ProposalValidation` reads contract 1 and 2; a contract-1 document's network is
 `SignalNetwork.Missing` even if the field is present, because that contract never defined it. One
-feed may publish successive signals for different networks, and the review shows the signal's
-network ("… · from this signal") with the wallet chosen for it
-([wallet-setup.md](../guides/wallet-setup.md#feed-operations)).
+feed may publish successive signals for different networks, and the review shows the wallet chosen
+for the signal's network ([wallet-setup.md](../guides/wallet-setup.md#feed-operations)).
+
+### The owner's part of a swap
+
+A swap review's **Your part** works as a prediction's side and stake do (SEE-158): a card on the
+review says what is chosen ("2.5 USDC · Main wallet"), and **Choose amount and wallet** / **Edit**
+opens a sheet stacked over it (`AppSheet.OwnerInput`, `operations/SwapParametersSheet.kt`) with the
+wallet that signs, the amount and the slippage in whole basis points, starting from 0.5% or the
+signal's ceiling when that is lower. The wallet row opens the same picker over the sheet
+(`[review, params, wallet]`). Nothing reaches the review until **Use these**, which needs a wallet,
+an amount inside the signal's and the provider's bounds and a slippage inside the signal's ceiling;
+it writes the choice and prepares at once. **Get a fresh quote and prepare again** stays on the
+review once something was prepared or failed.
+
+A swap nobody has acted on yet is reviewed in the same design review sheet a prediction is
+(`ProposalRecord.reviewedAsSwap`, `operations/SwapReview.kt` → `SwapReviewScreen.kt`, design
+`screens/sheet-swap`): the pair ("USDC → SOL") as the headline, who routes it and the most the price
+may move as the subline, the Your part card, the verdict, the stale-quote and preparation-error
+cards, a pinned footer with **Approve and swap**, **Preview without sending** and **Dismiss** (or
+"Getting a quote…" while one is fetched), and the four collapsed sections — checks, about this swap,
+the provider, and technical details with every term under a label. The stages, verdict, checks and
+sections are the prediction sheet's own code ([prediction review](prediction-review.md)). An
+executed swap, and any other signal action, keeps `ProposalReviewScreen`, which says where to look
+afterwards.
 
 ### Dismissal
 

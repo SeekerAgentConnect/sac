@@ -150,4 +150,6 @@
     <string name="jupiter_finding_funding_not_owners">The amount would come from an account that is not yours.</string>
     <string name="jupiter_finding_funding">What funds this order is not what the order spends.</string>
     <string name="jupiter_finding_no_order_held">This phone no longer holds the order these bytes were built for, so there is nothing to check them against. Prepare again.</string>
+    <string name="jupiter_caution_no_exit_yes">Nobody is buying Yes in this market right now. Once you buy, you will most likely not be able to sell this position, close the trade early or get your money back. You are paid only if Yes wins when the market settles.</string>
+    <string name="jupiter_caution_no_exit_no">Nobody is buying No in this market right now. Once you buy, you will most likely not be able to sell this position, close the trade early or get your money back. You are paid only if No wins when the market settles.</string>
 </resources>

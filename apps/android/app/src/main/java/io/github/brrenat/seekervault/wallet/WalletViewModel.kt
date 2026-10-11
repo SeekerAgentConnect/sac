@@ -106,9 +106,6 @@ class WalletViewModel(
     // Whether the app has left the foreground since it last published on opening.
     private var hidden = false
 
-    // The usable connections this screen has already seen, so a new one can be told at once.
-    private var known = emptySet<String>()
-
     init {
         viewModelScope.launch {
             repository.profiles.collect { profiles ->
@@ -126,11 +123,12 @@ class WalletViewModel(
                 _state.update { it.copy(connections = list) }
                 // A direct server paired without leaving the app is told its binding — which is
                 // "no wallet" until the owner chooses one — rather than waiting for the next
-                // return to the foreground. Nothing is published before the profiles are read.
-                val usable = list.filter { it.usable }.map { it.id }.toSet()
-                val fresh = usable - known
-                known = usable
-                if (fresh.isNotEmpty() && _state.value.loaded) publish()
+                // return to the foreground. So is one whose binding moved under it: a manifest
+                // read again with other networks changes what it should hold, and one that
+                // couldn't be told is tried again whenever its connection is refreshed. Servers
+                // already holding their binding are skipped, so this asks nobody twice. Nothing is
+                // published before the profiles are read.
+                if (list.any { it.usable } && _state.value.loaded) publish()
             }
         }
         viewModelScope.launch {

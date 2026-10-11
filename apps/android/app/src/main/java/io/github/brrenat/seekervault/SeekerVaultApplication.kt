@@ -487,6 +487,12 @@ class SeekerVaultApplication : Application() {
                 tracking = confirmations,
                 arrivals = arrivals,
             )
+        // A transfer whose wallet never answered is settled, and reported, once the chain can say
+        // whether it was sent.
+        val lostSettlements = CoroutineScope(SupervisorJob() + connectionIo)
+        confirmations.onLostSettled = { key, signature ->
+            lostSettlements.launch { repository.settleLost(key, signature) }
+        }
         backgroundSync =
             BackgroundSyncScheduler.create(
                     context = this,
@@ -886,9 +892,9 @@ class SeekerVaultApplication : Application() {
         NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(host)
 
     private companion object {
-        // What the wallet shows the owner while they decide. The app has no website yet, so the
-        // wallet can't verify the identity and says so; that's honest, not a claim of trust.
-        const val IDENTITY_URI = "https://github.com/brrenat/SeekerAgentWallet"
+        // What the wallet shows the owner while they decide: the app's own site, not its source
+        // host. Nothing there proves the app's identity to the wallet, and the wallet says so.
+        const val IDENTITY_URI = "https://seekeragentconnect.github.io"
         const val ICON_URI = "favicon.ico"
 
         /**

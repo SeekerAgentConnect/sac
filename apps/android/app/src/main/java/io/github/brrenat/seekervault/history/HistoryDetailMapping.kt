@@ -361,6 +361,10 @@ private fun approvedExplanation(result: LocalResult, view: ChainView): String =
             "You approved on this phone, then declined in the wallet. Nothing was signed."
         is SigningOutcome.Failed ->
             "You approved on this phone. The wallet didn't complete it: ${signing.detail}"
+        SigningOutcome.NotSent ->
+            "You approved on this phone. The wallet never answered, and the transaction was never " +
+                "sent: its blockhash expired with no matching transaction on chain, so it can " +
+                "never land. Nothing was spent."
         is SigningOutcome.Unresolved ->
             "You approved on this phone. This phone never learned what the wallet did: " +
                 signing.detail +

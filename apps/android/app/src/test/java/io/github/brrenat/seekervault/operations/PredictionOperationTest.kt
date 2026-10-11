@@ -6,8 +6,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityKind
 import io.github.brrenat.seekervault.activity.ActivityOutcome
+import io.github.brrenat.seekervault.designsystem.ReviewSheetState
 import io.github.brrenat.seekervault.jupiter.MARKET
 import io.github.brrenat.seekervault.jupiter.MARKET_ID
+import io.github.brrenat.seekervault.jupiter.NO_EXIT
 import io.github.brrenat.seekervault.jupiter.ORDER_ACCOUNT
 import io.github.brrenat.seekervault.jupiter.ORDER_PUBKEY
 import io.github.brrenat.seekervault.jupiter.POSITION_ACCOUNT
@@ -225,6 +227,40 @@ class PredictionOperationTest {
     }
 
     @Test
+    fun aSideNobodyIsBuyingIsBoughtOnlyAfterTheOwnerTicksThatItCannotBeSold() = runBlocking {
+        val phone = phone()
+        // What Jupiter answered for "Solana price on October 13? · <80" on 2026-10-11: a Yes
+        // could be bought, and nobody was bidding for one, so it could not be sold again.
+        phone.markets.answersMarket = { openMarket(it, sellYesPriceUsd = 0UL) }
+        val model = opened(phone)
+        phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 5 }))
+        choose(model, yes = true, stake = 5_000_000UL)
+        model.prepare()
+        val review = checkNotNull(model.review.value)
+        assertEquals(listOf(NO_EXIT), review.inspection?.cautions?.map { it.code })
+        assertTrue(checkNotNull(review.inspection).approvable)
+
+        // Before anything is bought, the owner is told, and nothing reaches the wallet untold.
+        model.approve(phone.operationWallet())
+        assertEquals(OperationProblem.NotAcknowledged, model.review.value?.problem)
+        assertTrue(phone.adapter.sendings.isEmpty())
+        assertNull(phone.proposals.proposal(CONNECTION, PREDICTION_PROPOSAL)?.execution)
+
+        model.acknowledge(true)
+        model.approve(phone.operationWallet())
+        assertEquals(1, phone.adapter.sendings.size)
+    }
+
+    @Test
+    fun aSideSomebodyIsBuyingAsksForNoTick() = runBlocking {
+        val phone = phone()
+        val model = opened(phone)
+        choose(model, yes = true, stake = 5_000_000UL)
+        model.prepare()
+        assertEquals(emptyList<String>(), model.review.value?.inspection?.cautions?.map { it.code })
+    }
+
+    @Test
     fun whereToOpenTheOrderAppearsOnlyAfterOneIsPlacedAndOutlivesTheApp() = runBlocking {
         val phone = phone()
         val model = opened(phone)
@@ -411,8 +447,7 @@ class PredictionOperationTest {
             sheet.preparationError?.message,
         )
         assertEquals("Try again", sheet.preparationError?.actionLabel)
-        assertEquals("5 USDC on Yes", sheet.yourPart?.summary)
-        assertNull(sheet.terms)
+        assertEquals("5 USDC on Yes · ${walletName(checkNotNull(wallet))}", sheet.yourPart?.summary)
         assertNull(sheet.confirmationCheckbox)
         assertFalse(sheet.primaryAction.enabled)
         assertTrue(sheet.statusBlocks.isEmpty())
@@ -437,7 +472,7 @@ class PredictionOperationTest {
         assertFalse(PolicyReason.RequestUnverified in ready.assessment?.decision?.reasons.orEmpty())
         val prepared = ready.sheet(wallet)
         assertNull(prepared.preparationError)
-        assertTrue(prepared.terms?.rows.orEmpty().isNotEmpty())
+        assertTrue(prepared.quoteFigures().isNotEmpty())
         // Nothing reached the wallet: trying again only prepares.
         assertEquals(
             emptyList<Triple<ByteString, SelectedWallet, String>>(),
@@ -517,11 +552,8 @@ class PredictionOperationTest {
             assertTrue(working.preparing)
             assertNotNull(working.inspection)
             val sheet = working.sheet(wallet)
-            assertEquals(emptyList<Any>(), sheet.terms?.rows)
-            assertEquals(
-                "Getting a quote and checking the transaction…",
-                sheet.terms?.emptyText,
-            )
+            // Nothing read out of the bytes being replaced is shown as the quote meanwhile.
+            assertTrue(sheet.quoteFigures().isEmpty())
             assertNull(sheet.preparationError)
             assertNull(sheet.staleQuote)
             assertNull(sheet.confirmationCheckbox)
@@ -529,10 +561,19 @@ class PredictionOperationTest {
 
             // And once it answers, the new quote is the one shown.
             val ready = checkNotNull(model.review.value).sheet(wallet)
-            assertTrue(ready.terms?.rows.orEmpty().isNotEmpty())
+            assertTrue(ready.quoteFigures().isNotEmpty())
             assertNull(ready.preparationError)
         }
     }
+
+    /**
+     * The quote's figures, which sit with the technical details now that there is no quote card.
+     */
+    private fun ReviewSheetState.quoteFigures() =
+        sections
+            .single { it.key == PredictionReviewSections.TECHNICAL }
+            .factRows
+            .filter { it.label == "This order costs" }
 
     private fun OperationReview.sheet(wallet: SelectedWallet?) =
         toPredictionSheet(

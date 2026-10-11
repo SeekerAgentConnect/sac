@@ -257,7 +257,7 @@ class PredictionReviewTest {
 
         val after = sheet(review(choice = chosen))
         assertEquals(record.proposal.title, after.headline)
-        assertEquals("5 USDC on Yes", after.yourPart?.summary)
+        assertEquals("5 USDC on Yes · ${PAYER.middle()}", after.yourPart?.summary)
     }
 
     @Test
@@ -281,9 +281,9 @@ class PredictionReviewTest {
     fun noLabelIsASnakeCaseKeyAndNoAmountIsInBaseUnits() {
         val state = sheet(review(choice = chosen, prepared = true))
         val facts = state.allFacts()
-        val labels = facts.map { it.label } + state.terms!!.rows.map { it.label }
+        val labels = facts.map { it.label }
         labels.forEach { assertFalse(it, it.contains('_')) }
-        val values = facts.map { it.value } + state.terms!!.rows.map { it.value }
+        val values = facts.map { it.value }
         assertFalse(values.toString(), "5000000" in values)
         assertEquals("5 USDC", facts.single { it.label == "Least deposit" }.value)
         // The market's own source, named as that rather than as the provider (SEE-180).
@@ -300,19 +300,20 @@ class PredictionReviewTest {
 
     @Test
     fun everyMoneyValueInTheQuoteHasItsUnit() {
-        val rows = sheet(review(choice = chosen, prepared = true)).terms!!.rows
+        // The quote's figures sit with the technical details: there is no quote card.
+        val rows =
+            sheet(review(choice = chosen, prepared = true))
+                .section(PredictionReviewSections.TECHNICAL)
+                .factRows
         assertEquals("open", rows.single { it.label == "Market status" }.value)
-        assertEquals("5 USDC", rows.single { it.label == "You spend" }.value)
         assertEquals("4.99752 USDC", rows.single { it.label == "This order costs" }.value)
         assertEquals("4.75", rows.single { it.label == "Contracts bought on Yes" }.value)
     }
 
     @Test
-    fun beforeAQuoteTheTermsCardSaysWhatOneWillShow() {
-        val terms = sheet().terms!!
-        assertTrue(terms.rows.isEmpty())
-        assertEquals("Choose a side and an amount to get a quote.", terms.emptyText)
-        assertEquals("Quote", terms.title)
+    fun theSheetHasNoQuoteCardBeforeOrAfterAQuote() {
+        assertNull(sheet().terms)
+        assertNull(sheet(review(choice = chosen, prepared = true)).terms)
     }
 
     @Test
@@ -408,7 +409,36 @@ class PredictionReviewTest {
     }
 
     @Test
-    fun aQuoteThatRanOutCannotBeApprovedAndOffersARefresh() {
+    fun aSideNobodyIsBuyingIsSaidBeforeBuyingAndAsksForTheTick() {
+        val caution =
+            PluginFinding(
+                code = "no_exit",
+                message = io.github.brrenat.seekervault.R.string.jupiter_caution_no_exit_yes,
+                invalidates = false,
+            )
+        val state =
+            sheet(
+                review(
+                    choice = chosen,
+                    prepared = true,
+                    expiresAtEpochSeconds = now.epochSecond + 60,
+                    inspection = inspection().copy(cautions = listOf(caution)),
+                )
+            )
+        val block = state.infoBlocks.first()
+        assertEquals("You may not be able to sell this", block.title)
+        assertTrue(block.body.contains("not be able to sell this position"))
+        assertTrue(block.body.contains("get your money back"))
+        assertEquals(
+            "I understand I most likely can't sell this position or get my money back before " +
+                "the market settles.",
+            state.confirmationCheckbox,
+        )
+        assertTrue(state.primaryAction.enabled)
+    }
+
+    @Test
+    fun aQuoteThatRanOutIsApprovedWithoutARefreshStep() {
         val stale =
             sheet(
                 review(
@@ -417,8 +447,9 @@ class PredictionReviewTest {
                     expiresAtEpochSeconds = now.epochSecond - 1,
                 )
             )
-        assertFalse(stale.primaryAction.enabled)
-        assertEquals("Refresh quote", stale.staleQuote?.actionLabel)
+        // Approving prepares it again first (OperationViewModel): no separate refresh to tap.
+        assertTrue(stale.primaryAction.enabled)
+        assertNull(stale.staleQuote)
         val fresh =
             sheet(
                 review(
@@ -480,7 +511,13 @@ class PredictionReviewTest {
         var used: List<Pair<ParameterKey, ParameterValue>>? = null
         compose.setContent {
             SeekerTheme(darkTheme = true) {
-                PredictionParametersSheet(review = review(), onUse = { used = it }, onClose = {})
+                PredictionParametersSheet(
+                    review = review(),
+                    wallet = wallet,
+                    onUse = { used = it },
+                    onChooseWallet = {},
+                    onClose = {},
+                )
             }
         }
         compose.onNodeWithText("Your side and amount").assertIsDisplayed()
@@ -608,7 +645,7 @@ class PredictionReviewTest {
             assertNull(state.preparationError)
         }
         val initial = sheet(review(assessment = assessment))
-        assertEquals("Choose a side and an amount to get a quote.", initial.terms?.emptyText)
+        assertNull(initial.terms)
         assertEquals(
             "Daily limits not set · transaction checked once prepared",
             initial.section(PredictionReviewSections.CHECKS).summary,
@@ -658,7 +695,7 @@ class PredictionReviewTest {
             error.message,
         )
         assertEquals("Try again", error.actionLabel)
-        assertEquals("5 USDC on Yes", state.yourPart?.summary)
+        assertEquals("5 USDC on Yes · ${PAYER.middle()}", state.yourPart?.summary)
         // No synthetic verification warning, no rule chip, no tick, no stale placeholder.
         assertNull(state.verdict)
         assertNull(state.confirmationCheckbox)
@@ -681,7 +718,7 @@ class PredictionReviewTest {
 
     @Test
     fun aRefreshShowsThatItIsFetchingAndNeverTheQuoteItIsReplacing() {
-        // Refresh quote on an expired one, and Get a new quote on one this phone refused: the
+        // A refresh of an expired one, and Get a new quote on one this phone refused: the
         // provider is still working, and the old bytes are still held until it answers.
         val retained =
             listOf(
@@ -702,8 +739,7 @@ class PredictionReviewTest {
             )
         for (refreshing in retained) {
             val state = sheet(refreshing)
-            assertEquals(emptyList<Any>(), state.terms?.rows)
-            assertEquals("Getting a quote and checking the transaction…", state.terms?.emptyText)
+            assertNull(state.terms)
             // Neither the old verdict, nor the old blocker, nor the old staleness is current.
             assertNull(state.verdict)
             assertNull(state.preparationError)
@@ -748,9 +784,41 @@ class PredictionReviewTest {
     @Test
     fun preparingSaysSoAndApprovalWaits() {
         val state = sheet(review(choice = chosen, preparing = true))
-        assertEquals("Getting a quote and checking the transaction…", state.terms?.emptyText)
+        assertNull(state.terms)
         assertFalse(state.primaryAction.enabled)
         assertNull(state.confirmationCheckbox)
+        assertEquals("Getting a quote…", state.footerStatus)
+    }
+
+    @Test
+    fun theFooterShowsTheQuoteStatusUntilItArrivesThenTheActions() {
+        var current by mutableStateOf(review(choice = chosen, preparing = true))
+        compose.setContent {
+            SeekerTheme(darkTheme = true) {
+                PredictionReviewScreen(
+                    review = current,
+                    source = PredictionReviewSource("CopyTrading"),
+                    wallet = wallet,
+                    now = now,
+                    onOwnerInput = {},
+                    onPrepare = {},
+                    onApprove = {},
+                    onDismiss = {},
+                    onAcknowledge = {},
+                    onRules = {},
+                    onBack = {},
+                    onOpenLink = { _, _ -> },
+                )
+            }
+        }
+        compose.onNodeWithTag(ReviewSheetTags.FOOTER_STATUS).assertExists()
+        compose.onNodeWithText("Getting a quote…").assertExists()
+        compose.onNodeWithText("Approve and trade").assertDoesNotExist()
+
+        current = review(choice = chosen, prepared = true)
+        compose.waitForIdle()
+        compose.onNodeWithTag(ReviewSheetTags.FOOTER_STATUS).assertDoesNotExist()
+        compose.onNodeWithText("Approve and trade").assertExists()
     }
 
     @Test
@@ -774,9 +842,9 @@ class PredictionReviewTest {
             "Daily limits not set · transaction read in full",
             state.section(PredictionReviewSections.CHECKS).summary,
         )
-        // The quote is concise; the supporting figures are technical details.
-        val quote = state.terms!!.rows.map { it.label }
-        assertTrue(quote.toString(), "You spend" in quote && "This order costs" in quote)
+        // The quote's figures are with the technical details.
+        val quote = state.section(PredictionReviewSections.TECHNICAL).factRows.map { it.label }
+        assertTrue(quote.toString(), "This order costs" in quote)
     }
 
     @Test
@@ -821,9 +889,17 @@ class PredictionReviewTest {
             ),
             state.sections.map { it.title },
         )
-        // Only the wallet is a loose row; the long list of cards and identifiers is gone. The one
-        // loose block is the neutral "no rules" line (SEE-181).
-        assertEquals(listOf("Wallet · paid and signed by"), state.factRows.map { it.label })
+        // No loose rows: the wallet is on the owner's part card, and the payer the bytes name is a
+        // technical detail. The one loose block is the neutral "no rules" line (SEE-181).
+        assertEquals(emptyList<String>(), state.factRows.map { it.label })
+        assertEquals(
+            PAYER,
+            state
+                .section(PredictionReviewSections.TECHNICAL)
+                .factRows
+                .single { it.label == "Wallet · paid and signed by" }
+                .copyValue,
+        )
         assertEquals(
             listOf("No rules configured · not checked"),
             state.infoBlocks.map { it.title },
@@ -910,7 +986,13 @@ class PredictionReviewTest {
     fun theMinimumIsSaidNextToTheAmount() {
         compose.setContent {
             SeekerTheme(darkTheme = true) {
-                PredictionParametersSheet(review = review(), onUse = {}, onClose = {})
+                PredictionParametersSheet(
+                    review = review(),
+                    wallet = wallet,
+                    onUse = {},
+                    onChooseWallet = {},
+                    onClose = {},
+                )
             }
         }
         compose.onNodeWithText("Minimum 5 USDC", substring = true).assertIsDisplayed()

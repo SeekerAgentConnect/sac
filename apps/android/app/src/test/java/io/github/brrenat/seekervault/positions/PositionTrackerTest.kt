@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.positions
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.protobuf.ByteString
+import io.github.brrenat.seekervault.confirmations.AddressSignature
 import io.github.brrenat.seekervault.confirmations.ChainCheck
 import io.github.brrenat.seekervault.confirmations.ChainReader
 import io.github.brrenat.seekervault.confirmations.ChainState
@@ -577,7 +578,7 @@ class PositionTrackerTest {
         assertEquals(
             SellOutcome.Changed,
             tracker.sellAfterWaiting(draft) {
-                now = now.plusSeconds(20)
+                now = now.plusSeconds(10)
                 api.answersPosition = { predictionPosition(contracts = HELD_CONTRACTS / 2UL) }
             },
         )
@@ -640,6 +641,14 @@ class PositionTrackerTest {
         override fun abandoned(key: RequestKey) {
             calls += "abandoned $key"
         }
+
+        override fun lost(key: RequestKey) {
+            calls += "lost $key"
+        }
+
+        override fun forget(key: RequestKey) {
+            calls += "forget $key"
+        }
     }
 
     private class ScriptedSession : WalletSession {
@@ -694,6 +703,12 @@ class PositionTrackerTest {
             searched += address
             return signatures
         }
+
+        override suspend fun history(
+            address: String,
+            before: String?,
+            limit: Int,
+        ): List<AddressSignature> = signaturesFor(address, limit).map { AddressSignature(it, null) }
     }
 
     private object NoSwaps : JupiterProvider {

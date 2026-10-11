@@ -265,7 +265,14 @@ internal class JupiterPredictionAction(
             }
         offers.remember(
             order.transaction,
-            Offer(payload, chosen, wallet.address, market, order, read),
+            Offer(
+                payload,
+                chosen,
+                wallet.address,
+                market,
+                order,
+                read.withExitCaution(market, chosen),
+            ),
         )
         return PreparedOperation(
             transaction = order.transaction,
@@ -321,6 +328,33 @@ internal class JupiterPredictionAction(
     }
 }
 
+/**
+ * The caution the owner must tick past when nobody is buying the side they are about to buy: a
+ * position the market has no bid for cannot be sold, so the stake comes back only if that side wins
+ * when the market settles. It is a reason to stop and read, never a reason to pass.
+ */
+internal fun ActionInspection.withExitCaution(
+    market: PredictionMarket,
+    choice: PredictionChoice,
+): ActionInspection {
+    val bid = if (choice.yes) market.sellYesPriceUsd else market.sellNoPriceUsd
+    if (bid != null && bid > 0UL) return this
+    return copy(
+        cautions =
+            cautions +
+                PluginFinding(
+                    code = NO_EXIT,
+                    message =
+                        if (choice.yes) R.string.jupiter_caution_no_exit_yes
+                        else R.string.jupiter_caution_no_exit_no,
+                    invalidates = false,
+                )
+    )
+}
+
+/** The code of [withExitCaution]'s caution, which the owner's record keeps. */
+const val NO_EXIT: String = "no_exit"
+
 /** Jupiter's own platform, which is where the owner continues. */
 const val JUPITER_PLATFORM: String = "https://jup.ag"
 
@@ -346,9 +380,10 @@ const val JUPITER_ORDERS: String = "$JUPITER_PLATFORM/prediction/portfolio"
  * How long a prepared order stands.
  *
  * A market's price moves and the transaction carries a recent blockhash, so this is the shorter
- * honest bound on both — the same minute a swap's preparation gets, for the same reasons.
+ * honest bound on both — the same window a swap's preparation gets, for the same reasons
+ * ([SWAP_PREPARATION_LIFETIME]).
  */
-val ORDER_LIFETIME: Duration = Duration.ofSeconds(60)
+val ORDER_LIFETIME: Duration = SWAP_PREPARATION_LIFETIME
 
 internal val LookupProblem.message: Int
     get() =

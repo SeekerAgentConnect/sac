@@ -518,6 +518,10 @@ class ProposalRepositoryTest {
 
                 override fun abandoned(key: RequestKey) = Unit
 
+                override fun lost(key: RequestKey) = Unit
+
+                override fun forget(key: RequestKey) = Unit
+
                 override fun recovered(key: RequestKey, signature: ByteArray, at: Instant) {
                     told += key to signature.toList()
                 }

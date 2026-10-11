@@ -3,7 +3,7 @@
      than to whoever executes it, so they say "this signal" and never name a venue. -->
 <resources>
     <!-- What a swap leaves to the owner. -->
-    <string name="action_swap_amount_label">Amount to swap</string>
+    <string name="action_swap_amount_label">Amount</string>
     <string name="action_swap_slippage_label">Most the price may move (basis points)</string>
 
     <!-- What a signal has to say for itself, and which rule it broke when it does not. -->

@@ -668,6 +668,128 @@ class ConfirmationTrackerTest {
         assertEquals(encodeBase58(ByteArray(32) { 5 }), recentBlockhashOf(wire))
     }
 
+    @Test
+    fun aTransferWhoseWalletNeverAnsweredIsProvenNotSentOnceItCanNoLongerLand() = runBlocking {
+        val settled = lose()
+        assertEquals(ChainState.Checking, check().state)
+        // Nothing to conclude before the blockhash has had time to expire.
+        assertEquals(SENT_AT.plus(ConfirmationTracker.EXPIRY_GRACE), tracker.nextDue())
+        // And nothing is shown while it is looked for: the answer still says unknown.
+        assertNull(tracker.checks.value[key])
+
+        // Due, and the blockhash can still be used: it can still land.
+        now = checkNotNull(tracker.nextDue())
+        chain.blockhashValid = true
+        tracker.checkDue()
+        assertEquals(ChainReason.NotYetVisible, check().reason)
+        assertEquals(0, chain.addressCalls)
+        assertTrue(settled.isEmpty())
+
+        // It can't any more. The wallet's history around the capture holds something else, and
+        // then nothing older than the window: it was never sent.
+        chain.blockhashValid = false
+        chain.addressHistory =
+            listOf(
+                AddressSignature("other", SENT_AT.plusSeconds(60)),
+                AddressSignature("older", SENT_AT.minus(Duration.ofHours(1))),
+            )
+        chain.bodies = mapOf("other" to ChainTransaction(5, signedWire(blockhashFill = 6), null))
+        now = checkNotNull(tracker.nextDue())
+        tracker.checkDue()
+        assertEquals(ChainState.Expired, check().state)
+        assertNull(trackingStore.get(key)?.signature)
+        assertEquals(listOf(key to null), settled)
+        assertEquals(1, chain.bodyCalls)
+        assertNull(tracker.nextDue())
+        // History hears it from the stored answer ("not sent"), never as a failure on chain.
+        assertEquals(ActivityOutcome.Unknown, record().outcome)
+        // The repository then stores "not sent", which drops nothing the search proved.
+        tracker.abandoned(key)
+        assertEquals(ChainState.Expired, check().state)
+    }
+
+    @Test
+    fun aTransferWhoseWalletNeverAnsweredIsFoundOnChainAndFollowed() = runBlocking {
+        val settled = lose()
+        chain.blockhashValid = false
+        chain.addressHistory =
+            listOf(AddressSignature("landed", SENT_AT.plusSeconds(30)), AddressSignature("x", null))
+        chain.bodies = mapOf("landed" to ChainTransaction(77, signedWire(), null))
+        now = checkNotNull(tracker.nextDue())
+        tracker.checkDue()
+        assertEquals("landed", trackingStore.get(key)?.signature)
+        assertEquals(listOf(key to "landed"), settled)
+        assertEquals(ChainState.Checking, check().state)
+
+        // From here it is an ordinary sent transaction.
+        chain.status = SignatureStatus(77, ChainLevel.Finalized, null)
+        chain.body = ChainTransaction(77, signedWire(), null)
+        tracker.checkDue()
+        assertEquals(ChainState.Confirmed, check().state)
+        // The record turns "confirmed" once the repository stores the signature it was told.
+        assertEquals(ChainState.Confirmed, record().chain?.state)
+    }
+
+    @Test
+    fun aMissIsNeverProofWhenTheSearchCouldNotCoverTheWindow() = runBlocking {
+        val settled = lose()
+        chain.blockhashValid = false
+        now = checkNotNull(tracker.nextDue())
+
+        // The endpoint's ledger doesn't reach back past the capture.
+        chain.retainedSince = SENT_AT
+        tracker.checkDue()
+        assertEquals(ChainReason.HistoryNotRetained, check().reason)
+
+        // More transactions in the window than one search compares.
+        chain.retainedSince = Instant.EPOCH
+        chain.addressHistory =
+            (0..ConfirmationTracker.MOST_CANDIDATES).map {
+                AddressSignature("s$it", SENT_AT.plusSeconds(1))
+            }
+        now = checkNotNull(tracker.nextDue())
+        tracker.checkDue()
+        assertEquals(ChainReason.SearchIncomplete, check().reason)
+        assertEquals(ChainState.Checking, check().state)
+        assertEquals(0, chain.bodyCalls)
+        assertTrue(settled.isEmpty())
+    }
+
+    @Test
+    fun anUnresolvedTransferFromAnEarlierBuildIsCapturedAgainFromItsApproval() = runBlocking {
+        val lost =
+            result(
+                transferRequest(),
+                signing = SigningOutcome.Unresolved("no answer"),
+                approvedTransaction = approved(),
+            )
+        val settled = mutableListOf<Pair<RequestKey, String?>>()
+        tracker.onLostSettled = { k, signature -> settled += k to signature }
+        tracker.backfill(listOf(lost), log.records.value)
+        assertEquals(lost.answeredAt, trackingStore.get(key)?.capturedAt)
+        chain.blockhashValid = false
+        tracker.checkDue()
+        assertEquals(ChainState.Expired, check().state)
+        assertEquals(listOf(key to null), settled)
+    }
+
+    // A direct transfer whose wallet never answered, as the repository leaves it.
+    private fun lose(): MutableList<Pair<RequestKey, String?>> {
+        val settled = mutableListOf<Pair<RequestKey, String?>>()
+        tracker.onLostSettled = { k, signature -> settled += k to signature }
+        tracker.expect(submission())
+        log.record(
+            result(
+                transferRequest(),
+                signing = SigningOutcome.Unresolved("no answer"),
+                approvedTransaction = approved(),
+            ),
+            connection(),
+        )
+        tracker.lost(key)
+        return settled
+    }
+
     // What the direct path does when the wallet answers: capture, then the signature.
     private fun send() {
         tracker.expect(submission())
@@ -709,6 +831,11 @@ class ConfirmationTrackerTest {
         var status: SignatureStatus? = null
         var history: SignatureStatus? = null
         var body: ChainTransaction? = null
+        /** Bodies by signature, for a search; [body] answers for any other. */
+        var bodies: Map<String, ChainTransaction> = emptyMap()
+        /** The wallet's history, newest first. */
+        var addressHistory: List<AddressSignature> = emptyList()
+        var addressCalls = 0
         var blockhashValid = true
         /** How far back the endpoint's own ledger reaches; by default, all the way. */
         var retainedSince: Instant? = Instant.EPOCH
@@ -739,7 +866,7 @@ class ConfirmationTrackerTest {
 
         override suspend fun transaction(signature: String): ChainTransaction? {
             bodyCalls++
-            return body
+            return bodies[signature] ?: body
         }
 
         override suspend fun blockhashValid(blockhash: String): Boolean {
@@ -750,6 +877,17 @@ class ConfirmationTrackerTest {
         override suspend fun retainedSince(): Instant? = retainedSince
 
         override suspend fun signaturesFor(address: String, limit: Int): List<String> = emptyList()
+
+        override suspend fun history(
+            address: String,
+            before: String?,
+            limit: Int,
+        ): List<AddressSignature> {
+            failure?.let { throw it }
+            addressCalls++
+            val start = before?.let { b -> addressHistory.indexOfFirst { it.signature == b } + 1 }
+            return addressHistory.drop(start ?: 0).take(limit)
+        }
     }
 
     private companion object {

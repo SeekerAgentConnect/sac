@@ -42,18 +42,25 @@ The order is fixed. An optional section with nothing to show is left out, with n
 4. **Delivery problem**: only while the server hasn't acknowledged a stored answer. **Send again**
    re-sends the stored answer (`InboxViewModel.sendAgain`) and never changes it. A connection the
    server no longer accepts gets the explanation and no button.
-5. **Execution result**: only when something ran: confirmed, waiting, failed (with a readable
+5. **Transactions**: one card titled Transaction (or Transactions · N) holding every transaction,
+   each with a status chip, the shortened signature, a copy button that copies it whole, and an
+   explorer link for the transaction's own cluster. It comes before the execution result, so what
+   went on chain is read before what is said about it.
+6. **Execution result**: only when something ran: confirmed, waiting, failed (with a readable
    reason), expired (never landed), unresolved, signed, or simulated. Since SEE-165 a sent
    transaction's result comes first from **this phone's own check** of the chain, then from the
    server's settled word, and it says which; while unsettled it says why and when it was last and
    will next be checked, and offers **Check status**
    ([chain-confirmation.md](chain-confirmation.md)).
-6. **Original request or signal**, *as received*: the agent's note or the publisher's, and the
+7. **Original request or signal**, *as received*: the agent's note or the publisher's, and the
    operation's values. Addresses and messages are mono blocks that wrap and are never cut.
-7. **Transactions**: one card per transaction, with a status chip, the shortened signature, a copy
-   button that copies it whole, and an explorer link for the transaction's own cluster.
 8. **Timeline**: only the events that were recorded, each at the time it was recorded.
 9. **Identifiers**: request or signal ID, market ID, signature, and any raw error.
+
+Transactions, Timeline and Identifiers use the same card as Your response and Original request:
+the same surface, radius and padding, with the title inside the card in the same style, rather than
+a separate coloured heading above it. This departs from the design brief's A7–A9, which drew them
+as headed sections placed after the original request.
 10. **Footnote**: the record doesn't change with today's rules or prices. For a preview, it notes
     that nothing was signed or sent.
 

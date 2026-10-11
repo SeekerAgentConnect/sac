@@ -30,7 +30,8 @@ enum class ChainState(val code: String) {
 
     /**
      * Proven never to land: its blockhash is no longer valid on the finalized chain and a search of
-     * the ledger has no record of the signature. Nothing was spent.
+     * the ledger has no record of the signature — or, for a wallet that never answered, of any
+     * transaction carrying the approved message. Nothing was spent.
      */
     Expired("expired"),
 
@@ -94,6 +95,11 @@ enum class ChainReason(val code: String) {
      * whether it landed can't be told from here.
      */
     HistoryNotRetained("history_not_retained"),
+    /**
+     * A wallet that never answered: its address named more transactions around the capture than one
+     * search reads, so a miss proves nothing.
+     */
+    SearchIncomplete("search_incomplete"),
     /** Automatic checks stopped; a manual check is still possible. */
     GaveUp("gave_up");
 
@@ -162,17 +168,27 @@ data class ChainTracking(
     /** The message's recent blockhash, which is what bounds when it can land. */
     val blockhash: String?,
     val capturedAt: Instant,
-    /** The transaction's ID on chain, in base58; null while [ChainState.Awaiting]. */
+    /**
+     * The transaction's ID on chain, in base58; null while [ChainState.Awaiting], and while a
+     * transaction whose wallet never answered is searched for ([searching]).
+     */
     val signature: String? = null,
     val submittedAt: Instant? = null,
     val check: ChainCheck = ChainCheck(ChainState.Awaiting),
     /** Consecutive automatic attempts that settled nothing, which is what the backoff counts. */
     val attempts: Int = 0,
 ) {
+    /**
+     * The wallet never answered, so there is no signature: the approved message is looked for in
+     * the wallet's own history instead, once it can no longer land.
+     */
+    val searching: Boolean
+        get() = signature == null && check.state != ChainState.Awaiting
+
     /** Whether automatic checks still have something to find out. */
     val unfinished: Boolean
         get() =
-            signature != null &&
+            (signature != null || searching) &&
                 check.nextCheckAt != null &&
                 (check.state == ChainState.Checking ||
                     ((check.state == ChainState.Confirmed || check.state == ChainState.Failed) &&

@@ -66,6 +66,7 @@ import io.github.brrenat.seekervault.wallet.SignResult
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 import io.github.brrenat.seekervault.wallet.WalletReadiness
 import io.github.brrenat.seekervault.wallet.WalletRepository
+import io.github.brrenat.seekervault.wallet.encodeBase58
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
 import java.time.Instant
@@ -1017,6 +1018,32 @@ class InboxViewModelTest {
         assertTrue(gateway.preparations.isEmpty())
     }
 
+    @Test
+    fun aTransferOpenedBeforeItsWalletWasReadyIsReadAgainOnceItIs() {
+        val (key, _) = pendingTransfer()
+        // The server hasn't confirmed the binding yet, as on a start opened from a notification.
+        runBlocking {
+            server.failure = GatewayException.Kind.Unreachable
+            wallet.publishAgain()
+            server.failure = null
+        }
+        assertTrue(wallet.readiness(key.connectionId) is WalletReadiness.PublicationPending)
+        val viewModel = viewModel()
+        viewModel.prepare(key)
+        val early = viewModel.state.value.preparations[key] as Preparation.Ready
+        assertNull(early.wallet)
+        assertTrue(Finding.NoWallet in early.transferReading.findings)
+        assertFalse(early.approvable)
+
+        // The server hears it, and the review is read again against the wallet that is now ready.
+        runBlocking { wallet.publish() }
+
+        val again = viewModel.state.value.preparations[key] as Preparation.Ready
+        assertEquals(wallet.walletFor(key.connectionId), again.wallet)
+        assertTrue(again.approvable)
+        assertEquals(2, gateway.preparations[key])
+    }
+
     // --- Approving a transfer through the wallet (SAW-021) ---
 
     /** A transfer read and inspected, ready for the owner to decide on. */
@@ -1398,6 +1425,85 @@ class InboxViewModelTest {
             RequestState.REQUEST_STATE_UNKNOWN,
             server.stateOf(key.connectionId, key.requestId),
         )
+    }
+
+    @Test
+    fun aLostTransferProvenNeverSentIsReopenedForApprovalAgain() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        adapter.answerSending(SendResult.Unknown("the session ended"))
+        viewModel.approveTransaction(key, reviewed)
+
+        // The confirmation tracker proved it never landed and can't any more.
+        runBlocking { repository.settleLost(key, null) }
+
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.UNKNOWN_OUTCOME,
+                SubmitResultRequest.ResultCase.NOT_SENT,
+            ),
+            submitted(),
+        )
+        // Waiting for the owner again, as if it had just arrived.
+        assertEquals(
+            RequestState.REQUEST_STATE_PENDING,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        assertNull(viewModel.state.value.inbox.result(key))
+        assertNotNull(viewModel.state.value.inbox.pendingRequest(key))
+        // The wallet was asked once, and nothing asks it again until the owner approves again.
+        assertEquals(1, adapter.sendings.size)
+    }
+
+    @Test
+    fun aSidecarFromBeforeReopeningIsToldTheLostTransferFailed() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        server.knowsNotSent = false
+        adapter.answerSending(SendResult.Unknown("the session ended"))
+        viewModel.approveTransaction(key, reviewed)
+
+        runBlocking { repository.settleLost(key, null) }
+
+        // `not_sent` is refused as unknown, and the failure is sent instead.
+        assertEquals(
+            listOf(
+                SubmitResultRequest.ResultCase.APPROVAL,
+                SubmitResultRequest.ResultCase.UNKNOWN_OUTCOME,
+                SubmitResultRequest.ResultCase.NOT_SENT,
+                SubmitResultRequest.ResultCase.EXECUTION_FAILURE,
+            ),
+            submitted(),
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_FAILED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        assertEquals(SigningOutcome.NotSent, viewModel.state.value.inbox.result(key)?.signing)
+        // Settled once: a later report changes nothing.
+        runBlocking { repository.settleLost(key, encodeBase58(ByteArray(64) { 3 })) }
+        assertEquals(SigningOutcome.NotSent, viewModel.state.value.inbox.result(key)?.signing)
+        assertEquals(1, adapter.sendings.size)
+    }
+
+    @Test
+    fun aLostTransferFoundOnChainIsReportedAsSubmitted() {
+        val (key, viewModel, reviewed) = reviewedTransfer()
+        adapter.answerSending(SendResult.Unknown("the session ended"))
+        viewModel.approveTransaction(key, reviewed)
+        val signature = ByteArray(64) { 3 }
+
+        runBlocking { repository.settleLost(key, encodeBase58(signature)) }
+
+        assertEquals(
+            SubmitResultRequest.ResultCase.TRANSACTION_SUBMISSION,
+            submitted().last(),
+        )
+        assertEquals(
+            RequestState.REQUEST_STATE_SUBMITTED,
+            server.stateOf(key.connectionId, key.requestId),
+        )
+        val signing = viewModel.state.value.inbox.result(key)?.signing as SigningOutcome.Sent
+        assertTrue(signing.signature.toByteArray().contentEquals(signature))
     }
 
     @Test

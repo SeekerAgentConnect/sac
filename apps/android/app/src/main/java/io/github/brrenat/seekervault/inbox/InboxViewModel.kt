@@ -363,6 +363,25 @@ class InboxViewModel(
                 ),
             )
 
+    init {
+        // A transaction is inspected against the wallet its connection had at that moment. If the
+        // wallet becomes ready later, or changes, a review opened earlier would keep showing "no
+        // wallet ready" or the old wallet. Examples: the app opened from a notification before
+        // the server confirmed the binding, or the owner chose another wallet. So that review is
+        // prepared again for the wallet the connection has now. A connection that stops being
+        // ready is left as it is, because approving re-checks the wallet anyway.
+        viewModelScope.launch {
+            wallet.readinessByConnection().collect { readiness ->
+                val now = activity.value
+                for ((key, held) in now.preparations) {
+                    if (held !is Preparation.Ready || key in now.sending) continue
+                    val ready = readiness[key.connectionId] as? WalletReadiness.Ready ?: continue
+                    if (ready.profile.selected() != held.wallet) prepare(key, force = true)
+                }
+            }
+        }
+    }
+
     /** Fetches one connection's requests, or every usable connection's at once. */
     fun refresh(connectionId: String? = null) {
         if (activity.value.refreshing) return

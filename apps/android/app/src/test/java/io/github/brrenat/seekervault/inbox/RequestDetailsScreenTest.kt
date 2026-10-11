@@ -217,9 +217,12 @@ class RequestDetailsScreenTest {
         compose
             .onNodeWithTag(InboxTags.MESSAGE, useUnmergedTree = true)
             .assertTextEquals("Sign in to Example\u240D\u240A\nNonce: 7\u2409x")
+        // The text is the headline; its size and encoding are the line under it.
         compose
             .onNodeWithTag(InboxTags.field("encoding"))
-            .assertTextContains(context.getString(R.string.request_bytes, 30))
+            .assertTextContains(
+                context.resources.getQuantityString(R.plurals.message_text_bytes, 30, 30)
+            )
         compose
             .onNodeWithTag(InboxTags.field("signsWith"))
             .assertTextContains(WALLET.take(9), substring = true)

@@ -56,6 +56,7 @@ import io.github.brrenat.seekervault.wallet.WalletProfile
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import java.io.IOException
 import java.security.MessageDigest
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
@@ -488,139 +489,144 @@ class OperationViewModel(
         if (open.preparing) return
         _review.update { it?.copy(preparing = true, failure = null, problem = null) }
         viewModelScope.launch {
-            busy.withLock {
-                // The terms on screen belong to one revision, and they are the ones being prepared
-                // from. A record that moved while the tap was waiting for the lock is prepared
-                // from by nobody: the refresh is about to replace the whole review with the new
-                // terms, and combining the latest revision with the previous one's limits is
-                // exactly the thing the binding exists to refuse (SEE-145).
-                val record =
-                    proposals.proposal(open.connectionId, open.proposalId)?.takeIf {
-                        it.proposal.revision == open.record.proposal.revision
-                    }
-                        ?: run {
-                            _review.update {
-                                if (it?.generation != open.generation) it?.copy(preparing = false)
-                                else
-                                    it.copy(
-                                        preparing = false,
-                                        problem =
-                                            OperationProblem.Binding(
-                                                BindingProblem.ProposalChanged
-                                            ),
-                                    )
-                            }
-                            return@withLock
-                        }
-                // A signal whose network this build can't use is never prepared (SEE-185): the
-                // registry reads an unspecified network as "not established yet", so without this
-                // the gateway would be asked and a provider handed an operation on no network.
-                if (proposals.standing(record) is ProposalStanding.NetworkUnusable) {
+            busy.withLock { prepareHeld(open) }
+            assess()
+        }
+    }
+
+    /**
+     * The body of [prepare], with [busy] already held. True when [open] now holds bytes the
+     * provider prepared and this phone inspected; false when it holds a failure or a problem
+     * instead, or the review moved on while the provider was working.
+     */
+    private suspend fun prepareHeld(open: OperationReview): Boolean {
+        // The terms on screen belong to one revision, and they are the ones being prepared
+        // from. A record that moved while the tap was waiting for the lock is prepared
+        // from by nobody: the refresh is about to replace the whole review with the new
+        // terms, and combining the latest revision with the previous one's limits is
+        // exactly the thing the binding exists to refuse (SEE-145).
+        val record =
+            proposals.proposal(open.connectionId, open.proposalId)?.takeIf {
+                it.proposal.revision == open.record.proposal.revision
+            }
+                ?: run {
                     _review.update {
                         if (it?.generation != open.generation) it?.copy(preparing = false)
                         else
                             it.copy(
                                 preparing = false,
-                                problem = OperationProblem.Binding(BindingProblem.NetworkUnusable),
+                                problem = OperationProblem.Binding(BindingProblem.ProposalChanged),
                             )
                     }
-                    return@withLock
+                    return false
                 }
-                val payload = open.payload
-                val resolved = if (payload == null) null else provider(record, payload)
-                if (payload == null || resolved == null) {
-                    // Nothing here serves this, and the owner is told which of the six reasons it
-                    // is rather than being left with a button that did nothing (SEE-145). It is a
-                    // refusal before anything is prepared, and long before anything is signed.
-                    val reason =
-                        (providers.resolve(
-                                provider = namedProvider(record.proposal, providers),
-                                action = record.proposal.action,
-                                schemaVersion = record.proposal.capabilityVersion,
-                                network = networkOf(record),
-                                environment = PluginEnvironment.Production,
-                                payload = payload,
-                            ) as? ProviderResolution.Unsupported)
-                            ?.reason
+        // A signal whose network this build can't use is never prepared (SEE-185): the
+        // registry reads an unspecified network as "not established yet", so without this
+        // the gateway would be asked and a provider handed an operation on no network.
+        if (proposals.standing(record) is ProposalStanding.NetworkUnusable) {
+            _review.update {
+                if (it?.generation != open.generation) it?.copy(preparing = false)
+                else
+                    it.copy(
+                        preparing = false,
+                        problem = OperationProblem.Binding(BindingProblem.NetworkUnusable),
+                    )
+            }
+            return false
+        }
+        val payload = open.payload
+        val resolved = if (payload == null) null else provider(record, payload)
+        if (payload == null || resolved == null) {
+            // Nothing here serves this, and the owner is told which of the six reasons it
+            // is rather than being left with a button that did nothing (SEE-145). It is a
+            // refusal before anything is prepared, and long before anything is signed.
+            val reason =
+                (providers.resolve(
+                        provider = namedProvider(record.proposal, providers),
+                        action = record.proposal.action,
+                        schemaVersion = record.proposal.capabilityVersion,
+                        network = networkOf(record),
+                        environment = PluginEnvironment.Production,
+                        payload = payload,
+                    ) as? ProviderResolution.Unsupported)
+                    ?.reason
+            _review.update {
+                if (it?.generation != open.generation) it?.copy(preparing = false)
+                else
+                    it.copy(
+                        preparing = false,
+                        failure =
+                            reason?.let { why ->
+                                OperationFailure(why.code, unservedText(why))
+                            },
+                    )
+            }
+            return false
+        }
+        // The trusted gateway is asked for its configuration before anything is prepared
+        // (SEE-185): a fee or endpoint the operator changed applies to this operation, and
+        // without a usable configuration nothing is prepared — that is never a zero fee.
+        val terms =
+            when (val availability = config.forOperation()) {
+                is ConfigAvailability.Unavailable -> {
                     _review.update {
                         if (it?.generation != open.generation) it?.copy(preparing = false)
                         else
                             it.copy(
                                 preparing = false,
                                 failure =
-                                    reason?.let { why ->
-                                        OperationFailure(why.code, unservedText(why))
-                                    },
+                                    OperationFailure(
+                                        CONFIG_UNAVAILABLE,
+                                        configText(availability.problem),
+                                    ),
                             )
                     }
-                    return@withLock
+                    return false
                 }
-                // The trusted gateway is asked for its configuration before anything is prepared
-                // (SEE-185): a fee or endpoint the operator changed applies to this operation, and
-                // without a usable configuration nothing is prepared — that is never a zero fee.
-                val terms =
-                    when (val availability = config.forOperation()) {
-                        is ConfigAvailability.Unavailable -> {
-                            _review.update {
-                                if (it?.generation != open.generation) it?.copy(preparing = false)
-                                else
-                                    it.copy(
-                                        preparing = false,
-                                        failure =
-                                            OperationFailure(
-                                                CONFIG_UNAVAILABLE,
-                                                configText(availability.problem),
-                                            ),
-                                    )
-                            }
-                            return@withLock
-                        }
-                        is ConfigAvailability.Usable ->
-                            feeTermsOf(availability.config, networkOf(record))
-                    }
-                val operation = operationFor(record, payload).copy(serviceFee = terms)
-                // What the owner chose is written down before anything is prepared, because it is
-                // what the binding is checked against and what the record says they reviewed.
-                proposals.review(open.connectionId, open.proposalId, open.choice)
-                val outcome =
-                    try {
-                        val prepared = resolved.prepare(operation, open.choice)
-                        val inspection = resolved.inspect(operation, open.choice, prepared)
-                        Prepared(prepared, inspection)
-                    } catch (e: PluginFailure) {
-                        Prepared(failure = OperationFailure(e.code, e.explanation, e.detail))
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // A plugin that threw something else is a plugin that prepared nothing,
-                        // and this says so rather than letting the app die for it.
-                        Prepared(failure = OperationFailure(UNEXPECTED, null, e.message))
-                    }
-                _review.update {
-                    // Bytes belong to the review they were prepared for. One that moved while the
-                    // provider was working gets nothing from it, not even a failure (SEE-145).
-                    if (it?.generation != open.generation) it?.copy(preparing = false)
-                    else
-                        it.copy(
-                            preparing = false,
-                            prepared = outcome.prepared,
-                            inspection = outcome.inspection,
-                            failure = outcome.failure,
-                            acknowledged = false,
-                            assessment = null,
-                            // The wallet these bytes were built for: the one chosen for this
-                            // operation's network at the moment of preparing, which another
-                            // choice makes stale (SEE-174, SEE-185).
-                            preparedFor = operation.wallet,
-                            // And the service-fee terms they carry, which a configuration that
-                            // moves before signing makes stale too (SEE-185).
-                            preparedFee = terms,
-                            previewed = false,
-                        )
-                }
+                is ConfigAvailability.Usable -> feeTermsOf(availability.config, networkOf(record))
             }
-            assess()
+        val operation = operationFor(record, payload).copy(serviceFee = terms)
+        // What the owner chose is written down before anything is prepared, because it is
+        // what the binding is checked against and what the record says they reviewed.
+        proposals.review(open.connectionId, open.proposalId, open.choice)
+        val outcome =
+            try {
+                val prepared = resolved.prepare(operation, open.choice)
+                val inspection = resolved.inspect(operation, open.choice, prepared)
+                Prepared(prepared, inspection)
+            } catch (e: PluginFailure) {
+                Prepared(failure = OperationFailure(e.code, e.explanation, e.detail))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A plugin that threw something else is a plugin that prepared nothing,
+                // and this says so rather than letting the app die for it.
+                Prepared(failure = OperationFailure(UNEXPECTED, null, e.message))
+            }
+        _review.update {
+            // Bytes belong to the review they were prepared for. One that moved while the
+            // provider was working gets nothing from it, not even a failure (SEE-145).
+            if (it?.generation != open.generation) it?.copy(preparing = false)
+            else
+                it.copy(
+                    preparing = false,
+                    prepared = outcome.prepared,
+                    inspection = outcome.inspection,
+                    failure = outcome.failure,
+                    acknowledged = false,
+                    assessment = null,
+                    // The wallet these bytes were built for: the one chosen for this
+                    // operation's network at the moment of preparing, which another
+                    // choice makes stale (SEE-174, SEE-185).
+                    preparedFor = operation.wallet,
+                    // And the service-fee terms they carry, which a configuration that
+                    // moves before signing makes stale too (SEE-185).
+                    preparedFee = terms,
+                    previewed = false,
+                )
         }
+        return _review.value?.let { it.generation == open.generation && it.prepared != null } ==
+            true
     }
 
     /** The owner says they mean to go ahead past the warnings they read. */
@@ -666,11 +672,69 @@ class OperationViewModel(
             try {
                 // The same lock a preparation takes, so a preview and an execution of the same
                 // review are never in flight at once, and neither runs beside a new preparation.
-                busy.withLock { go(open, prepared, reviewed, mode) }
+                busy.withLock {
+                    val current = current(open, prepared, mode) ?: return@withLock
+                    go(current, current.prepared ?: return@withLock, reviewed, mode)
+                }
             } finally {
                 _review.update { it?.copy(sending = false) }
             }
         }
+    }
+
+    /**
+     * [open] as it can be approved now, with [busy] held: as it is while enough of its
+     * preparation's window is left for the wallet, and otherwise prepared again first. Null when
+     * that fresh preparation failed or can't be approved, which the review then shows instead.
+     *
+     * The blockhash in a provider's build is good for under half a minute, so a quote the owner
+     * read for longer is refreshed here rather than handed to a wallet that would refuse it. The
+     * owner chose the amount, the slippage and the wallet, and those are what is prepared again;
+     * the fresh bytes are inspected exactly as the first ones were and assessed against the rules
+     * again. Unless the rules' verdict is the one the owner read, this stops and shows the new one;
+     * when it is, their acknowledgement of its warnings carries over, and [go] checks it all again.
+     */
+    private suspend fun current(
+        open: OperationReview,
+        prepared: PreparedOperation,
+        mode: PluginEnvironment,
+    ): OperationReview? {
+        val expires = prepared.expiresAtEpochSeconds ?: return open
+        if (now().plus(FRESH_ENOUGH).epochSecond < expires) return open
+        _review.update {
+            if (it?.generation != open.generation) it else it.copy(preparing = true)
+        }
+        if (!prepareHeld(open)) {
+            assess()
+            return null
+        }
+        // The fresh quote is another price, so the facts differ; what must not differ is what the
+        // owner's rules make of it. Another verdict is shown, not carried out.
+        val fresh = assess() ?: return null
+        val read = open.assessment
+        if (
+            read != null &&
+                (read.decision != fresh.decision || read.applicablePolicy != fresh.applicablePolicy)
+        ) {
+            stop(OperationProblem.RulesChanged)
+            return null
+        }
+        // The acknowledgement was given for the cautions the owner read; another set of them
+        // (nobody buying the side now, where somebody was) is read and ticked afresh.
+        val sameCautions =
+            _review.value?.inspection?.cautions?.map { it.code } ==
+                open.inspection?.cautions?.map { it.code }
+        _review.update {
+            if (it?.generation != open.generation) it
+            else it.copy(acknowledged = open.acknowledged && sameCautions)
+        }
+        val refreshed = _review.value?.takeIf { it.generation == open.generation } ?: return null
+        if (refreshed.inspection?.approvable != true) {
+            assess()
+            return null
+        }
+        if (mode == PluginEnvironment.Sandbox && !refreshed.previewable) return null
+        return refreshed
     }
 
     private suspend fun go(
@@ -686,7 +750,10 @@ class OperationViewModel(
             stop(OperationProblem.RulesChanged)
             return
         }
-        if (fresh.decision.warns && _review.value?.acknowledged != true) {
+        // A caution about the operation itself asks for the same tick a rule's warning does, and
+        // without it the wallet is not asked: nobody is buying the side, say, so it can't be sold.
+        val cautioned = open.inspection?.cautions?.isNotEmpty() == true
+        if ((fresh.decision.warns || cautioned) && _review.value?.acknowledged != true) {
             stop(OperationProblem.NotAcknowledged)
             return
         }
@@ -1157,6 +1224,13 @@ class OperationViewModel(
     }
 
     private companion object {
+        /**
+         * How much of a preparation's window must be left for approving to hand it to the wallet as
+         * it is. Less than this, and approving prepares it again first: the wallet needs the rest
+         * of the blockhash's life to ask the owner and send.
+         */
+        val FRESH_ENOUGH: Duration = Duration.ofSeconds(15)
+
         const val UNEXPECTED = "plugin_failed"
 
         /** Nothing was prepared: there is no usable client configuration (SEE-185). */

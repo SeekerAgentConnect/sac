@@ -340,13 +340,17 @@ private fun NavigationState.canPush(sheet: AppSheet): Boolean =
         is AppSheet.ConnectionWallet ->
             sheets.size == 1 &&
                 (sheets.single() as? AppSheet.ConnectionDetail)?.connectionId == sheet.connectionId
+        // `[review, wallet]`, or `[review, params, wallet]` from a swap's owner part (SEE-185).
         is AppSheet.OperationWallet ->
-            sheets.size == 1 &&
-                (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity
+            (sheets.size == 1 &&
+                (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity) ||
+                (sheets.size == 2 &&
+                    (sheets.first() as? AppSheet.RequestReview)?.identity == sheet.identity &&
+                    (sheets.last() as? AppSheet.OwnerInput)?.identity == sheet.identity)
         is AppSheet.AddWallet ->
             (sheets.isEmpty() && screen == AppScreen.Wallet) ||
                 (sheets.size == 2 && sheets.last() is AppSheet.ConnectionWallet) ||
-                (sheets.size == 2 && sheets.last() is AppSheet.OperationWallet)
+                (sheets.size in 2..3 && sheets.last() is AppSheet.OperationWallet)
         is AppSheet.CatalogDetail -> sheets.isEmpty() && screen == AppScreen.Discover
         is AppSheet.OwnerInput ->
             sheets.size == 1 &&

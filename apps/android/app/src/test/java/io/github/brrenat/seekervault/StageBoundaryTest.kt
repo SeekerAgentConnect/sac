@@ -1018,7 +1018,15 @@ class StageBoundaryTest {
                 "ProposalRepository.kt",
                 "ProposalReviewScreen.kt",
                 "ProposalStore.kt",
+                // The app's composition, which hands the owner's chosen values from the parameters
+                // sheet to the review (SEE-185).
+                "SeekerVaultApp.kt",
                 "SeekerVaultApplication.kt",
+                // The swap's owner part and the design's swap review, as the prediction's are: they
+                // read the amount, slippage and terms off the form and the parsed payload to show
+                // them — they prepare nothing and resolve no provider.
+                "SwapParametersSheet.kt",
+                "SwapReview.kt",
             ),
             importers,
         )

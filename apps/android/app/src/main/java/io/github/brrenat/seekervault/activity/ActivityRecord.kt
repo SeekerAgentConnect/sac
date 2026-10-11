@@ -56,6 +56,11 @@ enum class ActivityOutcome {
     /** The wallet couldn't sign or send, and said so. Nothing happened. */
     NotSigned,
     /**
+     * The wallet never answered, and the chain later proved the transaction was never sent: its
+     * blockhash expired with no matching transaction on chain. Nothing was spent.
+     */
+    NotSent,
+    /**
      * Nothing was signed and nothing was sent, because the connection is a sandbox: the operation
      * was rehearsed (SEE-97, docs/wiki/environments.md). There is no signature on a record in this
      * outcome and so no explorer link, and neither is invented.

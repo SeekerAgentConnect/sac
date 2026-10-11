@@ -61,7 +61,19 @@ interface ChainReader {
      * endpoint's own ledger covers — see [retainedSince].
      */
     suspend fun signaturesFor(address: String, limit: Int): List<String>
+
+    /**
+     * Up to [limit] transactions that named [address], newest first, from the finalized chain, each
+     * with its block time — older than [before] when it is given, which is how a search pages back.
+     * It is how a transfer whose wallet never answered is looked for without a signature: the
+     * wallet's own history around the time it was handed the transaction. The same caveat as
+     * [signaturesFor] applies to a miss.
+     */
+    suspend fun history(address: String, before: String?, limit: Int): List<AddressSignature>
 }
+
+/** One transaction in an address's history: its signature, and when its block was produced. */
+data class AddressSignature(val signature: String, val blockTime: Instant?)
 
 data class SignatureStatus(val slot: Long, val level: ChainLevel, val chainError: String?)
 
@@ -197,19 +209,34 @@ class HttpChainReader(
             ?: throw SolanaException(SolanaProblem.Unusable, "no blockhash verdict")
     }
 
-    override suspend fun signaturesFor(address: String, limit: Int): List<String> {
-        val result =
-            call(
-                "getSignaturesForAddress",
-                JSONArray()
-                    .put(address)
-                    .put(JSONObject().put("limit", limit).put("commitment", "finalized")),
-            )
+    override suspend fun signaturesFor(address: String, limit: Int): List<String> =
+        history(address, null, limit).map { it.signature }
+
+    override suspend fun history(
+        address: String,
+        before: String?,
+        limit: Int,
+    ): List<AddressSignature> {
+        val options = JSONObject().put("limit", limit).put("commitment", "finalized")
+        if (before != null) options.put("before", before)
+        val result = call("getSignaturesForAddress", JSONArray().put(address).put(options))
         val values =
             result as? JSONArray ?: throw SolanaException(SolanaProblem.Unusable, "no signatures")
         return (0 until values.length()).map { index ->
-            values.optJSONObject(index)?.optString("signature")?.takeIf { it.isNotEmpty() }
-                ?: throw SolanaException(SolanaProblem.Unusable, "a signature that isn't one")
+            val value =
+                values.optJSONObject(index)
+                    ?: throw SolanaException(SolanaProblem.Unusable, "a signature that isn't one")
+            AddressSignature(
+                signature =
+                    value.optString("signature").takeIf { it.isNotEmpty() }
+                        ?: throw SolanaException(
+                            SolanaProblem.Unusable,
+                            "a signature that isn't one",
+                        ),
+                // A block whose time the endpoint doesn't know has none: it is never guessed.
+                blockTime =
+                    (value.opt("blockTime") as? Number)?.toLong()?.let(Instant::ofEpochSecond),
+            )
         }
     }
 
@@ -220,8 +247,22 @@ class HttpChainReader(
         val lowest =
             (call("minimumLedgerSlot", JSONArray()) as? Number)?.toLong()?.takeIf { it >= 0 }
                 ?: throw SolanaException(SolanaProblem.Unusable, "no ledger slot")
-        val seconds = call("getBlockTime", JSONArray().put(lowest))
-        return (seconds as? Number)?.toLong()?.let(Instant::ofEpochSecond)
+        // The node keeps pruning: the lowest slot can be gone by the time its time is asked for
+        // ("cleaned up"), and a slot can have no block at all ("skipped"). A later slot is asked
+        // instead. Its time is later, so it only ever claims less coverage, never more.
+        var failure: SolanaException? = null
+        for (offset in LEDGER_SLOT_OFFSETS) {
+            val seconds =
+                try {
+                    call("getBlockTime", JSONArray().put(lowest + offset))
+                } catch (e: SolanaException) {
+                    if (e.problem != SolanaProblem.Unusable) throw e
+                    failure = e
+                    continue
+                }
+            return (seconds as? Number)?.toLong()?.let(Instant::ofEpochSecond)
+        }
+        throw checkNotNull(failure)
     }
 
     private suspend fun call(method: String, params: JSONArray): Any? {
@@ -288,6 +329,12 @@ class HttpChainReader(
         const val RATE_LIMITED_CODE = 429
         /** getSignatureStatuses takes at most 256 signatures per call. */
         const val MOST_SIGNATURES = 256
+
+        /**
+         * Slots past the node's lowest whose block time is asked for, in turn: about 40 s, 80 s and
+         * 160 s of pruning later than the lowest, which is long gone by the third.
+         */
+        val LEDGER_SLOT_OFFSETS = listOf(0L, 100L, 200L, 400L)
 
         fun JSONObject.count(name: String): Long =
             if (has(name) && !isNull(name))

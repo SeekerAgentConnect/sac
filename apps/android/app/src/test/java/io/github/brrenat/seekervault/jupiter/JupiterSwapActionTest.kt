@@ -221,13 +221,17 @@ class JupiterSwapActionTest {
     }
 
     @Test
-    fun aPreparationStandsForOneMinuteAndSaysSo() {
+    fun aPreparationStandsForTwentySecondsAndSaysSo() {
         val at = Instant.ofEpochSecond(1_700_000_000)
         val prepared = runBlocking { plugin(honest(), at).prepare(subject(), chose(5UL)) }
 
-        // A quote is a price from a moment ago and a blockhash lasts about a minute. Past that the
-        // owner prepares again, which is what the binding's own expiry check enforces (SEE-89).
-        assertEquals(at.epochSecond + 60, prepared.expiresAtEpochSeconds)
+        // A quote is a price from a moment ago, and on mainnet the blockhash in Jupiter's build
+        // stopped being includable about 28 seconds after it arrived (measured 2026-10-11): a
+        // wallet opened at 35 seconds answered "blockhash expired". The window closes before that,
+        // with room left for the wallet, and past it the owner prepares again, which is what the
+        // binding's own expiry check enforces (SEE-89). A prediction order gets the same window.
+        assertEquals(at.epochSecond + 20, prepared.expiresAtEpochSeconds)
+        assertEquals(SWAP_PREPARATION_LIFETIME, ORDER_LIFETIME)
     }
 
     @Test

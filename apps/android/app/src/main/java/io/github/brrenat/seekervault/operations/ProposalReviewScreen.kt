@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,15 +31,21 @@ import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.activity.explorerUrl
 import io.github.brrenat.seekervault.connections.CloseButton
 import io.github.brrenat.seekervault.connections.formatInstant
+import io.github.brrenat.seekervault.designsystem.NetworkChip
+import io.github.brrenat.seekervault.designsystem.NetworkChipNetwork
+import io.github.brrenat.seekervault.designsystem.OwnerInputCard
+import io.github.brrenat.seekervault.designsystem.OwnerInputCardKind
+import io.github.brrenat.seekervault.designsystem.OwnerInputCardState
+import io.github.brrenat.seekervault.designsystem.ReviewSheetHeaderChip
+import io.github.brrenat.seekervault.designsystem.ReviewSheetOriginChips
+import io.github.brrenat.seekervault.designsystem.SourceColour
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.PolicyReview
-import io.github.brrenat.seekervault.plugins.ParameterField
-import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.SWAP_ACTION
+import io.github.brrenat.seekervault.plugins.actions.ActionPayload
 import io.github.brrenat.seekervault.plugins.receiptRows
-import io.github.brrenat.seekervault.policy.AmountEntry
-import io.github.brrenat.seekervault.policy.readAmount
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.executable
@@ -45,8 +54,8 @@ import io.github.brrenat.seekervault.ui.Identifier
 import io.github.brrenat.seekervault.ui.SeekerButton
 import io.github.brrenat.seekervault.ui.SeekerButtonRole
 import io.github.brrenat.seekervault.ui.SeekerCard
-import io.github.brrenat.seekervault.ui.seekerTextFieldColors
 import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.WalletNetwork
 import io.github.brrenat.seekervault.wallet.encodeBase58
 import io.github.brrenat.seekervault.wallet.networkText
 import io.github.brrenat.seekervault.wallet.walletNetworkOf
@@ -71,18 +80,19 @@ fun ProposalReviewScreen(
     label: String,
     wallet: SelectedWallet?,
     now: Instant,
-    onChoose: (ParameterKey, ParameterValue) -> Unit,
+    /** Opens the owner's part — amount, slippage and wallet — stacked over this review. */
+    onOwnerInput: () -> Unit,
     onPrepare: () -> Unit,
     onApprove: () -> Unit,
     onDismiss: () -> Unit,
     onAcknowledge: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The connection's colour for the source chip; null derives one from the label. */
+    colour: SourceColour? = null,
     onRules: (() -> Unit)? = null,
     /** Previews what was prepared without sending it (SEE-185). Null hides the action. */
     onPreview: (() -> Unit)? = null,
-    /** Opens the choice of this operation's wallet for the signal's network (SEE-185). */
-    onChooseWallet: (() -> Unit)? = null,
     /**
      * Hands a destination — a web address, and the provider's own app link when there is one — to
      * whatever opens it. The app fetches nothing from any of them.
@@ -99,17 +109,16 @@ fun ProposalReviewScreen(
                     .padding(horizontal = SeekerTheme.dimensions.dp8),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f).padding(start = SeekerTheme.dimensions.dp8)) {
-                    Text(
-                        proposal.action.value,
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    Text(
-                        stringResource(R.string.operations_from, label),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                // Titled by what the signal does, as the prediction sheet is; where it came from is
+                // said by the chips under the title, the same as there.
+                Text(
+                    stringResource(
+                        if (proposal.action == SWAP_ACTION) R.string.operation_title_swap
+                        else R.string.operation_title
+                    ),
+                    modifier = Modifier.weight(1f).padding(start = SeekerTheme.dimensions.dp8),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
                 CloseButton(onBack, MaterialTheme.colorScheme.surfaceContainerHigh)
             }
             Column(
@@ -121,7 +130,33 @@ fun ProposalReviewScreen(
                     ),
                 verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
             ) {
-                Banner(stringResource(standingText(review.standing)), OperationTags.STANDING)
+                ReviewSheetOriginChips(
+                    buildList {
+                        add(ReviewSheetHeaderChip.Signal)
+                        if (label.isNotEmpty()) add(ReviewSheetHeaderChip.Feed(label, colour))
+                    }
+                )
+                // The publisher's own words. Shown apart from everything the phone established,
+                // and never believed.
+                if (proposal.note.isNotEmpty()) {
+                    Text(
+                        proposal.note,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.fillMaxWidth().testTag(OperationTags.NOTE),
+                    )
+                }
+                // The network the signal declares, never the wallet's, flagged when it is a test
+                // network, as on the prediction sheet (SEE-185).
+                when (review.network?.let(::walletNetworkOf)) {
+                    WalletNetwork.Mainnet -> NetworkChip(NetworkChipNetwork.Mainnet)
+                    WalletNetwork.Devnet -> NetworkChip(NetworkChipNetwork.Devnet, flagged = true)
+                    WalletNetwork.Testnet,
+                    null -> Unit
+                }
+                // An open signal needs no banner saying so: the actions below already ask.
+                if (review.standing !is ProposalStanding.Open) {
+                    Banner(stringResource(standingText(review.standing)), OperationTags.STANDING)
+                }
                 // A preview just happened: said before anything else, because what was on screen
                 // is gone and nothing was signed or sent (SEE-185).
                 if (review.previewed && executed == null) {
@@ -196,65 +231,8 @@ fun ProposalReviewScreen(
                         OperationTags.UNSUPPORTED,
                     )
                 }
-                // The publisher's own words. Shown apart from everything the phone established,
-                // and never believed.
-                if (proposal.note.isNotEmpty()) {
-                    Section(R.string.operation_publisher_note) {
-                        Text(
-                            proposal.note,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.testTag(OperationTags.NOTE),
-                        )
-                    }
-                }
-                Section(R.string.operation_terms) {
-                    Column(
-                        Modifier.fillMaxWidth().testTag(OperationTags.TERMS),
-                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
-                    ) {
-                        // Carried and not interpreted: which key means what is the plugin's, and
-                        // this shows the publisher's own names and values as they were written.
-                        proposal.values.forEach { Fact(it.key, it.text) }
-                        Text(
-                            stringResource(
-                                R.string.operation_expires,
-                                formatInstant(proposal.expiresAt),
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
                 review.form.problem?.let {
                     Banner(stringResource(it.message), OperationTags.FAILURE)
-                }
-                // Who routes or places this, named as the provider requires, with what to know
-                // before committing and where to read more (SEE-173). The publisher is someone
-                // else, and the wallet that signs is someone else again.
-                review.about?.let { about ->
-                    Section(R.string.operation_about) {
-                        Column(
-                            Modifier.fillMaxWidth().testTag(OperationTags.ABOUT),
-                            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
-                        ) {
-                            Pair(stringResource(about.role), about.name)
-                            about.notes.forEach { note ->
-                                Text(
-                                    stringResource(note.text, *note.args.toTypedArray()),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Text(
-                                stringResource(R.string.operation_about_signer),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            about.links.forEach {
-                                Link(stringResource(it.label), it.url, it.deepLink, onOpenLink)
-                            }
-                        }
-                    }
                 }
                 // What the execution provider says about this action right now, read when the
                 // review opened (SEE-145). It is the venue's own words about its own market, shown
@@ -269,44 +247,37 @@ fun ProposalReviewScreen(
                         }
                     }
                 }
-                // The network the signal names and the wallet chosen for it, before anything is
-                // prepared (SEE-185): an operation is never bound to the feed's own wallet, and the
-                // owner sees which account will sign, on which cluster, before they ask for bytes.
-                if (executed == null && review.standing.executable) {
-                    NetworkAndWallet(review, wallet, onChooseWallet)
-                }
+                // The owner's part — the amount and the wallet that signs it — chosen in a sheet
+                // stacked over this one, as a prediction's side and stake are (SEE-158, SEE-185).
+                // An operation is never bound to the feed's own wallet: the owner picks the account
+                // on the signal's network before anything is prepared, and "Use these" prepares.
                 if (
-                    review.standing.executable &&
+                    executed == null &&
+                        review.standing.executable &&
                         review.served &&
-                        review.form.problem == null &&
-                        wallet != null
+                        review.form.problem == null
                 ) {
-                    Section(R.string.operation_your_part) {
-                        Column(
-                            Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
-                        ) {
-                            review.form.fields.forEach { field ->
-                                Field(field, review.choice.values[field.key], onChoose)
-                            }
-                            Text(
-                                stringResource(R.string.operation_your_part_note),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    SeekerButton(
-                        text =
-                            stringResource(
-                                if (review.prepared == null) R.string.operation_prepare
-                                else R.string.operation_prepare_again
-                            ),
-                        onClick = onPrepare,
-                        role = SeekerButtonRole.Neutral,
-                        enabled = !review.preparing && !review.sending,
-                        modifier = Modifier.fillMaxWidth().testTag(OperationTags.PREPARE),
+                    val summary = yourPartSummary(review, wallet)
+                    OwnerInputCard(
+                        kind = OwnerInputCardKind.Swap,
+                        state =
+                            if (summary == null) OwnerInputCardState.Unchosen
+                            else OwnerInputCardState.Chosen,
+                        summary = summary,
+                        onChooseOrEdit = { if (!review.sending) onOwnerInput() },
+                        modifier = Modifier.testTag(OperationTags.YOUR_PART),
                     )
+                    // A quote runs out, and a failed one can be asked for again, without opening
+                    // the owner's part to change nothing.
+                    if (summary != null && (review.prepared != null || review.failure != null)) {
+                        SeekerButton(
+                            text = stringResource(R.string.operation_prepare_again),
+                            onClick = onPrepare,
+                            role = SeekerButtonRole.Neutral,
+                            enabled = !review.preparing && !review.sending,
+                            modifier = Modifier.fillMaxWidth().testTag(OperationTags.PREPARE),
+                        )
+                    }
                 }
                 if (review.preparing) {
                     LinearProgressIndicator(
@@ -466,6 +437,55 @@ fun ProposalReviewScreen(
                         modifier = Modifier.fillMaxWidth().testTag(OperationTags.DISMISS),
                     )
                 }
+                // Who routes or places this, named as the provider requires, with what to know
+                // before committing and where to read more (SEE-173), under the buttons so the
+                // decision comes first. The publisher is someone else, and the wallet that signs
+                // is someone else again.
+                review.about?.let { about ->
+                    Folded(R.string.operation_about, OperationTags.ABOUT) {
+                        Column(
+                            Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
+                        ) {
+                            Pair(stringResource(about.role), about.name)
+                            about.notes.forEach { note ->
+                                Text(
+                                    stringResource(note.text, *note.args.toTypedArray()),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(
+                                stringResource(R.string.operation_about_signer),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            about.links.forEach {
+                                Link(stringResource(it.label), it.url, it.deepLink, onOpenLink)
+                            }
+                        }
+                    }
+                }
+                // The publisher's terms as written, folded at the bottom: the review above already
+                // says what the owner decides on, and these are there to check it against.
+                Folded(R.string.operation_terms_raw, OperationTags.TERMS) {
+                    Column(
+                        Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
+                    ) {
+                        // Carried and not interpreted: which key means what is the plugin's, and
+                        // this shows the publisher's own names and values as they were written.
+                        proposal.values.forEach { Fact(it.key, it.text) }
+                        Text(
+                            stringResource(
+                                R.string.operation_expires,
+                                formatInstant(proposal.expiresAt),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 Address(stringResource(R.string.operation_proposal_id), proposal.key.proposalId)
                 Address(stringResource(R.string.operation_publisher), proposal.key.serverId)
                 Text(
@@ -479,153 +499,57 @@ fun ProposalReviewScreen(
 }
 
 /**
- * The network a signal names and the wallet chosen for it (SEE-185): stated before anything is
- * prepared, with the way to choose another wallet or connect one when there is none.
+ * What the owner chose for their part, as the card says it: "1.5 SOL · Main wallet". Null until
+ * both an amount and the wallet that signs are chosen.
  */
 @Composable
-private fun NetworkAndWallet(
-    review: OperationReview,
-    wallet: SelectedWallet?,
-    onChooseWallet: (() -> Unit)?,
-) {
-    val network = review.network?.let { walletNetworkOf(it) } ?: return
-    Section(R.string.operation_fact_network) {
-        Column(
-            Modifier.fillMaxWidth().testTag(OperationTags.NETWORK),
-            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
-        ) {
-            Pair(
-                stringResource(R.string.operation_fact_network),
-                stringResource(R.string.operation_network_value, networkText(network)),
-            )
-            if (wallet != null) {
-                Address(stringResource(R.string.operation_fact_wallet), wallet.address)
-            } else {
-                Text(
-                    stringResource(R.string.operation_wallet_none, networkText(network)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.testTag(OperationTags.WALLET),
-                )
-            }
-            if (onChooseWallet != null) {
-                SeekerButton(
-                    text =
-                        if (wallet != null) stringResource(R.string.operation_choose_wallet)
-                        else
-                            stringResource(R.string.operation_connect_wallet, networkText(network)),
-                    onClick = onChooseWallet,
-                    role = SeekerButtonRole.Neutral,
-                    enabled = !review.sending && !review.preparing,
-                    modifier = Modifier.fillMaxWidth().testTag(OperationTags.CHOOSE_WALLET),
-                )
-            }
-        }
-    }
+private fun yourPartSummary(review: OperationReview, wallet: SelectedWallet?): String? {
+    wallet ?: return null
+    val field = review.form.fields.firstOrNull { it.kind is ParameterKind.Amount } ?: return null
+    val kind = field.kind as ParameterKind.Amount
+    val amount =
+        (review.choice.values[field.key] as? ParameterValue.Amount)?.baseUnits ?: return null
+    val unit = (review.payload as? ActionPayload.Swap)?.payload?.inputSymbol.orEmpty()
+    return stringResource(
+        R.string.swap_review_your_part,
+        "${formatBaseUnits(amount, kind.decimals)} $unit".trim(),
+        walletName(wallet),
+    )
 }
 
-/** One field the plugin asked for, in the units the transaction carries. */
+/** A section that stays folded until the owner taps it: there to read, not in the way. */
 @Composable
-private fun Field(
-    field: ParameterField,
-    value: ParameterValue?,
-    onChoose: (ParameterKey, ParameterValue) -> Unit,
-) {
-    when (val kind = field.kind) {
-        is ParameterKind.Amount -> {
-            // Typed with the asset's own decimal places and converted exactly: digits are shifted,
-            // never multiplied, so no floating-point type comes between what was typed and what
-            // the transaction will carry (`readAmount`).
-            var typed by
-                rememberSaveable(field.key.value) {
-                    mutableStateOf(
-                        (value as? ParameterValue.Amount)
-                            ?.let { formatBaseUnits(it.baseUnits, kind.decimals) }
-                            .orEmpty()
-                    )
-                }
-            val entry = readAmount(typed, kind.decimals)
-            TextField(
-                value = typed,
-                onValueChange = {
-                    typed = it
-                    (readAmount(it, kind.decimals) as? AmountEntry.Amount)?.let { read ->
-                        onChoose(field.key, ParameterValue.Amount(read.baseUnits))
-                    }
-                },
-                label = { Text(stringResource(field.label)) },
-                isError = entry is AmountEntry.Problem,
-                supportingText = {
-                    Text(
-                        when {
-                            entry is AmountEntry.Problem ->
-                                stringResource(R.string.operation_amount_invalid)
-                            kind.most != null ->
-                                stringResource(
-                                    R.string.operation_amount_between,
-                                    formatBaseUnits(kind.least, kind.decimals),
-                                    formatBaseUnits(kind.most, kind.decimals),
-                                )
-                            else -> stringResource(R.string.operation_amount_note)
-                        }
-                    )
-                },
-                singleLine = true,
-                colors = seekerTextFieldColors(),
-                modifier = Modifier.fillMaxWidth().testTag(OperationTags.AMOUNT),
-            )
-        }
-        is ParameterKind.Count -> {
-            var typed by
-                rememberSaveable(field.key.value) {
-                    mutableStateOf(
-                        ((value as? ParameterValue.Count)?.value ?: kind.initial).toString()
-                    )
-                }
-            val read = typed.toUIntOrNull()
-            TextField(
-                value = typed,
-                onValueChange = {
-                    typed = it
-                    it.toUIntOrNull()
-                        ?.takeIf { count -> count >= kind.least && count <= kind.most }
-                        ?.let { count -> onChoose(field.key, ParameterValue.Count(count)) }
-                },
-                label = { Text(stringResource(field.label)) },
-                isError = read == null || read < kind.least || read > kind.most,
-                supportingText = {
-                    Text(
-                        stringResource(
-                            R.string.operation_count_between,
-                            kind.least.toString(),
-                            kind.most.toString(),
-                        )
-                    )
-                },
-                singleLine = true,
-                colors = seekerTextFieldColors(),
-                modifier = Modifier.fillMaxWidth().testTag(OperationTags.SLIPPAGE),
-            )
-        }
-        is ParameterKind.Choice -> {
-            // No operation bundled in this build asks for one yet; the prediction plugin (SEE-94)
-            // is what brings an outcome to pick, and it will be shown here rather than elsewhere.
-            Column(
+private fun Folded(labelRes: Int, tag: String, content: @Composable () -> Unit) {
+    var expanded by rememberSaveable(labelRes) { mutableStateOf(false) }
+    val label = stringResource(labelRes)
+    SeekerCard(Modifier.fillMaxWidth().testTag(tag), onClick = { expanded = !expanded }) {
+        Column(
+            Modifier.fillMaxWidth().padding(SeekerTheme.dimensions.dp16),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
+        ) {
+            Row(
                 Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp6),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp10),
             ) {
-                Text(stringResource(field.label), style = MaterialTheme.typography.titleSmall)
-                kind.options.forEach { option ->
-                    SeekerButton(
-                        text = stringResource(option.label),
-                        onClick = { onChoose(field.key, ParameterValue.Selected(option.key)) },
-                        role =
-                            if ((value as? ParameterValue.Selected)?.option == option.key)
-                                SeekerButtonRole.Primary
-                            else SeekerButtonRole.Neutral,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription =
+                        stringResource(
+                            if (expanded) R.string.operation_section_hide
+                            else R.string.operation_section_show,
+                            label,
+                        ),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
+            if (expanded) content()
         }
     }
 }

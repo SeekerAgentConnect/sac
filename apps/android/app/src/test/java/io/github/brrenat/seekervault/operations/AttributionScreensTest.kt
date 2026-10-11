@@ -167,7 +167,7 @@ class AttributionScreensTest {
             label = "CopyTrading",
             wallet = selected,
             now = now,
-            onChoose = { _, _ -> },
+            onOwnerInput = {},
             onPrepare = {},
             onApprove = {},
             onDismiss = {},
@@ -197,7 +197,8 @@ class AttributionScreensTest {
     fun theSwapReviewNamesMetisAndBreaksTheFeeOutBeforeSigning() {
         showSwap(swapReview())
 
-        compose.onNodeWithTag(OperationTags.ABOUT).assertExists()
+        // Folded until asked for, so it is opened first.
+        compose.onNodeWithTag(OperationTags.ABOUT).performScrollTo().performClick()
         present(SWAP_ROUTING_NAME)
         present("SAC service fee, taken from what you receive")
         present("0.2%")

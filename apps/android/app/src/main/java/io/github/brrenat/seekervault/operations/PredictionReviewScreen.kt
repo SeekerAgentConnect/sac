@@ -20,8 +20,10 @@ import io.github.brrenat.seekervault.designsystem.OwnerParametersSheet
 import io.github.brrenat.seekervault.designsystem.OwnerParametersSheetCallbacks
 import io.github.brrenat.seekervault.designsystem.OwnerParametersSheetState
 import io.github.brrenat.seekervault.designsystem.OwnerParametersSheetTags
+import io.github.brrenat.seekervault.designsystem.OwnerParametersWallet
 import io.github.brrenat.seekervault.designsystem.ReviewSheet
 import io.github.brrenat.seekervault.designsystem.ReviewSheetLayout
+import io.github.brrenat.seekervault.designsystem.ReviewSheetState
 import io.github.brrenat.seekervault.designsystem.SegmentedNoSelection
 import io.github.brrenat.seekervault.plugins.PREDICTION_BUY_ACTION
 import io.github.brrenat.seekervault.plugins.ParameterKey
@@ -35,6 +37,8 @@ import io.github.brrenat.seekervault.policy.readAmount
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
 import io.github.brrenat.seekervault.wallet.SelectedWallet
+import io.github.brrenat.seekervault.wallet.networkText
+import io.github.brrenat.seekervault.wallet.walletNetworkOf
 import java.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -54,15 +58,16 @@ object PredictionReviewTags {
     const val YES = "prediction.params.yes"
     const val NO = "prediction.params.no"
     const val AMOUNT = "prediction.params.amount"
+    const val WALLET = "prediction.params.wallet"
 }
 
 /**
  * The review of one prediction signal, laid out as the design's review sheet (SEE-158).
  *
  * The header and the decision are pinned and only the body scrolls, so Approve is where the thumb
- * is rather than two thousand pixels down. The owner's side and stake are chosen in a sheet stacked
- * over this one ([PredictionParametersSheet]); choosing them re-quotes, and so does the stale-quote
- * card's Refresh.
+ * is rather than two thousand pixels down. The owner's side, stake and wallet are chosen in a sheet
+ * stacked over this one ([PredictionParametersSheet]); choosing them re-quotes, and so does the
+ * stale-quote card's Refresh.
  */
 @Composable
 fun PredictionReviewScreen(
@@ -81,17 +86,50 @@ fun PredictionReviewScreen(
     modifier: Modifier = Modifier,
     /** Previews the prepared order without sending it (SEE-185). */
     onPreview: () -> Unit = {},
-    /**
-     * Opens the picker for the wallet that signs on the signal's network (SEE-185), offered while
-     * the signal is open whether or not one is chosen already.
-     */
-    onChooseWallet: () -> Unit = {},
 ) {
     val resources = LocalContext.current.resources
+    SignalReviewSheet(
+        review = review,
+        now = now,
+        sheet = { clock -> review.toPredictionSheet(resources, source, wallet, clock) },
+        onOwnerInput = onOwnerInput,
+        onPrepare = onPrepare,
+        onApprove = onApprove,
+        onDismiss = onDismiss,
+        onAcknowledge = onAcknowledge,
+        onRules = onRules,
+        onBack = onBack,
+        onOpenLink = onOpenLink,
+        onPreview = onPreview,
+        modifier = modifier.testTag(PredictionReviewTags.SHEET),
+    )
+}
+
+/**
+ * A feed signal's review sheet, whichever kind built its [sheet]: pinned header and decision, the
+ * owner's part opening the sheet stacked over it, identifiers that copy and links that open.
+ *
+ * A quote runs out on its own, so the sheet is built again at the moment it does: the stale card
+ * appears without anything else having to change first.
+ */
+@Composable
+internal fun SignalReviewSheet(
+    review: OperationReview,
+    now: Instant,
+    sheet: (Instant) -> ReviewSheetState,
+    onOwnerInput: () -> Unit,
+    onPrepare: () -> Unit,
+    onApprove: () -> Unit,
+    onDismiss: () -> Unit,
+    onAcknowledge: (Boolean) -> Unit,
+    onRules: () -> Unit,
+    onBack: () -> Unit,
+    onOpenLink: (url: String, deepLink: String?) -> Unit,
+    onPreview: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    // The quote runs out on its own. The sheet looks again at the moment it does, so the stale card
-    // appears without anything else having to change first.
     var clock by remember(now) { mutableStateOf(now) }
     val expiresAt = review.prepared?.expiresAtEpochSeconds
     LaunchedEffect(expiresAt, now) {
@@ -101,7 +139,7 @@ fun PredictionReviewScreen(
         clock = Instant.now()
     }
     ReviewSheet(
-        state = review.toPredictionSheet(resources, source, wallet, clock),
+        state = sheet(clock),
         onPrimary = onApprove,
         onSecondary = onDismiss,
         onRules = onRules,
@@ -117,13 +155,14 @@ fun PredictionReviewScreen(
         onConfirmedChange = onAcknowledge,
         onRefreshQuote = onPrepare,
         onPreview = onPreview,
-        onChooseWallet = onChooseWallet,
-        modifier = modifier.testTag(PredictionReviewTags.SHEET),
+        modifier = modifier,
     )
 }
 
 /**
  * The owner's side and stake, stacked over the review: `[review, params]` (design/navigation.md).
+ * The wallet that signs on the signal's network is chosen here too, through the picker stacked over
+ * this sheet, as a swap's is (SEE-185).
  *
  * What is typed stays here until **Use these**. Then it is checked against the market's bounds,
  * handed to the review in the asset's own base units — digits shifted, never multiplied — and the
@@ -132,7 +171,9 @@ fun PredictionReviewScreen(
 @Composable
 fun PredictionParametersSheet(
     review: OperationReview,
+    wallet: SelectedWallet?,
     onUse: (List<Pair<ParameterKey, ParameterValue>>) -> Unit,
+    onChooseWallet: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -164,10 +205,25 @@ fun PredictionParametersSheet(
         }
     var error by rememberSaveable(review.proposalId) { mutableStateOf<String?>(null) }
     val entry = depositKind?.let { readAmount(typed, it.decimals) }
+    val network = review.network?.let(::walletNetworkOf)
     OwnerParametersSheet(
         state =
             OwnerParametersSheetState(
                 title = resources.getString(R.string.prediction_params_title),
+                wallet =
+                    network?.let {
+                        OwnerParametersWallet(
+                            label =
+                                resources.getString(R.string.swap_params_wallet, networkText(it)),
+                            value = wallet?.let(::walletName),
+                            placeholder = resources.getString(R.string.swap_params_wallet_none),
+                            actionLabel =
+                                resources.getString(
+                                    if (wallet != null) R.string.swap_params_wallet_change
+                                    else R.string.swap_params_wallet_choose
+                                ),
+                        )
+                    },
                 choice =
                     sideKind?.let { kind ->
                         OwnerParametersChoice(
@@ -185,7 +241,8 @@ fun PredictionParametersSheet(
                 note = resources.getString(R.string.prediction_params_note),
                 useLabel = resources.getString(R.string.prediction_params_use),
                 canUse =
-                    (sideKind == null || sideIndex != SegmentedNoSelection) &&
+                    (network == null || wallet != null) &&
+                        (sideKind == null || sideIndex != SegmentedNoSelection) &&
                         entry is AmountEntry.Amount,
             ),
         callbacks =
@@ -223,6 +280,7 @@ fun PredictionParametersSheet(
                         )
                     }
                 },
+                onWallet = onChooseWallet,
                 onClose = onClose,
             ),
         tags =
@@ -230,8 +288,9 @@ fun PredictionParametersSheet(
                 use = PredictionReviewTags.USE,
                 options = listOf(PredictionReviewTags.YES, PredictionReviewTags.NO),
                 amount = PredictionReviewTags.AMOUNT,
+                wallet = PredictionReviewTags.WALLET,
             ),
-        focusAmount = true,
+        focusAmount = network == null || wallet != null,
         modifier = modifier.testTag(PredictionReviewTags.PARAMS),
     )
 }

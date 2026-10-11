@@ -57,6 +57,13 @@ data class ActionInspection(
      * History says what they approved rather than what a provider says today.
      */
     val receipt: List<PluginReference> = emptyList(),
+    /**
+     * What the owner has to read and tick past before approving, even with no rule of theirs
+     * warning: a risk in the operation itself, such as a position nobody is buying and so nobody
+     * can sell. A caution only ever adds a step — core asks for the acknowledgement and refuses the
+     * approval without it — and it can never make an approval pass or a rule agree.
+     */
+    val cautions: List<PluginFinding> = emptyList(),
 ) {
     /**
      * Whether this preparation may be put in front of the owner to approve. Only bytes the plugin

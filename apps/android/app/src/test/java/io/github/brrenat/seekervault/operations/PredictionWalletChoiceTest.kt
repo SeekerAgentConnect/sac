@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -15,7 +16,6 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.R
-import io.github.brrenat.seekervault.designsystem.ReviewSheetTags
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.jupiter.orderTransaction
 import io.github.brrenat.seekervault.jupiter.predictionOrder
@@ -55,12 +55,13 @@ import org.robolectric.annotation.Config
  *
  * The prediction review used to reach the wallet picker only while no wallet was chosen: once one
  * was, tapping "your part" opened the side and stake instead, so an owner with two authorized
- * Mainnet profiles who chose A could never switch to B. The review now offers **Choose wallet**
- * whenever the signal is open, and choosing another wallet drops what was prepared for the old one.
+ * Mainnet profiles who chose A could never switch to B. The wallet is now chosen in the side and
+ * stake sheet itself, as a swap's is with its amount, and choosing another wallet drops what was
+ * prepared for the old one.
  *
  * The sheets are the app's own, over the real view model, the real Jupiter provider and the real
  * wallet repository; only the venue, the chain and the wallet app are stood in for. The host below
- * stacks the picker over the review the way `SeekerVaultApp` does.
+ * stacks the picker over the owner's part the way `SeekerVaultApp` does.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "en-rUS-w393dp-h3200dp-xxhdpi")
@@ -122,20 +123,12 @@ class PredictionWalletChoiceTest {
         var picking by remember { mutableStateOf(false) }
         val open = review ?: return
         SeekerTheme {
-            PredictionReviewScreen(
+            PredictionParametersSheet(
                 review = open,
-                source = PredictionReviewSource("CopyTrading"),
                 wallet = open.wallet,
-                now = clock,
-                onOwnerInput = {},
-                onPrepare = model::prepare,
-                onApprove = { model.approve(open.wallet) },
-                onDismiss = {},
-                onAcknowledge = model::acknowledge,
-                onRules = {},
-                onBack = {},
-                onOpenLink = { _, _ -> },
+                onUse = {},
                 onChooseWallet = { picking = true },
+                onClose = {},
             )
             if (picking) {
                 OperationWalletPicker(
@@ -154,7 +147,7 @@ class PredictionWalletChoiceTest {
     }
 
     private fun pick(profile: WalletProfile) {
-        compose.onNodeWithTag(ReviewSheetTags.WALLET_ACTION).performScrollTo().performClick()
+        compose.onNodeWithTag(PredictionReviewTags.WALLET).performScrollTo().performClick()
         compose.onNodeWithTag(WalletTags.PICKER).assertExists()
         compose.onNodeWithTag(WalletTags.choice(profile.id)).performClick()
         compose.onNodeWithTag(WalletTags.PICKER_USE).performClick()
@@ -186,11 +179,10 @@ class PredictionWalletChoiceTest {
         val model = opened(phone)
         compose.setContent { Host(model, phone) }
 
-        // Nobody chose yet, so nothing signs; the review says how to choose.
+        // Nobody chose yet, so nothing signs; the owner's part says so beside the way to choose.
         assertNull(checkNotNull(model.review.value).wallet)
-        compose
-            .onNodeWithText(context.getString(R.string.operation_connect_wallet, "Mainnet"))
-            .assertExists()
+        compose.onNodeWithText(context.getString(R.string.swap_params_wallet_none)).assertExists()
+        compose.onNodeWithTag(PredictionReviewTags.USE).assertIsNotEnabled()
         pick(first)
         assertEquals(FIRST_OWNER, checkNotNull(model.review.value).wallet?.address)
 
@@ -208,7 +200,7 @@ class PredictionWalletChoiceTest {
         // The action is still there with A chosen and prepared for: this is the route the review
         // did not have.
         compose
-            .onNodeWithText(context.getString(R.string.operation_choose_wallet))
+            .onNodeWithText(context.getString(R.string.swap_params_wallet_change))
             .performScrollTo()
             .assertExists()
         pick(second)

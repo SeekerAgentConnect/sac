@@ -435,11 +435,18 @@ server can't see it.** A server that cannot look is not a transaction that faile
 
 ### A transfer whose outcome is UNKNOWN
 
-The app closed, or the wallet never came back, while the transaction was with it. **This is the one
-case nobody on this phone can settle.** No signature ever reached here, so there is no ID to look
-up — tapping **Check status** will say so.
+The app closed, or the wallet never came back, while the transaction was with it — for example you
+closed a wallet error such as "Network mismatch". No signature ever reached here, so there is no ID
+to look up — tapping **Check status** will say so.
 
-The transaction may or may not have been sent. To find out:
+The phone settles it on its own a few minutes later, once the transaction's blockhash has expired:
+it searches your wallet's history on chain for the approved transaction. Never sent, the request is
+back in **Waiting** for you to approve again (the agent reads `PENDING`); found, it reads as sent and
+is followed like any other ([chain confirmation](../wiki/chain-confirmation.md#a-wallet-that-never-answered)).
+
+It stays unknown only when that search can't cover the window — the network endpoint's history
+doesn't reach back far enough, or your address made too many transactions around that time. Then
+the transaction may or may not have been sent. To find out:
 
 - Open your wallet app and look at its own history for a transfer matching the amount and
   recipient.

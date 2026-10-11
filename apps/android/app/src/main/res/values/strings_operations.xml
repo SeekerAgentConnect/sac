@@ -32,10 +32,21 @@
     <string name="operation_outcome_unresolved">This phone never learned what the wallet did, so it may or may not have been sent. Nothing is asked of the wallet again.</string>
 
     <!-- The sections of the review. -->
-    <string name="operation_publisher_note">What the publisher says</string>
-    <string name="operation_terms">What the publisher proposed</string>
+    <string name="operation_title">Signal</string>
+    <string name="operation_title_swap">Swap</string>
     <string name="operation_expires">Expires %1$s</string>
+    <string name="operation_terms_raw">Raw terms, as the publisher wrote them</string>
+    <string name="operation_section_show">Show %1$s</string>
+    <string name="operation_section_hide">Hide %1$s</string>
     <string name="operation_your_part">Your part</string>
+    <!-- The swap's own part, stacked over its review: amount, slippage and the wallet that signs. -->
+    <string name="swap_params_title">Amount and wallet</string>
+    <string name="swap_params_wallet">Wallet on %1$s</string>
+    <string name="swap_params_wallet_none">None chosen yet</string>
+    <string name="swap_params_wallet_choose">Choose</string>
+    <string name="swap_params_wallet_change">Change</string>
+    <string name="swap_params_amount_least">At least %1$s</string>
+    <string name="swap_review_your_part">%1$s · %2$s</string>
     <string name="operation_your_part_note">How much to swap is yours alone. It stays on this phone: the publisher and the shared gateway are never told the amount, your wallet, or whether you acted.</string>
     <string name="operation_what_this_phone_read">What this phone read in the transaction</string>
     <string name="operation_not_prepared">Nothing was prepared</string>

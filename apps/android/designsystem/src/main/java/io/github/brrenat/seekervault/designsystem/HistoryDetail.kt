@@ -394,13 +394,7 @@ fun HistoryDetailBody(
         HistoryDetailStatusCard(model.status, model.header.sourceName)
         HistoryDetailResponseCard(model.response)
         model.delivery?.let { HistoryDetailDeliveryCard(it, callbacks.onSendAgain) }
-        model.execution?.let { HistoryDetailExecutionCard(it, callbacks.onCheckStatus) }
-        model.position?.let { HistoryDetailPositionCard(it, callbacks) }
-        HistoryDetailOriginalCard(
-            origin = model.header.origin,
-            description = model.originalDescription,
-            rows = model.originalRows,
-        )
+        // What went on chain comes before what is said about it.
         if (model.transactions.isNotEmpty()) {
             HistoryDetailTransactions(
                 transactions = model.transactions,
@@ -408,6 +402,13 @@ fun HistoryDetailBody(
                 onOpenExplorer = callbacks.onOpenExplorer,
             )
         }
+        model.execution?.let { HistoryDetailExecutionCard(it, callbacks.onCheckStatus) }
+        model.position?.let { HistoryDetailPositionCard(it, callbacks) }
+        HistoryDetailOriginalCard(
+            origin = model.header.origin,
+            description = model.originalDescription,
+            rows = model.originalRows,
+        )
         if (model.timeline.isNotEmpty()) HistoryDetailTimeline(model.timeline)
         if (model.identifiers.isNotEmpty()) HistoryDetailIdentifiers(model.identifiers)
         Text(
@@ -735,15 +736,13 @@ private fun HistoryDetailTransactions(
     onCopy: (String) -> Unit,
     onOpenExplorer: (String) -> Unit,
 ) {
-    Column(
-        Modifier.testTag(HistoryDetailTags.Transactions),
-        verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
-    ) {
-        HistoryDetailHeading(
+    // The same box and title as Your response, with every transaction inside it.
+    HistoryDetailCard(Modifier.testTag(HistoryDetailTags.Transactions)) {
+        HistoryDetailCardTitle(
             if (transactions.size == 1) "Transaction" else "Transactions · ${transactions.size}"
         )
         transactions.forEachIndexed { index, transaction ->
-            HistoryDetailTransactionCard(
+            HistoryDetailTransactionEntry(
                 index = index,
                 transaction = transaction,
                 onCopy = onCopy,
@@ -754,13 +753,13 @@ private fun HistoryDetailTransactions(
 }
 
 @Composable
-private fun HistoryDetailTransactionCard(
+private fun HistoryDetailTransactionEntry(
     index: Int,
     transaction: HistoryDetailTransaction,
     onCopy: (String) -> Unit,
     onOpenExplorer: (String) -> Unit,
 ) {
-    HistoryDetailCard {
+    Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg)) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
@@ -808,7 +807,7 @@ private fun HistoryDetailTransactionCard(
                 modifier = Modifier.testTag(HistoryDetailTags.copy(index)),
             )
         }
-        val explorerUrl = transaction.explorerUrl ?: return@HistoryDetailCard
+        val explorerUrl = transaction.explorerUrl ?: return@Column
         Row(
             modifier =
                 Modifier.clip(RoundedCornerShape(SeekerTheme.radii.xs))
@@ -863,37 +862,32 @@ private fun HistoryDetailCopyButton(
 
 @Composable
 private fun HistoryDetailTimeline(entries: List<HistoryDetailTimelineEntry>) {
-    Column(
-        Modifier.testTag(HistoryDetailTags.Timeline),
-        verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
-    ) {
-        HistoryDetailHeading("Timeline")
-        HistoryDetailCard(spacing = SeekerTheme.spacing.lg) {
-            entries.forEach { entry ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = entry.event.icon(),
-                        contentDescription = null,
-                        modifier = Modifier.size(SeekerTheme.spacing.lg + SeekerTheme.spacing.sm),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = entry.text,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        text = entry.timeText,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style =
-                            MaterialTheme.typography.bodySmall.copy(
-                                fontFeatureSettings = TabularNumbers
-                            ),
-                    )
-                }
+    HistoryDetailCard(Modifier.testTag(HistoryDetailTags.Timeline)) {
+        HistoryDetailCardTitle("Timeline")
+        entries.forEach { entry ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = entry.event.icon(),
+                    contentDescription = null,
+                    modifier = Modifier.size(SeekerTheme.spacing.lg + SeekerTheme.spacing.sm),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = entry.text,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = entry.timeText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style =
+                        MaterialTheme.typography.bodySmall.copy(
+                            fontFeatureSettings = TabularNumbers
+                        ),
+                )
             }
         }
     }
@@ -903,17 +897,12 @@ private fun HistoryDetailTimeline(entries: List<HistoryDetailTimelineEntry>) {
 
 @Composable
 private fun HistoryDetailIdentifiers(identifiers: List<HistoryDetailRow>) {
-    Column(
-        Modifier.testTag(HistoryDetailTags.Identifiers),
-        verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
-    ) {
-        HistoryDetailHeading("Identifiers")
-        HistoryDetailCard(spacing = SeekerTheme.spacing.lg) {
-            identifiers.forEach { row ->
-                Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xs)) {
-                    HistoryDetailSmallLabel(row.label)
-                    Text(text = row.value, style = SeekerTheme.typography.identifier)
-                }
+    HistoryDetailCard(Modifier.testTag(HistoryDetailTags.Identifiers)) {
+        HistoryDetailCardTitle("Identifiers")
+        identifiers.forEach { row ->
+            Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xs)) {
+                HistoryDetailSmallLabel(row.label)
+                Text(text = row.value, style = SeekerTheme.typography.identifier)
             }
         }
     }
@@ -1101,12 +1090,12 @@ private fun HistoryDetailCard(
     )
 }
 
+/** A card's own title, as Your response and Original request carry theirs. */
 @Composable
-private fun HistoryDetailHeading(text: String) {
+private fun HistoryDetailCardTitle(text: String) {
     Text(
         text = text,
-        modifier = Modifier.padding(top = SeekerTheme.spacing.md).semantics { heading() },
-        color = SeekerTheme.colors.lime,
+        modifier = Modifier.semantics { heading() },
         style = MaterialTheme.typography.titleSmall,
     )
 }

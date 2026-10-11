@@ -75,6 +75,18 @@ sealed interface SigningOutcome {
      * and goes as one.
      */
     data class Unresolved(val detail: String) : SigningOutcome
+
+    /**
+     * A transfer that was [Unresolved], proven never sent once it could no longer land: its
+     * blockhash expired, and the wallet's history on chain holds no transaction carrying the
+     * approved message (docs/wiki/chain-confirmation.md). Nothing was spent, and the sidecar is
+     * told the request failed, which an agent can safely act on.
+     */
+    data object NotSent : SigningOutcome {
+        const val DETAIL =
+            "The wallet never sent it. Its blockhash expired and the wallet's history on chain " +
+                "has no matching transaction, so it can never land. Nothing was spent."
+    }
 }
 
 /**

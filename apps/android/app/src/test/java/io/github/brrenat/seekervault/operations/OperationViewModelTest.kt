@@ -27,10 +27,14 @@ import io.github.brrenat.seekervault.plugins.SWAP_ACTION
 import io.github.brrenat.seekervault.plugins.UnsupportedReason
 import io.github.brrenat.seekervault.plugins.actions.SwapParameterNames
 import io.github.brrenat.seekervault.plugins.actions.SwapTermNames
+import io.github.brrenat.seekervault.policy.AssetLimits
+import io.github.brrenat.seekervault.policy.GlobalPolicy
+import io.github.brrenat.seekervault.policy.PolicyAsset
 import io.github.brrenat.seekervault.proposals.BindingProblem
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.instrumentOf
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.GATEWAY
 import io.github.brrenat.seekervault.servers.PluginRequirement
@@ -373,7 +377,7 @@ class OperationViewModelTest {
     }
 
     @Test
-    fun aQuoteThatWentStaleIsPreparedAgainRatherThanSigned() = runBlocking {
+    fun aQuoteThatWentStaleIsPreparedAgainByApprovingAndThenSigned() = runBlocking {
         val phone = phone()
         val model = opened(phone)
         choose(model, 1_000_000UL)
@@ -383,31 +387,81 @@ class OperationViewModelTest {
             clock.plus(SWAP_PREPARATION_LIFETIME).epochSecond,
             prepared.expiresAtEpochSeconds,
         )
+        val builds = phone.provider.asked.count { it.startsWith("build") }
 
         // The owner reads, thinks about it, and comes back after the window. The quote is a price
-        // from a minute ago and the blockhash is nearly gone, so nothing is signed.
+        // from a while ago and its blockhash is gone, so approving prepares it again first — the
+        // same amount, slippage and wallet — and the wallet is handed only the fresh bytes.
         clock = clock.plus(SWAP_PREPARATION_LIFETIME).plusSeconds(1)
-        model.approve(phone.operationWallet())
-
-        assertEquals(
-            OperationProblem.Binding(BindingProblem.PreparationExpired),
-            checkNotNull(model.review.value).problem,
-        )
-        assertEquals(
-            emptyList<Triple<ByteString, SelectedWallet, String>>(),
-            phone.adapter.sendings,
-        )
-        assertNull(phone.proposals.proposal(CONNECTION, PROPOSAL)?.execution)
-
-        // Preparing again gets a fresh quote and a fresh window, and then it goes through.
         phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
-        model.prepare()
         model.approve(phone.operationWallet())
-        assertEquals(1, phone.adapter.sendings.size)
+
+        assertEquals(builds + 1, phone.provider.asked.count { it.startsWith("build") })
+        assertNull(checkNotNull(model.review.value).problem)
+        val (bytes, _, _) = phone.adapter.sendings.single()
+        assertEquals(checkNotNull(model.review.value).prepared?.transaction, bytes)
+        assertEquals(
+            clock.plus(SWAP_PREPARATION_LIFETIME).epochSecond,
+            phone.proposals
+                .proposal(CONNECTION, PROPOSAL)
+                ?.execution
+                ?.binding
+                ?.expiresAtEpochSeconds,
+        )
         assertTrue(
             phone.proposals.proposal(CONNECTION, PROPOSAL)?.execution?.outcome
                 is ProposalOutcome.Submitted
         )
+    }
+
+    @Test
+    fun aQuoteRefreshedByApprovingStopsWhenTheRulesNowSayOtherwise() = runBlocking {
+        val phone = phone()
+        val model = opened(phone)
+        choose(model, 1_000_000UL)
+        model.prepare()
+        assertFalse(checkNotNull(checkNotNull(model.review.value).assessment).decision.warns)
+
+        // While the owner reads, a daily limit below this swap's amount is set, and the quote runs
+        // out. Approving prepares it again, and the rules now warn about it: that is shown, and the
+        // wallet is not asked.
+        phone.policies.putGlobal(
+            GlobalPolicy.default(clock)
+                .copy(
+                    limits =
+                        mapOf(
+                            PolicyAsset(Network.NETWORK_MAINNET, USDC_MINT) to
+                                AssetLimits(daily = 500_000UL)
+                        )
+                )
+        )
+        clock = clock.plus(SWAP_PREPARATION_LIFETIME).plusSeconds(1)
+        phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        model.approve(phone.operationWallet())
+
+        val review = checkNotNull(model.review.value)
+        assertEquals(OperationProblem.RulesChanged, review.problem)
+        assertTrue(checkNotNull(review.assessment).decision.warns)
+        assertFalse(review.acknowledged)
+        assertTrue(phone.adapter.sendings.isEmpty())
+        assertNull(phone.proposals.proposal(CONNECTION, PROPOSAL)?.execution)
+    }
+
+    @Test
+    fun aQuoteStillFreshIsSignedAsItWasReviewed() = runBlocking {
+        val phone = phone()
+        val model = opened(phone)
+        choose(model, 1_000_000UL)
+        model.prepare()
+        val reviewed = checkNotNull(checkNotNull(model.review.value).prepared)
+        val asked = phone.provider.asked.size
+
+        phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 9 }))
+        model.approve(phone.operationWallet())
+
+        // Approving within the window prepares nothing: the provider is not asked again.
+        assertEquals(asked, phone.provider.asked.size)
+        assertEquals(reviewed.transaction, phone.adapter.sendings.single().first)
     }
 
     @Test

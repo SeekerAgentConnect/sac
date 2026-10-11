@@ -316,7 +316,10 @@ private fun check(
     if (placed.contractsMicro != order.contractsMicro) findings += PredictionFinding.QuoteMismatch
     if (placed.maxPrice != order.maxBuyPriceUsd) findings += PredictionFinding.QuoteMismatch
     if (placed.cost != order.orderCostUsd) findings += PredictionFinding.QuoteMismatch
-    if (placed.slippageBps != order.slippageBps) findings += PredictionFinding.QuoteMismatch
+    // Slippage may be tighter than quoted and never looser. Jupiter's answer states more than the
+    // bytes carry (134620 against 0 on 2026-10-11, where both used to be 0), and the bound that
+    // decides what a contract may cost is the ceiling above, which is held to the quote exactly.
+    if (placed.slippageBps > order.slippageBps) findings += PredictionFinding.QuoteMismatch
     // The cost is in the provider's own token, and the stake the owner entered is in theirs. They
     // are the same number of base units only when the deposit already is that token; otherwise the
     // route is what converts, and its own input amount is what bounds the stake ([checkFunding]).

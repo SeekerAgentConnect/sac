@@ -509,6 +509,32 @@ class WalletRepositoryTest {
         assertEquals(b.id, repository.walletFor(DIRECT_X)?.profileId)
     }
 
+    @Test
+    fun aServerThatStopsDeclaringTheWalletsNetworkIsToldThereIsNoWallet() = runBlocking {
+        // The server would otherwise keep the binding and prepare transactions the phone refuses
+        // as "no wallet ready" — the agent has to hear the same state the owner sees.
+        repository.load()
+        val dev = repository.add(WALLET_A, WalletNetwork.Devnet)
+        bindings.flow.value = listOf(direct(DIRECT_X, dev.id))
+        repository.publish()
+        assertEquals(WALLET_A, bindings.published.getValue(DIRECT_X).single()?.wallet)
+
+        bindings.flow.value = listOf(direct(DIRECT_X, dev.id, setOf(WalletNetwork.Mainnet)))
+        assertEquals(emptyList<String>(), repository.publish())
+
+        assertEquals(null, bindings.published.getValue(DIRECT_X).last())
+        assertEquals(
+            WalletReadiness.NetworkUnsupported(dev, setOf(WalletNetwork.Mainnet)),
+            repository.readiness(DIRECT_X),
+        )
+
+        // Declared again, the same wallet is published again and is ready.
+        bindings.flow.value = listOf(direct(DIRECT_X, dev.id))
+        repository.publish()
+        assertEquals(WALLET_A, bindings.published.getValue(DIRECT_X).last()?.wallet)
+        assertEquals(dev.id, repository.walletFor(DIRECT_X)?.profileId)
+    }
+
     // --- Signing --------------------------------------------------------------------------------
 
     @Test

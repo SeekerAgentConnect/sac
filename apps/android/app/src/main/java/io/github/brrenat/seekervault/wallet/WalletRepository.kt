@@ -957,9 +957,20 @@ class WalletRepository(
      * The binding [connection]'s server is told: its own profile's address and network, whether or
      * not that profile's authorization still works — an expired one is reconnected, not unpublished
      * — and "no wallet" when it names none.
+     *
+     * It is also "no wallet" while that profile is on a network the server no longer declares
+     * ([WalletReadiness.NetworkUnsupported]). This phone signs nothing for that connection, so a
+     * server still holding the binding would keep preparing transactions for a wallet that is never
+     * going to be asked. "No wallet" tells the agent the true state, and it cancels the PENDING
+     * requests nobody can approve. When the server declares the network again, or the owner chooses
+     * another profile, the binding changes and is published again.
      */
-    private fun bindingOf(connection: Connection): WalletBinding? =
-        connection.walletProfileId?.let(held::profile)?.selected()?.toBinding()
+    private fun bindingOf(connection: Connection): WalletBinding? {
+        val profile = connection.walletProfileId?.let(held::profile) ?: return null
+        val supported = connection.server.manifest?.supportedNetworks.orEmpty()
+        if (supported.isNotEmpty() && profile.network !in supported) return null
+        return profile.selected().toBinding()
+    }
 
     private companion object {
         const val MAX_PROFILE_LABEL = 64

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.RssFeed
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -210,6 +211,11 @@ data class ReviewSheetState(
     val confirmationChecked: Boolean? = null,
     /** False hides the decision footer entirely, for a request that can no longer be acted on. */
     val actionsShown: Boolean = true,
+    /**
+     * Work in progress the decision waits on, e.g. a quote being fetched. While set, the footer
+     * says this under a progress bar in place of its actions; null shows the actions.
+     */
+    val footerStatus: String? = null,
     val preparationError: ReviewSheetPreparationError? = null,
     /** Collapsed detail rows, after everything above and before the expiry line. */
     val sections: List<ReviewSheetSection> = emptyList(),
@@ -370,6 +376,11 @@ fun ReviewSheet(
                             ),
                     verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus),
                 ) {
+                    val status = state.footerStatus
+                    if (status != null) {
+                        ReviewSheetFooterStatus(status)
+                        return@Column
+                    }
                     state.confirmationCheckbox?.let { label ->
                         CheckRow(
                             label = label,
@@ -431,6 +442,27 @@ fun ReviewSheet(
     }
 }
 
+/** What the decision is waiting on, said where its actions will appear once it is done. */
+@Composable
+private fun ReviewSheetFooterStatus(status: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag(ReviewSheetTags.FOOTER_STATUS),
+        verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+    ) {
+        LinearProgressIndicator(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        )
+        Text(
+            text = status,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.spacing.xs),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
 @Composable
 private fun ReviewSheetGrabber() {
     Box(
@@ -485,13 +517,10 @@ private fun ReviewSheetHeader(state: ReviewSheetState) {
     val contextChips = state.headerChips - originChips.toSet()
     Column(modifier = Modifier.fillMaxWidth()) {
         if (originChips.isNotEmpty()) {
-            Row(
+            ReviewSheetOriginChips(
+                originChips,
                 modifier = Modifier.padding(bottom = SeekerTheme.spacing.mdPlus),
-                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                originChips.forEach { ReviewSheetHeaderChip(it) }
-            }
+            )
         }
         Text(
             text = state.headline,
@@ -527,6 +556,21 @@ private fun ReviewSheetHeader(state: ReviewSheetState) {
                 contextChips.forEach { ReviewSheetHeaderChip(it) }
             }
         }
+    }
+}
+
+/**
+ * Where a signal came from — the Signal chip and the feed's — as the review sheet's header shows
+ * them, for a review laid out outside [ReviewSheet] that keeps the same header.
+ */
+@Composable
+fun ReviewSheetOriginChips(chips: List<ReviewSheetHeaderChip>, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        chips.forEach { ReviewSheetHeaderChip(it) }
     }
 }
 
@@ -722,6 +766,7 @@ private fun ReviewSheetSection(
 /** Test tags the review sheet sets on its own parts. */
 object ReviewSheetTags {
     const val WALLET_ACTION = "review-sheet.wallet-action"
+    const val FOOTER_STATUS = "review-sheet.footer-status"
 
     fun section(key: String): String = "review-sheet.section.$key"
 }

@@ -100,7 +100,7 @@ Only `Charged` asks Metis for a fee (`platformFeeBps`) and names an account (`fe
 4. **Approve and swap** re-reads the rules and compares the verdict with the one they were shown, takes the wallet lock, and only then binds the operation and writes it down — which is where the expiry, the revision, the choice, the provider, the action, its schema version, the pair and the wallet are all checked at once, on the far side of the wait.
 5. The wallet is asked once. The answer is recorded once; the first word stands.
 
-Changing any parameter throws away what was prepared for the old one, because bytes for an old number sitting on screen beside a new one is how somebody comes to approve a transaction they are not looking at. A preparation stands for **one minute** — a quote is a price from a moment ago and a legacy blockhash lasts about that long — and past it the owner prepares again and reviews again.
+Changing any parameter throws away what was prepared for the old one, because bytes for an old number sitting on screen beside a new one is how somebody comes to approve a transaction they are not looking at. A preparation stands for **20 seconds** — a quote is a price from a moment ago, and the blockhash in Jupiter's build stops being includable about 28 seconds after it arrives on mainnet (measured 2026-10-11) — and approving with less than 15 seconds of it left prepares the swap again first, in the background, and opens the wallet with the fresh bytes only when the rules say the same about them as about the ones the owner read ([prediction-review.md](prediction-review.md#approving-a-quote-that-ran-out)). A binding that is still past its window inside the wallet lock stops with "prepare again" (`BindingProblem.PreparationExpired`).
 
 ## Preview or execute, and which network
 
@@ -111,7 +111,7 @@ Changing any parameter throws away what was prepared for the old one, because by
 ## Limits, honestly
 
 - **Direct routes only.** Some pairs have no direct route at some sizes, and the answer is "there is no route for this right now" rather than a worse transaction.
-- **One minute of freshness.** The wallet round trip has to start within it.
+- **20 seconds of freshness.** Approving refreshes a preparation with less than 15 seconds left, so the wallet is opened with nearly the whole window still ahead; the owner then has what is left of the blockhash's life to approve in the wallet. A wallet opened too late would only answer "blockhash expired".
 - **The keyless allowance is 0.5 requests a second, 30 a minute.** Ample for a person deciding about a signal; not ample for polling, and nothing here polls — including the boundary's own `status`, which this provider answers `Unsupported` and which nothing in the app calls.
 - **The provider's status is not asked; the chain is.** Jupiter's `status` stays `Unsupported`. Since SEE-165 the phone follows the swap's transaction to the chain itself and verifies it against the bytes it approved ([chain-confirmation.md](chain-confirmation.md)); until then a submitted swap is submitted, not confirmed, and the record says exactly that.
 - **No screen lists a position.** What the owner gets is their own record of what this phone did.

@@ -92,10 +92,15 @@ import io.github.brrenat.seekervault.operations.PredictionParametersSheet
 import io.github.brrenat.seekervault.operations.PredictionReviewScreen
 import io.github.brrenat.seekervault.operations.PredictionReviewSource
 import io.github.brrenat.seekervault.operations.ProposalReviewScreen
+import io.github.brrenat.seekervault.operations.SwapParametersSheet
+import io.github.brrenat.seekervault.operations.SwapReviewScreen
 import io.github.brrenat.seekervault.operations.choiceRows
 import io.github.brrenat.seekervault.operations.handoffReceipt
 import io.github.brrenat.seekervault.operations.requiresWalletHandoff
 import io.github.brrenat.seekervault.operations.reviewedAsPrediction
+import io.github.brrenat.seekervault.operations.reviewedAsSwap
+import io.github.brrenat.seekervault.plugins.ParameterKey
+import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.policy.PolicyAddressKind
 import io.github.brrenat.seekervault.policy.PolicyAddressLibraryScreen
 import io.github.brrenat.seekervault.policy.PolicyAsset
@@ -911,22 +916,39 @@ fun SeekerVaultApp(
                                     it.connectionId == activeRoute.identity.connectionId &&
                                         it.proposalId == activeRoute.identity.requestId
                                 }
+                                // What was chosen replaces the old choice, and the review quotes
+                                // again from it at once: "Use these" is the re-quote (SEE-158).
+                                val use: (List<Pair<ParameterKey, ParameterValue>>) -> Unit =
+                                    { values ->
+                                        values.forEach { (key, value) ->
+                                            operations?.choose(key, value)
+                                        }
+                                        operations?.prepare()
+                                        pop()
+                                    }
+                                // The wallet that signs is chosen with the rest of the owner's
+                                // part; the picker stacks over this sheet (SEE-185).
+                                val chooseWallet: () -> Unit = {
+                                    open?.network?.let(::walletNetworkOf)?.let {
+                                        navigator.openOperationWallet(activeRoute.identity, it)
+                                    }
+                                }
                                 if (operations == null || open == null) {
                                     RequestGoneScreen(onBack = pop)
-                                } else {
+                                } else if (open.record.reviewedAsPrediction) {
                                     PredictionParametersSheet(
                                         review = open,
-                                        onUse = { values ->
-                                            // What was chosen replaces the old choice, and the
-                                            // review
-                                            // quotes again from it at once: "Use these" is the
-                                            // re-quote (SEE-158).
-                                            values.forEach { (key, value) ->
-                                                operations.choose(key, value)
-                                            }
-                                            operations.prepare()
-                                            pop()
-                                        },
+                                        wallet = open.wallet,
+                                        onUse = use,
+                                        onChooseWallet = chooseWallet,
+                                        onClose = pop,
+                                    )
+                                } else {
+                                    SwapParametersSheet(
+                                        review = open,
+                                        wallet = open.wallet,
+                                        onUse = use,
+                                        onChooseWallet = chooseWallet,
                                         onClose = pop,
                                     )
                                 }
@@ -1129,76 +1151,98 @@ private fun RequestReviewRoute(
                         onBack()
                     }
                 }
-            } else if (open.record.reviewedAsPrediction) {
+            } else if (open.record.reviewedAsPrediction || open.record.reviewedAsSwap) {
                 val connection = state.connections.firstOrNull { it.id == identity.connectionId }
                 val linkContext = LocalContext.current
-                PredictionReviewScreen(
-                    review = open,
-                    source =
-                        PredictionReviewSource(
-                            name = connection?.label.orEmpty(),
-                            colour = connection?.colour?.sourceColour(),
-                        ),
-                    wallet = open.wallet,
-                    now = Instant.now(),
-                    onOwnerInput = {
-                        // No wallet chosen for the signal's network yet: that is chosen first, so
-                        // the order is never quoted for an account nobody picked (SEE-185).
-                        val network = open.network?.let(::walletNetworkOf)
-                        if (open.wallet == null && network != null) {
-                            navigator.openOperationWallet(identity, network)
-                        } else {
-                            navigator.openOwnerInput(identity)
-                        }
-                    },
-                    onPreview = { operations.preview(open.wallet) },
-                    // Changing a wallet already chosen goes through the same picker; what was
-                    // prepared for the old one is dropped by the view model (SEE-185).
-                    onChooseWallet = {
-                        open.network?.let(::walletNetworkOf)?.let {
-                            navigator.openOperationWallet(identity, it)
-                        }
-                    },
-                    onPrepare = operations::prepare,
-                    onApprove = {
-                        if (open.requiresWalletHandoff) {
-                            navigator.openWalletHandoff(identity, WalletHandoffKind.Operation)
-                        } else {
-                            operations.approve(open.wallet)
-                        }
-                    },
-                    onDismiss = {
-                        // Dismiss finishes the review, as the design's footer says it does.
-                        operations.dismiss(identity.connectionId, identity.requestId)
-                        onBack()
-                    },
-                    onAcknowledge = operations::acknowledge,
-                    onRules = { navigator.openConnectionRules(identity.connectionId) },
-                    onOpenLink = { url, deepLink -> openDestination(linkContext, deepLink, url) },
-                    onBack = {
-                        operations.close()
-                        onBack()
-                    },
-                )
+                if (open.record.reviewedAsSwap) {
+                    SwapReviewScreen(
+                        review = open,
+                        source =
+                            PredictionReviewSource(
+                                name = connection?.label.orEmpty(),
+                                colour = connection?.colour?.sourceColour(),
+                            ),
+                        wallet = open.wallet,
+                        now = Instant.now(),
+                        // Side, stake and the wallet that signs, chosen together; "Use these" stays
+                        // off until a wallet is picked, so nothing is quoted for an account nobody
+                        // chose (SEE-185).
+                        onOwnerInput = { navigator.openOwnerInput(identity) },
+                        onPreview = { operations.preview(open.wallet) },
+                        onPrepare = operations::prepare,
+                        onApprove = {
+                            if (open.requiresWalletHandoff) {
+                                navigator.openWalletHandoff(identity, WalletHandoffKind.Operation)
+                            } else {
+                                operations.approve(open.wallet)
+                            }
+                        },
+                        onDismiss = {
+                            // Dismiss finishes the review, as the design's footer says it does.
+                            operations.dismiss(identity.connectionId, identity.requestId)
+                            onBack()
+                        },
+                        onAcknowledge = operations::acknowledge,
+                        onRules = { navigator.openConnectionRules(identity.connectionId) },
+                        onOpenLink = { url, deepLink ->
+                            openDestination(linkContext, deepLink, url)
+                        },
+                        onBack = {
+                            operations.close()
+                            onBack()
+                        },
+                    )
+                } else {
+                    PredictionReviewScreen(
+                        review = open,
+                        source =
+                            PredictionReviewSource(
+                                name = connection?.label.orEmpty(),
+                                colour = connection?.colour?.sourceColour(),
+                            ),
+                        wallet = open.wallet,
+                        now = Instant.now(),
+                        // Side, stake and the wallet that signs, chosen together; "Use these" stays
+                        // off until a wallet is picked, so nothing is quoted for an account nobody
+                        // chose (SEE-185).
+                        onOwnerInput = { navigator.openOwnerInput(identity) },
+                        onPreview = { operations.preview(open.wallet) },
+                        onPrepare = operations::prepare,
+                        onApprove = {
+                            if (open.requiresWalletHandoff) {
+                                navigator.openWalletHandoff(identity, WalletHandoffKind.Operation)
+                            } else {
+                                operations.approve(open.wallet)
+                            }
+                        },
+                        onDismiss = {
+                            // Dismiss finishes the review, as the design's footer says it does.
+                            operations.dismiss(identity.connectionId, identity.requestId)
+                            onBack()
+                        },
+                        onAcknowledge = operations::acknowledge,
+                        onRules = { navigator.openConnectionRules(identity.connectionId) },
+                        onOpenLink = { url, deepLink ->
+                            openDestination(linkContext, deepLink, url)
+                        },
+                        onBack = {
+                            operations.close()
+                            onBack()
+                        },
+                    )
+                }
             } else {
                 val linkContext = LocalContext.current
+                val connection = state.connections.firstOrNull { it.id == identity.connectionId }
                 ProposalReviewScreen(
                     review = open,
-                    label =
-                        state.connections
-                            .firstOrNull { it.id == identity.connectionId }
-                            ?.label
-                            .orEmpty(),
+                    label = connection?.label.orEmpty(),
+                    colour = connection?.colour?.sourceColour(),
                     wallet = open.wallet,
                     now = Instant.now(),
-                    onChoose = operations::choose,
+                    onOwnerInput = { navigator.openOwnerInput(identity) },
                     onPrepare = operations::prepare,
                     onPreview = { operations.preview(open.wallet) },
-                    onChooseWallet = {
-                        open.network?.let(::walletNetworkOf)?.let {
-                            navigator.openOperationWallet(identity, it)
-                        }
-                    },
                     onApprove = {
                         if (open.requiresWalletHandoff) {
                             navigator.openWalletHandoff(
@@ -1253,10 +1297,12 @@ private fun WalletHandoffRoute(
             val problem = inboxState.problem.takeIf { inboxState.problemKey == key }
             LaunchedEffect(approvalStarted, result, problem, inboxState.sending) {
                 if (!approvalStarted) return@LaunchedEffect
-                when {
-                    result != null -> onCloseReview(identity)
-                    problem != null && key !in inboxState.sending -> onLeave()
-                }
+                // Whatever the wallet did — signed, declined, failed, or never answered — the owner
+                // comes back to the review, which shows where the request stands now. The approval
+                // is stored before the wallet is asked, so a result alone means the wallet is only
+                // now opening: nothing moves until the signing ends.
+                if (key in inboxState.sending) return@LaunchedEffect
+                if (result != null || problem != null) onLeave()
             }
             if (request == null) {
                 RequestGoneScreen(onBack = onLeave)
@@ -1277,9 +1323,10 @@ private fun WalletHandoffRoute(
                             WalletHandoffKind.Operation -> Unit
                         }
                     },
+                    // Back to the review, which shows the rejection.
                     onDecline = {
                         inbox.answer(key, Answer.Reject)
-                        onCloseReview(identity)
+                        onLeave()
                     },
                     onLeaveWithoutAnswering = onLeave,
                 )
@@ -1304,11 +1351,10 @@ private fun WalletHandoffRoute(
             LaunchedEffect(approvalStarted, open?.standing, open?.sending, open?.problem) {
                 if (!approvalStarted) return@LaunchedEffect
                 when {
+                    // Back to the review, which shows what was executed.
                     open?.standing is
-                        io.github.brrenat.seekervault.proposals.ProposalStanding.Executed -> {
-                        operations?.close()
-                        onCloseReview(identity)
-                    }
+                        io.github.brrenat.seekervault.proposals.ProposalStanding.Executed ->
+                        onLeave()
                     open?.problem != null && !open.sending -> onLeave()
                 }
             }
@@ -1343,7 +1389,10 @@ private fun WalletHandoffRoute(
     }
 }
 
-/** Whether a review route shows the design's prediction sheet, which draws its own chrome. */
+/**
+ * Whether a review route shows the design's review sheet — a prediction's or a swap's — which draws
+ * its own chrome.
+ */
 private fun predictionSheet(
     identity: ReviewIdentity,
     records: List<io.github.brrenat.seekervault.proposals.ProposalRecord>,
@@ -1352,7 +1401,7 @@ private fun predictionSheet(
         records.any {
             it.connectionId == identity.connectionId &&
                 it.key.proposalId == identity.requestId &&
-                it.reviewedAsPrediction
+                (it.reviewedAsPrediction || it.reviewedAsSwap)
         }
 
 private fun PolicyAsset.routeId(): String = "${network.number}:${mint.orEmpty()}"

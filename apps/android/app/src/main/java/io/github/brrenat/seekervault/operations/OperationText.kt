@@ -50,6 +50,7 @@ object OperationTags {
     const val NETWORK = "operations.network"
     const val WALLET = "operations.wallet"
     const val CHOOSE_WALLET = "operations.chooseWallet"
+    const val YOUR_PART = "operations.yourPart"
     const val REFERENCES = "operations.references"
     const val ABOUT = "operations.about"
     const val RECEIPT = "operations.receipt"

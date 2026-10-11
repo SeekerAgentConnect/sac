@@ -566,6 +566,7 @@ private fun LocalResult.toInboxHistoryRow(
             signing == SigningOutcome.Declined -> "Declined in the wallet"
             signing is SigningOutcome.Unresolved -> "Wallet declined"
             signing is SigningOutcome.Failed -> "Wallet did not complete it"
+            signing == SigningOutcome.NotSent -> "Not sent · nothing was spent"
             else -> "Waiting for the wallet"
         }
     val status =
@@ -581,6 +582,7 @@ private fun LocalResult.toInboxHistoryRow(
                     is SigningOutcome.Sent -> view.rowStatus()
                     SigningOutcome.Declined -> HistoryRowStatus.Declined
                     is SigningOutcome.Failed -> HistoryRowStatus.Failed
+                    SigningOutcome.NotSent -> HistoryRowStatus.Failed
                     is SigningOutcome.Unresolved -> HistoryRowStatus.Unknown
                 }
         }

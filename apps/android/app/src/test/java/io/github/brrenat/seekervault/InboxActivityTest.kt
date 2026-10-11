@@ -284,18 +284,11 @@ class InboxActivityTest {
             server.stateOf(connection.id, request.ref.requestId),
         )
 
-        // The screen is recreated while the wallet has it, as a rotation does.
+        // The screen is recreated while the wallet has it, as a rotation does. The hand-off stays
+        // until the wallet answers, and the wallet was not asked a second time.
         scenario.recreate()
         compose.waitForIdle()
-
-        // The request is still in History, and the wallet was not asked a second time. Its record
-        // says the wallet hasn't answered, not that anything was signed.
-        compose.onNodeWithText("History").performClick()
-        compose.onNodeWithTag(InboxTags.item(key)).performClick()
-        compose
-            .onNodeWithText("You approved on this phone. The wallet hasn't answered yet.")
-            .assertExists()
-        compose.onNodeWithTag(HistoryDetailTags.Execution).assertDoesNotExist()
+        compose.onNodeWithTag(AppNavigationTags.WALLET_HANDOFF).assertExists()
         assertEquals(1, adapter.signings.size)
         assertEquals(
             RequestState.REQUEST_STATE_PROCESSING,
@@ -305,7 +298,12 @@ class InboxActivityTest {
         release.complete(Unit)
         compose.waitForIdle()
 
-        // The same open page updates in place once the wallet answers.
+        // The wallet answered: back on the review, which stays open, and then in History.
+        compose.onNodeWithTag(AppNavigationTags.WALLET_HANDOFF).assertDoesNotExist()
+        scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        compose.onNodeWithText("History").performClick()
+        compose.onNodeWithTag(InboxTags.item(key)).performClick()
         compose.onNodeWithText("Signed · no transaction").assertExists()
         assertEquals(1, adapter.signings.size)
         assertEquals(

@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.connections
 
+import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.ReviewIdentity
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.ActivityOutcome
@@ -23,6 +24,7 @@ import io.github.brrenat.seekervault.request.v1.SubmitResultRequest
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.executionFailure
 import io.github.brrenat.seekervault.request.v1.messageSignature
+import io.github.brrenat.seekervault.request.v1.notSent
 import io.github.brrenat.seekervault.request.v1.submitResultRequest
 import io.github.brrenat.seekervault.request.v1.transactionSubmission
 import io.github.brrenat.seekervault.request.v1.unknownOutcome
@@ -49,6 +51,7 @@ import io.github.brrenat.seekervault.sync.SynchronizeOutcome
 import io.github.brrenat.seekervault.sync.UpdateTransport
 import io.github.brrenat.seekervault.sync.storage.SyncStore
 import io.github.brrenat.seekervault.transactions.transfer
+import io.github.brrenat.seekervault.wallet.decodeBase58
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.time.Duration
@@ -1006,6 +1009,34 @@ class ConnectionRepository(
     }
 
     /**
+     * Settles a transfer whose wallet never answered, from what the confirmation tracker found once
+     * it could no longer land: the approved transaction on chain under [signature], or, when it is
+     * null, nothing — it was never sent and never can be. Only an unresolved outcome is replaced,
+     * and only by evidence; the new outcome is sent like any other, which moves the server's
+     * UNKNOWN request to SUBMITTED or FAILED.
+     */
+    suspend fun settleLost(key: RequestKey, signature: String?): LocalResult? {
+        val sent = signature?.let { decodeBase58(it) ?: return null }
+        val stored =
+            locked {
+                val current = results.get(key.connectionId, key.requestId) ?: return@locked null
+                if (current.signing !is SigningOutcome.Unresolved) return@locked null
+                current
+                    .copy(
+                        signing =
+                            sent?.let { SigningOutcome.Sent(ByteString.copyFrom(it)) }
+                                ?: SigningOutcome.NotSent,
+                        delivery = Delivery.Waiting,
+                    )
+                    .also {
+                        save(it)
+                        publish()
+                    }
+            } ?: return null
+        return deliver(key) ?: stored
+    }
+
+    /**
      * Sends a waiting answer now, and returns it as it stands afterwards. It returns null if
      * there's no answer, or if its connection was removed while it was sent. A send that finds
      * another send of the same answer running waits for it and then returns what that one settled,
@@ -1162,7 +1193,33 @@ class ConnectionRepository(
             }
             // Nothing more to send until the wallet has answered.
             val submission = submissionFor(current) ?: return current
-            val after = gateway.submitResult(connection.serverUrl, credential, submission)
+            val after =
+                try {
+                    gateway.submitResult(connection.serverUrl, credential, submission)
+                } catch (e: GatewayException) {
+                    // A sidecar from before `not_sent` can't reopen the request: it is told the
+                    // transaction failed instead, which is just as true and lets the agent ask
+                    // again.
+                    if (
+                        submission.resultCase != SubmitResultRequest.ResultCase.NOT_SENT ||
+                            e.kind !in OLDER_SIDECAR
+                    ) {
+                        throw e
+                    }
+                    gateway.submitResult(
+                        connection.serverUrl,
+                        credential,
+                        submitResultRequest {
+                            ref = current.request.ref
+                            executionFailure = executionFailure {
+                                detail = SigningOutcome.NotSent.DETAIL
+                            }
+                        },
+                    )
+                }
+            // Proven never sent, and the sidecar checked the expiry itself: the request is waiting
+            // for the owner again, with a fresh preparation (docs/protocol.md#reopening).
+            if (after.state == RequestState.REQUEST_STATE_PENDING) return reopen(current, after)
             settle(current, Delivery.Accepted, after)
         } catch (e: GatewayException) {
             when (e.kind) {
@@ -1188,6 +1245,29 @@ class ConnectionRepository(
                     }
             }
         }
+    }
+
+    /**
+     * The sidecar put a request proven never sent back to PENDING. This phone's answer to the old
+     * attempt goes, and so does the old capture, so the owner reviews and approves the request
+     * afresh as if it had just arrived. History keeps the attempt, as "not sent". Returns null:
+     * there is no answer any more.
+     */
+    private suspend fun reopen(result: LocalResult, reopened: ActionRequest): LocalResult? {
+        locked {
+            if (stillStored(result) == null) return@locked
+            results.delete(result.connectionId, result.requestId)
+            val others =
+                _inbox.value.pending[result.connectionId].orEmpty().filterNot {
+                    it.ref.requestId == result.requestId
+                }
+            _inbox.update {
+                it.copy(pending = it.pending + (result.connectionId to others + reopened))
+            }
+            publish()
+        }
+        tracking?.forget(result.key)
+        return null
     }
 
     /**
@@ -1402,6 +1482,9 @@ class ConnectionRepository(
                 tracker.expect(submission)
                 tracker.submitted(result.key, signing.signature.toByteArray())
             }
+            // The wallet may have sent it: the capture is kept and searched for once the
+            // transaction can no longer land (onLostSettled).
+            is SigningOutcome.Unresolved -> tracker.lost(result.key)
             else -> tracker.abandoned(result.key)
         }
     }
@@ -1623,6 +1706,10 @@ class ConnectionRepository(
             "The wallet's answer never reached this phone, so it never learned whether the " +
                 "transaction was sent."
 
+        /** How a sidecar from before `not_sent` refuses one: it doesn't know the result. */
+        val OLDER_SIDECAR =
+            setOf(GatewayException.Kind.Rejected, GatewayException.Kind.Unimplemented)
+
         val SETTLED_REQUEST_STATES =
             setOf(
                 RequestState.REQUEST_STATE_CONFIRMED,
@@ -1763,6 +1850,13 @@ class ConnectionRepository(
                             submitResultRequest {
                                 ref = requestRef
                                 executionFailure = executionFailure { detail = outcome.detail }
+                            }
+                        // Proven on chain: the sidecar checks the expiry and reopens the request
+                        // for the owner to approve again (docs/protocol.md#reopening).
+                        SigningOutcome.NotSent ->
+                            submitResultRequest {
+                                ref = requestRef
+                                notSent = notSent { detail = SigningOutcome.NotSent.DETAIL }
                             }
                         // For a message, nothing reached this phone, so nothing was signed and
                         // nothing is in doubt: the agent is told the request failed. For a

@@ -1,7 +1,15 @@
 package io.github.brrenat.seekervault.activity
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -19,8 +27,14 @@ import io.github.brrenat.seekervault.designsystem.ScreenDestination
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.ScreenScaffold
 import io.github.brrenat.seekervault.designsystem.ScreenScrollBody
+import io.github.brrenat.seekervault.designsystem.SeekerButton
+import io.github.brrenat.seekervault.designsystem.SeekerButtonSize
+import io.github.brrenat.seekervault.designsystem.SeekerButtonVariant
+import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.transactions.LAMPORT_DECIMALS
 import io.github.brrenat.seekervault.transactions.formatBaseUnits
+import io.github.brrenat.seekervault.ui.SeekerButtonRole
+import io.github.brrenat.seekervault.ui.SolidDialog
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -84,6 +98,7 @@ fun ActivityScreen(
     callbacks: ActivityScreenCallbacks,
     modifier: Modifier = Modifier,
 ) {
+    var confirmingClear by rememberSaveable { mutableStateOf(false) }
     ScreenScaffold(
         title = state.title,
         selectedDestination = ScreenDestination.Activity,
@@ -121,8 +136,62 @@ fun ActivityScreen(
                 )
             }
             state.footer?.let { footer -> ScreenCaption(text = footer) }
+            if (state.rows.isNotEmpty()) {
+                SeekerButton(
+                    label = stringResource(R.string.activity_clear),
+                    onClick = { confirmingClear = true },
+                    variant = SeekerButtonVariant.Error,
+                    size = SeekerButtonSize.Md,
+                    modifier = Modifier.fillMaxWidth().testTag(ActivityTags.CLEAR),
+                )
+            }
         }
     }
+    if (confirmingClear) {
+        ClearHistoryDialog(
+            onConfirm = {
+                confirmingClear = false
+                callbacks.onClear()
+            },
+            onDismiss = { confirmingClear = false },
+        )
+    }
+}
+
+/**
+ * Confirms clearing the history. It removes this phone's records only: nothing on a network or a
+ * server changes.
+ */
+@Composable
+private fun ClearHistoryDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    SolidDialog(
+        title = stringResource(R.string.activity_clear_title),
+        body = {
+            Text(
+                stringResource(R.string.activity_clear_body),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        actions = {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
+            ) {
+                io.github.brrenat.seekervault.ui.SeekerButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = onDismiss,
+                    role = SeekerButtonRole.Neutral,
+                    modifier = Modifier.weight(1f),
+                )
+                io.github.brrenat.seekervault.ui.SeekerButton(
+                    text = stringResource(R.string.activity_clear_confirm),
+                    onClick = onConfirm,
+                    role = SeekerButtonRole.Error,
+                    modifier = Modifier.weight(1f).testTag(ActivityTags.CONFIRM_CLEAR),
+                )
+            }
+        },
+    )
 }
 
 @Composable

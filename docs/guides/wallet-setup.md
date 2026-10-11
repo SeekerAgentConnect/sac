@@ -126,7 +126,7 @@ What the connection's Wallet row can say:
 | Its wallet was removed | The profile it used is gone, and nothing was chosen in its place | Choose another |
 | The wallet no longer accepts this profile's authorization | The wallet revoked the profile's authorization | **Reconnect** it on Wallets |
 | This server hasn't declared which Solana networks it supports | The server is older than wallet profiles, or declares no network ([supported networks](../wiki/server-manifests.md#supported-networks)) | Update the server. The connection and its history stay readable, but nothing from it is signed until it declares its networks. |
-| This server no longer supports *network* | The server dropped the profile's network | Choose a wallet on a network it lists. The connection is never moved for you. |
+| This server no longer supports *network* | The server dropped the profile's network | Choose a wallet on a network it lists. The connection is never moved for you. A direct sidecar is told there is **no wallet** until you do, so its agents get `WALLET_NOT_CONNECTED` instead of requests the phone can't sign, and its pending wallet requests are cancelled. |
 | Telling the server about this wallet | A direct sidecar hasn't confirmed the choice yet | Wait, or **Tell them again**. Nothing is signed until it confirms. |
 
 A profile on a network the server doesn't list can't be chosen for it at all. Even a server that
@@ -139,12 +139,13 @@ A feed signal names the Solana network it executes on, and the wallet that execu
 that network, on the phone, per operation (SEE-185). There is no wallet "for the feed": one feed may
 send a Mainnet signal and a Devnet signal, and each uses a wallet on its own network.
 
-**What the review shows.** Beside the signal's terms, the review has a **Network** row
-("Mainnet · from this signal") and a **Wallet** row with the wallet that will be used. **Choose
-wallet** opens **Wallet for Mainnet** (or the signal's network) over the review: every saved profile
-is listed, and only authorized profiles on that network can be chosen. With no wallet on that
-network, the review says "No wallet on Mainnet is chosen for this feed" and offers **Connect a wallet
-on Mainnet**, which opens the add-wallet sheet with that network selected. A prediction review
+**What the review shows.** A swap signal's review has a **Your part · amount and wallet** card:
+"2.5 USDC · Main wallet" once both are chosen, or **Choose amount and wallet** until then. It opens
+the **Amount and wallet** sheet over the review, whose first row is **Wallet on Mainnet** (or the
+signal's network) with **Choose** or **Change**; that opens **Wallet for Mainnet** over the sheet,
+where every saved profile is listed and only authorized profiles on that network can be chosen, and
+adding a wallet opens the add-wallet sheet with that network selected. **Use these** stays disabled
+until a wallet is chosen. A prediction review
 offers the same **Choose wallet** under its wallet row for as long as the signal is open, including
 after a wallet was chosen or remembered and a quote was prepared for it.
 
@@ -256,8 +257,11 @@ changes that connection alone:
 - **A direct sidecar** is told the new address and network, and no other sidecar is. It **cancels
   its own pending requests made for the previous wallet**, and the app says how many; requests that
   don't involve a wallet, such as the demo acknowledgements, are left alone. If the sidecar can't be
-  reached, the choice is saved, it is retried, and nothing is signed for that connection until the
-  sidecar confirms.
+  reached, the choice is saved and retried: when the app returns to the foreground, and whenever
+  its connections are refreshed. Nothing is signed for that connection until the sidecar confirms.
+  A request you opened before the wallet was ready, or before you changed it, is read again for
+  the connection's current wallet once it is ready. Agents read the new wallet with
+  `vault_get_address`; one that still names the old wallet is refused with `WALLET_MISMATCH`.
 - **A feed's** operation wallet is not changed here: it is chosen in each signal's review, per
   network ([Feed operations](#feed-operations)).
 - **A restricted feed's** access wallet is changed here. The feed keeps its access when the new

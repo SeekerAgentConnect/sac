@@ -287,6 +287,57 @@ class ConnectionsScreenTest {
     }
 
     @Test
+    fun aSignatureTileIsTitledByTheTextItSignsAndBytesByTheirSize() {
+        fun signing(
+            id: String,
+            content: io.github.brrenat.seekervault.request.v1.SignMessageAction,
+        ) =
+            PendingItem.Private(
+                FakeConnectionGateway.request(
+                        connectionId = HOME.id,
+                        requestId = id,
+                        createdAt = Instant.parse("2026-09-19T10:00:00Z"),
+                    )
+                    .toBuilder()
+                    .setAction(
+                        io.github.brrenat.seekervault.request.v1.action { signMessage = content }
+                    )
+                    .build()
+            )
+        val text =
+            signing(
+                "text",
+                io.github.brrenat.seekervault.request.v1.signMessageAction {
+                    wallet = "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn"
+                    this.text = "Seeker Vault ownership proof\tat noon.\nSecond line"
+                },
+            )
+        val data =
+            signing(
+                "data",
+                io.github.brrenat.seekervault.request.v1.signMessageAction {
+                    wallet = "k7FaK87WHGVXzkaoHb7CdVPgkKDQhZ29VLDeBVbDfYn"
+                    this.data = com.google.protobuf.ByteString.copyFrom(ByteArray(116))
+                },
+            )
+        val state =
+            homeScreenState(
+                connectionsState = ConnectionsUiState(connections = listOf(HOME), loaded = true),
+                inboxSummary = null,
+                wallet = null,
+                pendingItems = listOf(text, data),
+                requestAssessments = emptyMap(),
+                formatTime = { "10:00 AM" },
+            )
+        // The first line of the text, with its tab and line break marked as the review marks
+        // them; a message sent as bytes has no text to show and keeps its size.
+        assertEquals(
+            setOf("Seeker Vault ownership proof\u2409at noon.\u240A", "116 bytes"),
+            state.pending.map { it.tile.title }.toSet(),
+        )
+    }
+
+    @Test
     fun aPredictionTileSaysWhereItCameFromAndTheSameVerdictAsItsReview() {
         val home = HOME.copy(label = "CopyTrading")
         val waiting = prediction(home, PROPOSAL_A, "Bitcoin Up or Down", "polymarket")

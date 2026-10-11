@@ -29,7 +29,7 @@ Hermes and other agents call the MCP tool `vault_sign_message` for the same thin
 
 ## You review it
 
-The request appears in **Pending requests** the next time you open the app, or when you tap **Refresh**. Open it, and the screen shows:
+The request appears in **Pending requests** the next time you open the app, or when you tap **Refresh**. On the home screen its tile is titled by the first line of the message. Open it, and the message itself is the page's headline, with its size under it; the screen shows:
 
 | | |
 | --- | --- |

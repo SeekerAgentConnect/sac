@@ -577,6 +577,22 @@ private fun SimpleRequestReview(
                         stringResource(R.string.request_source_asks, sourceLabel),
                         maxLines = 2,
                     )
+                } else if (message?.isText == true) {
+                    // The text the wallet signs is the headline, whole and with anything
+                    // invisible marked; its size and encoding are the line under it.
+                    Text(
+                        message.display,
+                        style = MaterialTheme.typography.displaySmall,
+                        modifier = Modifier.testTag(InboxTags.MESSAGE),
+                    )
+                    Identifier(
+                        pluralStringResource(
+                            R.plurals.message_text_bytes,
+                            message.bytes,
+                            message.bytes,
+                        ),
+                        modifier = Modifier.testTag(InboxTags.field("encoding")),
+                    )
                 } else if (message != null) {
                     Text(
                         stringResource(R.string.request_bytes, message.bytes),

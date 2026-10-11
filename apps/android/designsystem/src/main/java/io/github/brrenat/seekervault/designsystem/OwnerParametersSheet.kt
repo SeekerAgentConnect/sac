@@ -1,21 +1,27 @@
 package io.github.brrenat.seekervault.designsystem
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 
 /** A two-way choice in the owner's part, e.g. which side of a market. */
@@ -24,6 +30,25 @@ data class OwnerParametersChoice(
     val options: List<String>,
     /** [SegmentedNoSelection] until the owner picks: a market side has no default. */
     val selectedIndex: Int,
+)
+
+/** A second number the owner may change, e.g. a swap's slippage. Starts from the signal's value. */
+data class OwnerParametersNumber(
+    val label: String,
+    val value: String,
+    val help: String,
+    val error: String? = null,
+)
+
+/**
+ * Which wallet signs, shown above what is chosen with it. [value] is null until one is chosen; the
+ * action opens the wallet picker over this sheet.
+ */
+data class OwnerParametersWallet(
+    val label: String,
+    val value: String?,
+    val placeholder: String,
+    val actionLabel: String,
 )
 
 /**
@@ -42,6 +67,8 @@ data class OwnerParametersSheetState(
     val note: String,
     val canUse: Boolean,
     val useLabel: String = "Use these",
+    val wallet: OwnerParametersWallet? = null,
+    val number: OwnerParametersNumber? = null,
 )
 
 data class OwnerParametersSheetCallbacks(
@@ -49,6 +76,8 @@ data class OwnerParametersSheetCallbacks(
     val onAmountChange: (String) -> Unit,
     val onUse: () -> Unit,
     val onClose: () -> Unit,
+    val onNumberChange: (String) -> Unit = {},
+    val onWallet: () -> Unit = {},
 )
 
 /** Test handles for the sheet's controls; the app owns the names. */
@@ -57,6 +86,8 @@ data class OwnerParametersSheetTags(
     val options: List<String> = emptyList(),
     val amount: String? = null,
     val close: String? = null,
+    val number: String? = null,
+    val wallet: String? = null,
 )
 
 @Composable
@@ -88,6 +119,48 @@ fun OwnerParametersSheet(
             )
         },
         body = {
+            state.wallet?.let { wallet ->
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(SeekerTheme.radii.lg))
+                            .background(SeekerTheme.colors.surface1)
+                            .padding(SeekerTheme.spacing.xl),
+                    horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.xxs),
+                    ) {
+                        Text(
+                            text = wallet.label,
+                            style =
+                                MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Medium
+                                ),
+                        )
+                        Text(
+                            text = wallet.value ?: wallet.placeholder,
+                            color =
+                                if (wallet.value != null) SeekerTheme.colors.primaryText
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                    SeekerButton(
+                        label = wallet.actionLabel,
+                        onClick = callbacks.onWallet,
+                        variant =
+                            if (wallet.value != null) SeekerButtonVariant.Tonal
+                            else SeekerButtonVariant.Filled,
+                        size = SeekerButtonSize.Md,
+                        modifier = tags.wallet?.let { Modifier.testTag(it) } ?: Modifier,
+                    )
+                }
+            }
             state.choice?.let { choice ->
                 Column(verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md)) {
                     Text(
@@ -134,6 +207,26 @@ fun OwnerParametersSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+            state.number?.let { number ->
+                SeekerTextField(
+                    label = number.label,
+                    value = number.value,
+                    onValueChange = callbacks.onNumberChange,
+                    state =
+                        if (number.error == null) DesignTextFieldState.Rest
+                        else DesignTextFieldState.Error,
+                    errorMessage = number.error,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    reserveErrorSpace = false,
+                    inputModifier = tags.number?.let { Modifier.testTag(it) } ?: Modifier,
+                )
+                Text(
+                    text = number.help,
+                    modifier = Modifier.padding(horizontal = SeekerTheme.spacing.xs),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             Text(
                 text = state.note,
                 modifier =
