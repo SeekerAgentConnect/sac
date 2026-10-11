@@ -25,7 +25,7 @@
     {
       "id": "server-sdk",
       "directory": "packages/server-sdk",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "description": "Embeddable TypeScript SDK for Seeker Agent Connect direct servers",
       "npm": {
         "name": "@seekeragentconnect/server-sdk",
@@ -47,7 +47,7 @@
     {
       "id": "mcp-server",
       "directory": "servers/mcp-server",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "description": "Self-hosted Seeker Agent Connect MCP server",
       "npm": {
         "name": "@seekeragentconnect/mcp-server",
@@ -73,7 +73,7 @@
     {
       "id": "mcp-skr-staking",
       "directory": "servers/mcp-skr-staking",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "description": "Standalone SKR staking MCP server for Seeker Agent Connect",
       "npm": {
         "name": "@seekeragentconnect/mcp-skr-staking",
@@ -101,7 +101,7 @@
     {
       "id": "gateway",
       "directory": "services/gateway",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "description": "Seeker Agent Connect public feed gateway",
       "npm": null,
       "image": {
@@ -125,7 +125,7 @@
     {
       "id": "gateway-centrifugo",
       "directory": "services/gateway",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "description": "Centrifugo broker with the feed gateway's pinned configuration",
       "npm": null,
       "image": {
@@ -149,7 +149,7 @@
     {
       "id": "demo-signals",
       "directory": "examples/demo-signals",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "description": "CopyTrading signals publisher demo",
       "npm": null,
       "image": {
@@ -172,7 +172,7 @@
     {
       "id": "demo-prediction",
       "directory": "examples/demo-prediction",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "description": "Jupiter Prediction markets publisher demo",
       "npm": null,
       "image": {
@@ -195,14 +195,14 @@
     {
       "id": "android",
       "directory": "apps/android",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "description": "Seeker Agent Connect Android app",
       "npm": null,
       "image": null,
       "android": {
         "applicationId": "io.github.brrenat.seekervault",
-        "versionCode": 2,
-        "previousVersionCode": 1,
+        "versionCode": 3,
+        "previousVersionCode": 2,
         "apk": "sac-<version>.apk",
         "releaseRequires": ["firebase", "gatewayUrl"]
       },
