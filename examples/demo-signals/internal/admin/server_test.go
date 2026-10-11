@@ -117,11 +117,70 @@ func TestDeletingAPasswordLineLogsTheJudgeOut(t *testing.T) {
 	}
 }
 
+// The form offers the manifest's own networks, with Mainnet chosen explicitly, and a network the
+// manifest does not declare is refused before the publisher API is asked (SEE-185).
+func TestTheFormOffersOnlyTheDeclaredNetworksAndRefusesAnother(t *testing.T) {
+	ui, stub := startUI(t, nil)
+	stub.networks = []string{"mainnet", "devnet"}
+	logged := login(t, ui, "judge1", "secret")
+	home := get(t, ui, logged, "/trader")
+	for _, expected := range []string{
+		`<select id="network" name="network">`,
+		`<option value="mainnet" selected>mainnet</option>`,
+		`<option value="devnet">devnet</option>`,
+	} {
+		if !strings.Contains(home.body, expected) {
+			t.Fatalf("the form does not offer %s:\n%s", expected, home.body)
+		}
+	}
+	if strings.Contains(home.body, `value="testnet"`) {
+		t.Fatalf("the form offers a network the manifest does not declare:\n%s", home.body)
+	}
+
+	devnet := post(t, ui, logged, "/trader/create", url.Values{
+		"network": {"devnet"}, "pair": {"usdc-sol"}, "slippage": {"50"}, "expires": {"1h"},
+	})
+	if devnet.status != http.StatusSeeOther || strings.Contains(devnet.header.Get("Location"), "error=") {
+		t.Fatalf("a declared network was refused: %d %s", devnet.status, devnet.header.Get("Location"))
+	}
+	if !strings.Contains(string(stub.lastBody), `"network":"devnet"`) {
+		t.Fatalf("the chosen network was not posted: %s", stub.lastBody)
+	}
+
+	before := stub.creates
+	for _, named := range []string{"testnet", "", "Mainnet"} {
+		refused := post(t, ui, logged, "/trader/create", url.Values{
+			"network": {named}, "pair": {"usdc-sol"}, "slippage": {"50"}, "expires": {"1h"},
+		})
+		if refused.status != http.StatusSeeOther ||
+			!strings.Contains(refused.header.Get("Location"), "error=") {
+			t.Fatalf("%q was not refused: %d %s", named, refused.status, refused.header.Get("Location"))
+		}
+	}
+	if stub.creates != before {
+		t.Fatalf("an undeclared network reached the publisher API (%d -> %d)", before, stub.creates)
+	}
+}
+
+// A manifest that declares no network leaves nothing to publish on, and the page says so rather
+// than offering a form that would be refused.
+func TestNoDeclaredNetworkOffersNoForm(t *testing.T) {
+	ui, stub := startUI(t, nil)
+	stub.networks = []string{}
+	logged := login(t, ui, "judge1", "secret")
+	home := get(t, ui, logged, "/trader")
+	if strings.Contains(home.body, `action="/trader/create"`) ||
+		!strings.Contains(home.body, "declares no Solana network") {
+		t.Fatalf("a form is offered with no network to publish on:\n%s", home.body)
+	}
+}
+
 func TestCreateListsAndCancelGoThroughTheRequestsAPI(t *testing.T) {
 	ui, stub := startUI(t, nil)
 	logged := login(t, ui, "judge1", "secret")
 	created := post(t, ui, logged, "/trader/create", url.Values{
-		"pair": {"usdc-sol"}, "slippage": {"50"}, "expires": {"1h"}, "note": {"demo"},
+		"network": {"mainnet"}, "pair": {"usdc-sol"}, "slippage": {"50"}, "expires": {"1h"},
+		"note": {"demo"},
 	})
 	if created.status != http.StatusSeeOther {
 		t.Fatalf("create %d: %s", created.status, created.body)
@@ -131,6 +190,10 @@ func TestCreateListsAndCancelGoThroughTheRequestsAPI(t *testing.T) {
 	}
 	if !strings.Contains(string(stub.lastBody), `"input_mint":"`+usdcMint+`"`) {
 		t.Fatalf("create body %s", stub.lastBody)
+	}
+	// The network the form chose, said explicitly in the body (SEE-185).
+	if !strings.Contains(string(stub.lastBody), `"network":"mainnet"`) {
+		t.Fatalf("create body names no network: %s", stub.lastBody)
 	}
 	if strings.Contains(string(stub.lastBody), "amount") {
 		t.Fatalf("amount sent to API: %s", stub.lastBody)
@@ -270,14 +333,16 @@ func TestExcessCreatesAreRefusedWithoutCallingTheAPI(t *testing.T) {
 	})
 	logged := login(t, ui, "judge1", "secret")
 	first := post(t, ui, logged, "/trader/create", url.Values{
-		"pair": {"usdc-sol"}, "slippage": {"50"}, "expires": {"1h"},
+		"network": {"mainnet"},
+		"pair":    {"usdc-sol"}, "slippage": {"50"}, "expires": {"1h"},
 	})
 	if first.status != http.StatusSeeOther {
 		t.Fatalf("first create %d", first.status)
 	}
 	before := stub.creates
 	second := post(t, ui, logged, "/trader/create", url.Values{
-		"pair": {"sol-usdc"}, "slippage": {"50"}, "expires": {"1h"},
+		"network": {"mainnet"},
+		"pair":    {"sol-usdc"}, "slippage": {"50"}, "expires": {"1h"},
 	})
 	if second.status != http.StatusSeeOther {
 		t.Fatalf("second create %d %s", second.status, second.body)
@@ -347,7 +412,10 @@ func TestTheStylesheetScriptAndFontsComeOutOfTheBinary(t *testing.T) {
 }
 
 type stubAPI struct {
-	mu         sync.Mutex
+	mu sync.Mutex
+	// What the manifest answers as supported_networks. Nil is Mainnet, which is what this demo
+	// declares; an empty, non-nil list is a manifest that declares none.
+	networks   []string
 	lastAuth   string
 	lastPath   string
 	lastMethod string
@@ -385,9 +453,13 @@ func (s *stubAPI) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	}
 	switch {
 	case request.URL.Path == "/v1/manifest":
+		networks := s.networks
+		if networks == nil {
+			networks = []string{"mainnet"}
+		}
 		_ = json.NewEncoder(writer).Encode(map[string]any{
 			"reference": "seekervault://feed?v=1&gateway=https%3A%2F%2Ffeeds.example.com&server=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-			"manifest":  map[string]any{"environments": []string{"sandbox"}},
+			"manifest":  map[string]any{"supported_networks": networks},
 		})
 	case request.URL.Path == "/v1/requests" && request.Method == http.MethodGet:
 		_ = json.NewEncoder(writer).Encode(map[string]any{"requests": []any{item}})

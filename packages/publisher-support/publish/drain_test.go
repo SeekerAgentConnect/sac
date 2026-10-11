@@ -14,6 +14,7 @@ import (
 
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/gateway/v1"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publishertest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/store"
@@ -25,9 +26,8 @@ import (
 func drainer(t *testing.T, fake *publishertest.FakeGateway, at func() time.Time) (*Drainer, *store.Store) {
 	t.Helper()
 	documents, err := store.Open(filepath.Join(t.TempDir(), "publisher.db"), store.Stamp{
-		ServerID:    server,
-		Environment: "production",
-		GatewayURL:  "https://feeds.example.com",
+		ServerID:   server,
+		GatewayURL: "https://feeds.example.com",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -47,6 +47,16 @@ func drainer(t *testing.T, fake *publishertest.FakeGateway, at func() time.Time)
 }
 
 func fixed(at time.Time) func() time.Time { return func() time.Time { return at } }
+
+// holding gives the fake gateway this publisher's manifest without going through the store, for a
+// test about a signal rather than about the manifest: the gateway accepts a signal only on a network
+// its publisher's manifest declares, and with none held it declares none (SEE-185).
+func holding(t *testing.T, drain *Drainer) {
+	t.Helper()
+	if _, err := drain.gateway.Manifest(context.Background(), manifestAt(1)); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // The manifest goes first, because it is what makes the channel readable: a phone cannot hold a
 // feed at all without having validated the manifest, so a proposal published before one would sit
@@ -89,9 +99,8 @@ func TestARestartRepublishesTheSameBytesAndIsToldNothingChanged(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "publisher.db")
 	stamp := store.Stamp{
-		ServerID:    server,
-		Environment: "production",
-		GatewayURL:  "https://feeds.example.com",
+		ServerID:   server,
+		GatewayURL: "https://feeds.example.com",
 	}
 	gateway := serve(t, fake)
 	plan := func(documents *store.Store) *Drainer {
@@ -119,8 +128,10 @@ func TestARestartRepublishesTheSameBytesAndIsToldNothingChanged(t *testing.T) {
 	if _, err := first.ManifestRevision(ctx, "fingerprint-a", now); err != nil {
 		t.Fatal(err)
 	}
-	document := signals.Proposal(server, created.Signal)
-	if _, err := gateway.Proposal(ctx, document); err != nil {
+	if _, err := gateway.Manifest(ctx, manifestAt(1)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gateway.Request(ctx, signals.Request(server, created.Signal)); err != nil {
 		t.Fatal(err)
 	}
 	if err := first.Close(); err != nil {
@@ -207,6 +218,7 @@ func TestAGatewayThatIsNotAnsweringDefersThePublication(t *testing.T) {
 
 	// And when the gateway comes back, the next pass publishes it.
 	failing = false
+	holding(t, drain)
 	later := NewDrainer(Plan{
 		Documents: documents,
 		Gateway:   drain.gateway,
@@ -444,6 +456,7 @@ func TestAWithdrawalOfSomethingNeverPublishedIsSettled(t *testing.T) {
 func TestAWithdrawalIsPublishedAsATransition(t *testing.T) {
 	fake := &publishertest.FakeGateway{}
 	drain, documents := drainer(t, fake, fixed(now))
+	holding(t, drain)
 	ctx := context.Background()
 	created, _, err := documents.Create(ctx, "key-1", "request-1", signalOf(swap()))
 	if err != nil {
@@ -460,7 +473,7 @@ func TestAWithdrawalIsPublishedAsATransition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// It went through CancelProposal and not through a second publication: a withdrawal is a
+	// It went through CancelRequest and not through a second publication: a withdrawal is a
 	// transition the gateway writes, and the gateway refuses a cancelled document anyway.
 	if withdrawals := fake.Tried("CancelRequest"); withdrawals != 1 {
 		t.Fatalf("%d withdrawals were sent", withdrawals)
@@ -487,9 +500,10 @@ func TestAWithdrawalIsPublishedAsATransition(t *testing.T) {
 	}
 }
 
-// A publisher upgraded before the independently deployed gateway still publishes: the new RPCs
-// answer unimplemented, and the Stage 7.1 proposal methods carry the same signal.
-func TestAnOlderGatewayReceivesTheCompatibilityProposalRpcs(t *testing.T) {
+// There is no Stage 7.1 fallback any more (SEE-185): a Proposal has no field for a network, so a
+// gateway that does not serve PublishRequest refuses the signal for good rather than receiving a
+// document that would reach phones without saying where it executes.
+func TestAGatewayWithoutTheRequestRpcsIsNotSentAProposal(t *testing.T) {
 	fake := &publishertest.FakeGateway{Refuse: func(procedure string) error {
 		if procedure == "PublishRequest" || procedure == "CancelRequest" {
 			return connect.NewError(connect.CodeUnimplemented, errors.New("unknown procedure"))
@@ -502,31 +516,94 @@ func TestAnOlderGatewayReceivesTheCompatibilityProposalRpcs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if refusal, err := drain.One(ctx, created); err != nil || refusal != nil {
+	refusal, err := drain.One(ctx, created)
+	if err != nil || refusal == nil || !refusal.Permanent || refusal.Problem != "unimplemented" {
 		t.Fatalf("%+v (%v)", refusal, err)
 	}
-	if fake.Tried("PublishRequest") != 1 || fake.Tried("PublishProposal") != 1 {
+	if fake.Tried("PublishRequest") != 1 || fake.Tried("PublishProposal") != 0 {
 		t.Fatalf("request %d proposal %d", fake.Tried("PublishRequest"), fake.Tried("PublishProposal"))
 	}
 	record, err := documents.Signal(ctx, created.Signal.ProposalID)
-	if err != nil || record.Publication.State(record.Signal) != "published" {
+	if err != nil || record.Publication.State(record.Signal) != "refused" {
 		t.Fatalf("publication %+v (%v)", record.Publication, err)
 	}
+}
 
+// What is sent is request contract 2 with the signal's own network (SEE-185), and a signal on a
+// network the manifest does not declare is refused by the gateway for good.
+func TestASignalIsPublishedWithItsNetwork(t *testing.T) {
+	fake := &publishertest.FakeGateway{}
+	drain, documents := drainer(t, fake, fixed(now))
+	holding(t, drain)
+	ctx := context.Background()
+	created, _, err := documents.Create(ctx, "key-1", "request-1", signalOf(swap()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refusal, err := drain.One(ctx, created); err != nil || refusal != nil {
+		t.Fatalf("%+v (%v)", refusal, err)
+	}
+	sent := fake.HeldRequest(created.Signal.ProposalID)
+	if sent.GetContractVersion() != 2 ||
+		sent.GetAction().GetNetwork() != serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET {
+		t.Fatalf("contract %d, network %s", sent.GetContractVersion(), sent.GetAction().GetNetwork())
+	}
+
+	devnet := signalOf(swap())
+	devnet.ProposalID = proposalID(1)
+	devnet.Network = network.Devnet
+	other, _, err := documents.Create(ctx, "key-2", "request-2", devnet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refusal, err := drain.One(ctx, other)
+	if err != nil || refusal == nil || refusal.Problem != "other_network" || !refusal.Permanent {
+		t.Fatalf("%+v (%v)", refusal, err)
+	}
+}
+
+// A signal stored before networks were declared is never published as an open document: no
+// network is inferred for it, nothing is sent, and it is refused here with a reason an operator can
+// act on. Withdrawing it still works, because a withdrawal names an identity rather than a network.
+func TestASignalWithNoNetworkIsRefusedBeforeAnythingIsSent(t *testing.T) {
+	fake := &publishertest.FakeGateway{}
+	drain, documents := drainer(t, fake, fixed(now))
+	holding(t, drain)
+	ctx := context.Background()
+	created, _, err := documents.Create(ctx, "key-1", "request-1", signalOf(swap()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := created
+	legacy.Signal.Network = ""
+	refusal, err := drain.One(ctx, legacy)
+	if err != nil || refusal == nil || refusal.Problem != NoNetwork || !refusal.Permanent {
+		t.Fatalf("%+v (%v)", refusal, err)
+	}
+	if fake.Tried("PublishRequest") != 0 {
+		t.Fatal("a signal with no network reached the gateway")
+	}
+	record, err := documents.Signal(ctx, created.Signal.ProposalID)
+	if err != nil || record.Publication.Problem != NoNetwork ||
+		record.Publication.State(record.Signal) != "refused" {
+		t.Fatalf("publication %+v (%v)", record.Publication, err)
+	}
+	// Nothing retries it on its own.
+	if due, err := documents.Due(ctx, now.Add(time.Hour), 10); err != nil || len(due) != 0 {
+		t.Fatalf("%d due (%v)", len(due), err)
+	}
+
+	// A withdrawal of one that names no network is sent as the transition it is.
 	withdrawn, _, err := documents.Cancel(ctx, created.Signal.ProposalID, now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
+	withdrawn.Signal.Network = ""
 	if refusal, err := drain.One(ctx, withdrawn); err != nil || refusal != nil {
 		t.Fatalf("%+v (%v)", refusal, err)
 	}
-	if fake.Tried("CancelRequest") != 1 || fake.Tried("CancelProposal") != 1 {
-		t.Fatalf("cancel-request %d cancel-proposal %d",
-			fake.Tried("CancelRequest"), fake.Tried("CancelProposal"))
-	}
-	if held := fake.Held(created.Signal.ProposalID); held.GetStatus().String() != "PROPOSAL_STATUS_CANCELLED" {
-		t.Fatalf("status %s", held.GetStatus())
+	if fake.Tried("CancelRequest") != 1 {
+		t.Fatalf("%d withdrawals were sent", fake.Tried("CancelRequest"))
 	}
 }
 
@@ -534,6 +611,7 @@ func TestAnOlderGatewayReceivesTheCompatibilityProposalRpcs(t *testing.T) {
 func TestAPassPublishesEverythingThatIsDue(t *testing.T) {
 	fake := &publishertest.FakeGateway{}
 	drain, documents := drainer(t, fake, fixed(now))
+	holding(t, drain)
 	ctx := context.Background()
 	for index := range 5 {
 		signal := signalOf(swap())

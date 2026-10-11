@@ -91,11 +91,12 @@ func predicting(t *testing.T, fake *fakeGateway, listing *provider) *template {
 				MostChecks:   5,
 				Every:        5 * time.Minute,
 			},
-			Deposit: discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
-			Log:     slog.New(slog.NewTextHandler(held.Log, nil)),
-			Now:     func() time.Time { return held.NowValue },
-			NewID:   held.NextID,
-			Wake:    held.Drainer.Wake,
+			Deposit:  discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
+			Networks: held.Settings.Networks,
+			Log:      slog.New(slog.NewTextHandler(held.Log, nil)),
+			Now:      func() time.Time { return held.NowValue },
+			NewID:    held.NextID,
+			Wake:     held.Drainer.Wake,
 		})
 		plan.Authorship = support.ByDiscovery
 		plan.Markets = held.Store
@@ -484,11 +485,12 @@ func TestTheProvidersKeyNeverReachesAnAnswerOrALogLine(t *testing.T) {
 				Lifetime: 7 * 24 * time.Hour, PageSize: 25, MostPages: 1, MostOpen: 10,
 				MostChecks: 5, Every: 5 * time.Minute,
 			},
-			Deposit: discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
-			Log:     slog.New(slog.NewTextHandler(held.Log, nil)),
-			Now:     func() time.Time { return held.NowValue },
-			NewID:   held.NextID,
-			Wake:    held.Drainer.Wake,
+			Deposit:  discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
+			Networks: held.Settings.Networks,
+			Log:      slog.New(slog.NewTextHandler(held.Log, nil)),
+			Now:      func() time.Time { return held.NowValue },
+			NewID:    held.NextID,
+			Wake:     held.Drainer.Wake,
 		})
 		plan.Authorship = support.ByDiscovery
 		plan.Markets = held.Store

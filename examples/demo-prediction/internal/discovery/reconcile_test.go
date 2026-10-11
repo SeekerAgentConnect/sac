@@ -10,6 +10,7 @@ package discovery_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -26,6 +27,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/demo-prediction/internal/discovery"
 	"github.com/BrRenat/SeekerAgentWallet/demo-prediction/internal/jupiter"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/markets"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/store"
 )
@@ -88,6 +90,8 @@ type harness struct {
 	path       string
 	filters    discovery.Filters
 	deposit    discovery.Deposit
+	// What the deployment's manifest declares: Mainnet, as the template's default does.
+	networks []network.Network
 }
 
 func filters() discovery.Filters {
@@ -108,13 +112,14 @@ func filters() discovery.Filters {
 func start(t *testing.T, provider *source, change ...func(*harness)) *harness {
 	t.Helper()
 	held := &harness{
-		t:       t,
-		source:  provider,
-		clock:   noon,
-		log:     &strings.Builder{},
-		path:    filepath.Join(t.TempDir(), "publisher.db"),
-		filters: filters(),
-		deposit: discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
+		t:        t,
+		source:   provider,
+		clock:    noon,
+		log:      &strings.Builder{},
+		path:     filepath.Join(t.TempDir(), "publisher.db"),
+		filters:  filters(),
+		deposit:  discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
+		networks: []network.Network{network.Mainnet},
 	}
 	for _, one := range change {
 		one(held)
@@ -128,9 +133,8 @@ func start(t *testing.T, provider *source, change ...func(*harness)) *harness {
 func (h *harness) open() {
 	h.t.Helper()
 	documents, err := store.Open(h.path, store.Stamp{
-		ServerID:    server,
-		Environment: "sandbox",
-		GatewayURL:  "https://feeds.example.com",
+		ServerID:   server,
+		GatewayURL: "https://feeds.example.com",
 	})
 	if err != nil {
 		h.t.Fatal(err)
@@ -143,6 +147,7 @@ func (h *harness) open() {
 		Kind:      signals.Prediction{},
 		Filters:   h.filters,
 		Deposit:   h.deposit,
+		Networks:  h.networks,
 		Note:      "",
 		Log:       slog.New(slog.NewTextHandler(h.log, nil)),
 		Now:       func() time.Time { return h.clock },
@@ -1081,5 +1086,112 @@ func TestAMarketSeenTwiceInOneWalkIsOneProposal(t *testing.T) {
 	}
 	if len(held.signals()) != 1 {
 		t.Fatalf("%d signals", len(held.signals()))
+	}
+}
+
+// Every signal a cycle builds names its network, Mainnet, because that is where Jupiter's
+// prediction markets execute (SEE-185) — and the document a phone reads says so under contract 2.
+func TestEverySignalNamesMainnet(t *testing.T) {
+	provider := &source{events: listing(event("POLY-606422",
+		market("POLY-2589813", noon.Add(72*time.Hour))))}
+	held := start(t, provider)
+	if cycle := held.pass(); cycle.Created != 1 {
+		t.Fatalf("created %d", cycle.Created)
+	}
+	signal := held.signals()[0].Signal
+	if signal.Network != network.Mainnet || discovery.Network != network.Mainnet {
+		t.Fatalf("the signal names %q", signal.Network)
+	}
+	document := signals.Request(server, signal)
+	if document.GetContractVersion() != 2 ||
+		document.GetAction().GetNetwork() != network.Mainnet.Wire() {
+		t.Fatalf("contract %d, network %s", document.GetContractVersion(),
+			document.GetAction().GetNetwork())
+	}
+}
+
+// The deployment's networks are asked whether they include the template's network, and nothing
+// else: a deployment that declares none publishes no market, counts each one as unpublishable and
+// names why — rather than publishing signals the gateway refuses one by one, or quietly giving
+// them a network the manifest does not have.
+func TestADeploymentThatDeclaresNoNetworkPublishesNothing(t *testing.T) {
+	provider := &source{events: listing(event("POLY-606422",
+		market("POLY-2589813", noon.Add(72*time.Hour))))}
+	held := start(t, provider, func(h *harness) { h.networks = nil })
+
+	cycle := held.pass()
+	switch {
+	case cycle.Matched != 1:
+		t.Fatalf("matched %d", cycle.Matched)
+	case cycle.Created != 0:
+		t.Fatal("a market was published on a network the manifest does not declare")
+	case cycle.Reasons[discovery.Unpublishable] != 1:
+		t.Fatalf("the reasons are %v", cycle.Reasons)
+	}
+	if len(held.signals()) != 0 {
+		t.Fatal("something was stored")
+	}
+	if !strings.Contains(held.log.String(), "other_network") {
+		t.Fatalf("the log does not say why:\n%s", held.log.String())
+	}
+}
+
+// A proposal held from before signals named a network has none, and is never given one: the next
+// cycle that finds its market withdraws it and publishes the market again as its next generation,
+// on Mainnet (SEE-185).
+func TestAProposalWithNoNetworkIsReplacedByOneThatNamesIt(t *testing.T) {
+	provider := &source{events: listing(event("POLY-606422",
+		market("POLY-2589813", noon.Add(72*time.Hour))))}
+	held := start(t, provider)
+	if cycle := held.pass(); cycle.Created != 1 {
+		t.Fatalf("created %d", cycle.Created)
+	}
+	legacy := held.signals()[0].Signal
+
+	// What a row written before the network column looks like after the migration: empty.
+	database, err := sql.Open("sqlite", held.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE signal SET network = '' WHERE proposal_id = ?`,
+		legacy.ProposalID); err != nil {
+		t.Fatal(err)
+	}
+	_ = database.Close()
+
+	held.clock = noon.Add(5 * time.Minute)
+	cycle := held.pass()
+	if cycle.Cancelled != 1 || cycle.Created != 1 {
+		t.Fatalf("withdrew %d and created %d: %+v", cycle.Cancelled, cycle.Created, cycle)
+	}
+	tracked := held.tracked()
+	if len(tracked) != 1 {
+		t.Fatalf("%d markets tracked", len(tracked))
+	}
+	now := tracked[0]
+	switch {
+	case now.Market.Generation != 2:
+		t.Fatalf("generation %d", now.Market.Generation)
+	case now.Record.Signal.ProposalID == legacy.ProposalID:
+		t.Fatal("the proposal with no network was given one rather than replaced")
+	case now.Record.Signal.Network != network.Mainnet:
+		t.Fatalf("the new proposal names %q", now.Record.Signal.Network)
+	}
+	for _, record := range held.signals() {
+		if record.Signal.ProposalID != legacy.ProposalID {
+			continue
+		}
+		if record.Signal.Status != signals.Cancelled || record.Signal.Network != "" {
+			t.Fatalf("the old proposal is %s on %q", record.Signal.Status, record.Signal.Network)
+		}
+	}
+	if !strings.Contains(held.log.String(), "names no network") {
+		t.Fatalf("the log does not say why:\n%s", held.log.String())
+	}
+
+	// And it is settled: a third cycle changes nothing.
+	held.clock = noon.Add(10 * time.Minute)
+	if again := held.pass(); again.Created != 0 || again.Cancelled != 0 || again.Updated != 0 {
+		t.Fatalf("a third cycle did %+v", again)
 	}
 }

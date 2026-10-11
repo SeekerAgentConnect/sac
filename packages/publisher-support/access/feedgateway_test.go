@@ -14,6 +14,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/gateway"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/manifest"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publish"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publishertest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
@@ -84,7 +85,8 @@ func TestARestrictedFeedAgainstTheRealGateway(t *testing.T) {
 	if !session.Synced {
 		t.Fatal("the real gateway did not confirm the grant")
 	}
-	for _, method := range []string{"ListRequests", "ListProposals"} {
+	// The common view, which is the one that carries a signal's network (SEE-185).
+	for _, method := range []string{"ListRequests"} {
 		status, body := publishertest.Read(t, running.Origin, method,
 			map[string]any{"channel": channel, "session": session.Session})
 		if status != http.StatusOK || !strings.Contains(body, created.Signal.ProposalID) {
@@ -164,7 +166,7 @@ type realFixture struct {
 func realBench(t *testing.T, running publishertest.Gateway, origin string) *realFixture {
 	t.Helper()
 	documents, err := store.Open(filepath.Join(running.Directory, "publisher.db"), store.Stamp{
-		ServerID: publishertest.ServerID, Environment: "production", GatewayURL: running.Origin})
+		ServerID: publishertest.ServerID, GatewayURL: running.Origin})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +177,10 @@ func realBench(t *testing.T, running publishertest.Gateway, origin string) *real
 		t.Fatal(err)
 	}
 	settings := manifest.Settings{
-		ServerID: publishertest.ServerID, GatewayURL: running.Origin, Environment: "production",
+		ServerID: publishertest.ServerID, GatewayURL: running.Origin,
+		// Where the signal below executes: the gateway refuses a signal on a network the manifest
+		// does not declare (SEE-185).
+		Networks:    []network.Network{network.Mainnet},
 		Requirement: signals.Swap{}.Requirement(), DisplayName: "Restricted desk", AuthOrigin: origin,
 	}
 	ctx := context.Background()

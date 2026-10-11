@@ -12,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/gateway/v1"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publishertest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
@@ -33,16 +34,17 @@ func TestTheSameDocumentAgainIsUnchanged(t *testing.T) {
 	fake := &publishertest.FakeGateway{}
 	gateway := serve(t, fake)
 	ctx := context.Background()
-	document := signals.Proposal(server, swap())
+	registered(t, gateway)
+	document := signals.Request(server, swap())
 
-	first, err := gateway.Proposal(ctx, document)
+	first, err := gateway.Request(ctx, document)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first != Stored {
 		t.Fatalf("a first publication was %s", first)
 	}
-	second, err := gateway.Proposal(ctx, signals.Proposal(server, swap()))
+	second, err := gateway.Request(ctx, signals.Request(server, swap()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +61,8 @@ func TestAWithdrawalOfSomethingNeverPublishedIsAbsentAndNotAnError(t *testing.T)
 	gateway := serve(t, fake)
 	ctx := context.Background()
 
-	status, err := gateway.Withdraw(ctx, swap().ProposalID, 2)
+	registered(t, gateway)
+	status, err := gateway.WithdrawRequest(ctx, swap().ProposalID, 2)
 	if err != nil {
 		t.Fatalf("expected Absent, got %v", err)
 	}
@@ -68,10 +71,10 @@ func TestAWithdrawalOfSomethingNeverPublishedIsAbsentAndNotAnError(t *testing.T)
 	}
 
 	// And a withdrawal of something it does hold takes it back.
-	if _, err := gateway.Proposal(ctx, signals.Proposal(server, swap())); err != nil {
+	if _, err := gateway.Request(ctx, signals.Request(server, swap())); err != nil {
 		t.Fatal(err)
 	}
-	if status, err := gateway.Withdraw(ctx, swap().ProposalID, 2); err != nil || status != Stored {
+	if status, err := gateway.WithdrawRequest(ctx, swap().ProposalID, 2); err != nil || status != Stored {
 		t.Fatalf("%s (%v)", status, err)
 	}
 	if held := fake.Held(swap().ProposalID); held.GetRevision() != 2 {
@@ -120,7 +123,7 @@ func TestEveryRefusalIsClassified(t *testing.T) {
 				return publishertest.Problem(one.problem, one.code, "field")
 			}}
 			gateway := serve(t, fake)
-			_, err := gateway.Proposal(context.Background(), signals.Proposal(server, swap()))
+			_, err := gateway.Request(context.Background(), signals.Request(server, swap()))
 			var refusal *Refusal
 			if !errors.As(err, &refusal) {
 				t.Fatalf("expected a refusal, got %v", err)
@@ -143,7 +146,7 @@ func TestARefusalWithNoDetailIsNamedByItsCode(t *testing.T) {
 		return connect.NewError(connect.CodeUnavailable, errors.New("no upstream"))
 	}}
 	gateway := serve(t, fake)
-	_, err := gateway.Proposal(context.Background(), signals.Proposal(server, swap()))
+	_, err := gateway.Request(context.Background(), signals.Request(server, swap()))
 	var refusal *Refusal
 	if !errors.As(err, &refusal) {
 		t.Fatalf("expected a refusal, got %v", err)
@@ -166,7 +169,7 @@ func TestAGatewayThatIsNotThereIsRetried(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = gateway.Proposal(context.Background(), signals.Proposal(server, swap()))
+	_, err = gateway.Request(context.Background(), signals.Request(server, swap()))
 	var refusal *Refusal
 	if !errors.As(err, &refusal) {
 		t.Fatalf("expected a refusal, got %v", err)
@@ -200,8 +203,8 @@ func TestAPublicationIsNotRedirected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := gateway.Proposal(context.Background(),
-		signals.Proposal(server, swap())); err == nil {
+	if _, err := gateway.Request(context.Background(),
+		signals.Request(server, swap())); err == nil {
 		t.Fatal("a redirected publication was followed")
 	}
 }
@@ -239,6 +242,55 @@ func TestTheBackoffDoublesAndIsCapped(t *testing.T) {
 	}
 	if Backoff(-1) != time.Second {
 		t.Fatalf("a negative attempt count waited %s", Backoff(-1))
+	}
+}
+
+// registered publishes the manifest first, as a template does: the gateway accepts a signal only
+// on a network its publisher's manifest declares (SEE-185).
+func registered(t *testing.T, gateway *Gateway) {
+	t.Helper()
+	if _, err := gateway.Manifest(context.Background(), manifestAt(1)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The gateway's network rules, as this client reads them: both are permanent refusals, because the
+// identical document would be refused again, and each has its own word (SEE-185).
+func TestASignalOnAnUndeclaredNetworkIsRefusedForGood(t *testing.T) {
+	fake := &publishertest.FakeGateway{}
+	gateway := serve(t, fake)
+	ctx := context.Background()
+
+	// No manifest yet: no network is declared.
+	_, err := gateway.Request(ctx, signals.Request(server, swap()))
+	var refusal *Refusal
+	if !errors.As(err, &refusal) || refusal.Problem != "other_network" || !refusal.Permanent {
+		t.Fatalf("before the manifest: %v", err)
+	}
+	registered(t, gateway)
+	devnet := swap()
+	devnet.Network = network.Devnet
+	if _, err := gateway.Request(ctx, signals.Request(server, devnet)); !errors.As(err, &refusal) ||
+		refusal.Problem != "other_network" || !refusal.Permanent {
+		t.Fatalf("devnet: %v", err)
+	}
+	nameless := swap()
+	nameless.Network = ""
+	if _, err := gateway.Request(ctx, signals.Request(server, nameless)); !errors.As(err, &refusal) ||
+		refusal.Problem != "bad_network" || !refusal.Permanent {
+		t.Fatalf("no network: %v", err)
+	}
+	contractOne := signals.Request(server, swap())
+	contractOne.ContractVersion = 1
+	if _, err := gateway.Request(ctx, contractOne); !errors.As(err, &refusal) ||
+		refusal.Problem != "other_protocol" || !refusal.Permanent {
+		t.Fatalf("contract 1: %v", err)
+	}
+	if _, err := gateway.Request(ctx, signals.Request(server, swap())); err != nil {
+		t.Fatalf("mainnet, declared: %v", err)
+	}
+	if len(fake.Requests) != 1 {
+		t.Fatalf("%d documents were stored", len(fake.Requests))
 	}
 }
 

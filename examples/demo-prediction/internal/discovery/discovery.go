@@ -26,7 +26,8 @@
 //     at most [Filters.MostCloseIn] away. A market with no close time at all cannot be judged
 //     against a window, so it is skipped whenever one is configured.
 //   - **state** — a market has to be one the provider would take an order for, unless
-//     [Filters.Closed] is set, which only a sandbox deployment may do (internal/config).
+//     [Filters.Closed] is set, which an operator does deliberately to exercise the closure path
+//     (PREDICTION_STATE=any, internal/config).
 //
 // Everything a filter is written against is in the answer the listing gave. There is deliberately
 // no filter over anything the provider does not send with a market — no implied volume threshold,
@@ -65,8 +66,9 @@ type Filters struct {
 	// Applied here, to what came back.
 	Tags     []string
 	Keywords []string
-	// Whether a market the provider would not take an order for may still be published. Sandbox
-	// only, and it exists so that the closure path can be exercised deliberately.
+	// Whether a market the provider would not take an order for may still be published. It exists
+	// so that the closure path can be exercised deliberately, and a deployment that sets it is
+	// warned at startup (internal/config).
 	Closed bool
 	// The window a market's close time has to fall in.
 	LeastCloseIn time.Duration

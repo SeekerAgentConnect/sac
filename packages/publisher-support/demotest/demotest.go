@@ -13,6 +13,7 @@ package demotest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -27,7 +28,6 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/api"
-	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/gateway"
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/gateway/v1"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
@@ -74,18 +74,6 @@ func Start(t *testing.T, fake *publishertest.FakeGateway) *Template {
 	return StartWith(t, fake, signals.Swap{}, nil)
 }
 
-// StartIn is [Start] in the environment the deployment was configured with (SEE-97), for the tests
-// that are about what a sandbox deployment answers.
-func StartIn(t *testing.T, fake *publishertest.FakeGateway, named environment.Environment) *Template {
-	t.Helper()
-	return StartWith(t, fake, signals.Swap{}, func(held *Template, plan *api.Plan) {
-		// Both, because the plan took its copy before this ran: the template's own settings are
-		// what its assertions read, and the plan's are what the API answers from.
-		held.Settings.Environment = named
-		plan.Settings.Environment = named
-	})
-}
-
 // StartWith is [Start] with the kind the demo registered, and a chance to change the plan
 // before the API is built — which is what the Prediction demo's own tests need, because that is
 // where its reconciler and its market rows are supplied.
@@ -98,18 +86,16 @@ func StartWith(
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "publisher.db")
 	settings := manifest.Settings{
-		ServerID:    publishertest.ServerID,
-		GatewayURL:  "https://feeds.example.com",
-		Environment: "production",
+		ServerID:   publishertest.ServerID,
+		GatewayURL: "https://feeds.example.com",
 		// What both demos declare, because both execute on Mainnet (SEE-174).
 		Networks:    []network.Network{network.Mainnet},
 		Requirement: kind.Requirement(),
 		DisplayName: "Copy trading desk",
 	}
 	documents, err := store.Open(path, store.Stamp{
-		ServerID:    settings.ServerID,
-		Environment: settings.Environment.String(),
-		GatewayURL:  settings.GatewayURL,
+		ServerID:   settings.ServerID,
+		GatewayURL: settings.GatewayURL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -142,8 +128,10 @@ func StartWith(
 		Documents: documents,
 		Gateway:   client,
 		ServerID:  settings.ServerID,
+		// The template's own settings, read when the manifest is built, so a test that changes them
+		// in its callback publishes the manifest it described.
 		Manifest: func(revision uint64) *serverv1.ServerManifest {
-			return manifest.Document(settings, revision)
+			return manifest.Document(held.Settings, revision)
 		},
 		Log:     log,
 		Now:     func() time.Time { return held.NowValue },
@@ -162,6 +150,17 @@ func StartWith(
 	held.PathValue = path
 	if discovering != nil {
 		discovering(held, &plan)
+	}
+	// The manifest first, as a template's own start does it: the gateway accepts a signal only on
+	// a network its publisher's manifest declares, so a gateway holding no manifest refuses every
+	// signal (SEE-185). A test whose gateway refuses everything still starts — the manifest is
+	// then pending, exactly as it would be in a deployment.
+	if _, err := documents.ManifestRevision(context.Background(), manifest.Fingerprint(held.Settings),
+		held.NowValue); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := held.Drainer.PassManifest(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	handler := api.New(plan).Handler()
 	if held.Wrap != nil {
@@ -287,9 +286,11 @@ func (h *Template) Raw(method, path, body string, headers ...string) Answer {
 	return read
 }
 
-// SwapStatement is a swap signal as a caller sends one.
+// SwapStatement is a swap signal as a caller sends one, on Mainnet, which is where the test
+// deployment's manifest says it runs.
 func SwapStatement() map[string]any {
 	return map[string]any{
+		"network":    "mainnet",
 		"expires_at": publishertest.Now.Add(time.Hour).Format(time.RFC3339),
 		"note":       "trimming SOL into USDC",
 		"terms": map[string]string{

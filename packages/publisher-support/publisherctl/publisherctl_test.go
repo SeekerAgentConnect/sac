@@ -58,7 +58,9 @@ func out(t *testing.T) (*strings.Builder, *strings.Builder) {
 	return &strings.Builder{}, &strings.Builder{}
 }
 
+// swapTerms is a swap's statement as flags: its network and its terms (SEE-185).
 var swapTerms = []string{
+	"--network", "mainnet",
 	"--term", "input_mint=So11111111111111111111111111111111111111112",
 	"--term", "input_decimals=9",
 	"--term", "output_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -105,6 +107,9 @@ func TestCreateSendsTheStatementAndAnIdempotencyKey(t *testing.T) {
 	}
 	if instant.Before(time.Now().Add(time.Hour)) {
 		t.Fatalf("expires_at %s is not two hours from now", expires)
+	}
+	if held.body["network"] != "mainnet" {
+		t.Fatalf("network %v: the flag is sent as the statement's network", held.body["network"])
 	}
 	terms, ok := held.body["terms"].(map[string]any)
 	if !ok || len(terms) != 5 {
@@ -158,7 +163,7 @@ func TestTermsMayComeFromAFile(t *testing.T) {
 	held := &recorded{}
 	address := serve(t, held)
 	stdout, messages := out(t)
-	if err := Run([]string{"create", "--url", address, "--token", token, "--in", "30m",
+	if err := Run([]string{"create", "--url", address, "--token", token, "--in", "30m", "--network", "devnet",
 		"--terms-file", path, "--term", "max_slippage_bps=80"}, stdout, messages); err != nil {
 		t.Fatal(err)
 	}
@@ -247,9 +252,13 @@ func TestWhatTheToolRefusesToSend(t *testing.T) {
 			"2026-09-17T21:00:00Z"}, swapTerms...), "pass one"},
 		{"an expiry that is not an instant", append([]string{"create", "--expires", "tomorrow"},
 			swapTerms...), "RFC 3339"},
-		{"no terms", []string{"create", "--in", "1h"}, "--term"},
-		{"a term that is not key=value", []string{"create", "--in", "1h", "--term", "input_mint"},
-			"key=value"},
+		{"no terms", []string{"create", "--network", "mainnet", "--in", "1h"}, "--term"},
+		{"a term that is not key=value", []string{"create", "--network", "mainnet", "--in", "1h",
+			"--term", "input_mint"}, "key=value"},
+		// The network is required and never assumed (SEE-185); the template checks the value.
+		{"no network", append([]string{"create", "--in", "1h"}, swapTerms[2:]...), "--network"},
+		{"no network on an update", append([]string{"update", "--in", "1h"},
+			append(swapTerms[2:], "8c9d0e1f-2a3b-4c5d-8e6f-7a8b9c0d1e2f")...), "--network"},
 		{"no signal ID", []string{"show"}, "one signal ID"},
 		{"two signal IDs", []string{"show", "one", "two"}, "one signal ID"},
 	} {

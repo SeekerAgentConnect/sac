@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -69,7 +70,7 @@ func TestAnEmptyEnvironmentNamesEverythingThatIsMissing(t *testing.T) {
 		t.Fatal("a configuration was returned for an empty environment")
 	}
 	for _, name := range []string{
-		"PUBLISHER_SERVER_ID", "PUBLISHER_GATEWAY_URL", "PUBLISHER_ENVIRONMENT",
+		"PUBLISHER_SERVER_ID", "PUBLISHER_GATEWAY_URL",
 		"PUBLISHER_DATABASE_PATH", "PUBLISHER_API_TOKEN", "BROADCAST_CREDENTIAL",
 	} {
 		if !mentions(problems, name) {
@@ -101,31 +102,31 @@ func TestTheServerIDIsALowercaseUUID(t *testing.T) {
 	}
 }
 
-// The environment is a promise about what happens when an owner approves, so there is no default
-// and nothing to guess: production or sandbox, and one deployment serves one of them.
-func TestTheEnvironmentIsProductionOrSandboxAndHasNoDefault(t *testing.T) {
-	for _, one := range []struct {
-		value string
-		ok    bool
-	}{
-		{"production", true},
-		{"sandbox", true},
-		{"PRODUCTION", true}, // case is forgiven; the value is not
-		{"staging", false},
-		{"devnet", false},
-		{"", false},
-	} {
-		t.Run(one.value, func(t *testing.T) {
-			environment := complete()
-			environment["PUBLISHER_ENVIRONMENT"] = one.value
-			settings, problems := Load(from(environment))
-			if mentions(problems, "PUBLISHER_ENVIRONMENT") == one.ok {
-				t.Fatalf("%q: %v", one.value, problems)
-			}
-			if one.ok && settings.Environment.String() != strings.ToLower(one.value) {
-				t.Fatalf("environment %q", settings.Environment)
-			}
-		})
+// PUBLISHER_ENVIRONMENT is retired (SEE-185): a deployment that still sets it — to anything,
+// including a word it never accepted — starts, with one warning naming it, and nothing about the
+// configuration depends on it. One that does not set it is warned about nothing.
+func TestTheRetiredEnvironmentIsIgnoredWithAWarning(t *testing.T) {
+	quiet := load(t, complete())
+	if len(quiet.Warnings) != 0 {
+		t.Fatalf("warnings with nothing retired set: %v", quiet.Warnings)
+	}
+	for _, value := range []string{"production", "sandbox", "staging"} {
+		environment := complete()
+		environment["PUBLISHER_ENVIRONMENT"] = value
+		settings, problems := Load(from(environment))
+		if len(problems) != 0 {
+			t.Fatalf("%q stopped the start: %v", value, problems)
+		}
+		if len(settings.Warnings) != 1 || !strings.Contains(settings.Warnings[0],
+			"PUBLISHER_ENVIRONMENT is retired and ignored") ||
+			strings.Contains(settings.Warnings[0], "\n") {
+			t.Fatalf("%q warned %v", value, settings.Warnings)
+		}
+		settings.Warnings = nil
+		quiet.Warnings = nil
+		if !reflect.DeepEqual(settings, quiet) {
+			t.Fatalf("%q changed the configuration: %+v", value, settings)
+		}
 	}
 }
 

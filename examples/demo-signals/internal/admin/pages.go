@@ -55,13 +55,14 @@ type loginView struct {
 func (loginView) LoggedIn() bool { return false }
 
 type homeView struct {
-	Path        string
-	Name        string
-	Message     string
-	Error       string
-	Reference   string
-	Environment string
-	Signals     []Item
+	Path      string
+	Name      string
+	Message   string
+	Error     string
+	Reference string
+	// The networks the create form offers: the manifest's own, never a default of this page's.
+	Networks []string
+	Signals  []Item
 }
 
 // LoggedIn decides whether the frame draws the sidebar.

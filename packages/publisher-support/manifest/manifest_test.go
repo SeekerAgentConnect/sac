@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
@@ -18,7 +17,6 @@ func settings() Settings {
 	return Settings{
 		ServerID:    server,
 		GatewayURL:  "https://feeds.example.com",
-		Environment: "production",
 		Networks:    []network.Network{network.Mainnet},
 		Requirement: signals.Swap{}.Requirement(),
 		DisplayName: "Copy trading desk",
@@ -51,35 +49,17 @@ func TestAManifestIsAlwaysAGatewayFeed(t *testing.T) {
 	}
 }
 
-// One deployment serves one environment, and the manifest names exactly that one: a phone refuses
-// to treat a server as supported in an environment the server does not name, because sandbox and
-// production are different promises about what happens when the owner approves.
-func TestAManifestNamesExactlyOneEnvironment(t *testing.T) {
-	for name, expected := range map[environment.Environment]serverv1.ServerEnvironment{
-		environment.Production: serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-		environment.Sandbox:    serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
-	} {
-		held := settings()
-		held.Environment = name
-		environments := Document(held, 1).GetEnvironments()
-		if len(environments) != 1 || environments[0] != expected {
-			t.Fatalf("%s: %v", name, environments)
-		}
+// A manifest says nothing about sandbox or production any more (SEE-185): the field is reserved, so
+// the serialized document carries no field 6 at all — a phone's preview-or-execute choice is its
+// owner's, per operation, and a server cannot make it for them.
+func TestAManifestNamesNoEnvironment(t *testing.T) {
+	document := Document(settings(), 1)
+	if fields := document.ProtoReflect().Descriptor().Fields(); fields.ByNumber(6) != nil ||
+		fields.ByName("environments") != nil {
+		t.Fatal("the manifest still has an environments field")
 	}
-}
-
-// And an environment that came from anywhere but the configuration is published as unspecified
-// rather than as production (SEE-97). The gateway refuses that document
-// (GATEWAY_PROBLEM_BAD_ENVIRONMENT), which is a deployment that does not publish; the alternative
-// is a deployment that publishes the promise with the money attached to it because a string was
-// misspelled somewhere.
-func TestAnEnvironmentFromNowhereIsNotPublishedAsProduction(t *testing.T) {
-	held := settings()
-	held.Environment = "staging"
-	environments := Document(held, 1).GetEnvironments()
-	if len(environments) != 1 ||
-		environments[0] != serverv1.ServerEnvironment_SERVER_ENVIRONMENT_UNSPECIFIED {
-		t.Fatalf("%v", environments)
+	if unknown := document.ProtoReflect().GetUnknown(); len(unknown) != 0 {
+		t.Fatalf("the manifest carries %d unknown bytes", len(unknown))
 	}
 }
 
@@ -105,9 +85,8 @@ func TestTheFingerprintIsTheSettingsAndNotTheRevision(t *testing.T) {
 		t.Fatal("the same settings produced two fingerprints")
 	}
 	for name, apply := range map[string]func(*Settings){
-		"the gateway":     func(s *Settings) { s.GatewayURL = "https://feeds.example.org" },
-		"the environment": func(s *Settings) { s.Environment = "sandbox" },
-		"the name":        func(s *Settings) { s.DisplayName = "Another desk" },
+		"the gateway": func(s *Settings) { s.GatewayURL = "https://feeds.example.org" },
+		"the name":    func(s *Settings) { s.DisplayName = "Another desk" },
 		// A network added is a new revision every phone re-reads (SEE-174), and so is one taken
 		// away — including the last one.
 		"a network added": func(s *Settings) {

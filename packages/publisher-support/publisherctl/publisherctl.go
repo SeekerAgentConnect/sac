@@ -9,13 +9,13 @@
 //
 //	publishctl status
 //	publishctl reference
-//	publishctl create --in 2h --note "trimming SOL into USDC" \
+//	publishctl create --network mainnet --in 2h --note "trimming SOL into USDC" \
 //	                  --term input_mint=So11111111111111111111111111111111111111112 \
 //	                  --term input_decimals=9 \
 //	                  --term output_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
 //	                  --term output_decimals=6 \
 //	                  --term max_slippage_bps=50
-//	publishctl update <id> --in 1h --term …
+//	publishctl update <id> --network mainnet --in 1h --term …
 //	publishctl cancel <id>
 //	publishctl retry  <id>
 //	publishctl list
@@ -76,6 +76,9 @@ On a template that discovers its own signals (the Prediction one, SEE-96):
   --token <token>       its API token, or PUBLISHER_API_TOKEN
 
 For create and update:
+  --network <name>      the Solana network the signal executes on: mainnet, devnet or testnet.
+                        Required, never guessed, and one the publisher's manifest declares; an
+                        update names the network the signal was created with
   --expires <RFC3339>   when it stops being actionable, absolute
   --in <duration>       the same instant, as "2h" from now: this tool works out the instant,
                         because the API takes nothing but an absolute one
@@ -101,6 +104,7 @@ func Run(arguments []string, out, messages io.Writer) error {
 	expires := flags.String("expires", "", "an absolute RFC 3339 instant")
 	within := flags.Duration("in", 0, "the same instant, as a duration from now")
 	note := flags.String("note", "", "the publisher's own words")
+	onNetwork := flags.String("network", "", "the Solana network the signal executes on")
 	key := flags.String("key", "", "the idempotency key for a create")
 	termsFile := flags.String("terms-file", "", "a JSON object of terms")
 	var terms termList
@@ -150,7 +154,7 @@ func Run(arguments []string, out, messages io.Writer) error {
 		return client.reference()
 
 	case "create", "update":
-		statement, err := statementOf(*expires, *within, *note, terms, *termsFile)
+		statement, err := statementOf(*onNetwork, *expires, *within, *note, terms, *termsFile)
 		if err != nil {
 			return err
 		}
@@ -205,14 +209,22 @@ func Run(arguments []string, out, messages io.Writer) error {
 
 // statement is the body a create or an update sends, which is the whole of what a caller may say.
 type statement struct {
+	Network   string            `json:"network"`
 	ExpiresAt string            `json:"expires_at"`
 	Note      string            `json:"note"`
 	Terms     map[string]string `json:"terms"`
 }
 
-func statementOf(expires string, within time.Duration, note string, terms termList,
+func statementOf(named, expires string, within time.Duration, note string, terms termList,
 	termsFile string) (*statement, error) {
-	said := &statement{Note: note, Terms: map[string]string{}}
+	// Passed on as written: the template is what checks it against the networks its manifest
+	// declares, and this tool supplies no default, because a network nobody named is the one with
+	// the money on it (SEE-185).
+	if strings.TrimSpace(named) == "" {
+		return nil, fmt.Errorf("pass --network mainnet, devnet or testnet: every signal names the " +
+			"Solana network it executes on, and none is assumed")
+	}
+	said := &statement{Network: strings.TrimSpace(named), Note: note, Terms: map[string]string{}}
 	switch {
 	case expires != "" && within != 0:
 		return nil, fmt.Errorf("--expires and --in say the same thing; pass one")

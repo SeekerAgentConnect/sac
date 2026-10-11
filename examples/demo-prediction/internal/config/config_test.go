@@ -19,7 +19,6 @@ import (
 // defaults: the provider, the cadence, the bounds and the deposit token all have one.
 func predicting(extra map[string]string) map[string]string {
 	environment := publishertest.Environment()
-	environment["PUBLISHER_ENVIRONMENT"] = "sandbox"
 	for name, value := range extra {
 		environment[name] = value
 	}
@@ -243,14 +242,6 @@ func TestEveryWayAPredictionDeploymentIsRefused(t *testing.T) {
 			about: "PREDICTION_STATE",
 		},
 		{
-			name: "closed markets in production",
-			set: map[string]string{
-				"PREDICTION_STATE":      "any",
-				"PUBLISHER_ENVIRONMENT": "production",
-			},
-			about: "PREDICTION_STATE=any is refused in production",
-		},
-		{
 			name: "a window that closes before it opens",
 			set: map[string]string{
 				"PREDICTION_LEAST_CLOSE_IN_MINUTES": "1440",
@@ -351,7 +342,7 @@ func TestBothHalvesAreReportedAtOnce(t *testing.T) {
 	}))
 	named := strings.Join(problems, "\n")
 	for _, name := range []string{
-		"PUBLISHER_SERVER_ID", "PUBLISHER_GATEWAY_URL", "PUBLISHER_ENVIRONMENT",
+		"PUBLISHER_SERVER_ID", "PUBLISHER_GATEWAY_URL",
 		"PUBLISHER_DATABASE_PATH", "PUBLISHER_API_TOKEN", "BROADCAST_CREDENTIAL",
 		"PREDICTION_CATEGORIES",
 	} {
@@ -399,5 +390,34 @@ func TestNoRefusalQuotesTheProvidersKey(t *testing.T) {
 	}
 	if len(problems) < 2 {
 		t.Fatalf("only %d problems, so this test proved little: %v", len(problems), problems)
+	}
+}
+
+// PREDICTION_STATE=any starts — there is no production deployment left to refuse it in (SEE-185) —
+// and says at startup what it publishes: markets no phone can execute. `open`, the default, says
+// nothing.
+func TestClosedMarketsStartAndAreSaidToBeUnexecutable(t *testing.T) {
+	config, held := loadPredicting(t, predicting(map[string]string{"PREDICTION_STATE": "any"}))
+	if !held.Filters.Closed {
+		t.Fatal("PREDICTION_STATE=any did not admit closed markets")
+	}
+	if !slices.Contains(config.Warnings, ClosedWarning) {
+		t.Fatalf("no warning about closed markets: %v", config.Warnings)
+	}
+	opened, held := loadPredicting(t, predicting(nil))
+	if held.Filters.Closed || slices.Contains(opened.Warnings, ClosedWarning) {
+		t.Fatalf("the default admitted closed markets or warned: %v", opened.Warnings)
+	}
+}
+
+// A deployment that still sets PUBLISHER_ENVIRONMENT, to either word, starts and is told the
+// setting is retired; nothing about it reaches the configuration.
+func TestARetiredEnvironmentStartsWithAWarning(t *testing.T) {
+	for _, word := range []string{"sandbox", "production"} {
+		config, _ := loadPredicting(t, predicting(map[string]string{"PUBLISHER_ENVIRONMENT": word}))
+		if len(config.Warnings) != 1 ||
+			!strings.Contains(config.Warnings[0], "PUBLISHER_ENVIRONMENT is retired") {
+			t.Fatalf("%s: warnings %v", word, config.Warnings)
+		}
 	}
 }

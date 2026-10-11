@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/gateway"
-	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/proposal/v1"
 	requestv2 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
@@ -231,7 +231,7 @@ func (d *Drainer) PassManifest(ctx context.Context) (bool, error) {
 // The manifest is this publisher's own description of itself, built from the settings it runs
 // with, so publishing it above what the gateway holds is what the protocol asks of a publisher
 // that lost its state (GatewayErrorDetail.held_revision). The gateway still enforces everything
-// else: a different environment or mode is refused whatever the revision.
+// else: a different mode or gateway is refused whatever the revision.
 func catchUp(refusal *gateway.Refusal, revision uint64) (uint64, bool) {
 	switch {
 	case refusal.Problem == "stale_revision" && refusal.Held > revision:
@@ -249,8 +249,25 @@ func catchUp(refusal *gateway.Refusal, revision uint64) (uint64, bool) {
 // A withdrawn signal is withdrawn rather than published, and a withdrawal the gateway has nothing
 // to apply is recorded as settled with a line saying so: nothing was ever public, so there is
 // nothing to take back and nothing to keep retrying.
+//
+// There is one path for each, and both are the common request contract (SEE-185). The Stage 7.1
+// proposal methods are not a fallback any more: a Proposal document has no field for a network,
+// so a signal sent that way would reach phones as an executable document that never said where it
+// executes. A gateway that does not serve PublishRequest is refused like any other permanent
+// refusal, and an operator upgrades it.
 func (d *Drainer) One(ctx context.Context, record signals.Record) (*gateway.Refusal, error) {
 	signal := record.Signal
+	if _, ok := network.Parse(string(signal.Network)); !ok && signal.Status != signals.Cancelled {
+		// A signal stored before networks were declared (store schema version 6). Its network is
+		// never inferred — not from the manifest's only network, not from a wallet — so there is
+		// no executable document to build from it, and it is refused here, before the gateway is
+		// asked, with a reason an operator can act on. Withdrawing it still works: a withdrawal
+		// names an identity and a revision, not a document.
+		d.log.Warn("this signal names no network and is not published",
+			"signal", signal.ProposalID, "revision", signal.Revision, "problem", NoNetwork)
+		return &gateway.Refusal{Problem: NoNetwork, Detail: NoNetworkDetail, Permanent: true},
+			d.documents.Refused(ctx, signal.ProposalID, NoNetwork, NoNetworkDetail)
+	}
 	var (
 		status gateway.Status
 		err    error
@@ -265,14 +282,8 @@ func (d *Drainer) One(ctx context.Context, record signals.Record) (*gateway.Refu
 		// the gateway gave, so it is deferred, retried, and visible on the signal.
 	} else if signal.Status == signals.Cancelled {
 		status, err = d.gateway.WithdrawRequest(ctx, signal.ProposalID, signal.Revision)
-		if unimplemented(err) {
-			status, err = d.gateway.Withdraw(ctx, signal.ProposalID, signal.Revision)
-		}
 	} else {
 		status, err = d.gateway.Request(ctx, d.RequestDocument(signal))
-		if unimplemented(err) {
-			status, err = d.gateway.Proposal(ctx, d.Document(signal))
-		}
 	}
 	if err != nil {
 		var refusal *gateway.Refusal
@@ -304,22 +315,18 @@ func (d *Drainer) One(ctx context.Context, record signals.Record) (*gateway.Refu
 	return nil, d.documents.Published(ctx, signal.ProposalID, signal.Revision, "")
 }
 
-// unimplemented is a gateway that does not yet serve PublishRequest/CancelRequest. Those RPCs
-// were added in SEE-108; PublishProposal/CancelProposal still carry the same signal, so a
-// template upgraded first keeps publishing instead of marking the row refused.
-func unimplemented(err error) bool {
-	var refusal *gateway.Refusal
-	return errors.As(err, &refusal) && refusal.Problem == "unimplemented"
-}
+// NoNetwork is the problem a signal with no network is refused with, before anything is sent
+// (SEE-185). It is this template's own code rather than the gateway's, and it is permanent: retrying
+// cannot give a stored signal the network it never declared. The way out is to withdraw it and
+// publish a new signal that names one.
+const NoNetwork = "no_network"
 
-// Document is the proposal a signal becomes: the same bytes every time, for the same signal at the
-// same revision.
-func (d *Drainer) Document(signal signals.Signal) *proposalv1.Proposal {
-	return signals.Proposal(d.serverID, signal)
-}
+// NoNetworkDetail is the sentence that goes with [NoNetwork].
+const NoNetworkDetail = "this signal was stored before signals named their Solana network, and " +
+	"none is inferred for it; withdraw it and publish a new signal that names its network"
 
-// RequestDocument is the primary document. Document above remains a compatibility helper for
-// code and fixtures written against Stage 7.1's Proposal name.
+// RequestDocument is the document a signal becomes: the same bytes every time, for the same signal
+// at the same revision.
 func (d *Drainer) RequestDocument(signal signals.Signal) *requestv2.Request {
 	return signals.Request(d.serverID, signal)
 }

@@ -35,8 +35,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/proposal/v1"
 	requestv2 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/request/v2"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 )
 
 // Status is whether the publisher still stands behind a signal. It is the document's own
@@ -65,6 +65,14 @@ type Signal struct {
 	// Both come from the [Kind] the template registered, never from a caller.
 	Operation string
 	PluginID  string
+	// The Solana network the action executes on (SEE-185): required, one of the networks the
+	// deployment's manifest declares, and fixed when the signal is created. The assets and markets
+	// a signal names are identified by network plus address, so the same mint on another cluster is
+	// a different thing — which is why an update cannot move it, and why it is never inferred from
+	// the manifest, a wallet or the terms. Empty only on a row stored before networks were
+	// declared, which is never published as an open document again (packages/publisher-support/
+	// publish).
+	Network   network.Network
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	// The instant after which nothing is executed from it: absolute, required, and in the future
@@ -269,45 +277,40 @@ func Check(kind Kind, note string, expires time.Time, now time.Time, raw map[str
 	return note, expires, terms, nil
 }
 
-// Proposal is the document itself: the signal as every subscriber will read it.
+// CheckNetwork reads the network a caller declared for a signal, against the networks this
+// deployment's manifest declares (SEE-185), and answers it or the one rule it broke.
 //
-// The terms are listed in key order, always. Ordering them is not cosmetic — a repeated field's
-// order is part of the bytes, and the gateway compares a republication with what it holds field by
-// field, so a template that ordered its terms by chance would turn its own retry into a revision
-// conflict (docs/protocol.md#publisherservice).
-func Proposal(serverID string, signal Signal) *proposalv1.Proposal {
-	keys := make([]string, 0, len(signal.Terms))
-	for key := range signal.Terms {
-		keys = append(keys, key)
+// Two different refusals, because they need two different fixes. `bad_network` is a network that is
+// missing or not one of mainnet, devnet and testnet: the caller has to say which one, and nothing
+// here guesses — not from the manifest's only network, not from a wallet, not from the terms.
+// `other_network` is a real network this deployment does not declare (PUBLISHER_SUPPORTED_NETWORKS):
+// the gateway would refuse it (GATEWAY_PROBLEM_OTHER_NETWORK), so it is refused here first, before
+// it is stored as a signal nothing can publish.
+func CheckNetwork(named string, supported []network.Network) (network.Network, *Fault) {
+	declared, ok := network.Parse(named)
+	if !ok {
+		return "", &Fault{Code: "bad_network", Term: "network"}
 	}
-	sort.Strings(keys)
-	values := make([]*proposalv1.ProposalValue, 0, len(keys))
-	for _, key := range keys {
-		values = append(values, &proposalv1.ProposalValue{Key: key, Text: signal.Terms[key]})
+	for _, one := range supported {
+		if one == declared {
+			return declared, nil
+		}
 	}
-	status := proposalv1.ProposalStatus_PROPOSAL_STATUS_OPEN
-	if signal.Status == Cancelled {
-		status = proposalv1.ProposalStatus_PROPOSAL_STATUS_CANCELLED
-	}
-	return &proposalv1.Proposal{
-		ServerId:      serverID,
-		Channel:       ChannelFor(serverID),
-		ProposalId:    signal.ProposalID,
-		Revision:      signal.Revision,
-		Operation:     signal.Operation,
-		PluginId:      signal.PluginID,
-		Status:        status,
-		CreatedAt:     timestamppb.New(signal.CreatedAt.UTC().Truncate(time.Second)),
-		UpdatedAt:     timestamppb.New(signal.UpdatedAt.UTC().Truncate(time.Second)),
-		ExpiresAt:     timestamppb.New(signal.ExpiresAt.UTC().Truncate(time.Second)),
-		PublisherNote: signal.Note,
-		Values:        values,
-	}
+	return "", &Fault{Code: "other_network", Term: "network"}
 }
+
+// ContractVersion is the request contract this template writes (SEE-185): version 2, whose action
+// names the Solana network it executes on. The gateway accepts nothing else for a new publication,
+// and a phone keeps a version-1 document readable and never executes it.
+const ContractVersion uint32 = 2
 
 // Request is the common developer document a signal becomes. Signal is presentation — the small
 // label in Presentation.category — while the action, inputs, audience and result policy are the
 // same extensible contract a private adapter consumes. No owner's answer is represented here.
+//
+// The action carries the signal's own network, as it was declared. A signal with no network — a
+// row stored before networks were declared — becomes a document whose network is unspecified,
+// which the gateway refuses and no phone executes; the drainer does not send one (publish.Drainer).
 func Request(serverID string, signal Signal) *requestv2.Request {
 	keys := make([]string, 0, len(signal.Terms))
 	for key := range signal.Terms {
@@ -329,7 +332,7 @@ func Request(serverID string, signal Signal) *requestv2.Request {
 		presentationTitle = title(signal.Operation)
 	}
 	return &requestv2.Request{
-		ContractVersion: 1,
+		ContractVersion: ContractVersion,
 		Identity: &requestv2.RequestIdentity{
 			SourceId: serverID, Scope: ChannelFor(serverID), RequestId: signal.ProposalID,
 		},
@@ -346,6 +349,7 @@ func Request(serverID string, signal Signal) *requestv2.Request {
 		Action: &requestv2.ActionCapability{
 			CapabilityId: signal.Operation, CapabilityVersion: 1,
 			PluginId: signal.PluginID, Parameters: parameters,
+			Network: signal.Network.Wire(),
 		},
 		OwnerInputs: ownerInputs(signal),
 		Audience: &requestv2.Audience{Audience: &requestv2.Audience_Feed{
@@ -411,6 +415,9 @@ func lower(value, fallback string) string {
 // a retry of a pre-title create still matches the digest that was stored (expiry and note, then
 // the terms). The comparison is always against that stored digest, never against a signal that
 // may have been edited since it was created (SEE-143).
+//
+// The network is part of it, first, whenever there is one (SEE-185): the same terms on another
+// cluster are another signal, so a key reused for them is a conflict rather than a replay.
 func Statement(signal Signal) string {
 	keys := make([]string, 0, len(signal.Terms))
 	for key := range signal.Terms {
@@ -418,6 +425,9 @@ func Statement(signal Signal) string {
 	}
 	sort.Strings(keys)
 	digest := sha256.New()
+	if signal.Network != "" {
+		fmt.Fprintf(digest, "network=%s\n", signal.Network)
+	}
 	if signal.Title != "" {
 		fmt.Fprintf(digest, "%s\n%s\n%s\n", signal.ExpiresAt.UTC().Format(time.RFC3339),
 			signal.Title, signal.Note)

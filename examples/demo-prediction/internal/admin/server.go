@@ -277,17 +277,17 @@ func (s *Server) renderHome(writer http.ResponseWriter, request *http.Request, n
 		markets = found
 	}
 	s.page(writer, http.StatusOK, homePage, homeView{
-		Path:        s.path,
-		Name:        name,
-		Message:     ok,
-		Error:       fail,
-		Reference:   feed.Reference,
-		Environment: feed.Environment,
-		Query:       query,
-		Signals:     items,
-		Coverage:    coverage,
-		Markets:     markets,
-		Searched:    searched,
+		Path:      s.path,
+		Name:      name,
+		Message:   ok,
+		Error:     fail,
+		Reference: feed.Reference,
+		Networks:  feed.Networks,
+		Query:     query,
+		Signals:   items,
+		Coverage:  coverage,
+		Markets:   markets,
+		Searched:  searched,
 	})
 }
 
