@@ -42,6 +42,7 @@ import io.github.brrenat.seekervault.proposals.PUBLISHED
 import io.github.brrenat.seekervault.proposals.ProposalDismissal
 import io.github.brrenat.seekervault.proposals.ProposalExecution
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
+import io.github.brrenat.seekervault.proposals.ProposalPreview
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.binding
@@ -409,6 +410,45 @@ class HistoryDetailMappingTest {
         assertTrue(model.transactions.isEmpty())
         assertFalse(model.identifiers.any { it.label == "Signature" })
         assertEquals(HistoryDetailCopy.SandboxFootnote, model.footnote)
+    }
+
+    @Test
+    fun aPreviewShowsAsTheRehearsalItWasWhileTheSignalStaysOpen() {
+        // SEE-185: a preview is recorded beside the proposal, not as its execution. History shows
+        // it as previewed — nothing signed, nothing sent — and says the signal is still waiting.
+        val base = record()
+        val preview =
+            ProposalPreview(
+                binding =
+                    binding(
+                        base.proposal,
+                        choice(25_000_000UL),
+                        environment = PluginEnvironment.Sandbox,
+                    ),
+                at = base.proposal.createdAt.plusSeconds(60),
+            )
+        val model =
+            signalHistoryDetail(
+                base.copy(preview = preview),
+                ProposalStanding.Open,
+                feed,
+                clock = clock,
+            )
+
+        assertEquals(HistoryDetailEnvironment.Sandbox, model.header.environment)
+        assertEquals(HistoryDetailStatus.Approved, model.status.status)
+        assertTrue(model.status.explanation.contains("still waiting for you under Pending"))
+        assertEquals(
+            HistoryDetailRow("Decision", "Previewed"),
+            (model.response as HistoryDetailResponse.Sent).rows.first(),
+        )
+        assertEquals(HistoryDetailExecutionState.Simulated, model.execution?.state)
+        assertTrue(model.transactions.isEmpty())
+        assertFalse(model.identifiers.any { it.label == "Signature" })
+        assertEquals(
+            listOf(HistoryDetailEvent.Received, HistoryDetailEvent.Simulated),
+            model.timeline.map { it.event },
+        )
     }
 
     @Test

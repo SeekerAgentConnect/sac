@@ -81,7 +81,6 @@ go test ./...
 
 PUBLISHER_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
-PUBLISHER_ENVIRONMENT=sandbox \
 PUBLISHER_DATABASE_PATH=./copytrading.db \
 BROADCAST_CREDENTIAL=<the credential the gateway printed> \
 PUBLISHER_API_TOKEN=$(openssl rand -base64 32) \
@@ -150,8 +149,8 @@ In summary:
 | --- | --- | --- | --- |
 | `PUBLISHER_SERVER_ID` | yes | — | This source's lowercase UUID, as registered with the gateway |
 | `PUBLISHER_GATEWAY_URL` | yes | — | The gateway's own public origin, character for character |
-| `PUBLISHER_ENVIRONMENT` | yes | — | `production` or `sandbox`; stamped into the database on first open |
-| `PUBLISHER_SUPPORTED_NETWORKS` | no | `mainnet` | Solana networks the manifest declares (SEE-174). Jupiter swaps run only on Mainnet, so `mainnet` or `none`; `devnet`/`testnet` are refused. Not the environment: sandbox still uses Mainnet data |
+| `PUBLISHER_SUPPORTED_NETWORKS` | no | `mainnet` | Solana networks the manifest declares (SEE-174), as capability information: each signal names its own network, which must be one of these (SEE-185). Jupiter swaps run only on Mainnet, so `mainnet` or `none` (which publishes nothing); `devnet`/`testnet` are refused |
+| `PUBLISHER_ENVIRONMENT` | — | — | Retired (SEE-185) and ignored: a deployment that still sets it starts and logs one warning. Preview or execute is the owner's choice on the phone |
 | `BROADCAST_CREDENTIAL` | yes | — | The credential the gateway issued this source |
 | `PUBLISHER_API_TOKEN` | yes | — | The grant to call this demo's own API; at least 32 characters |
 | `PUBLISHER_PUBLISH_URL` | no | the gateway URL | Where publications are *sent*, when that differs from where phones read |
@@ -212,7 +211,7 @@ docker compose run --rm ctl reference     # the seekervault://feed line to pass 
 ```
 
 `/healthz` is the one route with no credential, and it therefore says nothing else: this demo's
-settings, its pending count and its environment are all behind the token.
+settings, its pending count and its networks are all behind the token.
 
 Publish, update and withdraw one request — the reproducible end-to-end run:
 
@@ -220,7 +219,7 @@ Publish, update and withdraw one request — the reproducible end-to-end run:
 export PUBLISHER_API_TOKEN=…
 
 # create
-docker compose run --rm ctl create --in 2h --note "trimming SOL into USDC on the bounce" \
+docker compose run --rm ctl create --network mainnet --in 2h --note "trimming SOL into USDC on the bounce" \
   --key desk-1-sol-usdc-2026-09-17T19:00Z \
   --term input_mint=So11111111111111111111111111111111111111112 \
   --term input_decimals=9 \
@@ -229,7 +228,7 @@ docker compose run --rm ctl create --in 2h --note "trimming SOL into USDC on the
   --term max_slippage_bps=50
 
 # update: the whole statement, not the parts that changed
-docker compose run --rm ctl update <proposal id> --in 4h --note "wider window" \
+docker compose run --rm ctl update <proposal id> --network mainnet --in 4h --note "wider window" \
   --term input_mint=So11111111111111111111111111111111111111112 \
   --term input_decimals=9 \
   --term output_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
@@ -248,12 +247,16 @@ curl -sS http://127.0.0.1:8092/v1/requests \
   -H "Authorization: Bearer $PUBLISHER_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: desk-1-sol-usdc-2026-09-17T19:00Z' \
-  -d '{"expires_at":"2026-09-17T21:00:00Z","note":"trimming SOL into USDC",
+  -d '{"network":"mainnet","expires_at":"2026-09-17T21:00:00Z","note":"trimming SOL into USDC",
        "terms":{"input_mint":"So11111111111111111111111111111111111111112",
                 "input_decimals":"9",
                 "output_mint":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
                 "output_decimals":"6","max_slippage_bps":"50"}}'
 ```
+
+**`network` is required on a create and an update** (SEE-185): the Solana network the swap
+executes on, `mainnet` for this demo. Nothing defaults it. See
+[Checking the declared network](#checking-the-declared-network) for the refusals.
 
 **`Idempotency-Key` is required on a create.** A retried create with the same key is the same
 signal; the same key with a different statement is a conflict rather than a second signal. Nothing
@@ -284,10 +287,27 @@ execution begins.
 This demo publishes `jupiter.swap` signals, and Jupiter swaps exist only on Solana Mainnet, so it
 declares **Mainnet**. It does that with `PUBLISHER_SUPPORTED_NETWORKS` unset; set `mainnet` to say
 so explicitly. `devnet` and `testnet` are refused at startup. It cannot honestly be declared
-Devnet: no swap it proposes can land there. Its `sandbox` environment is a different setting. It
-means the phone simulates the swap against Mainnet data and signs nothing
-([`docs/wiki/environments.md`](../../docs/wiki/environments.md)). A Devnet feed would need a
-template whose operation runs on Devnet.
+Devnet: no swap it proposes can land there. A Devnet feed would need a template whose operation
+runs on Devnet. Whether an owner previews or executes a signal is their choice on the phone, not a
+setting of this deployment.
+
+The manifest's list is capability information. **Each signal names its own network** in the
+`network` field of the API body (`publishctl create --network mainnet`), and it is published in the
+request document's action (`request.v2` contract 2, `ActionCapability.network`). It is never
+inferred from the manifest, even though this demo declares only one. The API refuses, with the term
+`network`:
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `bad_network` | 400 | missing, or not `mainnet`, `devnet` or `testnet` |
+| `other_network` | 400 | a network this deployment's manifest does not declare (the gateway would refuse it with `OTHER_NETWORK`) |
+| `network_fixed` | 409 | an update that names another network than the signal was created with |
+
+A signal stored before SEE-185 has no network, and none is given to it. It stays readable and can be
+withdrawn, but it is never published as an open document again: the publisher refuses it locally
+with the problem `no_network`. Withdraw it (`ctl cancel <id>`) and publish a new signal with
+`--network mainnet`. The trader UI offers only the networks the manifest declares, with Mainnet
+selected.
 
 Check what the gateway serves — the manifest every phone reads — with no credential at all:
 

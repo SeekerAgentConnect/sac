@@ -2,13 +2,11 @@ package io.github.brrenat.seekervault.servers
 
 import io.github.brrenat.seekervault.connections.PairingCodes
 import io.github.brrenat.seekervault.connections.isConnectionId
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.isPluginId
 import io.github.brrenat.seekervault.server.v1.ConnectionMode as WireMode
 import io.github.brrenat.seekervault.server.v1.FeedAccessPolicy as WireAccessPolicy
 import io.github.brrenat.seekervault.server.v1.GatewayFeed as WireFeed
-import io.github.brrenat.seekervault.server.v1.ServerEnvironment as WireEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
 import io.github.brrenat.seekervault.server.v1.SolanaNetwork as WireNetwork
 import io.github.brrenat.seekervault.wallet.WalletNetwork
@@ -26,7 +24,7 @@ import io.github.brrenat.seekervault.wallet.WalletNetwork
  * - **Ownership.** A publisher may name only its own channel, so a manifest cannot claim another
  *   publisher's audience.
  * - **Boundedness.** A revision that moves forward, at most [MAX_REQUIRED_PLUGINS] well-formed
- *   plugin names, environments named explicitly, and a name short enough to show.
+ *   plugin names, and a name short enough to show.
  *
  * A protocol version this build doesn't speak is *not* a refusal: it is a valid statement about a
  * contract this app can't act on, and it is reported as [ServerSupport.ProtocolUnsupported] so the
@@ -100,7 +98,10 @@ enum class ManifestProblem(val code: String) {
     DuplicatePlugin("duplicate_plugin"),
     /** More required plugins than a manifest may name. */
     TooManyPlugins("too_many_plugins"),
-    /** An environment left unspecified, repeated, or none named at all. */
+    /**
+     * Retired with server-declared environments (SEE-185): nothing refuses a manifest for this any
+     * more. Kept so a refusal stored before then still reads as what it was.
+     */
     BadEnvironment("bad_environment"),
     /** A name too long, or one that isn't printable text. */
     BadName("bad_name"),
@@ -167,17 +168,6 @@ fun manifestFrom(message: WireManifest, expect: ManifestExpectation): ManifestRe
         if (required.any { it.id == id }) return invalid(ManifestProblem.DuplicatePlugin)
         required += PluginRequirement(id, least..most)
     }
-    val environments = mutableSetOf<PluginEnvironment>()
-    for (environment in message.environmentsList) {
-        val named =
-            when (environment) {
-                WireEnvironment.SERVER_ENVIRONMENT_PRODUCTION -> PluginEnvironment.Production
-                WireEnvironment.SERVER_ENVIRONMENT_SANDBOX -> PluginEnvironment.Sandbox
-                else -> return invalid(ManifestProblem.BadEnvironment)
-            }
-        if (!environments.add(named)) return invalid(ManifestProblem.BadEnvironment)
-    }
-    if (environments.isEmpty()) return invalid(ManifestProblem.BadEnvironment)
     if (!printableName(message.displayName)) return invalid(ManifestProblem.BadName)
     val networks =
         supportedNetworksOf(
@@ -194,7 +184,6 @@ fun manifestFrom(message: WireManifest, expect: ManifestExpectation): ManifestRe
             mode = mode,
             reference = reference,
             required = required.toList(),
-            environments = environments.toSet(),
             name = message.displayName,
             supportedNetworks = networks,
         )

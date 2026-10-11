@@ -22,12 +22,7 @@ const REPOSITORY = "SeekerAgentConnect/sac";
 const REPOSITORY_URL = `https://github.com/${REPOSITORY}`;
 // The Android features a release can be required to have, and the configuration each needs
 // (docs/development/releases.md § Android build configuration).
-const ANDROID_FEATURES = new Set([
-  "firebase",
-  "solanaRpc",
-  "relayUrl",
-  "discoveryUrl",
-]);
+const ANDROID_FEATURES = new Set(["firebase", "gatewayUrl"]);
 
 const failures = [];
 

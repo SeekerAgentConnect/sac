@@ -125,6 +125,12 @@ sealed interface AppSheet {
         }
     }
 
+    /**
+     * Choosing the wallet one feed signal's operation uses on [network] (SEE-185), over its review.
+     * Remembered for the feed and the network; it never changes the feed's access.
+     */
+    data class OperationWallet(val identity: ReviewIdentity, val network: WalletNetwork) : AppSheet
+
     /** Adding a wallet from the Wallet tab or from a connection's wallet picker (SEE-178). */
     data class AddWallet(val presetNetwork: WalletNetwork? = null) : AppSheet
 
@@ -240,6 +246,9 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
 
     fun openAddWallet(network: WalletNetwork? = null): Boolean = push(AppSheet.AddWallet(network))
 
+    fun openOperationWallet(identity: ReviewIdentity, network: WalletNetwork): Boolean =
+        push(AppSheet.OperationWallet(identity, network))
+
     fun openConnectionRules(connectionId: String): Boolean =
         push(AppSheet.ConnectionRules(connectionId))
 
@@ -331,9 +340,17 @@ private fun NavigationState.canPush(sheet: AppSheet): Boolean =
         is AppSheet.ConnectionWallet ->
             sheets.size == 1 &&
                 (sheets.single() as? AppSheet.ConnectionDetail)?.connectionId == sheet.connectionId
+        // `[review, wallet]`, or `[review, params, wallet]` from a swap's owner part (SEE-185).
+        is AppSheet.OperationWallet ->
+            (sheets.size == 1 &&
+                (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity) ||
+                (sheets.size == 2 &&
+                    (sheets.first() as? AppSheet.RequestReview)?.identity == sheet.identity &&
+                    (sheets.last() as? AppSheet.OwnerInput)?.identity == sheet.identity)
         is AppSheet.AddWallet ->
             (sheets.isEmpty() && screen == AppScreen.Wallet) ||
-                (sheets.size == 2 && sheets.last() is AppSheet.ConnectionWallet)
+                (sheets.size == 2 && sheets.last() is AppSheet.ConnectionWallet) ||
+                (sheets.size in 2..3 && sheets.last() is AppSheet.OperationWallet)
         is AppSheet.CatalogDetail -> sheets.isEmpty() && screen == AppScreen.Discover
         is AppSheet.OwnerInput ->
             sheets.size == 1 &&
@@ -387,6 +404,11 @@ internal fun encodeNavigationState(state: NavigationState): List<String> = build
                 add(SHEET_HANDOFF)
                 addIdentity(sheet.identity)
                 add(sheet.kind.name)
+            }
+            is AppSheet.OperationWallet -> {
+                add(SHEET_OPERATION_WALLET)
+                addIdentity(sheet.identity)
+                add(sheet.network.name)
             }
             is AppSheet.OwnerInput -> {
                 add(SHEET_OWNER_INPUT)
@@ -454,6 +476,8 @@ internal fun decodeNavigationState(saved: List<String>): NavigationState? = runC
                         kind = enumValueOf(cursor.next()),
                     )
                 SHEET_OWNER_INPUT -> AppSheet.OwnerInput(cursor.nextIdentity())
+                SHEET_OPERATION_WALLET ->
+                    AppSheet.OperationWallet(cursor.nextIdentity(), enumValueOf(cursor.next()))
                 SHEET_POSITION_SALE -> AppSheet.PositionSale(cursor.nextIdentity())
                 SHEET_DETAIL -> AppSheet.ConnectionDetail(cursor.next())
                 SHEET_CONNECTION_WALLET -> AppSheet.ConnectionWallet(cursor.next())
@@ -558,6 +582,7 @@ private const val SCREEN_HISTORY_DETAIL = "history_detail"
 private const val SHEET_REVIEW = "review"
 private const val SHEET_HANDOFF = "wallet_handoff"
 private const val SHEET_OWNER_INPUT = "owner_input"
+private const val SHEET_OPERATION_WALLET = "operation_wallet"
 private const val SHEET_POSITION_SALE = "position_sale"
 private const val SHEET_DETAIL = "connection_detail"
 private const val SHEET_CONNECTION_WALLET = "connection_wallet"

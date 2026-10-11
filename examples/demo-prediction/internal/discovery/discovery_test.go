@@ -478,3 +478,161 @@ func TestTheFiltersAndTheCycleReadBack(t *testing.T) {
 		t.Fatal("a cycle that read nothing is not working")
 	}
 }
+
+// quoted is a market both sides of which can be bought and sold back a cent apart.
+func quoted(market jupiter.Market) jupiter.Market {
+	market.BuyYes, market.SellYes = 500_000, 490_000
+	market.BuyNo, market.SellNo = 510_000, 500_000
+	return market
+}
+
+// The three rules a deployment has on by default: a market an owner can leave, a question of two
+// outcomes, and nothing about a token's price.
+func TestLiquidityOutcomesAndCryptoPricesAreRules(t *testing.T) {
+	strict := filters()
+	strict.MostSpread = 50_000
+	strict.TwoOutcomes = true
+	strict.NoCryptoPrices = true
+	single := func(e jupiter.Event, m jupiter.Market) jupiter.Event {
+		e.Markets = []jupiter.Market{m}
+		return e
+	}
+	for _, one := range []struct {
+		name   string
+		event  func(jupiter.Event) jupiter.Event
+		market func(jupiter.Market) jupiter.Market
+		reason string
+	}{
+		{name: "a liquid yes-or-no question"},
+		{
+			name:   "nobody bids for YES, so a YES holder cannot get out",
+			market: func(m jupiter.Market) jupiter.Market { m.SellYes = 0; return m },
+			reason: Illiquid,
+		},
+		{
+			name:   "nobody offers NO",
+			market: func(m jupiter.Market) jupiter.Market { m.BuyNo = 0; return m },
+			reason: Illiquid,
+		},
+		{
+			name:   "NO is quoted wider than the spread",
+			market: func(m jupiter.Market) jupiter.Market { m.SellNo = 440_000; return m },
+			reason: Illiquid,
+		},
+		{
+			name: "a settled-looking quote at a dollar",
+			market: func(m jupiter.Market) jupiter.Market {
+				m.BuyNo, m.SellNo = jupiter.OneDollar, 999_000
+				return m
+			},
+			reason: Illiquid,
+		},
+		{
+			name: "no quote at all",
+			market: func(m jupiter.Market) jupiter.Market {
+				m.BuyYes, m.SellYes, m.BuyNo, m.SellNo = 0, 0, 0, 0
+				return m
+			},
+			reason: Illiquid,
+		},
+		{
+			name: "an event of several outcome markets",
+			event: func(e jupiter.Event) jupiter.Event {
+				e.Markets = append(e.Markets, e.Markets[0])
+				return e
+			},
+			reason: ManyOutcomes,
+		},
+		{
+			name: "a crypto price event the provider tagged",
+			event: func(e jupiter.Event) jupiter.Event {
+				e.Category, e.Tags = "crypto", []string{"crypto", "crypto-prices"}
+				e.Title = "What price will Bitcoin hit in October?"
+				return e
+			},
+			reason: CryptoPrice,
+		},
+		{
+			name: "a crypto price event the provider did not tag",
+			event: func(e jupiter.Event) jupiter.Event {
+				e.Category, e.Tags = "crypto", []string{"crypto"}
+				e.Title = "Bitcoin Up or Down - October 11, 5PM ET"
+				return e
+			},
+			reason: CryptoPrice,
+		},
+		{
+			name: "a strike in a crypto title",
+			event: func(e jupiter.Event) jupiter.Event {
+				e.Category, e.Tags = "crypto", nil
+				e.Title = "Ethereum above ___ on October 18?"
+				return e
+			},
+			reason: CryptoPrice,
+		},
+		{
+			name: "a crypto event about something other than a price",
+			event: func(e jupiter.Event) jupiter.Event {
+				e.Category, e.Tags = "crypto", []string{"crypto", "crypto-legal"}
+				e.Title = "Clarity Act signed into law in 2026?"
+				return e
+			},
+		},
+		{
+			name: "a price that is not a token's",
+			event: func(e jupiter.Event) jupiter.Event {
+				e.Title = "Will the price of eggs rise above $5?"
+				return e
+			},
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			market := quoted(open())
+			if one.market != nil {
+				market = one.market(market)
+			}
+			held := single(event(), market)
+			if one.event != nil {
+				held = one.event(held)
+			}
+			applied := strict
+			// Category, tag and keyword are not what this test is about.
+			applied.Categories, applied.Tags, applied.Keywords = nil, nil, nil
+			if got := applied.Match(held, market, noon); got != one.reason {
+				t.Fatalf("reason %q, want %q", got, one.reason)
+			}
+		})
+	}
+	// None of them applies to a deployment that turned them off.
+	loose := filters()
+	many := event()
+	many.Markets = []jupiter.Market{open(), open()}
+	if got := loose.Match(many, open(), noon); got != "" {
+		t.Fatalf("with every rule off: %q", got)
+	}
+}
+
+// A keyword is found at the start of a word: "eth" still finds Ethereum, while a sports keyword no
+// longer finds itself inside an unrelated word.
+func TestAKeywordIsFoundAtTheStartOfAWord(t *testing.T) {
+	for _, one := range []struct {
+		text, keyword string
+		found         bool
+	}{
+		{"what price will ethereum hit", "eth", true},
+		{"nba: stephen curry to leave warriors?", "nba", true},
+		{"will china unban bitcoin by 2027?", "nba", false},
+		{"will bitcoin replace sha-256 before 2027?", "epl", false},
+		{"epl man city points deduction", "epl", true},
+		{"rain during the 2026 f1 singapore grand prix?", "f1", true},
+		{"fed-rates macro", "rates", true},
+		{"solana mobile seeker", "solana mobile", true},
+		{"unbanned unban nba", "nba", true},
+		{"", "nba", false},
+		{"nba", "", false},
+	} {
+		if got := mentions(one.text, one.keyword); got != one.found {
+			t.Errorf("mentions(%q, %q) = %v", one.text, one.keyword, got)
+		}
+	}
+}

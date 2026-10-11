@@ -88,6 +88,8 @@ type Common struct {
 	// ServersActive highlights the list navigation on the list and detail pages. The one-time
 	// credential page deliberately has no active section, matching the prototype's terminal state.
 	ServersActive bool
+	// ClientConfigActive highlights the client configuration navigation on its own page (SEE-185).
+	ClientConfigActive bool
 	// GatewayURL is this gateway's canonical public origin, shown so an operator can see at a
 	// glance which deployment they are administering.
 	GatewayURL string

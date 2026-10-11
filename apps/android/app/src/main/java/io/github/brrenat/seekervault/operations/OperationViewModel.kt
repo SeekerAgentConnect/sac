@@ -6,6 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.ReviewedValue
+import io.github.brrenat.seekervault.config.ClientConfig
+import io.github.brrenat.seekervault.config.ConfigAvailability
+import io.github.brrenat.seekervault.config.ConfigProblem
+import io.github.brrenat.seekervault.config.OperationConfig
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ExecutionOutcome
 import io.github.brrenat.seekervault.connections.FeedRefresh
@@ -30,6 +34,7 @@ import io.github.brrenat.seekervault.plugins.PreparedOperation
 import io.github.brrenat.seekervault.plugins.ProviderAbout
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.ProviderResolution
+import io.github.brrenat.seekervault.plugins.ServiceFeeTerms
 import io.github.brrenat.seekervault.plugins.actionFacts
 import io.github.brrenat.seekervault.plugins.actions.ActionPayload
 import io.github.brrenat.seekervault.plugins.actions.ActionPayloadResult
@@ -40,15 +45,18 @@ import io.github.brrenat.seekervault.proposals.ExecutionBinding
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
+import io.github.brrenat.seekervault.proposals.declared
 import io.github.brrenat.seekervault.proposals.namedProvider
 import io.github.brrenat.seekervault.proposals.proposalProvider
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.SendResult
+import io.github.brrenat.seekervault.wallet.WalletProfile
 import io.github.brrenat.seekervault.wallet.WalletRepository
 import java.io.IOException
 import java.security.MessageDigest
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
@@ -113,6 +121,11 @@ class OperationViewModel(
     private val policies: PolicyEvaluator,
     private val history: ActivityLog,
     private val providers: ProviderRegistry,
+    /**
+     * The trusted gateway's client configuration (SEE-185): refreshed before every preparation, and
+     * the source of a feed swap's service-fee terms. Without a usable one nothing is prepared.
+     */
+    private val config: OperationConfig,
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
@@ -157,12 +170,15 @@ class OperationViewModel(
             // banners (SEE-147) — would otherwise announce the whole stored feed on a cold start.
             // The feeds' wallet bindings are part of it (SEE-174): a feed rebound under an open
             // review drops what was prepared for the wallet it had.
+            // So are the per-network wallet choices and the client configuration (SEE-185): a
+            // different wallet, or fee terms that moved, drop what was prepared under the old ones.
             combine(
                     proposals.proposals,
                     proposals.loaded,
                     connections,
-                    wallet.readinessByConnection(),
-                ) { held, loaded, live, _ ->
+                    wallet.profiles,
+                    combine(wallet.feedChoices, config.state) { choices, held -> choices to held },
+                ) { held, loaded, live, _, _ ->
                     val feeds = live.filter { it.mode == ConnectionMode.GatewayFeed }
                     // A proposal is only ever held under the feed it arrived on, and a feed the
                     // owner removed takes its proposals with it — `ConnectionRepository.remove`
@@ -263,7 +279,7 @@ class OperationViewModel(
                 generation = generation,
                 record = record,
                 standing = proposals.standing(record),
-                environment = environmentOf(connectionId),
+                network = record.proposal.network.declared,
                 payload = terms.payload,
                 form = terms.form,
                 // Where the owner may carry on outside the app, if the action's provider has
@@ -277,7 +293,8 @@ class OperationViewModel(
                     record.review?.takeIf { it.revision == record.proposal.revision }?.choice
                         ?: initial(terms.form),
                 served = terms.served,
-                wallet = wallet.walletFor(connectionId),
+                previewable = terms.previewable,
+                wallet = walletOf(record),
             )
         // The rules are read when the review opens, so the owner is not shown a gap where the
         // assessment will be.
@@ -296,6 +313,8 @@ class OperationViewModel(
         val served: Boolean,
         /** What the provider says about itself for this action (SEE-173). */
         val about: ProviderAbout? = null,
+        /** Whether the provider can serve a preview of it: prepared and inspected, never sent. */
+        val previewable: Boolean = false,
     )
 
     /**
@@ -331,6 +350,8 @@ class OperationViewModel(
             destinations = destinationsOf(record, payload, references),
             served = resolved != null,
             about = if (resolved != null && operation != null) resolved.about(operation) else null,
+            previewable =
+                resolved != null && PluginEnvironment.Sandbox in resolved.capabilities.environments,
         )
     }
 
@@ -468,97 +489,144 @@ class OperationViewModel(
         if (open.preparing) return
         _review.update { it?.copy(preparing = true, failure = null, problem = null) }
         viewModelScope.launch {
-            busy.withLock {
-                // The terms on screen belong to one revision, and they are the ones being prepared
-                // from. A record that moved while the tap was waiting for the lock is prepared
-                // from by nobody: the refresh is about to replace the whole review with the new
-                // terms, and combining the latest revision with the previous one's limits is
-                // exactly the thing the binding exists to refuse (SEE-145).
-                val record =
-                    proposals.proposal(open.connectionId, open.proposalId)?.takeIf {
-                        it.proposal.revision == open.record.proposal.revision
+            busy.withLock { prepareHeld(open) }
+            assess()
+        }
+    }
+
+    /**
+     * The body of [prepare], with [busy] already held. True when [open] now holds bytes the
+     * provider prepared and this phone inspected; false when it holds a failure or a problem
+     * instead, or the review moved on while the provider was working.
+     */
+    private suspend fun prepareHeld(open: OperationReview): Boolean {
+        // The terms on screen belong to one revision, and they are the ones being prepared
+        // from. A record that moved while the tap was waiting for the lock is prepared
+        // from by nobody: the refresh is about to replace the whole review with the new
+        // terms, and combining the latest revision with the previous one's limits is
+        // exactly the thing the binding exists to refuse (SEE-145).
+        val record =
+            proposals.proposal(open.connectionId, open.proposalId)?.takeIf {
+                it.proposal.revision == open.record.proposal.revision
+            }
+                ?: run {
+                    _review.update {
+                        if (it?.generation != open.generation) it?.copy(preparing = false)
+                        else
+                            it.copy(
+                                preparing = false,
+                                problem = OperationProblem.Binding(BindingProblem.ProposalChanged),
+                            )
                     }
-                        ?: run {
-                            _review.update {
-                                if (it?.generation != open.generation) it?.copy(preparing = false)
-                                else
-                                    it.copy(
-                                        preparing = false,
-                                        problem =
-                                            OperationProblem.Binding(
-                                                BindingProblem.ProposalChanged
-                                            ),
-                                    )
-                            }
-                            return@withLock
-                        }
-                val payload = open.payload
-                val resolved = if (payload == null) null else provider(record, payload)
-                if (payload == null || resolved == null) {
-                    // Nothing here serves this, and the owner is told which of the six reasons it
-                    // is rather than being left with a button that did nothing (SEE-145). It is a
-                    // refusal before anything is prepared, and long before anything is signed.
-                    val reason =
-                        (providers.resolve(
-                                provider = namedProvider(record.proposal, providers),
-                                action = record.proposal.action,
-                                schemaVersion = record.proposal.capabilityVersion,
-                                network = networkOf(open.connectionId),
-                                environment = environmentOf(open.connectionId),
-                                payload = payload,
-                            ) as? ProviderResolution.Unsupported)
-                            ?.reason
+                    return false
+                }
+        // A signal whose network this build can't use is never prepared (SEE-185): the
+        // registry reads an unspecified network as "not established yet", so without this
+        // the gateway would be asked and a provider handed an operation on no network.
+        if (proposals.standing(record) is ProposalStanding.NetworkUnusable) {
+            _review.update {
+                if (it?.generation != open.generation) it?.copy(preparing = false)
+                else
+                    it.copy(
+                        preparing = false,
+                        problem = OperationProblem.Binding(BindingProblem.NetworkUnusable),
+                    )
+            }
+            return false
+        }
+        val payload = open.payload
+        val resolved = if (payload == null) null else provider(record, payload)
+        if (payload == null || resolved == null) {
+            // Nothing here serves this, and the owner is told which of the six reasons it
+            // is rather than being left with a button that did nothing (SEE-145). It is a
+            // refusal before anything is prepared, and long before anything is signed.
+            val reason =
+                (providers.resolve(
+                        provider = namedProvider(record.proposal, providers),
+                        action = record.proposal.action,
+                        schemaVersion = record.proposal.capabilityVersion,
+                        network = networkOf(record),
+                        environment = PluginEnvironment.Production,
+                        payload = payload,
+                    ) as? ProviderResolution.Unsupported)
+                    ?.reason
+            _review.update {
+                if (it?.generation != open.generation) it?.copy(preparing = false)
+                else
+                    it.copy(
+                        preparing = false,
+                        failure =
+                            reason?.let { why ->
+                                OperationFailure(why.code, unservedText(why))
+                            },
+                    )
+            }
+            return false
+        }
+        // The trusted gateway is asked for its configuration before anything is prepared
+        // (SEE-185): a fee or endpoint the operator changed applies to this operation, and
+        // without a usable configuration nothing is prepared — that is never a zero fee.
+        val terms =
+            when (val availability = config.forOperation()) {
+                is ConfigAvailability.Unavailable -> {
                     _review.update {
                         if (it?.generation != open.generation) it?.copy(preparing = false)
                         else
                             it.copy(
                                 preparing = false,
                                 failure =
-                                    reason?.let { why ->
-                                        OperationFailure(why.code, unservedText(why))
-                                    },
+                                    OperationFailure(
+                                        CONFIG_UNAVAILABLE,
+                                        configText(availability.problem),
+                                    ),
                             )
                     }
-                    return@withLock
+                    return false
                 }
-                val operation = operationFor(record, payload)
-                // What the owner chose is written down before anything is prepared, because it is
-                // what the binding is checked against and what the record says they reviewed.
-                proposals.review(open.connectionId, open.proposalId, open.choice)
-                val outcome =
-                    try {
-                        val prepared = resolved.prepare(operation, open.choice)
-                        val inspection = resolved.inspect(operation, open.choice, prepared)
-                        Prepared(prepared, inspection)
-                    } catch (e: PluginFailure) {
-                        Prepared(failure = OperationFailure(e.code, e.explanation, e.detail))
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // A plugin that threw something else is a plugin that prepared nothing,
-                        // and this says so rather than letting the app die for it.
-                        Prepared(failure = OperationFailure(UNEXPECTED, null, e.message))
-                    }
-                _review.update {
-                    // Bytes belong to the review they were prepared for. One that moved while the
-                    // provider was working gets nothing from it, not even a failure (SEE-145).
-                    if (it?.generation != open.generation) it?.copy(preparing = false)
-                    else
-                        it.copy(
-                            preparing = false,
-                            prepared = outcome.prepared,
-                            inspection = outcome.inspection,
-                            failure = outcome.failure,
-                            acknowledged = false,
-                            assessment = null,
-                            // The wallet these bytes were built for: the feed's own profile at
-                            // the moment of preparing, which a rebinding makes stale (SEE-174).
-                            preparedFor = operation.wallet,
-                        )
-                }
+                is ConfigAvailability.Usable -> feeTermsOf(availability.config, networkOf(record))
             }
-            assess()
+        val operation = operationFor(record, payload).copy(serviceFee = terms)
+        // What the owner chose is written down before anything is prepared, because it is
+        // what the binding is checked against and what the record says they reviewed.
+        proposals.review(open.connectionId, open.proposalId, open.choice)
+        val outcome =
+            try {
+                val prepared = resolved.prepare(operation, open.choice)
+                val inspection = resolved.inspect(operation, open.choice, prepared)
+                Prepared(prepared, inspection)
+            } catch (e: PluginFailure) {
+                Prepared(failure = OperationFailure(e.code, e.explanation, e.detail))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A plugin that threw something else is a plugin that prepared nothing,
+                // and this says so rather than letting the app die for it.
+                Prepared(failure = OperationFailure(UNEXPECTED, null, e.message))
+            }
+        _review.update {
+            // Bytes belong to the review they were prepared for. One that moved while the
+            // provider was working gets nothing from it, not even a failure (SEE-145).
+            if (it?.generation != open.generation) it?.copy(preparing = false)
+            else
+                it.copy(
+                    preparing = false,
+                    prepared = outcome.prepared,
+                    inspection = outcome.inspection,
+                    failure = outcome.failure,
+                    acknowledged = false,
+                    assessment = null,
+                    // The wallet these bytes were built for: the one chosen for this
+                    // operation's network at the moment of preparing, which another
+                    // choice makes stale (SEE-174, SEE-185).
+                    preparedFor = operation.wallet,
+                    // And the service-fee terms they carry, which a configuration that
+                    // moves before signing makes stale too (SEE-185).
+                    preparedFee = terms,
+                    previewed = false,
+                )
         }
+        return _review.value?.let { it.generation == open.generation && it.prepared != null } ==
+            true
     }
 
     /** The owner says they mean to go ahead past the warnings they read. */
@@ -575,12 +643,22 @@ class OperationViewModel(
     }
 
     /**
-     * Goes ahead: re-reads the rules, binds what was reviewed, and asks the wallet once.
+     * Goes ahead for real: re-reads the rules, binds what was reviewed, and asks the wallet once.
      *
      * [reviewed] is the wallet the screen showed the owner. A wallet that changed while they were
      * reading stops this rather than signing with one they did not see.
      */
-    fun approve(reviewed: SelectedWallet?) {
+    fun approve(reviewed: SelectedWallet?) = act(reviewed, PluginEnvironment.Production)
+
+    /**
+     * Previews what was prepared without sending it (SEE-185, docs/wiki/environments.md): the same
+     * rules and the same binding as [approve], and then nothing is signed and nothing is sent. The
+     * proposal is not consumed — the preview is recorded beside it — and what was prepared is
+     * dropped, so executing it for real starts from a fresh preparation.
+     */
+    fun preview(reviewed: SelectedWallet?) = act(reviewed, PluginEnvironment.Sandbox)
+
+    private fun act(reviewed: SelectedWallet?, mode: PluginEnvironment) {
         val open = _review.value ?: return
         if (open.sending) return
         val prepared = open.prepared ?: return
@@ -588,20 +666,82 @@ class OperationViewModel(
         // Input validation, and never a rule to overrule: bytes this phone could not account for
         // whole are not put to a wallet (docs/security.md#verification-versus-advisory-rules).
         if (!inspection.approvable) return
+        if (mode == PluginEnvironment.Sandbox && !open.previewable) return
         _review.update { it?.copy(sending = true, problem = null, failure = null) }
         viewModelScope.launch {
             try {
-                go(open, prepared, reviewed)
+                // The same lock a preparation takes, so a preview and an execution of the same
+                // review are never in flight at once, and neither runs beside a new preparation.
+                busy.withLock {
+                    val current = current(open, prepared, mode) ?: return@withLock
+                    go(current, current.prepared ?: return@withLock, reviewed, mode)
+                }
             } finally {
                 _review.update { it?.copy(sending = false) }
             }
         }
     }
 
+    /**
+     * [open] as it can be approved now, with [busy] held: as it is while enough of its
+     * preparation's window is left for the wallet, and otherwise prepared again first. Null when
+     * that fresh preparation failed or can't be approved, which the review then shows instead.
+     *
+     * The blockhash in a provider's build is good for under half a minute, so a quote the owner
+     * read for longer is refreshed here rather than handed to a wallet that would refuse it. The
+     * owner chose the amount, the slippage and the wallet, and those are what is prepared again;
+     * the fresh bytes are inspected exactly as the first ones were and assessed against the rules
+     * again. Unless the rules' verdict is the one the owner read, this stops and shows the new one;
+     * when it is, their acknowledgement of its warnings carries over, and [go] checks it all again.
+     */
+    private suspend fun current(
+        open: OperationReview,
+        prepared: PreparedOperation,
+        mode: PluginEnvironment,
+    ): OperationReview? {
+        val expires = prepared.expiresAtEpochSeconds ?: return open
+        if (now().plus(FRESH_ENOUGH).epochSecond < expires) return open
+        _review.update {
+            if (it?.generation != open.generation) it else it.copy(preparing = true)
+        }
+        if (!prepareHeld(open)) {
+            assess()
+            return null
+        }
+        // The fresh quote is another price, so the facts differ; what must not differ is what the
+        // owner's rules make of it. Another verdict is shown, not carried out.
+        val fresh = assess() ?: return null
+        val read = open.assessment
+        if (
+            read != null &&
+                (read.decision != fresh.decision || read.applicablePolicy != fresh.applicablePolicy)
+        ) {
+            stop(OperationProblem.RulesChanged)
+            return null
+        }
+        // The acknowledgement was given for the cautions the owner read; another set of them
+        // (nobody buying the side now, where somebody was) is read and ticked afresh.
+        val sameCautions =
+            _review.value?.inspection?.cautions?.map { it.code } ==
+                open.inspection?.cautions?.map { it.code }
+        _review.update {
+            if (it?.generation != open.generation) it
+            else it.copy(acknowledged = open.acknowledged && sameCautions)
+        }
+        val refreshed = _review.value?.takeIf { it.generation == open.generation } ?: return null
+        if (refreshed.inspection?.approvable != true) {
+            assess()
+            return null
+        }
+        if (mode == PluginEnvironment.Sandbox && !refreshed.previewable) return null
+        return refreshed
+    }
+
     private suspend fun go(
         open: OperationReview,
         prepared: PreparedOperation,
         reviewed: SelectedWallet?,
+        mode: PluginEnvironment,
     ) {
         val shown = open.assessment?.consent
         val fresh = assess() ?: return
@@ -610,12 +750,17 @@ class OperationViewModel(
             stop(OperationProblem.RulesChanged)
             return
         }
-        if (fresh.decision.warns && _review.value?.acknowledged != true) {
+        // A caution about the operation itself asks for the same tick a rule's warning does, and
+        // without it the wallet is not asked: nobody is buying the side, say, so it can't be sold.
+        val cautioned = open.inspection?.cautions?.isNotEmpty() == true
+        if ((fresh.decision.warns || cautioned) && _review.value?.acknowledged != true) {
             stop(OperationProblem.NotAcknowledged)
             return
         }
-        // The feed's own wallet profile, read now, and never another connection's (SEE-174).
-        val selected = wallet.walletFor(open.connectionId)
+        val held = proposals.proposal(open.connectionId, open.proposalId) ?: return
+        // The wallet chosen for this operation's network, read now, and never another network's
+        // or another connection's (SEE-174, SEE-185).
+        val selected = walletOf(held)
         if (
             selected == null ||
                 reviewed == null ||
@@ -625,6 +770,12 @@ class OperationViewModel(
             stop(
                 if (selected == null) OperationProblem.NoWallet else OperationProblem.WalletChanged
             )
+            return
+        }
+        // The fee terms the bytes were prepared under must still be the configuration's (SEE-185):
+        // a rate or recipient that moved since is not one the owner reviewed.
+        feeProblem(open)?.let {
+            stop(it)
             return
         }
         val record = proposals.proposal(open.connectionId, open.proposalId) ?: return
@@ -640,15 +791,14 @@ class OperationViewModel(
         val binding =
             ExecutionBinding(
                 revision = record.proposal.revision,
-                // Read here, from the connection, at the moment of acting — not taken from the
-                // screen, which the owner may have been looking at since before they switched it.
-                // The gate checks it again against the connection on the far side of the wait
-                // (`bindingProblem`), so a switch that lands in between refuses rather than slips
-                // through (SEE-97).
-                environment = environmentOf(open.connectionId),
+                // What the owner asked for, this once: to execute, or to preview (SEE-185). Pinned,
+                // so a preview can never be carried out as the real thing or the other way round.
+                environment = mode,
                 choice = open.choice,
                 wallet = selected.address,
+                // The signal's network, which the wallet was chosen for and the gate checks again.
                 network = selected.network.network,
+                walletProfileId = selected.profileId,
                 // Who prepared it, what they prepared, at which schema, and about exactly which
                 // market or pair — all four pinned, because any of them changing means the owner
                 // would be signing something other than what they reviewed (SEE-145).
@@ -677,29 +827,37 @@ class OperationViewModel(
             ?.let { references ->
                 history.referenced(key, references.map { ReviewedValue(it.key, it.value) })
             }
-        // A sandbox connection rehearses, and this is where it stops (SEE-97,
-        // docs/wiki/environments.md).
+        // A preview stops here (SEE-97, SEE-185, docs/wiki/environments.md).
         //
         // Everything above happened for real: the plugin read the provider and built the bytes,
         // this phone read them back, the owner's rules were applied, and the binding was bound.
         // What does not happen is the wallet — and it does not happen because there is no session
         // in scope here to ask, rather than because a flag was checked next to one. The gate is
-        // the same gate: `beginExecution` applies every rule a production approval passes,
-        // including this binding's own promise, so a rehearsal is refused by exactly the things
-        // that would refuse the real operation.
+        // the same gate: `recordPreview` applies every rule an execution passes. And it consumes
+        // nothing: the proposal still stands, and what was prepared is dropped, so executing it
+        // for real starts from a fresh preparation and a fresh review.
         if (binding.environment != PluginEnvironment.Production) {
             when (
                 val begun =
-                    proposals.beginExecution(open.connectionId, open.proposalId, binding, selected)
+                    proposals.recordPreview(open.connectionId, open.proposalId, binding, selected)
             ) {
                 is ExecutionOutcome.Refused -> stop(OperationProblem.Binding(begun.problem))
                 is ExecutionOutcome.Gone -> stop(OperationProblem.Gone)
                 is ExecutionOutcome.Begun ->
-                    proposals.recordOutcome(
-                        open.connectionId,
-                        open.proposalId,
-                        ProposalOutcome.Simulated,
-                    )
+                    _review.update {
+                        if (it?.generation != open.generation) it
+                        else
+                            it.copy(
+                                generation = reviews.incrementAndGet(),
+                                prepared = null,
+                                inspection = null,
+                                preparedFor = null,
+                                preparedFee = null,
+                                acknowledged = false,
+                                assessment = null,
+                                previewed = true,
+                            )
+                    }
             }
             return
         }
@@ -707,11 +865,17 @@ class OperationViewModel(
         // be true is checked inside the lock, because the wait for it is exactly where the world
         // changes underneath an approval.
         wallet.withWallet { session ->
-            // Read again on this side of the wait: a feed rebound, or a profile removed or
+            // Read again on this side of the wait: another wallet chosen, or a profile removed or
             // reconnected, while another wallet interaction held the lock is not the wallet the
-            // owner reviewed (SEE-174). The wallet call checks it once more.
-            if (wallet.walletFor(open.connectionId) != selected) {
+            // owner reviewed (SEE-174, SEE-185). The wallet call checks it once more.
+            if (walletOf(held) != selected) {
                 stop(OperationProblem.WalletChanged)
+                return@withWallet
+            }
+            // And the fee terms, for the same reason: a configuration that moved while the lock
+            // was held is not the one these bytes were reviewed under (SEE-185).
+            feeProblem(open)?.let {
+                stop(it)
                 return@withWallet
             }
             // The rules and the day's counters are read again here too, from disk, after the wait
@@ -805,7 +969,7 @@ class OperationViewModel(
         payload: ActionPayload?,
         inspection: ActionInspection?,
     ): RequestAssessment {
-        val network = networkOf(record.connectionId)
+        val network = networkOf(record)
         val facts =
             actionFacts(
                 connectionId = record.connectionId,
@@ -820,7 +984,7 @@ class OperationViewModel(
                         action = record.proposal.action,
                         schemaVersion = record.proposal.capabilityVersion,
                         network = network,
-                        environment = environmentOf(record.connectionId),
+                        environment = PluginEnvironment.Production,
                         payload = payload,
                     ),
                 inspection = inspection,
@@ -866,8 +1030,10 @@ class OperationViewModel(
      * rather than handing the terms to whatever else it has for the action (SEE-145).
      */
     private fun provider(record: ProposalRecord, payload: ActionPayload): ExecutionProvider? {
-        val environment = environmentOf(record.connectionId)
-        val network = networkOf(record.connectionId)
+        // Resolved for execution: a preview is the same preparation, and whether the provider can
+        // serve one is asked separately ([Terms.previewable]).
+        val environment = PluginEnvironment.Production
+        val network = networkOf(record)
         if (
             proposalProvider(record.proposal, providers, network, environment)
                 !is io.github.brrenat.seekervault.proposals.ProposalProvider.Serving
@@ -893,18 +1059,6 @@ class OperationViewModel(
             record.proposal.terms(),
         )
 
-    /**
-     * Which promise the feed this proposal arrived on keeps (SEE-97, docs/wiki/environments.md).
-     *
-     * It is the connection's own, read fresh: the owner sets it, one phone holds feeds in both
-     * environments at once, and no manifest a publisher republishes can change it. A connection
-     * that is gone answers sandbox, which is the direction a missing answer has to fall — and a
-     * proposal whose feed is gone is not executable anyway.
-     */
-    private fun environmentOf(connectionId: String): PluginEnvironment =
-        connections.value.firstOrNull { it.id == connectionId }?.environment
-            ?: PluginEnvironment.Sandbox
-
     private fun operationFor(record: ProposalRecord, payload: ActionPayload) =
         ActionOperation(
             connectionId = record.connectionId,
@@ -913,65 +1067,110 @@ class OperationViewModel(
             // Null cannot reach here: a provider is only resolved when the document named one this
             // build carries, and this is only built for a resolved provider.
             provider = checkNotNull(namedProvider(record.proposal, providers)),
-            environment = environmentOf(record.connectionId),
-            network = networkOf(record.connectionId),
+            environment = PluginEnvironment.Production,
+            network = networkOf(record),
             payload = payload,
             request = null,
-            wallet = wallet.walletFor(record.connectionId),
+            wallet = walletOf(record),
+            // What the provider describes before anything is prepared: the held configuration's
+            // terms for this network. A preparation asks the gateway again and pins its own.
+            serviceFee =
+                (config.held() as? ConfigAvailability.Usable)?.config?.let {
+                    feeTermsOf(it, networkOf(record))
+                } ?: ServiceFeeTerms.None,
         )
 
     /**
-     * The network [connectionId]'s own wallet profile is on (SEE-174), which is what a provider is
-     * asked about and what the rules read. Unspecified when the feed has no ready wallet, which no
-     * provider serves — so nothing is prepared on a network nobody chose.
+     * The network the signal declares (SEE-185), which is what a provider is asked about, what the
+     * rules read and what the wallet is chosen for. Unspecified when it declares none this build
+     * can use, which no provider serves — so nothing is prepared on a network nobody published.
      */
-    private fun networkOf(connectionId: String): Network =
-        wallet.walletFor(connectionId)?.network?.network ?: Network.NETWORK_UNSPECIFIED
+    private fun networkOf(record: ProposalRecord): Network =
+        record.proposal.network.declared ?: Network.NETWORK_UNSPECIFIED
+
+    /**
+     * The wallet chosen for [record]'s operation (SEE-185): the owner's choice for this feed on the
+     * signal's network, or nothing — never the feed's access identity, and never another network's.
+     */
+    private fun walletOf(record: ProposalRecord): SelectedWallet? =
+        record.proposal.network.declared?.let { wallet.feedWallet(record.connectionId, it) }
+
+    /** The wallets the owner may choose for [network], for the review's picker. */
+    fun walletChoices(network: Network): List<WalletProfile> = wallet.feedWalletChoices(network)
+
+    /**
+     * Uses [profileId] for this review's operation, and remembers it for the feed and the network
+     * (SEE-185). What was prepared for another wallet is dropped by the refresh that follows, so
+     * the owner prepares and reviews again.
+     */
+    fun chooseWallet(profileId: String) {
+        val open = _review.value ?: return
+        val network = open.network ?: return
+        viewModelScope.launch { wallet.chooseFeedWallet(open.connectionId, network, profileId) }
+    }
+
+    /**
+     * Why the fee terms [open] was prepared under can't be signed now, or null when they still are
+     * the configuration's (SEE-185). Read from what is held, without asking the gateway.
+     */
+    private fun feeProblem(open: OperationReview): OperationProblem? {
+        val prepared = open.preparedFee ?: return null
+        val network =
+            open.network ?: return OperationProblem.Binding(BindingProblem.NetworkUnusable)
+        return when (val held = config.held()) {
+            is ConfigAvailability.Unavailable -> OperationProblem.ConfigUnavailable(held.problem)
+            is ConfigAvailability.Usable ->
+                if (feeTermsOf(held.config, network) == prepared) null
+                else OperationProblem.FeeTermsChanged
+        }
+    }
 
     private fun refreshed(open: OperationReview, state: OperationsUiState): OperationReview? {
         val record =
             state.records.firstOrNull {
                 it.connectionId == open.connectionId && it.key.proposalId == open.proposalId
             } ?: return null
-        val environment = environmentOf(open.connectionId)
-        // Two ways what is on screen stops being what the owner is looking at: the publisher moved
-        // the terms, or the owner moved the promise. Either one makes the preparation the wrong
-        // one to approve — new terms were never reviewed, and bytes prepared for a rehearsal are
-        // not bytes anybody reviewed as a purchase (SEE-97) — so both drop it and both are named
-        // here rather than left to the gate that would refuse it later.
-        val bound = wallet.walletFor(open.connectionId)
-        // A preparation made for another wallet — the feed was rebound, or its profile removed or
-        // reconnected — is for an owner nobody is reviewing any more (SEE-174). It goes, with the
-        // acknowledgement beside it, and a new number stops a read still in flight for the old
-        // wallet from landing on the new review; the terms themselves are kept.
+        // What is on screen stops being what the owner is looking at when the publisher moves the
+        // terms. That makes the preparation the wrong one to approve — new terms were never
+        // reviewed — so it is dropped here rather than left to the gate that would refuse it later.
+        val bound = walletOf(record)
+        // A preparation made for another wallet — another one chosen for this network, or the
+        // profile removed or reconnected — is for an owner nobody is reviewing any more (SEE-174,
+        // SEE-185). It goes, with the acknowledgement beside it, and a new number stops a read
+        // still in flight for the old wallet from landing on the new review; the terms are kept.
+        // So does one prepared under fee terms the configuration no longer has (SEE-185).
         if (open.preparing || open.prepared != null) {
             val preparedFor = if (open.preparing) open.wallet else open.preparedFor
-            if (preparedFor != bound) {
+            val stale =
+                when {
+                    preparedFor != bound -> OperationProblem.WalletChanged
+                    open.prepared != null ->
+                        feeProblem(open)?.takeIf { it == OperationProblem.FeeTermsChanged }
+                    else -> null
+                }
+            if (stale != null) {
                 return open.copy(
                     generation = reviews.incrementAndGet(),
                     record = record,
                     standing = proposals.standing(record),
-                    environment = environment,
                     wallet = bound,
                     preparing = false,
                     prepared = null,
                     inspection = null,
                     preparedFor = null,
+                    preparedFee = null,
                     acknowledged = false,
                     assessment = null,
-                    problem = OperationProblem.WalletChanged,
+                    problem = stale,
                 )
             }
         }
-        val moved =
-            record.proposal.revision != open.record.proposal.revision ||
-                environment != open.environment
+        val moved = record.proposal.revision != open.record.proposal.revision
         if (!moved) {
             return open.copy(
                 wallet = bound,
                 record = record,
                 standing = proposals.standing(record),
-                environment = environment,
                 // An execution recorded under an open review is exactly when a provider gains
                 // somewhere to send the owner about the order itself, so this is asked again
                 // rather than kept from before it existed (SEE-157).
@@ -996,12 +1195,13 @@ class OperationViewModel(
             generation = reviews.incrementAndGet(),
             record = record,
             standing = proposals.standing(record),
-            environment = environment,
+            network = record.proposal.network.declared,
             payload = terms.payload,
             form = terms.form,
             destinations = terms.destinations,
             about = terms.about,
             served = terms.served,
+            previewable = terms.previewable,
             // What the owner last chose about *these* terms, or the provider's suggestion — never
             // the previous revision's answer carried forward onto terms they never saw.
             choice =
@@ -1011,9 +1211,11 @@ class OperationViewModel(
             // and so was everything shown beside it.
             wallet = bound,
             preparedFor = null,
+            preparedFee = null,
             prepared = null,
             inspection = null,
             acknowledged = false,
+            previewed = false,
             details = emptyList(),
             failure = null,
             problem = null,
@@ -1022,7 +1224,21 @@ class OperationViewModel(
     }
 
     private companion object {
+        /**
+         * How much of a preparation's window must be left for approving to hand it to the wallet as
+         * it is. Less than this, and approving prepares it again first: the wallet needs the rest
+         * of the blockhash's life to ask the owner and send.
+         */
+        val FRESH_ENOUGH: Duration = Duration.ofSeconds(15)
+
         const val UNEXPECTED = "plugin_failed"
+
+        /** Nothing was prepared: there is no usable client configuration (SEE-185). */
+        const val CONFIG_UNAVAILABLE = "client_config_unavailable"
+
+        /** One operation's fee terms: the configuration's for its network, none on any other. */
+        fun feeTermsOf(config: ClientConfig, network: Network): ServiceFeeTerms =
+            config.swapFee.termsFor(network)
 
         fun hash(bytes: ByteString): ByteString =
             ByteString.copyFrom(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()))
@@ -1102,13 +1318,10 @@ data class OperationReview(
     val record: ProposalRecord,
     val standing: ProposalStanding,
     /**
-     * Which promise this feed keeps, which is what the Approve button is about to do (SEE-97).
-     *
-     * The screen shows it, because a rehearsal and a purchase must not look the same, and the
-     * review is kept in step with it: if the owner switches the connection while this is open, what
-     * was prepared for the other promise is dropped and they prepare again.
+     * The network the signal declares (SEE-185), or null when it declares none this build can use.
+     * It is what the wallet is chosen for and what the review states before anything is signed.
      */
-    val environment: PluginEnvironment,
+    val network: Network? = null,
     /**
      * The publisher's terms, read as the action they claim to be; null when they cannot be
      * ([form]'s own problem then says which rule broke).
@@ -1119,6 +1332,8 @@ data class OperationReview(
     val choice: ParameterChoice,
     /** Whether this build has the plugin the publisher wrote this proposal for. */
     val served: Boolean,
+    /** Whether that provider can serve a preview: prepared and inspected, never sent (SEE-185). */
+    val previewable: Boolean = false,
     val preparing: Boolean = false,
     val prepared: PreparedOperation? = null,
     /** What this phone made of the prepared bytes, read independently of the provider. */
@@ -1139,17 +1354,25 @@ data class OperationReview(
     val sending: Boolean = false,
     val problem: OperationProblem? = null,
     /**
-     * The feed's own wallet profile as it stands now, or null when it has none ready (SEE-174). It
-     * is what the review shows and what an approval is checked against; there is no global wallet.
+     * The wallet chosen for this operation's network as it stands now, or null when there is none
+     * (SEE-185). It is what the review shows and what an approval is checked against; it is never
+     * the feed's access identity, and there is no global wallet.
      */
     val wallet: SelectedWallet? = null,
     /** The wallet [prepared] was built for. A preparation for another is dropped. */
     val preparedFor: SelectedWallet? = null,
+    /** The service-fee terms [prepared] carries. A preparation under other terms is dropped. */
+    val preparedFee: ServiceFeeTerms? = null,
+    /**
+     * The owner previewed what was prepared (SEE-185): nothing was signed or sent, the proposal
+     * still stands, and executing it means preparing again.
+     */
+    val previewed: Boolean = false,
 )
 
-/** Production executions continue in the external wallet; sandbox executions remain local. */
+/** Executing continues in the external wallet; a preview stays on this phone. */
 val OperationReview.requiresWalletHandoff: Boolean
-    get() = environment == PluginEnvironment.Production
+    get() = true
 
 /** Why nothing could be prepared: a plugin's own code and its own words. */
 data class OperationFailure(
@@ -1174,6 +1397,15 @@ sealed interface OperationProblem {
 
     /** The proposal, or its feed, is no longer on this phone. */
     data object Gone : OperationProblem
+
+    /**
+     * The service-fee terms the bytes were prepared under are not the configuration's any more
+     * (SEE-185). Nothing is signed: the owner prepares again and reviews the new terms.
+     */
+    data object FeeTermsChanged : OperationProblem
+
+    /** There is no usable client configuration to check the terms against (SEE-185). */
+    data class ConfigUnavailable(val problem: ConfigProblem) : OperationProblem
 
     /** One of the rules that stand between a review and the wallet (SEE-89). */
     data class Binding(val problem: BindingProblem) : OperationProblem

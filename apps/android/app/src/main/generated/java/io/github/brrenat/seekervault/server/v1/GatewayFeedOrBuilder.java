@@ -12,7 +12,9 @@ public interface GatewayFeedOrBuilder extends
 
   /**
    * <pre>
-   * The shared gateway's absolute HTTPS origin, with no path, query, user info, or fragment.
+   * The shared gateway's absolute HTTPS origin, with no path, query, user info, or fragment. A
+   * phone trusts exactly one gateway, the one its build names (SEE-185), and refuses a manifest
+   * that names any other: this field confirms an origin and can never redirect one.
    * </pre>
    *
    * <code>string gateway_url = 1 [json_name = "gatewayUrl"];</code>
@@ -21,7 +23,9 @@ public interface GatewayFeedOrBuilder extends
   java.lang.String getGatewayUrl();
   /**
    * <pre>
-   * The shared gateway's absolute HTTPS origin, with no path, query, user info, or fragment.
+   * The shared gateway's absolute HTTPS origin, with no path, query, user info, or fragment. A
+   * phone trusts exactly one gateway, the one its build names (SEE-185), and refuses a manifest
+   * that names any other: this field confirms an origin and can never redirect one.
    * </pre>
    *
    * <code>string gateway_url = 1 [json_name = "gatewayUrl"];</code>

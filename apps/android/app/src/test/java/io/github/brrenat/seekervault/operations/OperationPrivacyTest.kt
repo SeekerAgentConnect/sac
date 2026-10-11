@@ -5,6 +5,7 @@ import com.connectrpc.okhttp.ConnectOkHttpClient
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
+import io.github.brrenat.seekervault.config.FakeOperationConfig
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ProposalRepository
 import io.github.brrenat.seekervault.connections.storage.ProposalStore
@@ -19,14 +20,15 @@ import io.github.brrenat.seekervault.jupiter.SOL_MINT
 import io.github.brrenat.seekervault.jupiter.USDC_MINT
 import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
 import io.github.brrenat.seekervault.plugins.ParameterValue
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.actions.SwapParameterNames
 import io.github.brrenat.seekervault.policy.PolicyEvaluator
 import io.github.brrenat.seekervault.policy.storage.PolicyStore
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.proposal
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.requests.commonEnvelope
+import io.github.brrenat.seekervault.rpc.serving
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.PluginRequirement
 import io.github.brrenat.seekervault.servers.SERVER_B
@@ -139,7 +141,6 @@ class OperationPrivacyTest {
                             mode = ConnectionMode.GatewayFeed,
                             reference = ServerReference.Feed(gatewayUrl, channelFor(SERVER_B)),
                             required = listOf(PluginRequirement(JUPITER_SWAP, 1..1)),
-                            environments = setOf(PluginEnvironment.Production),
                             supportedNetworks = setOf(WalletNetwork.Mainnet),
                         )
                     ),
@@ -204,6 +205,7 @@ class OperationPrivacyTest {
                 policies = PolicyEvaluator(policies, records = { history.records.value }),
                 history = history,
                 providers = jupiter(providerUrl, clock),
+                config = FakeOperationConfig(),
                 now = { clock },
                 io = Dispatchers.Unconfined,
             )
@@ -226,7 +228,7 @@ class OperationPrivacyTest {
             true,
             model.review.value?.inspection?.approvable,
         )
-        model.approve(wallet.walletFor(CONNECTION))
+        model.approve(wallet.feedWallet(CONNECTION, Network.NETWORK_MAINNET))
         await { adapter.sendings.isNotEmpty() }
 
         // It worked: the wallet signed exactly what was reviewed, and the record is local.
@@ -365,7 +367,7 @@ class OperationPrivacyTest {
             JupiterExecutionProvider(
                 HttpJupiterProvider(OkHttpClient(), providerUrl),
                 HttpJupiterPrediction(OkHttpClient(), providerUrl),
-                OrderChain(),
+                OrderChain().serving(),
             ) {
                 clock
             }

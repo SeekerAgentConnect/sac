@@ -84,12 +84,15 @@ const (
 	// FeedServiceListRecommendedFeedsProcedure is the fully-qualified name of the FeedService's
 	// ListRecommendedFeeds RPC.
 	FeedServiceListRecommendedFeedsProcedure = "/seekervault.gateway.v1.FeedService/ListRecommendedFeeds"
+	// FeedServiceGetClientConfigProcedure is the fully-qualified name of the FeedService's
+	// GetClientConfig RPC.
+	FeedServiceGetClientConfigProcedure = "/seekervault.gateway.v1.FeedService/GetClientConfig"
 )
 
 // FeedServiceClient is a client for the seekervault.gateway.v1.FeedService service.
 type FeedServiceClient interface {
 	// The manifest the publisher registered: what contract it speaks, which client plugins its
-	// operations need, which environments it serves, and the channel it publishes on. The phone
+	// operations need, which networks they run on, and the channel it publishes on. The phone
 	// validates all of it against the reference it added the feed from before storing any of it
 	// (SEE-88), so this method is asked, never believed.
 	GetServerManifest(context.Context, *connect.Request[v1.GetServerManifestRequest]) (*connect.Response[v1.GetServerManifestResponse], error)
@@ -167,6 +170,16 @@ type FeedServiceClient interface {
 	// manifest as it would for a pasted reference, so a card that went stale between the two is
 	// caught there rather than believed.
 	ListRecommendedFeeds(context.Context, *connect.Request[v1.ListRecommendedFeedsRequest]) (*connect.Response[v1.ListRecommendedFeedsResponse], error)
+	// The client configuration this gateway's operator set for every app that trusts it (SEE-185):
+	// which Solana RPC endpoint the app reads each network through, and the SAC swap service fee.
+	//
+	// The app's build names exactly one gateway, and this is the only place those settings come
+	// from: no publisher, manifest, signal, link or direct server can set or override them. The
+	// answer is the same for everyone and asking records nothing, so it is about the deployment and
+	// never about the caller. Everything in it is readable by any client: an endpoint that needs a
+	// secret credential is never configured here (an operator puts a proxy of their own in front of
+	// such a provider instead).
+	GetClientConfig(context.Context, *connect.Request[v1.GetClientConfigRequest]) (*connect.Response[v1.GetClientConfigResponse], error)
 }
 
 // NewFeedServiceClient constructs a client for the seekervault.gateway.v1.FeedService service. By
@@ -240,6 +253,12 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("ListRecommendedFeeds")),
 			connect.WithClientOptions(opts...),
 		),
+		getClientConfig: connect.NewClient[v1.GetClientConfigRequest, v1.GetClientConfigResponse](
+			httpClient,
+			baseURL+FeedServiceGetClientConfigProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("GetClientConfig")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -255,6 +274,7 @@ type feedServiceClient struct {
 	getFeedStatus        *connect.Client[v1.GetFeedStatusRequest, v1.GetFeedStatusResponse]
 	setFeedPushTarget    *connect.Client[v1.SetFeedPushTargetRequest, v1.SetFeedPushTargetResponse]
 	listRecommendedFeeds *connect.Client[v1.ListRecommendedFeedsRequest, v1.ListRecommendedFeedsResponse]
+	getClientConfig      *connect.Client[v1.GetClientConfigRequest, v1.GetClientConfigResponse]
 }
 
 // GetServerManifest calls seekervault.gateway.v1.FeedService.GetServerManifest.
@@ -307,10 +327,15 @@ func (c *feedServiceClient) ListRecommendedFeeds(ctx context.Context, req *conne
 	return c.listRecommendedFeeds.CallUnary(ctx, req)
 }
 
+// GetClientConfig calls seekervault.gateway.v1.FeedService.GetClientConfig.
+func (c *feedServiceClient) GetClientConfig(ctx context.Context, req *connect.Request[v1.GetClientConfigRequest]) (*connect.Response[v1.GetClientConfigResponse], error) {
+	return c.getClientConfig.CallUnary(ctx, req)
+}
+
 // FeedServiceHandler is an implementation of the seekervault.gateway.v1.FeedService service.
 type FeedServiceHandler interface {
 	// The manifest the publisher registered: what contract it speaks, which client plugins its
-	// operations need, which environments it serves, and the channel it publishes on. The phone
+	// operations need, which networks they run on, and the channel it publishes on. The phone
 	// validates all of it against the reference it added the feed from before storing any of it
 	// (SEE-88), so this method is asked, never believed.
 	GetServerManifest(context.Context, *connect.Request[v1.GetServerManifestRequest]) (*connect.Response[v1.GetServerManifestResponse], error)
@@ -388,6 +413,16 @@ type FeedServiceHandler interface {
 	// manifest as it would for a pasted reference, so a card that went stale between the two is
 	// caught there rather than believed.
 	ListRecommendedFeeds(context.Context, *connect.Request[v1.ListRecommendedFeedsRequest]) (*connect.Response[v1.ListRecommendedFeedsResponse], error)
+	// The client configuration this gateway's operator set for every app that trusts it (SEE-185):
+	// which Solana RPC endpoint the app reads each network through, and the SAC swap service fee.
+	//
+	// The app's build names exactly one gateway, and this is the only place those settings come
+	// from: no publisher, manifest, signal, link or direct server can set or override them. The
+	// answer is the same for everyone and asking records nothing, so it is about the deployment and
+	// never about the caller. Everything in it is readable by any client: an endpoint that needs a
+	// secret credential is never configured here (an operator puts a proxy of their own in front of
+	// such a provider instead).
+	GetClientConfig(context.Context, *connect.Request[v1.GetClientConfigRequest]) (*connect.Response[v1.GetClientConfigResponse], error)
 }
 
 // NewFeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -457,6 +492,12 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("ListRecommendedFeeds")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceGetClientConfigHandler := connect.NewUnaryHandler(
+		FeedServiceGetClientConfigProcedure,
+		svc.GetClientConfig,
+		connect.WithSchema(feedServiceMethods.ByName("GetClientConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/seekervault.gateway.v1.FeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FeedServiceGetServerManifestProcedure:
@@ -479,6 +520,8 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceSetFeedPushTargetHandler.ServeHTTP(w, r)
 		case FeedServiceListRecommendedFeedsProcedure:
 			feedServiceListRecommendedFeedsHandler.ServeHTTP(w, r)
+		case FeedServiceGetClientConfigProcedure:
+			feedServiceGetClientConfigHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -526,4 +569,8 @@ func (UnimplementedFeedServiceHandler) SetFeedPushTarget(context.Context, *conne
 
 func (UnimplementedFeedServiceHandler) ListRecommendedFeeds(context.Context, *connect.Request[v1.ListRecommendedFeedsRequest]) (*connect.Response[v1.ListRecommendedFeedsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.ListRecommendedFeeds is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) GetClientConfig(context.Context, *connect.Request[v1.GetClientConfigRequest]) (*connect.Response[v1.GetClientConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("seekervault.gateway.v1.FeedService.GetClientConfig is not implemented"))
 }

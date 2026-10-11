@@ -98,8 +98,9 @@ func RunGateway(t *testing.T, binary, label string, register ...string) Gateway 
 	}
 }
 
-// ReadFeed reads a channel's proposals the way a phone does: the read API, over plain JSON, with no
-// credential at all. It deliberately uses no generated client, because none has to be — and it shows that any Connect client will do.
+// ReadFeed reads a channel's requests the way a phone does: the read API's ListRequests, over plain
+// JSON, with no credential at all. It deliberately uses no generated client, because none has to be
+// — and it shows that any Connect client will do.
 func ReadFeed(t *testing.T, origin, channel string, known map[string]any) string {
 	t.Helper()
 	body := map[string]any{"channel": channel}
@@ -111,7 +112,7 @@ func ReadFeed(t *testing.T, origin, channel string, known map[string]any) string
 		t.Fatal(err)
 	}
 	request, err := http.NewRequest(http.MethodPost,
-		origin+"/seekervault.gateway.v1.FeedService/ListProposals", bytes.NewReader(encoded))
+		origin+"/seekervault.gateway.v1.FeedService/ListRequests", bytes.NewReader(encoded))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,41 @@ func ReadFeed(t *testing.T, origin, channel string, known map[string]any) string
 	if answer.StatusCode != http.StatusOK {
 		t.Fatalf("the feed answered %s: %s", answer.Status, contents)
 	}
-	return string(contents)
+	// Compacted, because Connect's JSON codec is protojson, which deliberately varies its
+	// whitespace between builds so that nobody depends on it: what two readers are compared on, and
+	// what a test searches, is the content.
+	compact := &bytes.Buffer{}
+	if err := json.Compact(compact, contents); err != nil {
+		t.Fatalf("the feed answered something that is not JSON: %s", contents)
+	}
+	return compact.String()
+}
+
+// WithoutDeclarations is a ListRequests answer with each request's owner-input declarations and
+// result policy taken out, for a test that searches the rest for a field about a person.
+//
+// Both are declarations rather than values: `ownerInputs` names what each owner chooses on their
+// own device ("Amount", "Side") and `resultHandling` says the outcome stays there. They are the
+// request contract's way of saying a subscriber's choice is never published, so a search for the
+// word "amount" has to look past them to mean anything.
+func WithoutDeclarations(t *testing.T, feed string) string {
+	t.Helper()
+	var read map[string]any
+	if err := json.Unmarshal([]byte(feed), &read); err != nil {
+		t.Fatalf("the feed is not JSON: %v", err)
+	}
+	requests, _ := read["requests"].([]any)
+	for _, one := range requests {
+		if request, ok := one.(map[string]any); ok {
+			delete(request, "ownerInputs")
+			delete(request, "resultHandling")
+		}
+	}
+	rest, err := json.Marshal(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(rest)
 }
 
 // CredentialFrom reads the credential `feed-gatewayctl register` printed. It is shown once and stored

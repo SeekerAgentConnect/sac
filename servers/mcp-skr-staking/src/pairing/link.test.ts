@@ -17,6 +17,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   bootPairingPage,
+  encodePairingFragment,
   humanPairingLink,
   landingUrlHasCredential,
   parsePairingUri,
@@ -233,8 +234,23 @@ describe("the staking server's pairing link", () => {
       assert.equal(page.el("pairing-code").value, "");
     }
 
-    // A code for another server — the owner's general MCP server, say — is not opened here.
-    const foreign = fakePage("https://vault.example.com", hash);
+    // A compact link names no origin: the page completes the server URL from its own, so the same
+    // fragment opened elsewhere names that page's server, never this one.
+    const elsewhere = fakePage("https://vault.example.com", hash);
+    const completed = await bootPairingPage(elsewhere.env);
+    assert.equal(completed.state, "ready");
+    const completedUri = parsePairingUri(completed.pairingUri ?? "");
+    assert.ok(completedUri.ok);
+    assert.equal(completedUri.code.serverUrl, "https://vault.example.com");
+
+    // An earlier-form link carries its server, and one for another server — the owner's general
+    // MCP server, say — is not opened here.
+    const earlier = encodePairingFragment({
+      v: 1,
+      pairing_uri: view.pairing_uri,
+      expires_at: view.expires_at,
+    });
+    const foreign = fakePage("https://vault.example.com", `#${earlier}`);
     const refused = await bootPairingPage(foreign.env);
     assert.equal(refused.state, "invalid");
     assert.match(foreign.el("invalid-reason").textContent, /different server/);

@@ -92,7 +92,55 @@ describe("pairing fragment codec", () => {
     );
     assert.ok(decoded.ok);
     assert.equal(decoded.payload.warning, REPLACEMENT_WARNING);
-    assert.equal(decoded.payload.replaces, issued.replaces?.connectionId);
+    assert.equal(decoded.payload.pairing_uri, issued.uri);
+  });
+
+  it("keeps the landing URL short enough that an agent relays it whole", () => {
+    const issued = issuedPairing({
+      replaces: {
+        connectionId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        deviceName: "Seeker",
+        pairedAtMs: 1,
+      },
+    });
+    const fragment = new URL(pairingLandingUrl(issued)).hash.slice(1);
+    assert.equal(
+      fragment,
+      `2.${SERVER_ID}.${TOKEN}.${Date.parse(EXPIRES_AT) / 1000}.1`,
+    );
+    assert.ok(fragment.length < 100, `${fragment.length} characters`);
+    const decoded = decodePairingFragment(fragment, SERVER_URL);
+    assert.ok(decoded.ok);
+    assert.equal(decoded.payload.expires_at, EXPIRES_AT);
+  });
+
+  it("keeps a server URL path in the compact fragment", () => {
+    const serverUrl = `${SERVER_URL}/vault.v1`;
+    const issued = issuedPairing({ serverUrl, uri: pairingUri(serverUrl) });
+    const url = new URL(pairingLandingUrl(issued));
+    assert.equal(url.origin, SERVER_URL);
+    const decoded = decodeLandingFragment(url.hash.slice(1), SERVER_URL);
+    assert.ok(decoded.ok);
+    assert.equal(decoded.code.serverUrl, serverUrl);
+    assert.equal(decoded.payload.pairing_uri, issued.uri);
+  });
+
+  it("rejects a compact fragment that was shortened or read without an origin", () => {
+    const fragment = new URL(pairingLandingUrl(issuedPairing())).hash.slice(1);
+    assert.equal(decodePairingFragment(fragment).ok, false);
+    for (const damaged of [
+      `${fragment.slice(0, 6)}...${fragment.slice(-4)}`,
+      `${fragment.slice(0, 6)}…${fragment.slice(-4)}`,
+      fragment.slice(0, -2),
+      fragment.slice(0, Math.floor(fragment.length / 2)),
+      fragment.replace(TOKEN, TOKEN.slice(1)),
+    ]) {
+      assert.equal(
+        decodePairingFragment(damaged, SERVER_URL).ok,
+        false,
+        damaged,
+      );
+    }
   });
 
   it("rejects malformed fragments", () => {
@@ -113,16 +161,13 @@ describe("pairing fragment codec", () => {
     assert.equal(decodePairingFragment(flipped).ok, false);
   });
 
-  it("rejects a fragment for a foreign server origin", () => {
-    const issued = issuedPairing({
-      serverUrl: "https://other.example",
-      uri: pairingUri("https://other.example"),
+  it("rejects an earlier-form fragment for a foreign server origin", () => {
+    const fragment = encodePairingFragment({
+      v: 1,
+      pairing_uri: pairingUri("https://other.example"),
+      expires_at: EXPIRES_AT,
     });
-    const url = pairingLandingUrl(issued);
-    const decoded = decodeLandingFragment(
-      new URL(url).hash.slice(1),
-      SERVER_URL,
-    );
+    const decoded = decodeLandingFragment(fragment, SERVER_URL);
     assert.deepEqual(decoded, { ok: false, reason: "foreign_origin" });
   });
 });

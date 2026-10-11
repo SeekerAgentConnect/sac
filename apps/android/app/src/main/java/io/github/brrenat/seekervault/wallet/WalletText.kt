@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.wallet
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import io.github.brrenat.seekervault.R
@@ -45,15 +46,16 @@ object WalletTags {
     fun choice(id: String) = "walletPickerChoice:$id"
 }
 
-@Composable
-fun networkText(network: WalletNetwork): String =
-    stringResource(
-        when (network) {
-            WalletNetwork.Mainnet -> R.string.wallet_network_mainnet
-            WalletNetwork.Devnet -> R.string.wallet_network_devnet
-            WalletNetwork.Testnet -> R.string.wallet_network_testnet
-        }
-    )
+@Composable fun networkText(network: WalletNetwork): String = stringResource(networkLabel(network))
+
+/** The network's display name, for text built outside composition (e.g. a review sheet's state). */
+@StringRes
+fun networkLabel(network: WalletNetwork): Int =
+    when (network) {
+        WalletNetwork.Mainnet -> R.string.wallet_network_mainnet
+        WalletNetwork.Devnet -> R.string.wallet_network_devnet
+        WalletNetwork.Testnet -> R.string.wallet_network_testnet
+    }
 
 @Composable
 fun problemText(problem: WalletProblem, detail: String?): String {

@@ -23,7 +23,7 @@ import io.github.brrenat.seekervault.plugins.actions.predictionBuyInputs
 import io.github.brrenat.seekervault.plugins.actions.predictionChoiceFrom
 import io.github.brrenat.seekervault.solana.LookupException
 import io.github.brrenat.seekervault.solana.LookupProblem
-import io.github.brrenat.seekervault.solana.SolanaAccounts
+import io.github.brrenat.seekervault.solana.NetworkAccounts
 import io.github.brrenat.seekervault.solana.SolanaException
 import io.github.brrenat.seekervault.solana.SolanaProblem
 import java.time.Duration
@@ -58,7 +58,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal class JupiterPredictionAction(
     private val api: JupiterPrediction,
-    private val chain: SolanaAccounts,
+    private val chain: NetworkAccounts,
     private val capability: ActionCapability,
     private val now: () -> Instant,
 ) {
@@ -255,7 +255,8 @@ internal class JupiterPredictionAction(
                     wallet = wallet,
                     transaction = order.transaction,
                     version = version,
-                    chain = chain,
+                    // The wallet's network, checked above: the app's endpoint for it, proven.
+                    chain = chain.on(wallet.network.network),
                 )
             } catch (e: SolanaException) {
                 throw PluginFailure(e.problem.code, e.problem.message, e.detail)
@@ -264,7 +265,14 @@ internal class JupiterPredictionAction(
             }
         offers.remember(
             order.transaction,
-            Offer(payload, chosen, wallet.address, market, order, read),
+            Offer(
+                payload,
+                chosen,
+                wallet.address,
+                market,
+                order,
+                read.withExitCaution(market, chosen),
+            ),
         )
         return PreparedOperation(
             transaction = order.transaction,
@@ -320,6 +328,33 @@ internal class JupiterPredictionAction(
     }
 }
 
+/**
+ * The caution the owner must tick past when nobody is buying the side they are about to buy: a
+ * position the market has no bid for cannot be sold, so the stake comes back only if that side wins
+ * when the market settles. It is a reason to stop and read, never a reason to pass.
+ */
+internal fun ActionInspection.withExitCaution(
+    market: PredictionMarket,
+    choice: PredictionChoice,
+): ActionInspection {
+    val bid = if (choice.yes) market.sellYesPriceUsd else market.sellNoPriceUsd
+    if (bid != null && bid > 0UL) return this
+    return copy(
+        cautions =
+            cautions +
+                PluginFinding(
+                    code = NO_EXIT,
+                    message =
+                        if (choice.yes) R.string.jupiter_caution_no_exit_yes
+                        else R.string.jupiter_caution_no_exit_no,
+                    invalidates = false,
+                )
+    )
+}
+
+/** The code of [withExitCaution]'s caution, which the owner's record keeps. */
+const val NO_EXIT: String = "no_exit"
+
 /** Jupiter's own platform, which is where the owner continues. */
 const val JUPITER_PLATFORM: String = "https://jup.ag"
 
@@ -345,9 +380,10 @@ const val JUPITER_ORDERS: String = "$JUPITER_PLATFORM/prediction/portfolio"
  * How long a prepared order stands.
  *
  * A market's price moves and the transaction carries a recent blockhash, so this is the shorter
- * honest bound on both — the same minute a swap's preparation gets, for the same reasons.
+ * honest bound on both — the same window a swap's preparation gets, for the same reasons
+ * ([SWAP_PREPARATION_LIFETIME]).
  */
-val ORDER_LIFETIME: Duration = Duration.ofSeconds(60)
+val ORDER_LIFETIME: Duration = SWAP_PREPARATION_LIFETIME
 
 internal val LookupProblem.message: Int
     get() =
@@ -365,6 +401,7 @@ internal val SolanaProblem.message: Int
     get() =
         when (this) {
             SolanaProblem.NoEndpoint -> R.string.jupiter_failure_no_rpc
+            SolanaProblem.WrongNetwork -> R.string.jupiter_failure_rpc_wrong_network
             SolanaProblem.Unreachable -> R.string.jupiter_failure_rpc_unreachable
             SolanaProblem.RateLimited -> R.string.jupiter_failure_rpc_rate_limited
             SolanaProblem.Refused -> R.string.jupiter_failure_rpc_refused

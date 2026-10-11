@@ -121,7 +121,6 @@ func recommended(candidate storage.ListedFeed) *gatewayv1.RecommendedFeed {
 		Access:            described(candidate.Access),
 		SupportedNetworks: slices.Clone(feed.GetSupportedNetworks()),
 		RequiredPlugins:   clonePlugins(manifest.GetRequiredPlugins()),
-		Environments:      slices.Clone(manifest.GetEnvironments()),
 		ProtocolVersion:   manifest.GetProtocolVersion(),
 		SettingsRevision:  manifest.GetSettingsRevision(),
 	}

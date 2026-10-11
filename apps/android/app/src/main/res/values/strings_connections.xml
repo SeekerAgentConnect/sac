@@ -4,6 +4,7 @@
     <string name="connections_title">Connections</string>
     <string name="home_title">Seeker Agent Connect</string>
     <string name="network_none">No network</string>
+    <string name="feed_networks">Networks</string>
     <string name="copied">Copied</string>
     <string name="requests_heading">Requests</string>
     <string name="requests_none">No requests need your attention.</string>
@@ -76,12 +77,8 @@
     <string name="rename">Rename</string>
     <string name="connection_disconnect">Disconnect</string>
     <string name="connection_remove">Remove from this phone</string>
-    <string name="field_environment">What this feed does when you approve</string>
     <string name="connection_environment_production">Production</string>
-    <string name="connection_environment_production_note">Real operations. Approving one opens your wallet, and what it signs is sent to the network your wallet is selected for.</string>
     <string name="connection_environment_sandbox">Sandbox</string>
-    <string name="connection_environment_sandbox_note">A demonstration. The market data and the transaction are real and you review them exactly as you would, and then nothing is signed and nothing is sent.</string>
-    <string name="connection_environment_switch_note">This publisher serves both. Switching invalidates anything already prepared here, so you review again before anything happens.</string>
     <string name="connection_rules_note">Review this connection’s own rules and global defaults.</string>
     <string name="connection_rules_advisory">Rules highlight requests that need attention. You still approve every request.</string>
 
@@ -142,6 +139,8 @@
     <string name="feed_reference_not_seeker_vault">That isn\'t a Seeker Agent Connect feed reference. Feed references start with seekervault://feed.</string>
     <string name="feed_reference_other_version">This feed reference is for another version of Seeker Agent Connect. Update the app or ask the publisher for a current reference.</string>
     <string name="feed_reference_bad_gateway">The gateway address in the feed reference isn\'t valid.</string>
+    <string name="feed_reference_foreign_gateway">This feed is on another gateway. This app reads feeds only from the gateway it was built for, so it can\'t add it.</string>
+    <string name="feed_reference_no_gateway">This build of the app has no gateway, so it can\'t add feeds.</string>
     <string name="feed_reference_insecure_gateway">The feed\'s gateway doesn\'t use HTTPS. Only a debug build accepts plain HTTP, and only to 127.0.0.1 over adb reverse.</string>
     <string name="feed_reference_bad_server_id">The publisher\'s server ID in the feed reference isn\'t valid.</string>
     <string name="feed_reference_bad_access">This feed reference asks for an access policy this version of the app doesn\'t know. Update the app or ask the publisher for a current reference.</string>
@@ -193,7 +192,7 @@
     <string name="connection_status_unsupported_plugin">This app doesn\'t have a client plugin this server needs, so nothing from it can be approved.</string>
     <string name="connection_status_unsupported_version">This app has the client plugin this server needs, but not at a version it works with.</string>
     <string name="connection_status_unsupported_protocol">This server speaks a newer version of the protocol than this app. Update the app to use it.</string>
-    <string name="connection_status_unsupported_environment">This server doesn\'t serve the environment this app is running in.</string>
+    <string name="connection_status_other_gateway">This feed is on a gateway this app no longer trusts. It stays readable, and nothing from it can be executed. Remove it, and add the feed again from this app\'s gateway.</string>
     <string name="connection_status_manifest_refused">This app refused this server\'s own description of itself, so nothing from it can be approved.</string>
     <!-- Whether the server behind a feed is running, which the gateway answers separately from being
          reachable itself (SEE-150). "Offline" says what is still true as well as what is not: the

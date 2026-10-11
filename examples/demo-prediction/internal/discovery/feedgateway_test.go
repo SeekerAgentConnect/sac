@@ -15,6 +15,7 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/gateway"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/manifest"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publish"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/publishertest"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
@@ -44,14 +45,13 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 	settings := manifest.Settings{
 		ServerID:    publishertest.ServerID,
 		GatewayURL:  running.Origin,
-		Environment: "production",
+		Networks:    []network.Network{network.Mainnet},
 		Requirement: kind.Requirement(),
 		DisplayName: "Prediction desk",
 	}
 	documents, err := store.Open(filepath.Join(running.Directory, "prediction.db"), store.Stamp{
-		ServerID:    settings.ServerID,
-		Environment: settings.Environment.String(),
-		GatewayURL:  settings.GatewayURL,
+		ServerID:   settings.ServerID,
+		GatewayURL: settings.GatewayURL,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -117,11 +117,12 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 			MostChecks:   5,
 			Every:        time.Minute,
 		},
-		Deposit: discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
-		Note:    "Markets I follow. Not advice.",
-		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Now:     func() time.Time { return noon },
-		Wake:    func() {},
+		Deposit:  discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
+		Networks: settings.Networks,
+		Note:     "Markets I follow. Not advice.",
+		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Now:      func() time.Time { return noon },
+		Wake:     func() {},
 	})
 	cycle, err := reconciler.Pass(ctx)
 	if err != nil {
@@ -163,10 +164,11 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 	// The words are looked for quoted, because this document's own prose is a market title the
 	// provider wrote — "Fed Decision in October?" is a market, and "decision" as a *field* would
 	// be this template keeping somebody's.
+	content := strings.ToLower(publishertest.WithoutDeclarations(t, first))
 	for _, absent := range []string{
 		"wallet", "amount", "is_yes", "side", "decision", "signature", "subscriber", "result",
 	} {
-		if strings.Contains(strings.ToLower(first), `"`+absent+`"`) {
+		if strings.Contains(content, `"`+absent+`"`) {
 			t.Fatalf("the document a phone reads has a %q field:\n%s", absent, first)
 		}
 	}
@@ -188,8 +190,17 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 			"page, which no publisher may put on a phone's screen:\n%s", first)
 	}
 
+	// The request a phone executes from names its network, Mainnet, under contract 2 (SEE-185):
+	// the gateway took the network the reconciler declared rather than one it inferred.
+	code, requests := publishertest.Read(t, running.Origin, "ListRequests",
+		map[string]any{"channel": signals.ChannelFor(publishertest.ServerID)})
+	if code != 200 || !strings.Contains(requests, "SOLANA_NETWORK_MAINNET") ||
+		!strings.Contains(requests, `"contractVersion":2`) {
+		t.Fatalf("the request a phone reads does not name its network (%d):\n%s", code, requests)
+	}
+
 	// The same document again, which is what a cycle that finds the same market sends.
-	status, err := client.Proposal(ctx, signals.Proposal(server, created.Signal))
+	status, err := client.Request(ctx, signals.Request(server, created.Signal))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +225,7 @@ func TestGatewayAcceptsWhatThePredictionTemplatePublishes(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := publishertest.ReadFeed(t, running.Origin, signals.ChannelFor(publishertest.ServerID), nil)
-	if !strings.Contains(after, "PROPOSAL_STATUS_CANCELLED") {
+	if !strings.Contains(after, "REQUEST_STATUS_CANCELLED") {
 		t.Fatalf("the feed does not show the withdrawal:\n%s", after)
 	}
 	if !strings.Contains(after, market.MarketID) {
@@ -248,6 +259,10 @@ func (l *feedListing) Events(_ context.Context, query jupiter.Query) (jupiter.Pa
 			CloseTime: noon.Add(72 * time.Hour).Unix(),
 		}},
 	}}}, nil
+}
+
+func (l *feedListing) Event(context.Context, string) (jupiter.Event, error) {
+	return jupiter.Event{}, &jupiter.Fault{Problem: jupiter.NoSuchMarket}
 }
 
 func (l *feedListing) Market(_ context.Context, id string) (jupiter.Market, error) {

@@ -14,9 +14,16 @@ syntax = "proto3";
 package seekervault.request.v2;
 
 import "google/protobuf/timestamp.proto";
+import "seekervault/server/v1/manifest.proto";
 
 // Version 1 is the first common envelope contract. It is explicit on every document so a client
 // can keep an unknown request readable and dismissible without trying to execute it.
+//
+// Version 2 (SEE-185) is the current one: the action names the Solana network it executes on
+// (ActionCapability.network), and that declaration is required. A version-1 document says nothing
+// about a network, so a client keeps it readable and never executes it: the network is never
+// inferred from a wallet, a manifest, or the assets a document names. The gateway accepts only
+// version 2 for new publications.
 message Request {
   uint32 contract_version = 1;
   RequestIdentity identity = 2;
@@ -83,6 +90,14 @@ message ActionCapability {
   uint32 capability_version = 2;
   string plugin_id = 3;
   repeated Value parameters = 4;
+  // The Solana network this action executes on (SEE-185). Required from contract version 2: the
+  // assets and markets a document names are identified by network plus address, so the same mint
+  // or market on another cluster is a different thing. One feed may publish successive documents
+  // for different networks, each within the manifest's supported_networks; a connection is never
+  // bound to one execution network. SOLANA_NETWORK_UNSPECIFIED, or a value a client does not know,
+  // leaves the document readable and not executable — never read as Mainnet or as the network of
+  // whichever wallet the owner selects.
+  seekervault.server.v1.SolanaNetwork network = 5;
 }
 
 // A bounded typed value. Integer quantities are decimal strings so the full unsigned 64-bit range

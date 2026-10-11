@@ -14,11 +14,17 @@ class FeedReferenceTest {
     private val nothingCleartext: (String) -> Boolean = { false }
     private val loopbackCleartext: (String) -> Boolean = { it == "127.0.0.1" }
 
-    private fun parse(text: String, cleartext: (String) -> Boolean = nothingCleartext) =
-        FeedReferences.parse(text, cleartext)
+    private fun parse(
+        text: String,
+        cleartext: (String) -> Boolean = nothingCleartext,
+        trusted: String = GATEWAY,
+    ) = FeedReferences.parse(text, trusted, cleartext)
 
-    private fun problem(text: String, cleartext: (String) -> Boolean = nothingCleartext) =
-        (parse(text, cleartext) as FeedReferenceResult.Invalid).problem
+    private fun problem(
+        text: String,
+        cleartext: (String) -> Boolean = nothingCleartext,
+        trusted: String = GATEWAY,
+    ) = (parse(text, cleartext, trusted) as FeedReferenceResult.Invalid).problem
 
     @Test
     fun aReferenceNamesTheGatewayAndTheServerAndNothingElse() {
@@ -93,9 +99,12 @@ class FeedReferenceTest {
 
         assertEquals(
             FeedReferenceResult.Valid(FeedReference("http://127.0.0.1:8080", SERVER_B)),
-            parse(text, loopbackCleartext),
+            parse(text, loopbackCleartext, trusted = "http://127.0.0.1:8080"),
         )
-        assertEquals(FeedReferenceProblem.InsecureGatewayUrl, problem(text))
+        assertEquals(
+            FeedReferenceProblem.InsecureGatewayUrl,
+            problem(text, trusted = "http://127.0.0.1:8080"),
+        )
     }
 
     @Test
@@ -116,6 +125,41 @@ class FeedReferenceTest {
         assertEquals(
             FeedReferenceResult.Valid(FeedReference(GATEWAY, SERVER_B)),
             parse("seekervault://feed?v=1&gateway=$GATEWAY&server=$SERVER_B&gateway=$URL_A"),
+        )
+    }
+
+    @Test
+    fun aReferenceToAnotherGatewayIsRefusedRatherThanFollowed() {
+        // SEE-185: the build names one gateway, and a link can never point the app at another.
+        val other = "https://other-gateway.example.com"
+        assertEquals(
+            FeedReferenceProblem.ForeignGateway,
+            problem("seekervault://feed?v=1&gateway=$other&server=$SERVER_B"),
+        )
+        // The same gateway, written with a trailing slash or another case, is the same one.
+        assertEquals(
+            FeedReferenceResult.Valid(FeedReference(GATEWAY, SERVER_B)),
+            parse(
+                "seekervault://feed?v=1&gateway=$GATEWAY&server=$SERVER_B",
+                trusted = "$GATEWAY/",
+            ),
+        )
+        assertEquals(
+            FeedReferenceResult.Valid(FeedReference(GATEWAY, SERVER_B)),
+            parse(
+                "seekervault://feed?v=1&gateway=$GATEWAY&server=$SERVER_B",
+                trusted = "https://GATEWAY.example.com",
+            ),
+        )
+        // A build that names no gateway adds no feed at all.
+        assertEquals(
+            FeedReferenceProblem.NoGateway,
+            problem("seekervault://feed?v=1&gateway=$GATEWAY&server=$SERVER_B", trusted = ""),
+        )
+        assertEquals(null, FeedReferences.trustedGatewayProblem(GATEWAY, GATEWAY))
+        assertEquals(
+            FeedReferenceProblem.ForeignGateway,
+            FeedReferences.trustedGatewayProblem(other, GATEWAY),
         )
     }
 }

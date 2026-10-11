@@ -7,6 +7,8 @@
  * simply not a match — a confirmed result is never reported on a guess.
  */
 
+import { isApprovedMessage } from "@seekeragentconnect/server-sdk";
+
 /** The largest signature count this reads before giving up; a transfer's is 1. */
 const MAX_SIGNATURES = 64;
 
@@ -28,8 +30,10 @@ export function transactionMessage(
 
 /**
  * Whether `onChain` is the approved transaction, signatures aside. Both must parse, and their
- * messages must be equal byte for byte: a different fee payer, recipient, amount, blockhash, or
- * extra instruction all make it false.
+ * messages must be the same approved message: equal byte for byte, or differing only by the
+ * compute-budget and Lighthouse instructions a wallet adds before sending (`isApprovedMessage`).
+ * A different program, pool, amount, blockhash, fee payer or signer, or any other instruction, all
+ * make it false.
  */
 export function isApprovedTransaction(
   approved: Uint8Array,
@@ -38,7 +42,7 @@ export function isApprovedTransaction(
   const mine = transactionMessage(approved);
   const theirs = transactionMessage(onChain);
   if (mine === undefined || theirs === undefined) return false;
-  return Buffer.from(mine).equals(Buffer.from(theirs));
+  return isApprovedMessage(mine, theirs);
 }
 
 /** A compact-u16 at the start of `bytes`: its value, and how many bytes it took. */

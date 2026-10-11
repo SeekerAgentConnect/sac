@@ -232,41 +232,80 @@ class ProposalBindingTest {
     }
 
     @Test
-    fun thePromiseBoundHasToBeTheOneTheConnectionKeepsNow() {
-        // SEE-97. The owner switched the connection while this was in hand, so what they reviewed
-        // was a rehearsal and what they would be doing is real, or the other way round. Either way
-        // it is refused on the far side of the wait for the wallet, where the expiry and the wallet
-        // selection are also checked.
+    fun theNetworkIsTheSignalsAndTheFeedHasToDeclareIt() {
+        // SEE-185: a signal names the network it executes on, and nothing else does. One that
+        // names none, one this build does not know, and one its feed does not declare are all
+        // readable and none of them is executed — asked before anything about the terms.
         assertEquals(
-            BindingProblem.OtherEnvironment,
+            BindingProblem.NetworkUnusable,
             problem(
-                reviewed(),
-                binding(proposal, chose, environment = PluginEnvironment.Sandbox),
-            ),
-        )
-        assertEquals(
-            BindingProblem.OtherEnvironment,
-            problem(
-                reviewed(),
+                record(network = SignalNetwork.Missing),
                 binding(proposal, chose),
-                environment = PluginEnvironment.Sandbox,
             ),
         )
-        // And it is asked before anything about the terms: which of the two things the owner is
-        // doing is not a question about what they chose.
         assertEquals(
-            BindingProblem.OtherEnvironment,
+            BindingProblem.NetworkUnusable,
+            problem(record(network = SignalNetwork.Unknown(9)), binding(proposal, chose)),
+        )
+        assertEquals(
+            BindingProblem.NetworkUnusable,
+            problem(reviewed(), binding(proposal, chose), networks = setOf(DEVNET)),
+        )
+        // A binding for another network than the signal's is for an operation nobody published,
+        // even when the wallet is on the binding's network.
+        assertEquals(
+            BindingProblem.OtherNetwork,
             problem(
-                record(),
-                binding(proposal, chose, environment = PluginEnvironment.Sandbox),
+                reviewed(network = SignalNetwork.Declared(DEVNET)),
+                binding(proposal, chose),
+                networks = setOf(MAINNET, DEVNET),
             ),
         )
+        // The signal's own network, with a wallet chosen for it, is allowed.
+        assertNull(
+            problem(
+                reviewed(network = SignalNetwork.Declared(DEVNET)),
+                binding(proposal, chose, network = DEVNET),
+                wallet = selected.copy(network = WalletNetwork.Devnet),
+                networks = setOf(MAINNET, DEVNET),
+            )
+        )
+    }
+
+    @Test
+    fun theExactProfileChosenForTheOperationIsTheOneThatSigns() {
+        // SEE-185: a feed operation chooses its wallet per operation, so the profile is pinned
+        // beside the address. The same address under another saved profile is another choice.
+        val chosen = selected.copy(profileId = "profile-a")
         assertNull(
             problem(
                 reviewed(),
-                binding(proposal, chose, environment = PluginEnvironment.Sandbox),
-                environment = PluginEnvironment.Sandbox,
+                binding(proposal, chose).copy(walletProfileId = "profile-a"),
+                wallet = chosen,
             )
+        )
+        assertEquals(
+            BindingProblem.OtherWallet,
+            problem(
+                reviewed(),
+                binding(proposal, chose).copy(walletProfileId = "profile-a"),
+                wallet = chosen.copy(profileId = "profile-b"),
+            ),
+        )
+        // A binding written before the profile was pinned is checked by its address alone.
+        assertNull(problem(reviewed(), binding(proposal, chose), wallet = chosen))
+    }
+
+    @Test
+    fun aPreviewIsBoundByEveryRuleAnExecutionIs() {
+        // SEE-185: whether to preview or execute is the owner's choice for this one operation, so
+        // the gate holds a preview binding to the same rules and nothing else.
+        assertNull(
+            problem(reviewed(), binding(proposal, chose, environment = PluginEnvironment.Sandbox))
+        )
+        assertEquals(
+            BindingProblem.NotReviewed,
+            problem(record(), binding(proposal, chose, environment = PluginEnvironment.Sandbox)),
         )
     }
 
@@ -385,26 +424,36 @@ class ProposalBindingTest {
 
     private fun registry(vararg providers: TestExecutionProvider) = ProviderRegistry.of(*providers)
 
-    private fun record(status: WireStatus = WireStatus.PROPOSAL_STATUS_OPEN) =
+    private fun record(
+        status: WireStatus = WireStatus.PROPOSAL_STATUS_OPEN,
+        network: SignalNetwork = SignalNetwork.Declared(MAINNET),
+    ) =
         ProposalRecord(
             connectionId = CONNECTION,
             proposal =
-                if (status == WireStatus.PROPOSAL_STATUS_OPEN) proposal
-                else proposal(wireProposal(status = status)),
+                (if (status == WireStatus.PROPOSAL_STATUS_OPEN) proposal
+                    else proposal(wireProposal(status = status)))
+                    .copy(network = network),
         )
 
-    private fun reviewed(status: WireStatus = WireStatus.PROPOSAL_STATUS_OPEN) =
-        record(status).let { it.copy(review = ProposalReview(it.proposal.revision, chose, NOW)) }
+    private fun reviewed(
+        status: WireStatus = WireStatus.PROPOSAL_STATUS_OPEN,
+        network: SignalNetwork = SignalNetwork.Declared(MAINNET),
+    ) =
+        record(status, network).let {
+            it.copy(review = ProposalReview(it.proposal.revision, chose, NOW))
+        }
 
     private fun problem(
         record: ProposalRecord,
         binding: ExecutionBinding,
         wallet: SelectedWallet? = selected,
         support: ServerSupport = ServerSupport.Supported,
-        environment: PluginEnvironment = PluginEnvironment.Production,
+        /** What the feed's manifest declares: every network, unless a test says otherwise. */
+        networks: Set<Network> = setOf(MAINNET, DEVNET, Network.NETWORK_TESTNET),
         serving: ExecutionProviderId? = JUPITER_PROVIDER,
         at: Instant = NOW,
-    ) = bindingProblem(record, binding, wallet, support, environment, serving, at)
+    ) = bindingProblem(record, binding, wallet, support, networks, serving, at)
 
     private val selected =
         SelectedWallet(address = WALLET, network = WalletNetwork.Mainnet, selectedAt = PUBLISHED)
@@ -415,5 +464,6 @@ class ProposalBindingTest {
         val NOW: Instant = PUBLISHED.plusSeconds(60)
         val PRODUCTION = PluginEnvironment.Production
         val MAINNET: Network = Network.NETWORK_MAINNET
+        val DEVNET: Network = Network.NETWORK_DEVNET
     }
 }

@@ -155,6 +155,10 @@ class DiscoverViewModel(
             Result.success(
                 CatalogFeeds.page(
                     catalog.recommended(gatewayUrl, PAGE_SIZE, token),
+                    // The catalog is read from the trusted gateway, and a card it lists is kept
+                    // only
+                    // when it names that same gateway (SEE-185).
+                    gatewayUrl,
                     cleartextPermitted,
                 )
             )

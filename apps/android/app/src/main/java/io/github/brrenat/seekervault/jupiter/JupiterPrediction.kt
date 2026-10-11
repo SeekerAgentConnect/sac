@@ -82,6 +82,13 @@ data class PredictionMarket(
     /** What a contract of each side costs now, in the deposit token's base units. */
     val buyYesPriceUsd: ULong,
     val buyNoPriceUsd: ULong,
+    /**
+     * What a contract of each side would sell for now — the best bid — or null when the provider
+     * states none. Zero or null means nobody is buying that side, so a position in it cannot be
+     * closed before the market settles.
+     */
+    val sellYesPriceUsd: ULong? = null,
+    val sellNoPriceUsd: ULong? = null,
     /** The provider's own rules text. Shown as the provider's, and never parsed. */
     val rules: String,
     /** When it stops trading, in epoch seconds; zero when the provider gives none. */
@@ -275,6 +282,8 @@ class HttpJupiterPrediction(
             result = answer.optText("result"),
             buyYesPriceUsd = pricing.baseUnits("buyYesPriceUsd"),
             buyNoPriceUsd = pricing.baseUnits("buyNoPriceUsd"),
+            sellYesPriceUsd = pricing.optBaseUnits("sellYesPriceUsd"),
+            sellNoPriceUsd = pricing.optBaseUnits("sellNoPriceUsd"),
             rules = answer.optText("rulesPrimary").orEmpty(),
             closeTime = answer.optLong("closeTime", 0L),
         )

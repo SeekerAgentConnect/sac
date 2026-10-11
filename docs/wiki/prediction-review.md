@@ -2,8 +2,11 @@
 
 SEE-158 moves the review of a `prediction.buy` signal off the older single-column
 `ProposalReviewScreen` and onto the design's review sheet (`SAC v4 Screen.dc.html`, state
-`reviewPrediction`; repository reference `design/screens/sheet-prediction.png`). Swap signals and
-direct requests are unchanged.
+`reviewPrediction`; repository reference `design/screens/sheet-prediction.png`). Direct requests
+are unchanged. A swap signal is reviewed in the same sheet through the same code: `SignalStage`, the
+verdict, the checks and the four sections are shared, and only the lines that name the operation
+differ (`SignalSheetWording`; `operations/SwapReview.kt`, see
+[shared proposals](shared-proposals.md#the-owners-part-of-a-swap)).
 
 ## Where it lives
 
@@ -33,14 +36,20 @@ in four collapsed sections):
 3. Sub-line — where the order is placed, under the provider's required name, and when the market
    closes: `Jupiter Prediction · Powered by Jupiter · closes Oct 2, 10:05 PM`. The market's ID is
    metadata and sits under Technical details.
-4. Chips — `Sandbox` (only when sandboxed) and the network (mainnet neutral, devnet orange).
-5. Sandbox card, only in sandbox.
+4. Chips — the network the signal declares (mainnet neutral, devnet orange), never the wallet's
+   (SEE-185).
+5. Previewed notice, only right after **Preview without sending**: nothing was signed or sent, the
+   signal is still open, and placing the order means approving it, which fetches a fresh quote
+   first.
 6. Status blocks, only when something went differently: not open any more, unsupported, or why an
    approval stopped. What stopped a quote is not here (see 9).
-7. Your part · side and amount — summary only, with **Choose side and amount** / **Change**.
+7. Your part · side and amount — summary only ("5 USDC on Yes · Main wallet", unchosen until a
+   wallet is chosen too), with **Choose side and amount** / **Change**.
 8. Verdict card — only when it has something true to say (see [Verdict](#verdict)).
-9. One state card where the quote would be, when there is no usable quote:
-   - **Refresh quote** — the prepared quote has run out;
+9. One state card where the quote would be, when there is no usable quote. A quote that has run
+   out gets none: approving it prepares it again first (see [Approving a quote that ran
+   out](#approving-a-quote-that-ran-out)).
+
    - **Get quote** — side and amount are chosen and nothing is prepared for them (the inputs or the
      feed's wallet changed);
    - the preparation error with **Try again** — e.g. `Insufficient funds` / "Could not prepare the 5
@@ -50,14 +59,14 @@ in four collapsed sections):
      blocks, so a long provider message is readable in full at any font size;
    - **This transaction can't be approved** with the inspection's findings and **Get a new quote** —
      bytes this phone could not account for. No tick gets past it.
-10. Quote — what you spend, contracts, cost, possible payout ("Paid out if this side wins"), provider
-    fee and market status. Supporting figures the provider marks `PluginFact.technical` (the most
-    one contract may cost, instruction and lookup-table counts) are under Technical details. Before
-    a quote: "Choose a side and an amount to get a quote."; while preparing: "Getting a quote and
-    checking the transaction…". A refresh (**Refresh quote**, **Get a new quote**) keeps the old
-    bytes in the view model until the provider answers, but the sheet shows none of them meanwhile:
-    no old quote rows, verdict, blocker, payer or accounts — only the loading card.
-11. Wallet — the feed's wallet, or the payer read out of the bytes once there are any (SEE-174).
+10. No quote card. The quote's figures — contracts, cost, possible payout, provider fee, market
+    status — and the provider's supporting ones are rows under Technical details. A refresh
+    (an approval of an expired quote, **Get a new quote**) keeps the old bytes in the view model until the
+    provider answers, but the sheet shows none of them meanwhile: no old figures, verdict, blocker,
+    payer or accounts.
+11. No wallet row. The wallet is on the Your part card and is chosen and changed in the side and
+    stake sheet (see [Side and stake](#side-and-stake)); the payer read out of the bytes (SEE-174),
+    "Wallet · paid and signed by", is under Technical details.
 12. Four collapsed sections (`ReviewSheetSection`, each a button that says Expanded/Collapsed, at
     least a touch target tall, whose open state survives recomposition and quote updates):
     - **Limits and checks** — summary such as `Daily limits not set · transaction read in full`;
@@ -69,12 +78,13 @@ in four collapsed sections):
       mainnet, fees, regions, non-endorsement), From / Prediction market / Market source, and the
       provider's how-it-works, terms and privacy links.
     - **Technical details** — action, event, market, asset, mint, decimals, least/most deposit, any
-      unknown publisher term, recipient and references, supporting figures, a preparation error's
+      unknown publisher term, the payer, recipient and references, the quote's and supporting figures, a preparation error's
       code and words, the market link, proposal, publisher and revision. Identifiers copy in full.
 13. `Expires Oct 2, 2026, 10:05 PM.`
 
 Footer: the warning checkbox only for a current, approvable quote with an orange verdict, then
-**Approve and trade** (sandbox: **Simulate the trade**) and a tonal **Dismiss**, then "Dismissing
+**Approve and trade**, a neutral **Preview without sending** under it when the provider serves a
+preview (SEE-185, [environments.md](environments.md)), and a tonal **Dismiss**, then "Dismissing
 keeps the decision on this phone. CopyTrading is never told either way."
 
 ## Display rules
@@ -134,8 +144,34 @@ day's limits from before the wallet is opened.
 The sheet's stages are explicit (`PredictionStage`): Unchosen → Preparing → Failed | Blocked | Ready
 → Expired, plus NeedsQuote for chosen inputs with nothing prepared. Changing the inputs or the
 feed's wallet drops the preparation and the consent (unchanged view-model behaviour); **Try again**,
-**Get quote**, **Get a new quote** and **Refresh quote** all prepare again from the current inputs
+**Get quote**, **Get a new quote** and **Try again** all prepare again from the current inputs
 for the bound wallet and never sign or send.
+
+### When nobody is buying the chosen side
+
+A position can be sold only to somebody bidding for it. When the market the order was prepared
+against has no bid for the chosen side (`sellYesPriceUsd` / `sellNoPriceUsd` absent or 0 in
+Jupiter's market answer), the plugin adds a **caution** to the inspection
+(`ActionInspection.cautions`, code `no_exit`). The review then shows **You may not be able to sell
+this** above everything else: once bought, the position most likely can't be sold, the trade can't
+be closed early and the money can't be taken back; it pays only if that side wins when the market
+settles. Approving needs the tick **I understand I most likely can't sell this position or get my
+money back before the market settles** (combined with the warnings text when a rule warns too).
+Without it the approval stops with "not acknowledged" and the wallet is not opened. A caution only
+ever adds this step; it never makes anything approvable, and a refreshed quote whose cautions
+differ asks for the tick again.
+
+### Approving a quote that ran out
+
+A quote's blockhash is good for under half a minute, so there is no **Refresh quote** step: the
+Expired stage stays approvable, and **Approve** (or **Preview without sending**) with less than
+15 seconds of the preparation's window left prepares it again in the background first
+(`OperationViewModel.current`, `FRESH_ENOUGH`). The same amount, side or slippage and the same wallet
+are prepared, the fresh bytes are inspected as the first ones were, and the rules are assessed
+again. If the rules' verdict or the rules that applied differ from what the owner read, the
+approval stops with "the rules changed" and shows the new verdict; nothing reaches the wallet. If
+they are the same, the owner's acknowledgement of its warnings carries over and the wallet is opened
+at once with the fresh bytes. Only the price can differ, within the slippage the owner chose.
 
 Rules on the verdict opens the connection's rules stacked over the review (`[review, rules]`).
 When stored rules change, the open review is assessed again.
@@ -143,10 +179,13 @@ When stored rules change, the open review is assessed again.
 ## Side and stake
 
 **Choose side and stake** / **Change** pushes `AppSheet.OwnerInput` (`[review, params]`). The sheet
-has a Yes/No segmented control, the amount field ("Amount to stake", 2dp primary underline while
+starts with the wallet that signs on the signal's network ("Wallet on Mainnet", "None chosen yet",
+**Choose** / **Change**), which opens the Operation wallet picker over it (`[review, params,
+wallet]`, SEE-185) exactly as a swap's does; choosing another drops what was prepared for the old
+one. Then a Yes/No segmented control, the amount field ("Amount to stake", 2dp primary underline while
 focused), the market's bounds beside it ("Minimum 5 USDC. In this asset's own units; nothing is
 rounded.", or "From … to …" when there is a most; SEE-180), and the privacy note as its
-footer. **Use these** checks the amount against the market's bounds ("At least 5 USDC."), writes the
+footer. **Use these** stays off until a wallet, a side and an amount are chosen; it checks the amount against the market's bounds ("At least 5 USDC."), writes the
 choice, prepares again at once — that is the re-quote — and closes the sheet.
 
 ## Tests

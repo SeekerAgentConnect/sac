@@ -7,9 +7,10 @@ screens.
 ## Design-system contract
 
 `ReviewSheetState` is display-only. It contains the title, headline and subline; ordered origin,
-environment, and network chips; optional sandbox and owner-input content; the policy verdict and
+environment, and network chips; optional notice and owner-input content; the policy verdict and
 rule sources; optional daily-spend rows; informational blocks; facts; unverified note; expiry;
-optional warning confirmation; two labelled actions; and the footer caption. It imports no app,
+optional warning confirmation; two labelled actions, plus an optional `previewAction` (a feed
+signal's **Preview without sending**, SEE-185); and the footer caption. It imports no app,
 request, proposal, policy, wallet, storage, or transport type.
 
 `ReviewSheet(state, onPrimary, onSecondary, onRules, onChoose, onClose)` is the only renderer. It

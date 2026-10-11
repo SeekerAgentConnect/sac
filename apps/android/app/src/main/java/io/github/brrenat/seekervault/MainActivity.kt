@@ -66,6 +66,8 @@ class MainActivity : ComponentActivity() {
                     // is an owner asking whether its publisher is running now (SEE-155).
                     refreshFeedStatus = app.foregroundFeedStatus::refresh,
                     cleartextPermitted = app::isCleartextPermitted,
+                    // The one gateway a feed reference may name (SEE-185).
+                    trustedGateway = app.gatewayUrl(),
                     // The one registry for the process, so a server's requirements are matched
                     // against the same plugins here as when a request is reviewed (SEE-88).
                     plugins = app.providerRegistry,
@@ -84,7 +86,7 @@ class MainActivity : ComponentActivity() {
                 val app = application as SeekerVaultApplication
                 DiscoverViewModel(
                     catalog = app.feedCatalog(),
-                    gatewayUrl = app.discoveryUrl(),
+                    gatewayUrl = app.gatewayUrl(),
                     cleartextPermitted = app::isCleartextPermitted,
                 )
             }
@@ -101,7 +103,7 @@ class MainActivity : ComponentActivity() {
                     app.policyEvaluator,
                     app.activityLog,
                     plugins = app.providerRegistry,
-                    chain = app.solanaAccounts(),
+                    chain = app.rpc,
                     io = app.connectionIo,
                 )
             }
@@ -161,6 +163,9 @@ class MainActivity : ComponentActivity() {
                     // operation's bytes is the same one a server's requirements were matched
                     // against (SEE-86, SEE-88).
                     providers = app.providerRegistry,
+                    // The trusted gateway's configuration, refreshed before each preparation and
+                    // the source of a feed swap's service-fee terms (SEE-185).
+                    config = app.clientConfig,
                     io = app.connectionIo,
                 )
             }
@@ -206,7 +211,7 @@ class MainActivity : ComponentActivity() {
                     positions = positions,
                     arrivals = (application as SeekerVaultApplication).arrivals,
                     discover = discover,
-                    discoveryUrl = (application as SeekerVaultApplication).discoveryUrl(),
+                    discoveryUrl = (application as SeekerVaultApplication).gatewayUrl(),
                 )
             }
         }
@@ -275,6 +280,9 @@ class MainActivity : ComponentActivity() {
         // And the chain is asked about anything this phone sent and hasn't seen settle, from the
         // phone itself (SEE-165). This is also where a force-stopped app catches up.
         (application as SeekerVaultApplication).onConfirmationsForeground()
+        // The trusted gateway's client configuration is asked for again (SEE-185): endpoints and
+        // fee terms the operator changed apply without a restart.
+        (application as SeekerVaultApplication).onClientConfigForeground()
         // Positions: what came back from the wallet or from Jupiter is read, never repeated.
         (application as SeekerVaultApplication).onPositionsForeground()
     }

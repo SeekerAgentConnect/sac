@@ -27,6 +27,10 @@
 //	feed-gatewayctl list     [--server <uuid>]
 //	feed-gatewayctl forget   --server <uuid> --yes
 //	feed-gatewayctl password [--password <text>]
+//	feed-gatewayctl client-config show
+//	feed-gatewayctl client-config set-rpc --network mainnet|devnet|testnet [--url <https url>]
+//	feed-gatewayctl client-config set-fee --bps <0-100> [--network <name>] [--owner <address>]
+//	                                      [--account <mint>=<token account> ...]
 //
 // The database is --database, or BROADCAST_DATABASE_PATH, or BROADCAST_DATABASE_URL: the same
 // variables the gateway reads, because pointing the two at different databases is the one mistake
@@ -48,10 +52,12 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/admin"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/config"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/credential"
+	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/postgres"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/sqlite"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // operates is what this tool needs of a store: the operator's own surface, and the close. It is
@@ -59,6 +65,9 @@ import (
 // target or anything a phone authorized.
 type operates interface {
 	storage.PublisherAdminStore
+	// The client configuration this gateway serves to every app (SEE-185), which `client-config`
+	// shows and replaces. It is the operator's own setting, not anything a publisher published.
+	ClientConfig(context.Context) (*storage.StoredClientConfig, error)
 	Close() error
 }
 
@@ -108,10 +117,21 @@ const usage = `feed-gatewayctl manages the publishers a feed gateway accepts.
   list     [--server <uuid>]                  what is registered, and which credentials exist
   forget   --server <uuid> --yes              remove a server and everything it published
   password [--password <text>]                print a hash for BROADCAST_ADMIN_PASSWORD_HASH
+  client-config show                          the client configuration every app reads, as JSON
+  client-config set-rpc --network <name> [--url <url>]
+                                              set one network's Solana RPC endpoint; no --url,
+                                              or an empty one, removes it (SEE-185)
+  client-config set-fee --bps <0-100> [--network <name>] [--owner <address>]
+                        [--account <mint>=<token account> ...]
+                                              replace the SAC swap service fee; --bps 0 alone
+                                              is no fee
 
   --database <path|url>
                       the gateway's database: a file, or a Postgres URL. Taken from
                       BROADCAST_DATABASE_PATH or BROADCAST_DATABASE_URL when it is not given
+
+Everything in the client configuration is public: every app may read all of it. Never put a
+secret in it; an RPC provider that needs one goes behind a proxy of your own.
 
 A credential works for one capability and only while that capability is enabled (SEE-144).
 "publish" is the public feed; "relay" lets an independently hosted direct server wake a phone
@@ -169,6 +189,16 @@ func run(arguments []string, out io.Writer) error {
 		return fmt.Errorf("name a command")
 	}
 	command, arguments := arguments[0], arguments[1:]
+	// client-config takes a subcommand before its flags, which the flag set would otherwise stop
+	// at as the first non-flag argument.
+	var subcommand string
+	if command == "client-config" {
+		if len(arguments) == 0 || strings.HasPrefix(arguments[0], "-") {
+			fmt.Fprint(out, usage)
+			return fmt.Errorf("client-config needs show, set-rpc or set-fee")
+		}
+		subcommand, arguments = arguments[0], arguments[1:]
+	}
 
 	flags := flag.NewFlagSet("feed-gatewayctl "+command, flag.ContinueOnError)
 	database := flags.String("database", configuredDatabase(),
@@ -193,6 +223,17 @@ func run(arguments []string, out io.Writer) error {
 			"leaves it unlisted and listing leaves it as it is")
 	description := flags.String("description", "",
 		"the feed's public description in the Discover tab: plain text, at most 500 characters")
+	network := flags.String("network", "",
+		"with client-config: mainnet, devnet or testnet")
+	rpcURL := flags.String("url", "",
+		"with client-config set-rpc: the network's endpoint; omitted or empty, it is removed")
+	bps := flags.String("bps", "",
+		"with client-config set-fee: the service fee in whole basis points, 0 to 100")
+	owner := flags.String("owner", "",
+		"with client-config set-fee: the public address that owns every receiving account")
+	var accounts repeated
+	flags.Var(&accounts, "account",
+		"with client-config set-fee: <mint>=<token account>, once per mint")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -220,6 +261,11 @@ func run(arguments []string, out io.Writer) error {
 	now := time.Now()
 
 	switch command {
+	case "client-config":
+		return clientConfig(ctx, documents, subcommand, clientConfigFlags{
+			network: *network, url: *rpcURL, bps: *bps, owner: *owner, accounts: accounts,
+		}, given, now, out)
+
 	case "listing":
 		if !rules.IsID(*serverID) {
 			return fmt.Errorf("--server must be a lowercase UUID")
@@ -507,6 +553,103 @@ func run(arguments []string, out io.Writer) error {
 		fmt.Fprint(out, usage)
 		return fmt.Errorf("unknown command %q", command)
 	}
+}
+
+// repeated is a flag that may be given more than once, each value kept in order.
+type repeated []string
+
+func (r *repeated) String() string       { return strings.Join(*r, ",") }
+func (r *repeated) Set(one string) error { *r = append(*r, one); return nil }
+
+type clientConfigFlags struct {
+	network, url, bps, owner string
+	accounts                 []string
+}
+
+// clientConfig is `client-config`: the admin page's client configuration (SEE-185) for an operator
+// with a shell instead of a browser. Each change replaces one half of what is held — one network's
+// endpoint, or the whole fee — through the same store method and the same rules as the page, inside
+// the store's transaction, so a change saved by the page or another shell at the same moment is
+// kept, a refusal names the rule and saves nothing, and saving what is already held is reported as
+// unchanged with the revision where it was.
+func clientConfig(
+	ctx context.Context,
+	documents operates,
+	subcommand string,
+	flags clientConfigFlags,
+	given map[string]bool,
+	now time.Time,
+	out io.Writer,
+) error {
+	var change func(*gatewayv1.ClientConfig)
+	switch subcommand {
+	case "show":
+		held, err := documents.ClientConfig(ctx)
+		if err != nil {
+			return err
+		}
+		written, err := protojson.MarshalOptions{
+			Multiline: true, Indent: "  ", EmitUnpopulated: true,
+		}.Marshal(held.Document)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s\n", written)
+		return nil
+
+	case "set-rpc":
+		chosen := rules.NetworkNamed(flags.network)
+		if !rules.KnownNetwork(chosen) {
+			return fmt.Errorf("--network must be mainnet, devnet or testnet")
+		}
+		written := strings.TrimSpace(flags.url)
+		change = func(next *gatewayv1.ClientConfig) {
+			var endpoints []*gatewayv1.RpcEndpoint
+			for _, endpoint := range next.GetRpcEndpoints() {
+				if endpoint.GetNetwork() != chosen {
+					endpoints = append(endpoints, endpoint)
+				}
+			}
+			if written != "" {
+				endpoints = append(endpoints, &gatewayv1.RpcEndpoint{Network: chosen, Url: written})
+			}
+			next.RpcEndpoints = endpoints
+		}
+
+	case "set-fee":
+		if !given["bps"] {
+			return fmt.Errorf("set-fee needs --bps: the whole fee is replaced, and 0 is no fee")
+		}
+		fee, err := admin.SwapFee(flags.bps, flags.network, flags.owner, flags.accounts)
+		if err != nil {
+			return fmt.Errorf("the fee was not saved: %v", err)
+		}
+		change = func(next *gatewayv1.ClientConfig) { next.SwapFee = fee }
+
+	default:
+		return fmt.Errorf("client-config needs show, set-rpc or set-fee, not %q", subcommand)
+	}
+	saved, changed, err := documents.UpdateClientConfig(ctx, change, now)
+	var problem *rules.ConfigProblem
+	if errors.As(err, &problem) {
+		return fmt.Errorf("nothing was saved: %v", problem)
+	}
+	if err != nil {
+		return err
+	}
+	if changed {
+		fmt.Fprintf(out, "saved as revision %d\n", saved.Document.GetRevision())
+	} else {
+		fmt.Fprintf(out, "unchanged: that is the configuration already held, still revision %d\n",
+			saved.Document.GetRevision())
+	}
+	for _, endpoint := range saved.Document.GetRpcEndpoints() {
+		fmt.Fprintf(out, "rpc %-8s %s\n", rules.NetworkName(endpoint.GetNetwork()), endpoint.GetUrl())
+	}
+	fmt.Fprintf(out, "fee          %s\n", admin.FeeSentence(saved.Document.GetSwapFee()))
+	fmt.Fprint(out, "Every app that trusts this gateway reads it the next time it asks. All of it is "+
+		"public.\n")
+	return nil
 }
 
 // hashPassword turns the operator's chosen password into the one line a deployment configures.

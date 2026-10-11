@@ -73,6 +73,14 @@ enum class FeedReferenceProblem {
     BadAccess,
     /** An `invitation` parameter that is not an invitation's shape (SEE-156). */
     BadInvitation,
+    /**
+     * A well-formed reference to a feed on a gateway other than the one this build trusts
+     * (SEE-185). A link can never point the app at another gateway, so it is refused rather than
+     * followed.
+     */
+    ForeignGateway,
+    /** This build names no gateway at all, so no feed can be added (SEE-185). */
+    NoGateway,
 }
 
 /**
@@ -89,7 +97,15 @@ object FeedReferences {
      * whether plain HTTP may reach a host, which is how a development gateway on loopback is
      * reached from a debug build.
      */
-    fun parse(text: String, cleartextPermitted: (host: String) -> Boolean): FeedReferenceResult {
+    fun parse(
+        text: String,
+        /**
+         * The one gateway this build trusts (SEE-185). A reference naming any other is refused with
+         * [FeedReferenceProblem.ForeignGateway], and with none every reference is refused.
+         */
+        trustedGateway: String,
+        cleartextPermitted: (host: String) -> Boolean,
+    ): FeedReferenceResult {
         val uri =
             try {
                 URI(text.trim())
@@ -116,15 +132,41 @@ object FeedReferences {
                     invitation == null || isInvitation(invitation)
                 }
         if (problem != null) return invalid(problem)
+        val origin = PairingCodes.normalizeServerUrl(gateway)
+        trustedGatewayProblem(origin, trustedGateway)?.let {
+            return invalid(it)
+        }
         return FeedReferenceResult.Valid(
             FeedReference(
-                PairingCodes.normalizeServerUrl(gateway),
+                origin,
                 serverId,
                 // An invitation is only ever for a restricted feed.
                 restricted = access == "restricted" || invitation != null,
                 invitation = invitation,
             )
         )
+    }
+
+    /**
+     * Why a feed on [origin] can't be read by a build that trusts [trustedGateway], or null when it
+     * is that gateway (SEE-185). Compared as normalized origins, so a trailing slash or the case of
+     * a host is not a different gateway.
+     */
+    fun trustedGatewayProblem(origin: String, trustedGateway: String): FeedReferenceProblem? {
+        if (trustedGateway.isBlank()) return FeedReferenceProblem.NoGateway
+        val trusted =
+            try {
+                PairingCodes.normalizeServerUrl(trustedGateway.trim())
+            } catch (_: Exception) {
+                return FeedReferenceProblem.NoGateway
+            }
+        val candidate =
+            try {
+                PairingCodes.normalizeServerUrl(origin)
+            } catch (_: Exception) {
+                return FeedReferenceProblem.BadGatewayUrl
+            }
+        return if (candidate == trusted) null else FeedReferenceProblem.ForeignGateway
     }
 
     /**

@@ -9,6 +9,7 @@ import {
   ActionRequestSchema,
   ActionSchema,
   Network,
+  OutcomeSchema,
   RequestError,
   RequestState,
   StakingOperation,
@@ -23,9 +24,11 @@ import { temporaryDatabasePath } from "../testing/process.ts";
 import { testWallet } from "../testing/wallet.ts";
 import { PairingStore } from "./pairing-store.ts";
 import {
+  REOPENED_DETAIL,
   RequestStore,
   WALLET_CHANGED_DETAIL,
   type NewRequest,
+  type NotSentProof,
 } from "./request-store.ts";
 
 const NOON = Date.UTC(2026, 8, 11, 12); // 2026-09-11T12:00:00Z
@@ -34,8 +37,16 @@ const OTHER_CONNECTION = "a7e9c1b3-4d5f-4a6b-8c7d-9e0f1a2b3c4d";
 const SERVER_URL = "http://127.0.0.1:8080";
 const WALLET = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW";
 const OTHER_WALLET = "3YKUMU99pedShDEe76HuSAHo3dt9CXjBwjN8w8NUo9Wh";
-const { PENDING, PROCESSING, COMPLETED, REJECTED, CANCELLED, EXPIRED } =
-  RequestState;
+const {
+  PENDING,
+  PROCESSING,
+  COMPLETED,
+  REJECTED,
+  CANCELLED,
+  EXPIRED,
+  UNKNOWN,
+  SUBMITTED,
+} = RequestState;
 
 type Result = MessageInitShape<typeof SubmitResultRequestSchema>["result"];
 const ACKNOWLEDGEMENT: Result = { case: "acknowledgement", value: {} };
@@ -925,6 +936,183 @@ describe("RequestStore: pending pages", () => {
         refused(RequestError.INVALID_PARAMETERS),
       );
     }
+  });
+});
+
+describe("RequestStore: reopening a transaction that was never sent", () => {
+  const LOST: Result = {
+    case: "unknownOutcome",
+    value: { detail: "The wallet never answered." },
+  };
+  const NOT_SENT: Result = {
+    case: "notSent",
+    value: {
+      detail: "No transaction in the wallet's history; the blockhash expired.",
+    },
+  };
+
+  /** Prepares the request's next version, with a blockhash valid through block 100. */
+  function prepare(s: Setup, request: ActionRequest) {
+    const transaction = Uint8Array.of(7, s.clock.now % 251);
+    return s.store.storePrepared(s.connectionId, request.ref, {
+      transaction,
+      contentHash: createHash("sha256").update(transaction).digest(),
+      lastValidBlockHeight: 100n,
+      estimatedExpiryMs: s.clock.now + 60_000,
+      feeLamports: 5000n,
+      rentLamports: 0n,
+    });
+  }
+
+  function approve(s: Setup, request: ActionRequest, version: number) {
+    return answer(s, request, {
+      case: "approval",
+      value: {
+        preparedVersion: version,
+        contentHash: s.store.preparedVersion(idOf(request), version)
+          ?.contentHash,
+      },
+    });
+  }
+
+  function notSent(s: Setup, request: ActionRequest, proof?: NotSentProof) {
+    return s.store.submit(
+      s.connectionId,
+      create(SubmitResultRequestSchema, { ref: request.ref, result: NOT_SENT }),
+      proof,
+    );
+  }
+
+  /** A transfer the owner approved as version 1, and whose wallet never answered: UNKNOWN. */
+  function lost(s: Setup, fields: Partial<NewRequest> = {}): ActionRequest {
+    s.store.publishWallet(s.connectionId, binding(WALLET));
+    const { request } = s.store.create({
+      action: transfer(WALLET, Network.DEVNET),
+      agentNote: "",
+      idempotencyKey: "never-sent",
+      ...fields,
+    });
+    prepare(s, request);
+    assert.equal(approve(s, request, 1).request.state, PROCESSING);
+    const unknown = answer(s, request, LOST).request;
+    assert.equal(unknown.state, UNKNOWN);
+    return unknown;
+  }
+
+  it("moves UNKNOWN back to PENDING with proof, and keeps nothing of the dead attempt", () => {
+    const s = setup();
+    const request = lost(s);
+    s.clock.now = NOON + 120_000;
+    const reopened = notSent(s, request, { approvedVersion: 1 });
+    assert.equal(reopened.duplicate, false);
+    assert.equal(reopened.request.state, PENDING);
+    assert.ok(
+      equals(
+        OutcomeSchema,
+        reopened.request.outcome ?? create(OutcomeSchema),
+        create(OutcomeSchema, { detail: REOPENED_DETAIL }),
+      ),
+    );
+    assert.ok(
+      pending(s).requests.some((listed) => idOf(listed) === idOf(request)),
+    );
+    // A retried not_sent changes nothing, and needs no second check.
+    const again = notSent(s, request);
+    assert.equal(again.duplicate, true);
+    assert.equal(again.request.state, PENDING);
+  });
+
+  it("refuses not_sent without proof for the approved version, and moves nothing", () => {
+    const s = setup();
+    const request = lost(s);
+    assert.throws(
+      () => notSent(s, request),
+      refused(RequestError.INVALID_STATE, UNKNOWN),
+    );
+    assert.throws(
+      () => notSent(s, request, { approvedVersion: 2 }),
+      refused(RequestError.INVALID_STATE, UNKNOWN),
+    );
+    assert.equal(s.store.get(idOf(request)).state, UNKNOWN);
+  });
+
+  it("refuses not_sent in any state but UNKNOWN, whatever the proof", () => {
+    const s = setup();
+    s.store.publishWallet(s.connectionId, binding(WALLET));
+    const { request } = s.store.create({
+      action: transfer(WALLET, Network.DEVNET),
+      agentNote: "",
+      idempotencyKey: "not-unknown",
+    });
+    const proof = { approvedVersion: 1 };
+    assert.throws(
+      () => notSent(s, request, proof),
+      refused(RequestError.INVALID_STATE, PENDING),
+    );
+    prepare(s, request);
+    approve(s, request, 1);
+    assert.throws(
+      () => notSent(s, request, proof),
+      refused(RequestError.INVALID_STATE, PROCESSING),
+    );
+    answer(s, request, {
+      case: "transactionSubmission",
+      value: { signature: new Uint8Array(64).fill(1) },
+    });
+    assert.throws(
+      () => notSent(s, request, proof),
+      refused(RequestError.INVALID_STATE, SUBMITTED),
+    );
+    const { request: ackRequest } = s.store.create(
+      ack("Hello", "ack-not-sent"),
+    );
+    assert.throws(
+      () => notSent(s, ackRequest, proof),
+      refused(RequestError.INVALID_STATE, PENDING),
+    );
+  });
+
+  it("needs a fresh preparation before the owner can approve again, and can reopen again", () => {
+    const s = setup();
+    const request = lost(s);
+    notSent(s, request, { approvedVersion: 1 });
+    // Version 1 went to the wallet once; its blockhash is dead.
+    assert.throws(
+      () => approve(s, request, 1),
+      refused(RequestError.STALE_PREPARATION, PENDING),
+    );
+    s.clock.now = NOON + 1000;
+    assert.equal(prepare(s, request).version, 2);
+    const approved = approve(s, request, 2).request;
+    assert.equal(approved.state, PROCESSING);
+    assert.equal(approved.outcome?.approval?.preparedVersion, 2);
+    assert.equal(approved.outcome?.detail, REOPENED_DETAIL);
+    // The second attempt's results are new, even where they repeat the first attempt's bytes.
+    const unknown = answer(s, request, LOST);
+    assert.equal(unknown.duplicate, false);
+    assert.equal(unknown.request.state, UNKNOWN);
+    assert.throws(
+      () => notSent(s, request, { approvedVersion: 1 }),
+      refused(RequestError.INVALID_STATE, UNKNOWN),
+    );
+    const reopened = notSent(s, request, { approvedVersion: 2 });
+    assert.equal(reopened.duplicate, false);
+    assert.equal(reopened.request.state, PENDING);
+  });
+
+  it("expires a reopened request at once when its deadline has passed", () => {
+    const s = setup();
+    const request = lost(s, { expiresInSeconds: 60 });
+    s.clock.now = NOON + 61_000;
+    // UNKNOWN isn't held to the deadline, so the request is still waiting for the outcome.
+    assert.equal(s.store.get(idOf(request)).state, UNKNOWN);
+    const reopened = notSent(s, request, { approvedVersion: 1 });
+    assert.equal(reopened.request.state, EXPIRED);
+    assert.equal(
+      reopened.request.outcome?.detail,
+      "The request expired before the owner decided.",
+    );
+    assert.equal(reopened.request.outcome?.approval, undefined);
   });
 });
 

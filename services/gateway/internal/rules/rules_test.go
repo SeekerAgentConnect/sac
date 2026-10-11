@@ -44,9 +44,6 @@ func manifest(change ...func(*serverv1.ServerManifest)) *serverv1.ServerManifest
 		RequiredPlugins: []*serverv1.PluginRequirement{
 			{PluginId: "jupiter.swap", MinContract: 1, MaxContract: 1},
 		},
-		Environments: []serverv1.ServerEnvironment{
-			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-		},
 		DisplayName: "Copy trading",
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: gatewayURL,
@@ -169,20 +166,6 @@ func TestEveryManifestRuleHasItsOwnAnswer(t *testing.T) {
 				})
 			}
 		}), gatewayv1.GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_PLUGINS},
-		{"no environment", manifest(func(m *serverv1.ServerManifest) {
-			m.Environments = nil
-		}), gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ENVIRONMENT},
-		{"an unspecified environment", manifest(func(m *serverv1.ServerManifest) {
-			m.Environments = []serverv1.ServerEnvironment{
-				serverv1.ServerEnvironment_SERVER_ENVIRONMENT_UNSPECIFIED,
-			}
-		}), gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ENVIRONMENT},
-		{"the same environment twice", manifest(func(m *serverv1.ServerManifest) {
-			m.Environments = []serverv1.ServerEnvironment{
-				serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
-				serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
-			}
-		}), gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ENVIRONMENT},
 		{"an unspecified network", manifest(func(m *serverv1.ServerManifest) {
 			m.GetFeed().SupportedNetworks = []serverv1.SolanaNetwork{
 				serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED,
@@ -514,22 +497,6 @@ func TestWhatARevisionMeansForAManifest(t *testing.T) {
 		{"a late retry", manifest(func(m *serverv1.ServerManifest) {
 			m.SettingsRevision = 2
 		}), Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_STALE_REVISION},
-		// The one field a higher revision cannot move (SEE-97). Everything else about this
-		// document may change; what the server promises when the owner approves may not, or a
-		// phone that added a demonstration would be holding a production feed without being asked.
-		{"a sandbox server that publishes itself as production", manifest(
-			func(m *serverv1.ServerManifest) {
-				m.SettingsRevision = 4
-				m.Environments = []serverv1.ServerEnvironment{
-					serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
-				}
-			}), Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT},
-		{"one that adds an environment to the one it had", manifest(
-			func(m *serverv1.ServerManifest) {
-				m.SettingsRevision = 4
-				m.Environments = append(m.Environments,
-					serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX)
-			}), Stored, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			next, fault := Manifest(one.next, expectation())
@@ -553,33 +520,22 @@ func TestWhatARevisionMeansForAManifest(t *testing.T) {
 	}
 }
 
-// The promise is the set, not the order a publisher happened to write it in: a document that lists
-// the same two environments the other way round has changed nothing, and refusing it would make a
-// publisher's serialization order part of its identity (SEE-97).
-func TestReorderingTheEnvironmentsChangesNothing(t *testing.T) {
-	both := func(first, second serverv1.ServerEnvironment) *serverv1.ServerManifest {
-		return manifest(func(m *serverv1.ServerManifest) {
-			m.Environments = []serverv1.ServerEnvironment{first, second}
-		})
-	}
-	production := serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION
-	sandbox := serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX
-	held, fault := Manifest(both(production, sandbox), expectation())
+// A manifest no longer names an environment (SEE-185): the field is reserved, and a publisher whose
+// template still sends it sends a field this gateway does not know. It is dropped by the rebuild
+// like any other unknown field, so no phone is ever handed a promise the contract no longer has.
+func TestARetiredEnvironmentIsNeverRelayed(t *testing.T) {
+	message := manifest()
+	// ServerManifest field 6, packed: SERVER_ENVIRONMENT_PRODUCTION as an old publisher wrote it.
+	message.ProtoReflect().SetUnknown([]byte{0x32, 0x01, 0x01})
+	stored, fault := Manifest(message, expectation())
 	if fault != nil {
-		t.Fatal(fault.Problem)
+		t.Fatalf("a manifest carrying a retired field was refused: %v", fault.Problem)
 	}
-	reordered := both(sandbox, production)
-	reordered.SettingsRevision = 4
-	next, fault := Manifest(reordered, expectation())
-	if fault != nil {
-		t.Fatal(fault.Problem)
+	if len(stored.ProtoReflect().GetUnknown()) != 0 {
+		t.Fatal("the retired environments field was relayed")
 	}
-	decision, fault := AdvanceManifest(held, next)
-	if fault != nil {
-		t.Fatalf("a reorder was refused: %v", fault.Problem)
-	}
-	if decision != Stored {
-		t.Fatalf("a higher revision was %v", decision)
+	if !proto.Equal(stored, manifest()) {
+		t.Fatalf("the manifest changed on the way through:\n%v", stored)
 	}
 }
 
@@ -623,7 +579,7 @@ func TestAManifestMayDeclareNoNetworks(t *testing.T) {
 	}
 }
 
-// Unlike an environment, a network may change on a higher revision (SEE-174): a publisher that adds
+// A network may change on a higher revision (SEE-174): a publisher that adds
 // Devnet has changed what it can do, and the phone refuses to sign for a connection whose network
 // the manifest stops listing. At the same revision the networks are content like any other.
 func TestWhatARevisionMeansForTheNetworks(t *testing.T) {

@@ -24,6 +24,7 @@ import io.github.brrenat.seekervault.plugins.SaleBlock
 import io.github.brrenat.seekervault.plugins.SaleTerms
 import io.github.brrenat.seekervault.plugins.saleBlockOf
 import io.github.brrenat.seekervault.solana.LookupException
+import io.github.brrenat.seekervault.solana.NetworkAccounts
 import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.solana.SolanaException
 import io.github.brrenat.seekervault.solana.resolveLookups
@@ -393,7 +394,7 @@ const val PROCEEDS_DECIMALS: Int = 6
  */
 internal class JupiterPositions(
     private val api: JupiterPrediction,
-    private val chain: SolanaAccounts,
+    private val chain: NetworkAccounts,
     private val now: () -> Instant,
 ) : PositionManagement {
 
@@ -491,7 +492,15 @@ internal class JupiterPositions(
         val version = builds.incrementAndGet()
         val read =
             try {
-                inspectPredictionSale(held, position, close, wallet, version, chain)
+                // The position's own network, as it was bought: never the wallet's current one.
+                inspectPredictionSale(
+                    held,
+                    position,
+                    close,
+                    wallet,
+                    version,
+                    chain.on(held.network),
+                )
             } catch (e: SolanaException) {
                 throw PluginFailure(e.problem.code, e.problem.message, e.detail)
             } catch (e: LookupException) {

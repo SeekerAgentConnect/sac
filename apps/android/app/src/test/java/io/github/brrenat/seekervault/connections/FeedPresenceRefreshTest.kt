@@ -87,6 +87,7 @@ class FeedPresenceRefreshTest {
             foregroundFeedStatus = manager.state,
             refreshFeedStatus = manager::refresh,
             cleartextPermitted = { false },
+            trustedGateway = GATEWAY,
         )
 
     /** The acceptance the finding asked for: refresh, and the row is right, with no timer. */

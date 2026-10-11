@@ -283,7 +283,9 @@ const TRANSFER_DESCRIPTION =
   "it. Read the outcome later with vault_get_request until terminal is true: CONFIRMED means it " +
   "succeeded on chain and carries the transaction's `signature`, REJECTED that the owner or the " +
   "wallet declined, EXPIRED that the deadline passed, FAILED that it did not go through, and " +
-  "UNKNOWN that the result isn't settled yet — never retry an UNKNOWN request. `amount` is in " +
+  "UNKNOWN that the result isn't settled yet — never retry an UNKNOWN request. An UNKNOWN " +
+  "transfer can return to PENDING when the owner's phone proves it was never sent; keep polling, " +
+  "since the owner then reviews and approves it again. `amount` is in " +
   "the asset's base units, never a decimal: lamports for SOL (1 SOL is 1000000000), and the " +
   "mint's own base units for a token, whose decimals the sidecar reads from the chain rather " +
   "than from any ticker. `recipient` is the receiving wallet's own address, not a token " +

@@ -62,7 +62,7 @@ caller learns that it may not publish and never whether what it presented used t
 | Method and path | What it does |
 | --- | --- |
 | `GET /healthz` | Says the process is up, and nothing else. No credential |
-| `GET /v1/status` | Which publisher this is, which gateway it publishes through, what it promises, and how many signals are waiting to be published |
+| `GET /v1/status` | Which publisher this is, which gateway it publishes through, its manifest's publication state, and how many signals are waiting to be published |
 | `GET /v1/manifest` | The manifest this template publishes about itself — including `supported_networks`, the Solana networks its feed reference declares (`["mainnet"]` for both demos, `[]` for none; SEE-174) — and the `seekervault://feed` reference a phone adds it from |
 | `POST /v1/requests` | Create and publish a feed request. **Requires `Idempotency-Key`** |
 | `GET /v1/requests` | Every request this template holds, newest first |
@@ -134,6 +134,7 @@ curl -sS https://signals.example.com/v1/requests \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: desk-1-sol-usdc-2026-09-17T19:00Z' \
   -d '{
+    "network": "mainnet",
     "expires_at": "2026-09-17T21:00:00Z",
     "note": "trimming SOL into USDC on the bounce",
     "terms": {
@@ -155,6 +156,7 @@ The Go client in `examples/demo-signals/sdk` calls that same endpoint:
 client, _ := sdk.New(sdk.Options{URL: apiURL, Token: token})
 created, err := client.CreateRequest(ctx, sdk.CreateRequest{
     IdempotencyKey: "desk-1-sol-usdc-2026-09-17T19:00Z",
+    Network:        "mainnet",
     ExpiresAt:      time.Date(2026, 9, 17, 21, 0, 0, 0, time.UTC),
     Description:    "trimming SOL into USDC on the bounce",
     Parameters:     terms,
@@ -165,13 +167,16 @@ The whole of the request body:
 
 | Field | Rules |
 | --- | --- |
+| `network` | Required on a create and on every update (SEE-185): the Solana network the signal executes on, `mainnet`, `devnet` or `testnet`, and one the deployment's manifest declares. Nothing defaults it, not even when the manifest declares a single network. It is fixed when the signal is created |
 | `expires_at` | Required. An **absolute** RFC 3339 instant, in the future. Absolute rather than a duration because a phone that was switched off for a day has to reach the same conclusion as one that was not |
 | `note` | Optional. At most 1024 bytes of printable text, line breaks allowed. It is shown to each owner as the publisher's own words, beside — never instead of — what their phone established for itself |
 | `terms` | Required. An object of **text** values: the operation's own terms. Text and not numbers because a quantity in base units exceeds what a JSON number holds exactly, and because that is what the document carries |
 
 Everything else about a signal is the template's to mint, and there is no field for any of it: the
-proposal ID, the revision, the channel, the operation, the plugin, the times it keeps and the
-environment all come from the deployment and the kind it registered.
+proposal ID, the revision, the channel, the operation, the plugin and the times it keeps all come
+from the deployment and the kind it registered. Whether an owner previews or executes the signal is
+their choice on the phone, not something a publisher sends
+([`docs/wiki/environments.md`](../wiki/environments.md)).
 
 The terms for a swap are in [`docs/protocol.md`](../protocol.md#a-swap-signals-terms-see-93):
 `input_mint`, `input_decimals`, `output_mint`, `output_decimals` and `max_slippage_bps` are
@@ -184,7 +189,7 @@ Numbers are published canonically, so `"09"` and `"9"` are the same signal.
 ```json
 {
   "request": {
-    "contract_version": 1,
+    "contract_version": 2,
     "identity": {
       "source_id": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
       "scope": "server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
@@ -206,6 +211,7 @@ Numbers are published canonically, so `"09"` and `"9"` are the same signal.
       "capability_id": "swap",
       "capability_version": 1,
       "plugin_id": "jupiter.swap",
+      "network": "SOLANA_NETWORK_MAINNET",
       "parameters": [{ "key": "input_mint", "text": "So11111111111111111111111111111111111111112" }]
     },
     "owner_inputs": [{ "key": "input_amount", "label": "Amount", "kind": "OWNER_INPUT_KIND_AMOUNT", "required": true, "minimum": "1" }],
@@ -220,16 +226,19 @@ Numbers are published canonically, so `"09"` and `"9"` are the same signal.
 A revision is written as text, because it can exceed what a JSON number holds exactly — the same
 reason protojson writes a 64-bit integer as a string. Compare revisions as integers, not as floats.
 
+The document is request contract 2, whose `action.network` is the network you sent. The network is
+part of the statement, so two signals that differ only in network are two statements.
+
 | Status | What it means |
 | --- | --- |
 | **201** | The signal exists and the gateway holds it |
 | **200** | Nothing changed: a replay of the same key, or an update whose content was identical |
 | **202** | The signal exists here and its publication is **pending** — the gateway could not be reached, or is rate-limiting. It will be retried; `publication.next_attempt_at` says when |
-| **400** | The statement broke a rule. `error` is a stable code, `term` names the term when one is at fault, `detail` is a sentence |
+| **400** | The statement broke a rule. `error` is a stable code, `term` names the term when one is at fault, `detail` is a sentence. For the network: `bad_network` (missing, or not `mainnet`, `devnet` or `testnet`) and `other_network` (one this deployment's manifest does not declare, which the gateway would refuse), both with `term` `network` |
 | **401** | No token, or the wrong one |
 | **404** | No request of that ID, or no such endpoint |
 | **405** | That endpoint does not take this method; the `Allow` header says which |
-| **409** | `key_reused` — that key belongs to a different statement — or `cancelled`: a withdrawal is final |
+| **409** | `key_reused` — that key belongs to a different statement — `cancelled`: a withdrawal is final — or `network_fixed`: an update names another network than the signal was created with |
 | **415** | The body was not declared `application/json` |
 | **429** | Optional `PUBLISHER_CREATE_LIMIT` (new creates per hour). Unset or 0 is unlimited. `error` is `rate_limited` |
 | **502** | The gateway **refused** the publication in a way retrying cannot change. `publication.problem` is the gateway's own problem code |
@@ -263,13 +272,19 @@ An update is the **whole statement**, not the parts that changed:
 ```sh
 curl -sS -X PUT https://signals.example.com/v1/requests/$ID \
   -H "Authorization: Bearer $PUBLISHER_API_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"expires_at":"2026-09-17T22:00:00Z","note":"widening the slippage",
+  -d '{"network":"mainnet","expires_at":"2026-09-17T22:00:00Z","note":"widening the slippage",
        "terms":{ "…": "…", "max_slippage_bps":"90" }}'
 ```
 
 There is no field-level merge, because the gateway stores a publisher's complete current statement
 and never merges a partial one — a merge here would be this template inventing a document nobody
-wrote. An omitted `note` clears the note.
+wrote. An omitted `note` clears the note. The update names the signal's network again, and it must
+be the one the signal was created with (`409 network_fixed` otherwise): to move a signal to another
+network, withdraw it and publish a new one there.
+
+**A signal stored before SEE-185 has no network,** and none is given to it. It stays readable and can
+be withdrawn, but it is never published as an open document again: the publication is refused
+locally with the problem `no_network`. Withdraw it and publish a new signal with a `network`.
 
 The answer carries `"changed": true` or `"changed": false`. False means the content was identical:
 the revision did not move, nothing was published, and no phone was woken. That makes re-posting your
@@ -309,8 +324,9 @@ The problem is the gateway's own code. The ones worth knowing:
 | `other_gateway`, `not_a_feed` | `PUBLISHER_GATEWAY_URL` is not the gateway's own origin |
 | `too_many_proposals` | The channel is at its bound. Withdraw something, then retry |
 | `stale_revision`, `revision_conflict`, `cancelled` | This template's view and the gateway's disagree; look at both before retrying |
-| `other_environment` | `PUBLISHER_ENVIRONMENT` is not the one this server ID already published (SEE-97). A second environment is a second deployment, with its own server ID, credential and database |
-| `bad_network` | The manifest's supported networks name an unknown network or one twice (SEE-174). A template refuses a bad `PUBLISHER_SUPPORTED_NETWORKS` at startup, so this is a template built outside the support library |
+| `bad_network` | The manifest's supported networks name an unknown network or one twice (SEE-174), or a signal names no network or an unknown one (SEE-185). A template refuses a bad `PUBLISHER_SUPPORTED_NETWORKS` at startup and a bad `network` with a 400, so this is a template built outside the support library |
+| `other_network` | The signal's network is not one the manifest the gateway holds declares, or the gateway holds no manifest for this publisher yet (SEE-185). Publish a manifest that declares it; the API already refuses a network the deployment does not declare |
+| `no_network` | Not the gateway's: this template refused locally to publish a signal stored before SEE-185, which has no network. Withdraw it and publish a new one |
 | `unimplemented` (404) | `PUBLISHER_PUBLISH_URL` is not reaching the gateway's publisher API |
 
 Nothing retries a refusal on its own. When the cause is fixed:
@@ -328,7 +344,7 @@ and the answer says what happened.
 The shape that stays correct under every failure this API has:
 
 ```python
-import requests, uuid
+import os, requests, uuid
 
 API, TOKEN = "https://signals.example.com", os.environ["PUBLISHER_API_TOKEN"]
 headers = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
@@ -337,7 +353,10 @@ def publish(decision) -> str:
     # A key your own system can reproduce: the same decision retried must carry the same key.
     key = f"{decision.desk}-{decision.pair}-{decision.at.isoformat()}"
     answer = requests.post(f"{API}/v1/requests", headers={**headers, "Idempotency-Key": key},
-                           json={"expires_at": decision.expires.isoformat(),
+                           # The network is required and explicit: it is the signal's own, never
+                           # inferred from a wallet or the manifest. Omitting it is 400 bad_network.
+                           json={"network": decision.network,   # e.g. "mainnet"
+                                 "expires_at": decision.expires.isoformat(),
                                  "note": decision.reasoning,
                                  "terms": decision.terms})
     if answer.status_code in (200, 201, 202):

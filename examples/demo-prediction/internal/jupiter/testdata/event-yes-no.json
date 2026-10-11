@@ -1,0 +1,79 @@
+{
+  "eventId": "POLY-403296",
+  "isActive": true,
+  "isLive": false,
+  "category": "sports",
+  "subcategory": "nba",
+  "tags": [
+    "props",
+    "nba",
+    "basketball",
+    "golden-state-warriors",
+    "stephen-curry",
+    "sports"
+  ],
+  "metadata": {
+    "slug": "nba-stephen-curry-to-leave-warriors",
+    "title": "NBA: Stephen Curry to leave Warriors?",
+    "isLive": false,
+    "series": "polymarket",
+    "eventId": "POLY-403296",
+    "imageUrl": "https://polymarket-upload.s3.us-east-2.amazonaws.com/nba-stephen-curry-to-leave-warriors-QN6qkhRXEA-l.png",
+    "subtitle": "",
+    "closeTime": "2026-10-22T00:00:00Z"
+  },
+  "volumeUsd": "319000000000",
+  "volume24hr": "10315000000",
+  "beginAt": null,
+  "closeCondition": "This market will close and expire after a winner is declared.",
+  "rulesPdf": "",
+  "markets": [
+    {
+      "provider": "polymarket",
+      "marketId": "POLY-2044124",
+      "status": "open",
+      "result": null,
+      "marketResultPubkey": null,
+      "title": "Yes",
+      "openTime": 1777410678,
+      "closeTime": 1792727940,
+      "isTeamMarket": false,
+      "rulesPrimary": "This market will resolve to “Yes” if Stephen Curry is not rostered by the Golden State Warriors before October 22, 2026, 11:59 PM ET. Otherwise, this market will resolve to “No”.\n\nIf Stephen Curry retires, is released, is traded, or is otherwise not a member of the Golden State Warriors official player roster, this market will resolve to “Yes”.\n\nIf Stephen Curry is listed on the official roster of the Golden State Warriors as of October 22, 2026, 11:59 PM ET, regardless of his playing status, this market will resolve to “No.”\n\nThe primary resolution source will be official information from the NBA, Golden State Warriors, and/or Stephen Curry; however, a consensus of credible reporting may also be used.",
+      "rulesSecondary": "",
+      "resolveAt": null,
+      "pricing": {
+        "buyYesPriceUsd": 3000,
+        "sellYesPriceUsd": 1000,
+        "sellNoPriceUsd": 997000,
+        "buyNoPriceUsd": 999000,
+        "volume": 319000
+      },
+      "imageUrl": "https://polymarket-upload.s3.us-east-2.amazonaws.com/nba-stephen-curry-to-leave-warriors-QN6qkhRXEA-l.png",
+      "team": null,
+      "outcomes": [
+        "Yes",
+        "No"
+      ],
+      "clobTokenIds": [
+        "38377143764435202015709081616940257845446502480975015398525481885393141766617",
+        "50379211427933296182500444034485500186701864749431836861731464279098848117788"
+      ],
+      "marketOptions": [
+        {
+          "label": "Yes",
+          "buyYes": true
+        },
+        {
+          "label": "No",
+          "buyYes": false
+        }
+      ],
+      "sportsMarketType": null,
+      "sportsLine": null,
+      "periodType": null,
+      "periodNumber": null,
+      "gameNumber": null
+    }
+  ],
+  "sportsMarketGroups": []
+}

@@ -20,10 +20,14 @@ import { RequestService } from "../gen/seekervault/request/v1/service_pb.js";
 import type { SolanaNetwork } from "../gen/seekervault/server/v1/manifest_pb.js";
 import { solanaNetworkName } from "../manifest.ts";
 import type { PairingStore } from "../storage/pairing-store.ts";
-import { networkName, type RequestStore } from "../storage/request-store.ts";
+import {
+  networkName,
+  type NotSentProof,
+  type RequestStore,
+} from "../storage/request-store.ts";
 import { checkable, type ConfirmationTracker } from "./confirmation.ts";
 import { RequestFailure } from "./failure.ts";
-import { kindName } from "./lifecycle.ts";
+import { invalidSubmissionReason, kindName } from "./lifecycle.ts";
 import type { TransactionPreparer } from "./preparation.ts";
 
 const CODES: ReadonlyMap<RequestError, Code> = new Map([
@@ -218,10 +222,33 @@ export function requestRoutes(
         }),
 
       submitResult: (request, context) =>
-        handle(context, (connectionId) => {
+        handleAsync(context, async (connectionId) => {
+          // not_sent moves a request backward, so the phone's word isn't enough: the sidecar checks
+          // the approved version's expiry on chain first (docs/protocol.md#reopening). Only a
+          // well-formed not_sent for an UNKNOWN transaction needs the check; the store refuses or
+          // dedupes everything else exactly as it would any other result.
+          let proof: NotSentProof | undefined;
+          if (
+            request.result.case === "notSent" &&
+            invalidSubmissionReason(request) === undefined
+          ) {
+            const current = store.getForConnection(connectionId, request.ref);
+            if (checkable(current) && current.state === RequestState.UNKNOWN) {
+              if (tracker === undefined) {
+                // Not FAILED_PRECONDITION: the request hasn't moved on, this sidecar just can't
+                // check the chain. A phone falls back to execution_failure.
+                throw new ConnectError(
+                  "this sidecar has no Solana RPC endpoint configured, so it can't check that the approved transaction expired; not_sent is unavailable here",
+                  Code.Unimplemented,
+                );
+              }
+              proof = await tracker.proveNeverSendable(current);
+            }
+          }
           const { request: updated, duplicate } = store.submit(
             connectionId,
             request,
+            proof,
           );
           const id = updated.ref?.requestId ?? "";
           const result = request.result.case ?? "result";

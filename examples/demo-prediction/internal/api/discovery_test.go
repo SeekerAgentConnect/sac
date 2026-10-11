@@ -44,6 +44,10 @@ func (p *provider) Market(_ context.Context, id string) (jupiter.Market, error) 
 	return p.market(id)
 }
 
+func (p *provider) Event(context.Context, string) (jupiter.Event, error) {
+	return jupiter.Event{}, &jupiter.Fault{Problem: jupiter.NoSuchMarket}
+}
+
 // oneMarket is a listing with a single open market in it.
 func oneMarket() func(jupiter.Query) (jupiter.Page, error) {
 	return func(query jupiter.Query) (jupiter.Page, error) {
@@ -91,11 +95,12 @@ func predicting(t *testing.T, fake *fakeGateway, listing *provider) *template {
 				MostChecks:   5,
 				Every:        5 * time.Minute,
 			},
-			Deposit: discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
-			Log:     slog.New(slog.NewTextHandler(held.Log, nil)),
-			Now:     func() time.Time { return held.NowValue },
-			NewID:   held.NextID,
-			Wake:    held.Drainer.Wake,
+			Deposit:  discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
+			Networks: held.Settings.Networks,
+			Log:      slog.New(slog.NewTextHandler(held.Log, nil)),
+			Now:      func() time.Time { return held.NowValue },
+			NewID:    held.NextID,
+			Wake:     held.Drainer.Wake,
 		})
 		plan.Authorship = support.ByDiscovery
 		plan.Markets = held.Store
@@ -484,11 +489,12 @@ func TestTheProvidersKeyNeverReachesAnAnswerOrALogLine(t *testing.T) {
 				Lifetime: 7 * 24 * time.Hour, PageSize: 25, MostPages: 1, MostOpen: 10,
 				MostChecks: 5, Every: 5 * time.Minute,
 			},
-			Deposit: discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
-			Log:     slog.New(slog.NewTextHandler(held.Log, nil)),
-			Now:     func() time.Time { return held.NowValue },
-			NewID:   held.NextID,
-			Wake:    held.Drainer.Wake,
+			Deposit:  discovery.Deposit{Mint: signals.USDCMint, Symbol: "USDC"},
+			Networks: held.Settings.Networks,
+			Log:      slog.New(slog.NewTextHandler(held.Log, nil)),
+			Now:      func() time.Time { return held.NowValue },
+			NewID:    held.NextID,
+			Wake:     held.Drainer.Wake,
 		})
 		plan.Authorship = support.ByDiscovery
 		plan.Markets = held.Store

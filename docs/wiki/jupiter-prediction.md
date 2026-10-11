@@ -77,7 +77,7 @@ Three ways out were possible: sign it anyway on a parameter-only review, refuse 
 
 `solana/` is that component: one read method (`getMultipleAccounts`), a table parser, and the rebuild. It names no provider, so any provider may use it; the swap asks for a format that needs no resolution and so never does, which also means the resolver is already in place if `asLegacyTransaction` is ever withdrawn.
 
-**What it costs, said plainly:** the review is then only as accurate as the configured endpoint. This is not offline verification and is not trustless — see [security.md](../security.md#resolving-a-lookup-table). The endpoint is the application's or its host's (`-Pseekervault.solanaRpc=…`), is **empty by default** so a checkout reaches no cluster, and a build without one prepares no order and says so.
+**What it costs, said plainly:** the review is then only as accurate as the configured endpoint. This is not offline verification and is not trustless — see [security.md](../security.md#resolving-a-lookup-table). The endpoint is never a publisher's: it is the **mainnet** endpoint of the app's one resolver ([solana-rpc.md](solana-rpc.md)), which since SEE-185 comes only from the trusted gateway's client configuration ([client-config.md](client-config.md)). There is no build default and no setting on the phone. When the gateway configures no mainnet endpoint, or one that serves another cluster, no order is prepared and the review says why.
 
 ## What an order is made of
 
@@ -94,7 +94,7 @@ An order staked directly in the venue's own token has no route at all, and then 
 
 ## What the review covers
 
-The order instruction carries all of it, as its own Borsh fields, and the review reads each out of the bytes and compares it with what the owner chose and what the provider said: the market's hash, the request's identifier, **which side**, how many contracts, the most a contract may cost, what the order costs, the slippage, and the order and position accounts. Plus, from the message: the owner pays, the order is the owner's, and **the only signature still missing is theirs**.
+The order instruction carries all of it, as its own Borsh fields, and the review reads each out of the bytes and compares it with what the owner chose and what the provider said: the market's hash, the request's identifier, **which side**, how many contracts, the most a contract may cost, what the order costs, the slippage, and the order and position accounts. Each is held to the answer exactly except the slippage, which may be tighter than the answer states and never looser: since 2026-10-11 Jupiter's JSON states a slippage (134620) the instruction does not carry (0), while the ceiling that decides what a contract may cost still matches to the base unit. Plus, from the message: the owner pays, the order is the owner's, and **the only signature still missing is theirs**.
 
 That last one deserves a note. The venue **co-signs**: an order arrives with the protocol's own slot already filled, and since 2026-09 usually a third, Jupiter's relayer, which pays the fee and has already signed (a *gasless* build). So "nothing else signs" would be the wrong rule here; the right one is "one signature is missing, it is the owner's, and a fee payer that is not the owner has already signed" — and that sponsor may fund only the order's own accounts. A payer still waiting to sign is refused.
 
@@ -137,9 +137,9 @@ It appears only when the record holds an order account, which means only after a
 
 ## Limits, honestly
 
-- **Mainnet or nothing.** There is no devnet prediction market to point at, and the capability declares mainnet in both environments, so a wallet on another cluster is refused as `NetworkUnsupported` — a separate fact from an environment the provider does not serve.
-- **Sandbox gets the same work**, and stops before the wallet: the market is read, the order is built and reviewed, and nothing is signed or sent (SEE-97, [`docs/wiki/environments.md`](environments.md)). The provider never reads the environment — whether bytes are signed is core's.
-- **One minute of freshness**, as for a swap: a market's price moves and the transaction carries a recent blockhash.
+- **Mainnet or nothing.** There is no devnet prediction market to point at, and the capability declares mainnet only, for execution and preview alike, so a signal declaring another network is refused as `NetworkUnsupported`, and the wallet must be one chosen for mainnet.
+- **A preview gets the same work**, and stops before the wallet: the market is read, the order is built and reviewed, and nothing is signed or sent (SEE-97, SEE-185, [`docs/wiki/environments.md`](environments.md)). It is the owner's choice per operation (**Preview without sending**), and the provider never reads it — whether bytes are signed is core's.
+- **20 seconds of freshness**, as for a swap ([jupiter-swap.md](jupiter-swap.md#limits-honestly)): a market's price moves and the transaction carries a recent blockhash.
 - **The keyless allowance is 0.5 requests a second, 30 a minute** — four calls per order at most (the market when the review opens, the market again, the order, the tables), which is ample for a person and not for polling. Nothing polls.
 - **Buying here; selling from History.** This action only buys. Selling the whole position is `prediction.sell`, reached from the purchase's History item and reviewed on its own bytes ([prediction positions](prediction-positions.md)).
 - **The order instruction's flags are `isYes, isBuy`.** Until SEE-172 they were read the other way round, which only a YES buy (`1, 1`) survives: every NO buy was refused. Builds are also gasless since 2026-09 — Jupiter's relayer pays and pre-signs — and the review accepts that under one rule for buys and sales: the only missing signature is the owner's.

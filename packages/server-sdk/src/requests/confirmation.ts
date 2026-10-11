@@ -16,6 +16,7 @@ import {
   ConfirmationLevel,
   ConfirmationSchema,
   Network,
+  RequestError,
   RequestState,
   type ActionRequest,
   type Confirmation,
@@ -28,8 +29,9 @@ import {
   type ConfirmationProvider,
   type ProviderSignatureStatus,
 } from "../providers.ts";
-import type { RequestStore } from "../storage/request-store.ts";
+import type { NotSentProof, RequestStore } from "../storage/request-store.ts";
 import { encodeBase58 } from "./action.ts";
+import { RequestFailure } from "./failure.ts";
 
 /**
  * The shortest gap between two chain checks of the same request. An agent polling
@@ -155,6 +157,59 @@ export class ConfirmationTracker {
       confirmation: this.#confirmation(finding, checks),
       detail: finding.outcomeDetail,
     });
+  }
+
+  /**
+   * Checks for itself what a not_sent result claims before it may reopen `request`
+   * (docs/protocol.md#reopening): that the endpoint serves the request's network, and that the
+   * chain is past the approved version's last valid block height, so the approved bytes can never
+   * land. The phone's search of the wallet's history is what says they never did.
+   *
+   * A request that isn't an UNKNOWN transaction is the store's to refuse, so this returns no proof
+   * for it and checks nothing. Every other refusal throws a RequestFailure and moves nothing:
+   * INVALID_PARAMETERS when the approved version can't be known (no check can ever succeed), and
+   * CHAIN_UNAVAILABLE — retryable — when the endpoint doesn't answer, serves another network, or
+   * the blockhash is still valid.
+   */
+  async proveNeverSendable(
+    request: ActionRequest,
+  ): Promise<NotSentProof | undefined> {
+    if (request.state !== UNKNOWN || !checkable(request)) return undefined;
+    const approved = this.#approvedTransaction(request);
+    if (approved === undefined) {
+      throw new RequestFailure(
+        RequestError.INVALID_PARAMETERS,
+        "this sidecar doesn't hold the version the owner approved, so it can't check that its blockhash expired; not_sent can't be accepted for this request",
+        request,
+      );
+    }
+    let height: bigint;
+    try {
+      height = await withProviderBudget(async () => {
+        await this.#provider.assertNetwork(boundNetwork(request));
+        return this.#provider.blockHeight();
+      });
+    } catch (error) {
+      if (
+        error instanceof UnsupportedPreparation ||
+        error instanceof ProviderUnavailable
+      ) {
+        throw new RequestFailure(
+          RequestError.CHAIN_UNAVAILABLE,
+          `the sidecar couldn't check that the approved transaction expired: ${error.message}; nothing was changed, try again later`,
+          request,
+        );
+      }
+      throw error;
+    }
+    if (height <= approved.lastValidBlockHeight) {
+      throw new RequestFailure(
+        RequestError.CHAIN_UNAVAILABLE,
+        `the approved transaction can still land: the chain is at block ${height}, and it is valid through ${approved.lastValidBlockHeight}; report not_sent again once that has passed`,
+        request,
+      );
+    }
+    return { approvedVersion: approved.version };
   }
 
   /**

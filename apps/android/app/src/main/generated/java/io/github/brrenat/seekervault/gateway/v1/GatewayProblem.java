@@ -124,15 +124,6 @@ public enum GatewayProblem
   GATEWAY_PROBLEM_TOO_MANY_PLUGINS(11),
   /**
    * <pre>
-   * No environment, a repeated one, or an unspecified one. A server that names no environment
-   * says nothing a phone can act on (SEE-97).
-   * </pre>
-   *
-   * <code>GATEWAY_PROBLEM_BAD_ENVIRONMENT = 12;</code>
-   */
-  GATEWAY_PROBLEM_BAD_ENVIRONMENT(12),
-  /**
-   * <pre>
    * A display name that is too long, or not printable text.
    * </pre>
    *
@@ -320,23 +311,6 @@ public enum GatewayProblem
   GATEWAY_PROBLEM_NO_PUSH(33),
   /**
    * <pre>
-   * --- What is already here, continued (SEE-97) -----------------------------
-   * A manifest whose environments are not the ones this server published before. It belongs with
-   * the "what is already here" codes above and is numbered here instead because a number is the
-   * wire and only the last one is free.
-   *
-   * An environment is what a server promises when the owner approves, and a promise that can be
-   * raised by publishing a higher revision is not one: every subscribed phone would be moved from
-   * a demonstration to real money by a document. A second environment is a second deployment,
-   * with its own server ID, credential and database — which is what the publisher's own database
-   * stamp already enforces at its end.
-   * </pre>
-   *
-   * <code>GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;</code>
-   */
-  GATEWAY_PROBLEM_OTHER_ENVIRONMENT(34),
-  /**
-   * <pre>
    * --- Restricted feeds (SEE-156) -------------------------------------------
    * Numbered after the retired range above, which stays retired: none of these reuses a number or
    * a meaning that range carried (docs/wiki/restricted-feeds.md).
@@ -420,11 +394,23 @@ public enum GatewayProblem
    * A manifest's supported_networks names SOLANA_NETWORK_UNSPECIFIED, a value this gateway does
    * not know, or the same network twice. An empty list is not this: it is a feed whose proposals
    * never reach a wallet, which is allowed (docs/wiki/server-manifests.md#supported-networks).
+   * Since SEE-185 it is also a signal whose action names no network, or one this gateway does not
+   * know: a network is required, and never inferred.
    * </pre>
    *
    * <code>GATEWAY_PROBLEM_BAD_NETWORK = 55;</code>
    */
   GATEWAY_PROBLEM_BAD_NETWORK(55),
+  /**
+   * <pre>
+   * A signal's network is one its publisher's manifest does not declare in supported_networks, or
+   * the publisher has no manifest here yet (SEE-185). A feed may publish for several networks, but
+   * only for ones it says it supports.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_OTHER_NETWORK = 56;</code>
+   */
+  GATEWAY_PROBLEM_OTHER_NETWORK(56),
   UNRECOGNIZED(-1),
   ;
 
@@ -534,15 +520,6 @@ public enum GatewayProblem
    * <code>GATEWAY_PROBLEM_TOO_MANY_PLUGINS = 11;</code>
    */
   public static final int GATEWAY_PROBLEM_TOO_MANY_PLUGINS_VALUE = 11;
-  /**
-   * <pre>
-   * No environment, a repeated one, or an unspecified one. A server that names no environment
-   * says nothing a phone can act on (SEE-97).
-   * </pre>
-   *
-   * <code>GATEWAY_PROBLEM_BAD_ENVIRONMENT = 12;</code>
-   */
-  public static final int GATEWAY_PROBLEM_BAD_ENVIRONMENT_VALUE = 12;
   /**
    * <pre>
    * A display name that is too long, or not printable text.
@@ -732,23 +709,6 @@ public enum GatewayProblem
   public static final int GATEWAY_PROBLEM_NO_PUSH_VALUE = 33;
   /**
    * <pre>
-   * --- What is already here, continued (SEE-97) -----------------------------
-   * A manifest whose environments are not the ones this server published before. It belongs with
-   * the "what is already here" codes above and is numbered here instead because a number is the
-   * wire and only the last one is free.
-   *
-   * An environment is what a server promises when the owner approves, and a promise that can be
-   * raised by publishing a higher revision is not one: every subscribed phone would be moved from
-   * a demonstration to real money by a document. A second environment is a second deployment,
-   * with its own server ID, credential and database — which is what the publisher's own database
-   * stamp already enforces at its end.
-   * </pre>
-   *
-   * <code>GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;</code>
-   */
-  public static final int GATEWAY_PROBLEM_OTHER_ENVIRONMENT_VALUE = 34;
-  /**
-   * <pre>
    * --- Restricted feeds (SEE-156) -------------------------------------------
    * Numbered after the retired range above, which stays retired: none of these reuses a number or
    * a meaning that range carried (docs/wiki/restricted-feeds.md).
@@ -832,11 +792,23 @@ public enum GatewayProblem
    * A manifest's supported_networks names SOLANA_NETWORK_UNSPECIFIED, a value this gateway does
    * not know, or the same network twice. An empty list is not this: it is a feed whose proposals
    * never reach a wallet, which is allowed (docs/wiki/server-manifests.md#supported-networks).
+   * Since SEE-185 it is also a signal whose action names no network, or one this gateway does not
+   * know: a network is required, and never inferred.
    * </pre>
    *
    * <code>GATEWAY_PROBLEM_BAD_NETWORK = 55;</code>
    */
   public static final int GATEWAY_PROBLEM_BAD_NETWORK_VALUE = 55;
+  /**
+   * <pre>
+   * A signal's network is one its publisher's manifest does not declare in supported_networks, or
+   * the publisher has no manifest here yet (SEE-185). A feed may publish for several networks, but
+   * only for ones it says it supports.
+   * </pre>
+   *
+   * <code>GATEWAY_PROBLEM_OTHER_NETWORK = 56;</code>
+   */
+  public static final int GATEWAY_PROBLEM_OTHER_NETWORK_VALUE = 56;
 
 
   @java.lang.Override
@@ -871,7 +843,6 @@ public enum GatewayProblem
       case 9: return GATEWAY_PROBLEM_BAD_PLUGIN;
       case 10: return GATEWAY_PROBLEM_DUPLICATE_PLUGIN;
       case 11: return GATEWAY_PROBLEM_TOO_MANY_PLUGINS;
-      case 12: return GATEWAY_PROBLEM_BAD_ENVIRONMENT;
       case 13: return GATEWAY_PROBLEM_BAD_NAME;
       case 14: return GATEWAY_PROBLEM_BAD_OPERATION;
       case 15: return GATEWAY_PROBLEM_NO_STATUS;
@@ -893,7 +864,6 @@ public enum GatewayProblem
       case 31: return GATEWAY_PROBLEM_NO_STREAM;
       case 32: return GATEWAY_PROBLEM_TOO_MANY_CHANNELS;
       case 33: return GATEWAY_PROBLEM_NO_PUSH;
-      case 34: return GATEWAY_PROBLEM_OTHER_ENVIRONMENT;
       case 47: return GATEWAY_PROBLEM_ACCESS_REQUIRED;
       case 48: return GATEWAY_PROBLEM_ACCESS_REVOKED;
       case 49: return GATEWAY_PROBLEM_ACCESS_EXPIRED;
@@ -903,6 +873,7 @@ public enum GatewayProblem
       case 53: return GATEWAY_PROBLEM_GRANT_REVOKED;
       case 54: return GATEWAY_PROBLEM_BAD_GRANT;
       case 55: return GATEWAY_PROBLEM_BAD_NETWORK;
+      case 56: return GATEWAY_PROBLEM_OTHER_NETWORK;
       default: return null;
     }
   }

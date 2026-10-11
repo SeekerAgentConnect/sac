@@ -87,16 +87,24 @@ reads a revision into a signed 64-bit integer and refuses one it cannot compare,
 learns about the limit here rather than by watching every phone ignore its proposal.
 
 Everything else is bounded the way the contract says: at most 32 named terms of at most 512 bytes, a
-note of at most 1024, a name of at most 64, at most 16 plugin requirements, an explicit environment,
-and times that agree with each other.
+note of at most 1024, a name of at most 64, at most 16 plugin requirements, and times that agree
+with each other.
 
-**An environment that does not move (SEE-97).** A higher revision may change anything a publisher
-may change — the plugins it needs, the name it calls itself — but not the environments it serves
-(`other_environment`). A promise a higher revision can raise is not a promise: every subscribed
-phone caches a manifest by revision, so one document would move all of them from a demonstration to
-real money without anybody looking at it. A second environment is a second deployment, with its own
-server ID, credential and database, which is the same rule the publisher's own database stamp keeps
-at its end ([environments.md](environments.md)).
+**No environment (SEE-185).** A manifest no longer says whether its server is a sandbox or
+production, so the gateway neither validates nor freezes one: SEE-97's `other_environment` rule is
+gone with the field, and `GATEWAY_PROBLEM_BAD_ENVIRONMENT` and `_OTHER_ENVIRONMENT` are reserved.
+Whether an owner previews or executes a signal is their choice on the phone, per operation, so one
+deployment serves both ([environments.md](environments.md)).
+
+**A network on every signal (SEE-185).** A new publication is request contract 2, and its
+`action.network` is required: missing or unknown is `bad_network`, and another contract version is
+`other_protocol`. The network must also be one the publisher's manifest declares, and that is a
+question about what the gateway holds, so `PublishRequest` reads the held manifest in the same
+transaction as the write. A manifest that drops a network and a signal for it are therefore never
+both decided against the older manifest. A network the manifest does not list, or a publisher with
+no manifest yet, is `other_network` (`failed_precondition`, field `action.network`). The network is
+never inferred, not even from a manifest that lists one. A feed may publish successive signals for
+different networks.
 
 **Networks that are named, known and counted once (SEE-174).** `feed.supported_networks` is the
 Solana networks the publisher's wallet operations run on
@@ -108,11 +116,11 @@ copy a restricted feed is stamped through, in canonical order (ascending by valu
 that republishes the same networks in another order at the same revision is retrying, not
 contradicting itself. An empty list is accepted and relayed as empty: it is a feed
 whose proposals never reach a wallet, or a publisher from before the field existed, and it means "no
-networks declared" — never Mainnet and never every network. Unlike an environment, the networks
-**may change on a higher revision**: a publisher that adds Devnet has changed what it can do, not
-what an owner already agreed to, because the phone binds each connection to one wallet profile and
-refuses to sign for one whose network the manifest stops listing. At the same revision, different
-networks are an ordinary `revision_conflict`.
+networks declared" — never Mainnet and never every network — and since SEE-185 a feed with an empty
+list can publish no `PublishRequest` signal at all. The networks **may change on a higher revision**: a publisher
+that adds Devnet has changed what it can do, not what an owner already agreed to, because the phone
+executes a signal only on a network the manifest it holds still lists. At the same revision,
+different networks are an ordinary `revision_conflict`.
 
 ### What cannot pass through
 
@@ -373,11 +381,11 @@ separate method from the stream ticket on purpose: a deployment may relay withou
 stream without relaying, and a phone asking about one must not be answered about the other. A
 gateway that relays nothing answers `NO_PUSH`, which the phone reads the way it reads `NO_STREAM`.
 
-The environment is the deployment's own setting, and it is in the name so that one Firebase project
-can serve a sandbox deployment and a production one without a sandbox publication waking a
-production subscriber. It is not SEE-97's environment model: nothing here decides what a server
-promises when the owner approves, and the two words happening to be the same is a coincidence of
-vocabulary ([environments.md](environments.md#two-other-things-called-environment)).
+`BROADCAST_PUSH_ENVIRONMENT` is the deployment's own topic label, and it is in the name so that one
+Firebase project can serve two gateway deployments without a publication on one waking a subscriber
+of the other. It decides nothing about what happens when an owner approves: no manifest names an
+environment since SEE-185, and previewing or executing is the owner's choice on the phone
+([environments.md](environments.md)).
 
 **A topic is public and grants nothing.** What it admits someone to is the news that a broadcast
 changed, and the broadcast is readable by anyone who holds its reference. It is not proof of access
@@ -534,6 +542,19 @@ HTTP header, because a proxy deciding how long a feed stays current would be a s
 what a publisher is proposing, and the phone would have no way to tell it was reading one. Read
 answers carry `Cache-Control: no-store`.
 
+**The protocol-1 views leave out what they cannot carry (SEE-185).** A proposal has no network
+field, and a protocol-1 client executes on whatever network its connection's wallet is on. So a
+network-declaring signal is not in `ListProposals` at all (a page may be shorter; the cursor still
+continues after the last row read), and `GetProposal` answers `NO_SUCH_PROPOSAL` for one. It is not
+served as cancelled either, which would show an owner a withdrawal of something they never saw.
+`ListRequests` and `GetRequest` serve it with its network. A network-less document is in both views
+exactly as before.
+
+**`GetClientConfig` is on this listener too (SEE-185).** It answers the operator's client
+configuration — one Solana RPC endpoint per network and the SAC swap fee — anonymously, rate limited
+like every other read, the same for every caller, and records nothing about who asked
+([client-config.md](client-config.md)).
+
 ### The snapshot boundary
 
 A page is ordered by proposal ID, and a walk continues after the last ID it returned. An offset would
@@ -621,8 +642,8 @@ script plus two font files out of the image, no framework, no CDN, and no browse
 kind.
 
 **SEE-164 gives that surface one deliberate operator workflow.** It is a dark, responsive shell with
-a lime accent and bundled Roboto fonts: the sidebar keeps **Servers**, **Add server**, this gateway’s
-address and **Log out** together; the main area holds the login, registered-server table, server
+a lime accent and bundled Roboto fonts: the sidebar keeps **Servers**, **Add server**, **Client
+configuration** (SEE-185), this gateway’s address and **Log out** together; the main area holds the login, registered-server table, server
 detail and one-time credential page. **Add server** is a drawer rather than another destination, and
 the list, drawer, detail and credential page retain the explanatory words that say what the gateway
 can actually prove and what each operation changes. Narrow screens stack the shell while wide tables
@@ -673,6 +694,14 @@ recommendations** form that does what `feed-gatewayctl listing` does through
 `PublisherAdminStore.SetListing`. It needs no confirmation — no stream name, grant or credential
 moves — and the page says whether the feed is actually in the catalog or which metadata is still
 missing. [Discover](discover.md) has the whole contract, including `FeedService.ListRecommendedFeeds`.
+
+**So is the client configuration every app reads (SEE-185).** **Client configuration**
+(`<admin path>/client-config`) has two forms: one Solana RPC endpoint per network, and the SAC swap
+service fee with its receiving accounts as one `mint=token_account` per line. It does what
+`feed-gatewayctl client-config` does, through the same `PublisherAdminStore.SaveClientConfig` and
+the same `rules.ClientConfig`, so a refusal saves nothing on either surface. The page says plainly
+that everything on it is public. [client-config.md](client-config.md) has the rules and what the app
+does with it.
 
 **Sessions are held in the process.** A random token in an `HttpOnly`, `SameSite=Strict` cookie
 scoped to the admin path, stored as its SHA-256, with an absolute lifetime. That is a deliberate
@@ -774,6 +803,13 @@ a column that could carry a request, an approval, a signature, a result or an ow
 would have to be argued for by name, in that test, where somebody would ask why.
 
 ### Migration and rollback
+
+SQLite schema version 9 (Postgres schema version 5) adds the operator's single-row `client_config`
+table, sealed by row-level security on Postgres like every other table, and drops the retired
+`environments` field from every manifest the gateway holds. Without that, a field the contract no
+longer has would be served as an unknown field and turn a publisher's identical republication into
+a revision conflict. A gateway that was never configured answers revision 0 with no endpoints and no
+fee.
 
 Schema version 5 adds capabilities to a registration and to each of its credentials, plus the
 relay's two tables. Every row that already existed becomes exactly what it already was — publishing

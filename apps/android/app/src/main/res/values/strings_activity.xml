@@ -38,6 +38,7 @@
     <string name="activity_outcome_confirmed">Confirmed on the network</string>
     <string name="activity_outcome_chain_failed">Failed on the network</string>
     <string name="activity_outcome_not_signed">Not signed</string>
+    <string name="activity_outcome_not_sent">Not sent</string>
     <string name="activity_outcome_simulated">Simulated</string>
     <string name="activity_outcome_unknown">Outcome unknown</string>
     <string name="activity_outcome_not_delivered">Never reached the server</string>

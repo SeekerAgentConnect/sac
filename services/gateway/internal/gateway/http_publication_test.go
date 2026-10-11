@@ -21,7 +21,7 @@ func TestAPlainHTTPClientPublishesUpdatesAndWithdrawsAFeedItem(t *testing.T) {
 
 	manifest := `{"manifest":{"serverId":"` + publisherA + `","protocolVersion":1,` +
 		`"settingsRevision":"1","mode":"CONNECTION_MODE_GATEWAY_FEED",` +
-		`"environments":["SERVER_ENVIRONMENT_PRODUCTION"],"displayName":"HTTP fixture",` +
+		`"displayName":"HTTP fixture",` +
 		`"feed":{"gatewayUrl":"` + gatewayURL + `","channel":"` + channel + `"}}}`
 	stored := postJSON(t, gateway.publish.URL+gatewayv1connect.PublisherServicePublishManifestProcedure,
 		credential, manifest)

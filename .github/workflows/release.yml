@@ -312,15 +312,9 @@ jobs:
     # this job never sees it. docs/development/releases.md § Android build configuration.
     env:
       SEEKERVAULT_GOOGLE_SERVICES_JSON: ${{ vars.SEEKERVAULT_GOOGLE_SERVICES_JSON }}
-      SEEKERVAULT_SOLANA_RPC: ${{ vars.SEEKERVAULT_SOLANA_RPC }}
-      SEEKERVAULT_SOLANA_RPC_MAINNET: ${{ vars.SEEKERVAULT_SOLANA_RPC_MAINNET }}
-      SEEKERVAULT_SOLANA_RPC_DEVNET: ${{ vars.SEEKERVAULT_SOLANA_RPC_DEVNET }}
-      SEEKERVAULT_SOLANA_RPC_TESTNET: ${{ vars.SEEKERVAULT_SOLANA_RPC_TESTNET }}
-      SEEKERVAULT_RELAY_URL: ${{ vars.SEEKERVAULT_RELAY_URL }}
-      SEEKERVAULT_DISCOVERY_URL: ${{ vars.SEEKERVAULT_DISCOVERY_URL }}
-      SEEKERVAULT_SWAP_FEE_BPS: ${{ vars.SEEKERVAULT_SWAP_FEE_BPS }}
-      SEEKERVAULT_SWAP_FEE_OWNER: ${{ vars.SEEKERVAULT_SWAP_FEE_OWNER }}
-      SEEKERVAULT_SWAP_FEE_ACCOUNTS: ${{ vars.SEEKERVAULT_SWAP_FEE_ACCOUNTS }}
+      # The one trusted gateway (SEE-185). RPC endpoints and the SAC swap fee are that gateway's
+      # client configuration, set by its operator and fetched by the app — none is compiled in.
+      SEEKERVAULT_GATEWAY_URL: ${{ vars.SEEKERVAULT_GATEWAY_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -376,7 +370,7 @@ jobs:
             echo
             echo "- unsigned sha256: \`$(sha256sum "$RUNNER_TEMP/apk/app-release-unsigned.apk" | cut -d' ' -f1)\`"
             echo "- features: \`$FEATURES\`"
-            echo "- SAC swap fee: ${SEEKERVAULT_SWAP_FEE_BPS:-0} bps"
+            echo "- RPC endpoints and SAC swap fee: the gateway's client configuration (not in the APK)"
             if [ "$DRY" = "true" ]; then
               echo "- **signing: NOT verified** — a dry run never reads the signing key"
             fi

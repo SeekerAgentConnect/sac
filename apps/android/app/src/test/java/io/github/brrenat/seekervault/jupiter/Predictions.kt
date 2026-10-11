@@ -75,6 +75,8 @@ fun openMarket(
     result: String? = null,
     eventId: String = EVENT_ID,
     provider: String = "polymarket",
+    sellYesPriceUsd: ULong? = 190_000UL,
+    sellNoPriceUsd: ULong? = 800_000UL,
 ): PredictionMarket =
     PredictionMarket(
         marketId = marketId,
@@ -85,6 +87,8 @@ fun openMarket(
         result = result,
         buyYesPriceUsd = 200_000UL,
         buyNoPriceUsd = 810_000UL,
+        sellYesPriceUsd = sellYesPriceUsd,
+        sellNoPriceUsd = sellNoPriceUsd,
         rules = "Resolves to the team that wins.",
         closeTime = 1_811_721_540L,
     )

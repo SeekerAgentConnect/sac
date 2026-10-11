@@ -44,7 +44,6 @@ curl -sS http://127.0.0.1:8091/seekervault.gateway.v1.PublisherService/PublishMa
   -H 'Content-Type: application/json' -H "Authorization: Bearer $CREDENTIAL" \
   -d '{"manifest":{"serverId":"3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d","protocolVersion":1,
        "settingsRevision":"1","mode":"CONNECTION_MODE_GATEWAY_FEED",
-       "environments":["SERVER_ENVIRONMENT_PRODUCTION"],
        "feed":{"gatewayUrl":"http://127.0.0.1:8090",
                "channel":"server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
                "supportedNetworks":["SOLANA_NETWORK_MAINNET"]}}}'
@@ -60,6 +59,9 @@ curl -sS http://127.0.0.1:8090/seekervault.gateway.v1.FeedService/ListRequests \
 
 `PublishRequest`/`CancelRequest` and `ListRequests`/`GetRequest` are the primary SEE-108
 operations. The proposal operations remain compatibility adapters over the same rows and sequence.
+A `PublishRequest` is request contract 2 and names its Solana network in `action.network`, which must
+be one the manifest above declares (`other_network` otherwise, SEE-185); a network-declaring signal
+is served by `ListRequests`/`GetRequest` and left out of `ListProposals`/`GetProposal`.
 
 In Docker, from a checkout of the separate `do-deploy` repository, copy
 `compose/feed/.env.example` to `compose/feed/.env`, start `compose/feed/compose.yaml`, then register
@@ -137,6 +139,9 @@ and the two share this store and these semantics rather than shelling out to eac
 | `list [--server <uuid>]` | What is registered, or one publisher's credentials |
 | `forget --server <uuid> --yes` | Removes a publisher and everything it published |
 | `password [--password <text>]` | Reads a password from standard input and prints the hash to configure as `BROADCAST_ADMIN_PASSWORD_HASH`. Touches no database, so it works before one exists |
+| `client-config show` | The client configuration every app reads (SEE-185), as JSON |
+| `client-config set-rpc --network mainnet\|devnet\|testnet [--url <url>]` | Sets one network's Solana RPC endpoint. No `--url`, or an empty one, removes it |
+| `client-config set-fee --bps <0-100> [--network <name>] [--owner <address>] [--account <mint>=<token account> ...]` | Replaces the whole SAC swap service fee. `--bps` is required; `--bps 0` alone is no fee |
 
 `--database`, or `BROADCAST_DATABASE_PATH`, or `BROADCAST_DATABASE_URL`, must be the database the
 gateway reads — a Postgres URL is recognized by its scheme and anything else is a file. Pointing the two at
@@ -157,6 +162,15 @@ command prints that every stream name issued under the old policy is retired and
 should publish its manifest again, because the manifest must state the policy this registration
 holds.
 
+**`client-config` is the operator's, and public.** Each change replaces one half of what is held
+(one network's endpoint, or the whole fee) through `PublisherAdminStore.UpdateClientConfig`, which
+applies it and validates the whole with `rules.ClientConfig` inside the store's write transaction —
+the same path the admin page takes, so a change saved from the page at the same moment is kept. A refusal names the rule and saves nothing; saving what is already held is
+reported as unchanged, at the same revision. Never put a secret in it: every app may read all of it,
+so an RPC provider that needs a key goes behind a proxy of your own. The rules and what the app does
+with it are in [`docs/wiki/client-config.md`](../wiki/client-config.md); the fee procedure is
+[`swap-fee-config.md`](swap-fee-config.md). No environment variable is involved.
+
 ## The operator's admin page
 
 [`internal/admin`](../../services/gateway/internal/admin), on its own listener, off unless
@@ -169,6 +183,7 @@ is why; this is what it is made of.
 | `session.go` | Server-side sessions: an opaque random token in the cookie, stored as its SHA-256, absolute expiry, a bounded count, real logout, and the one-shot hold a new credential is revealed from |
 | `pages.go` | The view models and embedded templates and assets, including the authenticated shell’s server count and the MIME types of the bundled fonts. `accessOf` is the page's copy of the CLI's `--access` / `--auth-origin` rules, over the same `config.Origin`. `PublisherRow.Credentials()` and `.Published()` are the only place the operator-facing state words are decided |
 | `host.go` | What may be recorded as a publisher's host, and what may be rendered as a link |
+| `clientconfig.go`, `templates/clientconfig.html` | The **Client configuration** page (SEE-185) at `<admin path>/client-config`: the revision served, the fee in one sentence, a form for the three endpoints (`POST …/client-config/rpc`) and one for the fee (`POST …/client-config/fee`, accounts one `mint=token_account` per line). `SwapFee` parses the fee form and is what `feed-gatewayctl client-config set-fee` parses with too |
 | `templates/` | The login, responsive authenticated shell, registered-server table, Add-server drawer, server detail and one-time credential page. Forms keep the server-rendered CSRF and validation boundary; the custom dialog changes how destructive confirmation is presented, not what the server requires |
 | `assets/admin.css` | The dark/lime responsive presentation from SEE-164, including the desktop sidebar, narrow stacked shell, scrolling data tables, drawer and in-page confirmation dialog |
 | `assets/admin.js` | Progressive browser interaction for copying values, opening and closing the Add-server drawer, enabling typed confirmation and presenting revoke/forget confirmations without `window.confirm`. Mutations remain ordinary guarded form posts |
@@ -299,13 +314,18 @@ hosted invitation route is absent from both surviving listeners.
 
 | File | What it holds |
 | --- | --- |
-| `internal/rules/rules_test.go` | Every document rule with its own answer, what a revision means, that a document is rebuilt rather than relayed, and that the environments a server ID published cannot move while the order they were written in does not matter (SEE-97). The supported networks (SEE-174): unspecified, unknown and repeated values are `bad_network`, an empty list is accepted as none, the stored list is in canonical order, and a higher revision may add or drop a network while the same revision with other networks is a conflict |
+| `internal/rules/rules_test.go` | Every document rule with its own answer, what a revision means, that a document is rebuilt rather than relayed, and that a manifest carries no environment (SEE-185). The supported networks (SEE-174): unspecified, unknown and repeated values are `bad_network`, an empty list is accepted as none, the stored list is in canonical order, and a higher revision may add or drop a network while the same revision with other networks is a conflict |
 | `internal/storage/sqlite/store_test.go` | The schema, credentials and rotation, a publication and its notice committing together, a notice surviving a stop, paging order, retention, forgetting a publisher, the restart-safe schema-v2-to-v3 retirement that preserves every public table while dropping private routing rows, and the v3-to-v4 host column added to a database written before it without losing a row. A manifest is read back whole — it is stored as its bytes, so its supported networks (SEE-174) need no column and no migration |
 | `internal/config/config_test.go` | The two settings with no default, the ranges, what cannot be an origin, and the admin group: off without a password, inert when the password is declared empty, and every way it can be misconfigured |
 | `internal/admin/admin_test.go` | Who is refused — an anonymous visitor, a real publishing credential, a form with no token, a cross-site post, an expired session — and what an operator can do: register, the one-time reveal, a refused duplicate that writes nothing, additive rotation, revocation, destructive removal behind a typed confirmation, the security headers, the assets, and that nothing outside the prefix exists |
 | `internal/gateway/admin_test.go` | The wiring, against the running service: a publisher registered in the browser publishes on its next request with nothing restarted, the CLI and the page see the same registrations, a revocation is enforced immediately while another publisher keeps publishing, the route is absent from both other listeners, and an unconfigured gateway has no surface at all |
 | `internal/dispatch/dispatch_test.go` | Delivery, failure and retry, duplicate delivery after a sent-but-unacknowledged notice, a publication landing mid-flight, a document swept while its notice waited, and backoff |
-| `internal/gateway/publish_test.go` | Two publishers that cannot reach each other, credentials and rotation, refusing a redirection, refusing a promotion to production (SEE-97) while what a subscriber reads stays as it was, retries and conflicts, withdrawal, the channel bound, rate limits, a restart that still owes a fan-out, and a publisher adding a Solana network at a higher revision while a malformed list is `bad_network` and a reordered one is a retry (SEE-174) |
+| `internal/gateway/publish_test.go` | Two publishers that cannot reach each other, credentials and rotation, refusing a redirection, retries and conflicts, withdrawal, the channel bound, rate limits, a restart that still owes a fan-out, and a publisher adding a Solana network at a higher revision while a malformed list is `bad_network` and a reordered one is a retry (SEE-174); a signal on a network its manifest does not declare (`other_network`), the protocol-1 views never offering a network-declaring signal, and a protocol-1 row migrating forward without a conflict (SEE-185) |
+| `internal/rules/request_test.go` | The common envelope's rules, including that a signal names its own known network (`bad_network` otherwise) and that it must be one the manifest declares (SEE-185) |
+| `internal/rules/clientconfig_test.go` | The client configuration (SEE-185): addresses are base58 32-byte keys, the canonical form, an empty configuration is no endpoints and no fee, an endpoint is public and usable, and a fee is refused whole rather than repaired |
+| `internal/storage/sqlite/clientconfig_test.go`, `internal/storage/postgres/clientconfig_test.go` | Revision 0 before anything is set, a revision that moves only when the configuration does, nothing invalid ever saved, and overlapping endpoint and fee changes each kept; on SQLite also survival across a restart and the version-9 migration retiring stored manifest environments |
+| `internal/gateway/clientconfig_test.go` | Every app reads the operator's configuration anonymously on the read listener |
+| `internal/admin/clientconfig_test.go`, `cmd/feed-gatewayctl/clientconfig_test.go` | The page and the CLI: only the operator can change it, endpoints and a fee set through each, a fee saved while the endpoint form is being saved kept, and an invalid configuration refused whole |
 | `internal/gateway/publisher_storage_test.go` | A fully evaluated publication whose storage commit fails answers failure, wakes no fan-out, and leaves neither document nor notice visible |
 | `internal/gateway/http_publication_test.go` | A plain HTTP client, with no generated binding, publishes a manifest, creates and updates a feed item, withdraws it, and reads the authoritative result |
 | `internal/gateway/read_test.go` | A phone reading a feed with no credential, a walk that stays stable while the feed moves, the caching answers, what a reader cannot ask for, and expiry and retention |

@@ -15,6 +15,7 @@ import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFailure
 import io.github.brrenat.seekervault.plugins.PreparedOperation
 import io.github.brrenat.seekervault.plugins.SWAP_ACTION
+import io.github.brrenat.seekervault.plugins.ServiceFeeTerms
 import io.github.brrenat.seekervault.plugins.actions.ActionPayload
 import io.github.brrenat.seekervault.plugins.actions.SwapChoiceProblem
 import io.github.brrenat.seekervault.plugins.actions.SwapParameterNames
@@ -23,6 +24,7 @@ import io.github.brrenat.seekervault.plugins.actions.SwapPayloadResult
 import io.github.brrenat.seekervault.plugins.actions.SwapTermNames
 import io.github.brrenat.seekervault.plugins.actions.swapPayloadFrom
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.rpc.serving
 import io.github.brrenat.seekervault.solana.AccountSnapshot
 import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.transactions.Verdict
@@ -92,6 +94,8 @@ class JupiterSwapActionTest {
         environment: PluginEnvironment = PluginEnvironment.Production,
         wallet: SelectedWallet? = wallet(),
         values: Map<String, String> = terms,
+        /** The service-fee terms core hands this one operation (SEE-185); none by default. */
+        serviceFee: ServiceFeeTerms = ServiceFeeTerms.None,
     ) =
         ActionOperation(
             connectionId = "1f0b4b3a-6a5f-4f5c-9d6c-0f2f1e2d3c4b",
@@ -107,6 +111,7 @@ class JupiterSwapActionTest {
             // A broadcast proposal carries no request.
             request = null,
             wallet = wallet,
+            serviceFee = serviceFee,
         )
 
     private fun chose(amount: ULong, slippage: Int = 50) =
@@ -137,7 +142,7 @@ class JupiterSwapActionTest {
     }
 
     private fun plugin(provider: JupiterProvider, at: Instant = Instant.ofEpochSecond(1_000)) =
-        JupiterExecutionProvider(provider, FakePrediction(), OrderChain()) { at }
+        JupiterExecutionProvider(provider, FakePrediction(), OrderChain().serving()) { at }
 
     @Test
     fun itDeclaresWhoItIsWhatItServesAndWhereItServesIt() {
@@ -216,13 +221,17 @@ class JupiterSwapActionTest {
     }
 
     @Test
-    fun aPreparationStandsForOneMinuteAndSaysSo() {
+    fun aPreparationStandsForTwentySecondsAndSaysSo() {
         val at = Instant.ofEpochSecond(1_700_000_000)
         val prepared = runBlocking { plugin(honest(), at).prepare(subject(), chose(5UL)) }
 
-        // A quote is a price from a moment ago and a blockhash lasts about a minute. Past that the
-        // owner prepares again, which is what the binding's own expiry check enforces (SEE-89).
-        assertEquals(at.epochSecond + 60, prepared.expiresAtEpochSeconds)
+        // A quote is a price from a moment ago, and on mainnet the blockhash in Jupiter's build
+        // stopped being includable about 28 seconds after it arrived (measured 2026-10-11): a
+        // wallet opened at 35 seconds answered "blockhash expired". The window closes before that,
+        // with room left for the wallet, and past it the owner prepares again, which is what the
+        // binding's own expiry check enforces (SEE-89). A prediction order gets the same window.
+        assertEquals(at.epochSecond + 20, prepared.expiresAtEpochSeconds)
+        assertEquals(SWAP_PREPARATION_LIFETIME, ORDER_LIFETIME)
     }
 
     @Test
@@ -368,7 +377,11 @@ class JupiterSwapActionTest {
 
     // --- The SAC service fee (SEE-173) -------------------------------------------------------
 
-    private val feePolicy = SwapFeePolicy(20, FEE_OWNER, mapOf(SOL_MINT to FEE_ACCOUNT_SOL))
+    /** The terms a feed swap on mainnet carries when the gateway configured a fee (SEE-185). */
+    private val feeTerms = ServiceFeeTerms(20, FEE_OWNER, mapOf(SOL_MINT to FEE_ACCOUNT_SOL))
+
+    /** A swap operation that carries [feeTerms], as core hands a feed swap one. */
+    private fun charged() = subject(serviceFee = feeTerms)
 
     /** A chain holding exactly the accounts given, and counting what it was asked. */
     private class Chain(vararg held: Pair<String, AccountSnapshot>) : SolanaAccounts {
@@ -382,7 +395,7 @@ class JupiterSwapActionTest {
     }
 
     private fun feePlugin(provider: JupiterProvider, chain: SolanaAccounts) =
-        JupiterExecutionProvider(provider, FakePrediction(), chain, feePolicy) {
+        JupiterExecutionProvider(provider, FakePrediction(), chain.serving()) {
             Instant.ofEpochSecond(1_000)
         }
 
@@ -413,8 +426,8 @@ class JupiterSwapActionTest {
         val chain = Chain(FEE_ACCOUNT_SOL to tokenAccount(SOL_MINT, FEE_OWNER))
         val plugin = feePlugin(provider, chain)
 
-        val prepared = runBlocking { plugin.prepare(subject(), chose(1_000_000UL)) }
-        val read = plugin.inspect(subject(), chose(1_000_000UL), prepared)
+        val prepared = runBlocking { plugin.prepare(charged(), chose(1_000_000UL)) }
+        val read = plugin.inspect(charged(), chose(1_000_000UL), prepared)
 
         assertEquals(Verdict.Verified, read.verdict)
         // The account was read from the chain before anything was quoted, and the provider was
@@ -435,8 +448,8 @@ class JupiterSwapActionTest {
                 Chain(FEE_ACCOUNT_SOL to tokenAccount(SOL_MINT, FEE_OWNER)),
             )
 
-        val prepared = runBlocking { plugin.prepare(subject(), chose(1_000_000UL)) }
-        val read = plugin.inspect(subject(), chose(1_000_000UL), prepared)
+        val prepared = runBlocking { plugin.prepare(charged(), chose(1_000_000UL)) }
+        val read = plugin.inspect(charged(), chose(1_000_000UL), prepared)
 
         assertEquals(Verdict.Invalid, read.verdict)
         assertFalse(read.approvable)
@@ -457,8 +470,8 @@ class JupiterSwapActionTest {
             val provider = honest()
             val plugin = feePlugin(provider, chain)
 
-            val prepared = runBlocking { plugin.prepare(subject(), chose(1_000_000UL)) }
-            val read = plugin.inspect(subject(), chose(1_000_000UL), prepared)
+            val prepared = runBlocking { plugin.prepare(charged(), chose(1_000_000UL)) }
+            val read = plugin.inspect(charged(), chose(1_000_000UL), prepared)
 
             assertEquals(what, Verdict.Verified, read.verdict)
             // No fee asked for, no account handed over: an unverified account is never paid.
@@ -475,17 +488,16 @@ class JupiterSwapActionTest {
         val provider = honest()
         val chain = Chain()
         val plugin =
-            JupiterExecutionProvider(
-                provider,
-                FakePrediction(),
-                chain,
-                SwapFeePolicy(20, FEE_OWNER, mapOf(JUP_MINT to FEE_ACCOUNT_USDC)),
-            ) {
+            JupiterExecutionProvider(provider, FakePrediction(), chain.serving()) {
                 Instant.ofEpochSecond(1_000)
             }
+        val operation =
+            subject(
+                serviceFee = ServiceFeeTerms(20, FEE_OWNER, mapOf(JUP_MINT to FEE_ACCOUNT_USDC))
+            )
 
-        val prepared = runBlocking { plugin.prepare(subject(), chose(1_000_000UL)) }
-        val read = plugin.inspect(subject(), chose(1_000_000UL), prepared)
+        val prepared = runBlocking { plugin.prepare(operation, chose(1_000_000UL)) }
+        val read = plugin.inspect(operation, chose(1_000_000UL), prepared)
 
         assertEquals(Verdict.Verified, read.verdict)
         assertTrue(chain.asked.isEmpty())
@@ -503,8 +515,31 @@ class JupiterSwapActionTest {
             listOf(METIS_DOCS_URL, SERVICE_FEE_DOCS_URL, JUPITER_TERMS_URL, JUPITER_PRIVACY_URL),
             off.links.map { it.url },
         )
-        val on = feePlugin(Provider(), Chain()).about(subject())
+        val on = feePlugin(Provider(), Chain()).about(charged())
         val note = on.notes.single { it.text == R.string.jupiter_about_swap_fee_on }
         assertEquals(listOf("0.2%"), note.args)
+        // The same provider says "no fee" for an operation core handed no terms: the fee is the
+        // operation's, never the provider's own (SEE-185).
+        assertTrue(
+            feePlugin(Provider(), Chain()).about(subject()).notes.any {
+                it.text == R.string.jupiter_about_swap_fee_off
+            }
+        )
+    }
+
+    @Test
+    fun anOperationCoreHandedNoFeeTermsIsQuotedAndBuiltWithoutAFeeAndReadsNothing() {
+        // A direct server's swap, or a feed swap on a network the gateway configured no fee for
+        // (SEE-185): the same provider, the same chain with a valid fee account on it, and no fee.
+        val provider = honest()
+        val chain = Chain(FEE_ACCOUNT_SOL to tokenAccount(SOL_MINT, FEE_OWNER))
+        val plugin = feePlugin(provider, chain)
+
+        val prepared = runBlocking { plugin.prepare(subject(), chose(1_000_000UL)) }
+        val read = plugin.inspect(subject(), chose(1_000_000UL), prepared)
+
+        assertEquals(Verdict.Verified, read.verdict)
+        assertTrue(chain.asked.isEmpty())
+        assertEquals(listOf("quote 1000000 50", "build $OWNER"), provider.asked)
     }
 }

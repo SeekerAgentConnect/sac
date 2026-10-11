@@ -65,22 +65,32 @@ and stake in SAC.</p>
   <div class="table-card">
     <div class="table-scroll">
       <table class="list">
-        <thead><tr><th>Market</th><th>State</th><th>Publication</th><th>Expires</th></tr></thead>
+        <thead><tr><th>Market</th><th>State</th><th>Publication</th><th>Expires</th><th></th></tr></thead>
         <tbody>
         {{range .Signals}}
-          <tr>
+          <tr data-open-market="{{.Market}}">
             <td>
               <span class="cell-title">{{.Market}}</span>
               {{with .Event}}<span class="sub block">{{.}}</span>{{end}}
               {{with .Note}}<span class="sub block">{{.}}</span>{{end}}
               <code class="id block">{{.ID}}</code>
             </td>
-            <td><span class="pill {{if eq .Status "open"}}good{{else}}neutral{{end}}">{{.Status}}</span></td>
+            <td><span class="pill good">{{.Status}}</span></td>
             <td>
               <span class="pill {{if eq .Publication "published"}}good{{else if eq .Publication "refused"}}bad{{else}}warn{{end}}">{{.Publication}}</span>
               {{if .Problem}}<span class="sub block">{{.Problem}}: {{.Detail}}</span>{{end}}
             </td>
             <td><span class="sub nowrap">{{.ExpiresAt}}</span></td>
+            <td>
+              <div class="row-actions">
+                <form method="post" action="{{$.Path}}/unpublish">
+                  <input type="hidden" name="request_id" value="{{.ID}}">
+                  <button type="submit" class="button danger-outline small" data-busy="Unpublishing…"
+                    data-confirm="Withdraw {{.Market}} from the feed? Discovery will not publish it again until you publish it by name."
+                    data-confirm-label="Unpublish">Unpublish</button>
+                </form>
+              </div>
+            </td>
           </tr>
         {{end}}
         </tbody>
@@ -88,11 +98,44 @@ and stake in SAC.</p>
     </div>
   </div>
   {{end}}
+  {{if .Past}}
+  <details class="past-signals">
+    <summary>Withdrawn and expired ({{len .Past}})</summary>
+    <div class="table-card">
+      <div class="table-scroll">
+        <table class="list">
+          <thead><tr><th>Market</th><th>State</th><th>Publication</th><th>Expires</th></tr></thead>
+          <tbody>
+          {{range .Past}}
+            <tr>
+              <td>
+                <span class="cell-title">{{.Market}}</span>
+                {{with .Event}}<span class="sub block">{{.}}</span>{{end}}
+                <code class="id block">{{.ID}}</code>
+              </td>
+              <td><span class="pill neutral">{{.Status}}</span></td>
+              <td>
+                <span class="pill {{if eq .Publication "published"}}good{{else if eq .Publication "refused"}}bad{{else}}warn{{end}}">{{.Publication}}</span>
+                {{if .Problem}}<span class="sub block">{{.Problem}}: {{.Detail}}</span>{{end}}
+              </td>
+              <td><span class="sub nowrap">{{.ExpiresAt}}</span></td>
+            </tr>
+          {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+  {{end}}
 </section>
 
 <section id="market-search" class="section-block" aria-labelledby="search-title">
   <h2 id="search-title">Market API</h2>
-  <form method="get" action="{{.Path}}" class="card">
+  <div class="presets" aria-label="Presets">
+    <span class="sub">Presets</span>
+    {{range .Presets}}<a class="button secondary small" href="{{.Href $.Path}}">{{.Label}}</a>{{end}}
+  </div>
+  <form method="get" action="{{.Path}}" class="card" data-market-search>
     <input type="hidden" name="search" value="1">
     <div class="form-grid">
       <div class="field">
@@ -129,7 +172,7 @@ and stake in SAC.</p>
         <label for="state">State</label>
         <select id="state" name="state">
           <option value="open" {{if eq .Query.State "open"}}selected{{end}}>open</option>
-          <option value="any" {{if eq .Query.State "any"}}selected{{end}}>any (sandbox)</option>
+          <option value="any" {{if eq .Query.State "any"}}selected{{end}}>any (closure exercise)</option>
         </select>
       </div>
       <div class="field">
@@ -146,8 +189,13 @@ and stake in SAC.</p>
     </div>
   </form>
 
+  <div data-market-results>
   {{if .Searched}}
-  <p class="hint after">Showing up to 10 matching markets.</p>
+  <script type="application/json" id="market-results">{{.Markets}}</script>
+  <div class="results-head">
+    <p class="hint after">Showing up to 10 matching markets.</p>
+    <a class="button secondary small" href="{{.Path}}#market-search" data-clear-markets>Clear markets</a>
+  </div>
   {{if not .Markets}}
   <div class="empty-state">
     <span class="empty-glyph" aria-hidden="true">⌕</span>
@@ -164,7 +212,7 @@ and stake in SAC.</p>
             <td>
               <span class="cell-title">{{if .EventTitle}}{{.EventTitle}} — {{end}}{{.Title}}</span>
               <code class="id block">{{.MarketID}}</code>
-              {{if .Published}}<span class="pill neutral">already published</span>{{end}}
+              {{if .Published}}<span class="pill neutral">already published</span>{{else if .Dismissed}}<span class="pill warn">unpublished</span>{{end}}
             </td>
             <td>{{.Category}}{{with .Tags}}<span class="sub block">{{.}}</span>{{end}}</td>
             <td><span class="sub nowrap">{{.CloseAt}}</span></td>
@@ -186,5 +234,6 @@ and stake in SAC.</p>
   </div>
   {{end}}
   {{end}}
+  </div>
 </section>
 {{template "foot" .}}

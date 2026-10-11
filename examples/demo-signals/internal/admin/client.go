@@ -27,10 +27,12 @@ func newAPI(url, token string, client *http.Client) *API {
 	return &API{url: strings.TrimRight(url, "/"), token: token, http: client}
 }
 
-// Feed is the public reference and the environment the template promises.
+// Feed is the public reference and the Solana networks the publisher's manifest declares. The
+// networks are what the create form offers: each signal names its own network (SEE-185), and it
+// has to be one of these.
 type Feed struct {
-	Reference   string
-	Environment string
+	Reference string
+	Networks  []string
 }
 
 // Item is one signal as the trader page shows it: identity, the pair, publication state. No
@@ -74,17 +76,13 @@ func (a *API) feed() (Feed, error) {
 	var read struct {
 		Reference string `json:"reference"`
 		Manifest  struct {
-			Environments []string `json:"environments"`
+			SupportedNetworks []string `json:"supported_networks"`
 		} `json:"manifest"`
 	}
 	if err := json.Unmarshal(body, &read); err != nil {
 		return Feed{}, err
 	}
-	environment := ""
-	if len(read.Manifest.Environments) > 0 {
-		environment = read.Manifest.Environments[0]
-	}
-	return Feed{Reference: read.Reference, Environment: environment}, nil
+	return Feed{Reference: read.Reference, Networks: read.Manifest.SupportedNetworks}, nil
 }
 
 func (a *API) list() ([]Item, error) {
@@ -113,6 +111,8 @@ func (a *API) list() ([]Item, error) {
 }
 
 type createInput struct {
+	// The Solana network the swap executes on, already checked against the manifest's networks.
+	Network   string
 	Pair      string
 	Slippage  string
 	ExpiresIn string
@@ -134,6 +134,7 @@ func (a *API) create(asked createInput) (Item, error) {
 		return Item{}, err
 	}
 	payload, err := json.Marshal(map[string]any{
+		"network":    asked.Network,
 		"expires_at": expires,
 		"note":       asked.Note,
 		"terms":      terms,

@@ -363,7 +363,7 @@ The threshold warning is made from `projected` — the two of them plus the requ
 | rejected, declined in the wallet, the wallet couldn't sign | nothing. A rejection is not a transfer |
 | the chain ran the transaction and it failed | nothing. The fee was paid; the transfer didn't happen |
 | an acknowledgement, a message signature | nothing. They move no asset |
-| a rehearsal in a sandbox connection | nothing. Nothing was signed or sent — read from the environment pinned in the binding (`ReviewedOperation.environment`), so a rehearsal the app closed on before it was recorded as simulated, which a restart leaves unknown, still counts nothing |
+| a preview (Preview without sending), or a pre-SEE-185 sandbox rehearsal | nothing. Nothing was signed or sent — read from the mode pinned in the binding (`ReviewedOperation.environment`), so a preview the app closed on before it was recorded, which a restart leaves unknown, still counts nothing |
 
 ### What counts as spending
 

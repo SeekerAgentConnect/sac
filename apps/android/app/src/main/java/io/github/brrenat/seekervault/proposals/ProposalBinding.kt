@@ -37,20 +37,23 @@ data class ExecutionBinding(
     /** The exact proposal revision the terms came from. */
     val revision: Long,
     /**
-     * Which promise was being kept when this was bound (SEE-97, docs/wiki/environments.md).
+     * Whether this was bound to be executed or previewed (SEE-97, SEE-185,
+     * docs/wiki/environments.md): [PluginEnvironment.Production] hands the bytes to the wallet,
+     * [PluginEnvironment.Sandbox] is a preview that signs and sends nothing.
      *
-     * It is core's own fact rather than the plugin's: the plugin prepared the same bytes either
-     * way, and what the connection promised at the moment of acting is what decides whether they
-     * are signed. Pinning it here is what makes a mode switch safe — the check happens on the far
-     * side of the wait for the wallet, exactly as the expiry and the wallet selection do, so a
-     * binding made under one promise cannot be carried out under the other.
+     * It is the owner's choice for this one operation, made when they act, and core's fact rather
+     * than the plugin's: the plugin prepared the same bytes either way. Pinning it is what keeps a
+     * preview from ever being carried out as the real thing, or the other way round.
      */
     val environment: PluginEnvironment,
     /** The parameters the owner chose, which must be the ones they reviewed. */
     val choice: ParameterChoice,
     /** The selected wallet's public address. Never a token: that stays in the wallet store. */
     val wallet: String,
-    /** The network the wallet was selected for, which is the chain this can happen on. */
+    /**
+     * The network this happens on: the one the signal declares (SEE-185), which the wallet must be
+     * selected for. Never the network of whichever wallet happened to be chosen.
+     */
     val network: Network,
     /**
      * The execution provider that prepared the bytes, by the ID it declares (SEE-145).
@@ -98,6 +101,12 @@ data class ExecutionBinding(
      * spending they cannot account for, never as nothing.
      */
     val spending: ReviewedSpending? = null,
+    /**
+     * The exact saved wallet profile chosen for this operation (SEE-185): a feed operation picks
+     * its wallet per operation, so the profile — not only the address — is pinned. Null on a
+     * binding written before it existed.
+     */
+    val walletProfileId: String? = null,
 )
 
 /**
@@ -148,14 +157,16 @@ enum class BindingProblem(val code: String) {
     NoWallet("no_wallet"),
     /** The wallet selected now isn't the one the binding names. */
     OtherWallet("other_wallet"),
-    /** The wallet is selected for another network than the one the binding names. */
+    /**
+     * The wallet is selected for another network than the one the binding names, or the binding
+     * names another network than the signal declares (SEE-185).
+     */
     OtherNetwork("other_network"),
     /**
-     * The binding was made for the other promise (SEE-97). The owner switched the connection's
-     * environment while this was in hand, so what they reviewed was a rehearsal and what they would
-     * be doing is real, or the other way round. They review again; nothing is carried over.
+     * The signal declares no network this build can use, or one its feed does not declare
+     * (SEE-185): readable, and never executed.
      */
-    OtherEnvironment("other_environment"),
+    NetworkUnusable("network_unusable"),
 }
 
 /**
@@ -164,16 +175,17 @@ enum class BindingProblem(val code: String) {
  * Every rule is here rather than spread between a repository and a screen, because a rule in two
  * places is a rule that gets forgotten in one of them. The checks run from the most fundamental to
  * the most specific: what this device has already done, then whether the proposal still stands,
- * then which promise is being kept, then whether the owner reviewed these terms, then whether the
- * plugin and the wallet are the ones bound, and last whether the bytes are still includable.
+ * then whether the binding is for the network the signal declares, then whether the owner reviewed
+ * these terms, then whether the plugin and the wallet are the ones bound, and last whether the
+ * bytes are still includable.
  */
 fun bindingProblem(
     record: ProposalRecord,
     binding: ExecutionBinding,
     wallet: SelectedWallet?,
     support: ServerSupport,
-    /** The promise the connection keeps *now*, which the binding's own must still be (SEE-97). */
-    environment: PluginEnvironment,
+    /** The networks the feed's manifest declares now ([proposalStanding]). */
+    networks: Set<Network>,
     /**
      * The execution provider **this build** would serve the proposal with, or null when none would
      * ([proposalProvider]).
@@ -189,7 +201,7 @@ fun bindingProblem(
     // The standing is consulted rather than re-derived, so what the owner is shown and what the
     // gate allows can never drift apart. An exhaustive `when` makes a standing added later a
     // decision here.
-    when (proposalStanding(record, support, now)) {
+    when (proposalStanding(record, support, networks, now)) {
         is ProposalStanding.Open -> Unit
         is ProposalStanding.Executed -> return BindingProblem.AlreadyExecuted
         is ProposalStanding.Dismissed -> return BindingProblem.Dismissed
@@ -197,10 +209,11 @@ fun bindingProblem(
         is ProposalStanding.Cancelled -> return BindingProblem.ProposalCancelled
         is ProposalStanding.Expired -> return BindingProblem.ProposalExpired
         is ProposalStanding.Unsupported -> return BindingProblem.ServerUnsupported
+        is ProposalStanding.NetworkUnusable -> return BindingProblem.NetworkUnusable
     }
-    // Before anything about the terms, because it is not a question about them: it is which of the
-    // two things the owner is about to do.
-    if (binding.environment != environment) return BindingProblem.OtherEnvironment
+    // The network is the signal's and nothing else's (SEE-185): a binding for any other is for an
+    // operation nobody published.
+    if (binding.network != record.proposal.network.declared) return BindingProblem.OtherNetwork
     val review = record.review ?: return BindingProblem.NotReviewed
     val revision = record.proposal.revision
     if (binding.revision != revision || review.revision != revision) {
@@ -229,6 +242,10 @@ fun bindingProblem(
     }
     val selected = wallet ?: return BindingProblem.NoWallet
     if (binding.wallet != selected.address) return BindingProblem.OtherWallet
+    // The exact profile chosen for this operation, when the binding names one (SEE-185).
+    if (binding.walletProfileId != null && binding.walletProfileId != selected.profileId) {
+        return BindingProblem.OtherWallet
+    }
     if (binding.network != selected.network.network) return BindingProblem.OtherNetwork
     binding.expiresAtEpochSeconds?.let {
         if (now.epochSecond >= it) return BindingProblem.PreparationExpired

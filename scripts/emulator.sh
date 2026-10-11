@@ -21,7 +21,10 @@ JDK_DIR="${SEEKER_JDK_DIR:-$HOME/.local/jdk}"
 AVD="${SEEKER_AVD:-sac}"
 IMAGE="${SEEKER_SYSTEM_IMAGE:-system-images;android-35;google_apis;x86_64}"
 CONTAINER="${SEEKER_EMULATOR_CONTAINER:-sac-emu}"
-RELAY_URL="${SEEKER_RELAY_URL:-https://seeker-gateway-sg8g3.ondigitalocean.app}"
+# The one trusted gateway the debug build is compiled with (SEE-185): feeds, the catalog, the
+# relay and the client configuration (RPC endpoints, swap fee) all come from it.
+# SEEKER_RELAY_URL is still read, as the older name for the same origin.
+GATEWAY_URL="${SEEKER_GATEWAY_URL:-${SEEKER_RELAY_URL:-https://seeker-gateway-sg8g3.ondigitalocean.app}}"
 PACKAGE="io.github.brrenat.seekervault"
 ADB="$ANDROID_HOME/platform-tools/adb"
 # Pinned: newer cmdline-tools replace sdkmanager with a downloader that fails over IPv6.
@@ -67,7 +70,7 @@ build() {
   export JAVA_HOME; JAVA_HOME="$(java_home)"
   export JAVA_TOOL_OPTIONS="-Djava.net.preferIPv4Stack=true"
   "$ROOT/apps/android/gradlew" -p "$ROOT/apps/android" :app:assembleDebug \
-    "-Pseekervault.relayUrl=$RELAY_URL" "$@"
+    "-Pseekervault.gatewayUrl=$GATEWAY_URL" "$@"
 }
 
 wait_boot() {

@@ -318,6 +318,48 @@ public object SubmitResultRequestKt {
     public fun hasUnknownOutcome(): kotlin.Boolean {
       return _builder.hasUnknownOutcome()
     }
+
+    /**
+     * ```
+     * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+     * user to approve again. The sidecar first checks for itself that the approved version's
+     * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+     * ```
+     *
+     * `.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];`
+     */
+    public var notSent: io.github.brrenat.seekervault.request.v1.NotSent
+      @kotlin.jvm.JvmName("getNotSent")
+        get() = _builder.notSent
+      @kotlin.jvm.JvmName("setNotSent")
+        set(value) {
+        _builder.notSent = value
+      }
+    /**
+     * ```
+     * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+     * user to approve again. The sidecar first checks for itself that the approved version's
+     * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+     * ```
+     *
+     * `.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];`
+     */
+    public fun clearNotSent() {
+      _builder.clearNotSent()
+    }
+    /**
+     * ```
+     * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+     * user to approve again. The sidecar first checks for itself that the approved version's
+     * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+     * ```
+     *
+     * `.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];`
+     * @return Whether the notSent field is set.
+     */
+    public fun hasNotSent(): kotlin.Boolean {
+      return _builder.hasNotSent()
+    }
     public val resultCase: io.github.brrenat.seekervault.request.v1.SubmitResultRequest.ResultCase
     @kotlin.jvm.JvmName("getResultCase")
       get() = _builder.resultCase
@@ -353,4 +395,7 @@ public val io.github.brrenat.seekervault.request.v1.SubmitResultRequestOrBuilder
 
 public val io.github.brrenat.seekervault.request.v1.SubmitResultRequestOrBuilder.unknownOutcomeOrNull: io.github.brrenat.seekervault.request.v1.UnknownOutcome?
   get() = if (hasUnknownOutcome()) getUnknownOutcome() else null
+
+public val io.github.brrenat.seekervault.request.v1.SubmitResultRequestOrBuilder.notSentOrNull: io.github.brrenat.seekervault.request.v1.NotSent?
+  get() = if (hasNotSent()) getNotSent() else null
 

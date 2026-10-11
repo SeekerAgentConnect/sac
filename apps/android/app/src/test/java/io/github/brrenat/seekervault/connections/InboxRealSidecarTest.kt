@@ -5,7 +5,6 @@ import com.connectrpc.okhttp.ConnectOkHttpClient
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.request.v1.Acknowledgement
 import io.github.brrenat.seekervault.request.v1.RequestState
@@ -80,13 +79,11 @@ class InboxRealSidecarTest {
         // It needs no client plugin: an acknowledgement, a message signature and a transfer are
         // actions this app carries out itself, so any build supports this server.
         assertEquals(emptyList<PluginRequirement>(), manifest.required)
-        assertEquals(setOf(PluginEnvironment.Production), manifest.environments)
         assertEquals(
             ServerSupport.Supported,
             serverSupport(
                 checkNotNull(app.connection(connection.id)).server,
                 ProviderRegistry.of(),
-                PluginEnvironment.Production,
             ),
         )
 

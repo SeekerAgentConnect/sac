@@ -214,7 +214,7 @@ Keys belong to the agent, which means the whole sidecar rather than one connecti
 | `CANCELLED` | Yes | Withdrawn before approval: the agent cancelled it, or its connection was revoked |
 | `EXPIRED` | Yes | `expires_at` passed while the request was PENDING. Nothing was signed. |
 | `FAILED` | Yes | It didn't succeed: the wallet failed before signing or sending, the transaction failed on chain, or it never landed before its blockhash expired |
-| `UNKNOWN` | No | Whether the wallet signed or sent isn't known yet. The sidecar keeps resolving it, and a late report can settle it. Agents must not treat it as a failure and retry. |
+| `UNKNOWN` | No | Whether the wallet signed or sent isn't known yet. The sidecar keeps resolving it, and a late report can settle it. A transaction the phone proves was never sent returns to PENDING ([reopening](#reopening)). Agents must not treat it as a failure and retry. |
 
 ```mermaid
 stateDiagram-v2
@@ -235,6 +235,7 @@ stateDiagram-v2
     UNKNOWN --> SUBMITTED: signature reported or found
     UNKNOWN --> REJECTED: late decline
     UNKNOWN --> FAILED: late failure, or never landed
+    UNKNOWN --> PENDING: proven never sent
 ```
 
 These are all the allowed transitions. Anything else is refused.
@@ -263,19 +264,39 @@ These are all the allowed transitions. Anything else is refused.
 | UNKNOWN | REJECTED | Phone | A late report says the user declined in the wallet | sign_message, transfer, swap |
 | UNKNOWN | FAILED | Phone | A late report says the wallet failed before signing or sending | sign_message, transfer, swap |
 | UNKNOWN | FAILED | Sidecar | The approved transaction's blockhash expired, and it never landed | transfer, swap |
+| UNKNOWN | PENDING | Phone | The phone proved the approved transaction was never sent, and the sidecar checked that its blockhash has expired ([reopening](#reopening)) | transfer, swap, staking |
 
 The rules behind the table:
 
-- **No state moves backward, and nothing leaves a terminal state.** A request never returns to PENDING. Another attempt is a new request, with a new idempotency key.
+- **Nothing leaves a terminal state, and only one move goes backward.** UNKNOWN → PENDING, for a transaction the phone proved was never sent and whose blockhash the sidecar checked has expired, is the one exception ([reopening](#reopening)). No other move returns a request to PENDING, and once a request has ended, another attempt is a new request, with a new idempotency key.
 - **Approval is the commit point.** The phone reports its approval, which moves the request to PROCESSING, before it invokes the wallet. It invokes the wallet only if the sidecar accepted that approval. The sidecar applies one change to a request at a time, so when the agent's cancellation and the user's approval race, exactly one wins: a cancelled request refuses the approval, and a PROCESSING request can't be cancelled.
 - **Success depends on the kind.** An `ack` or a message succeeds as COMPLETED, because nothing goes on chain. A transfer or swap succeeds only as CONFIRMED: the wallet's submission is SUBMITTED, not success.
-- **UNKNOWN isn't terminal.** It means the wallet may have signed or sent, and the sidecar keeps resolving it. SUBMITTED never becomes UNKNOWN either: both already mean "not settled", and the lifecycle never goes back. When a check can't account for a SUBMITTED transaction — the signature names a transaction nobody approved — the request stays SUBMITTED and its `Outcome.confirmation` says exactly that, rather than moving sideways into another unsettled state. See [confirmation](#confirmation).
+- **UNKNOWN isn't terminal.** It means the wallet may have signed or sent, and the sidecar keeps resolving it. SUBMITTED never becomes UNKNOWN either: both already mean "not settled", and the lifecycle goes back only by [reopening](#reopening), which needs a transaction that was never sent. When a check can't account for a SUBMITTED transaction — the signature names a transaction nobody approved — the request stays SUBMITTED and its `Outcome.confirmation` says exactly that, rather than moving sideways into another unsettled state. See [confirmation](#confirmation).
 - **Expiry comes first.** At or after `expires_at`, the sidecar moves a PENDING request to EXPIRED before it applies any other operation, so a late approval gets `INVALID_STATE` with the request as EXPIRED. The boundary is Stage 1's: a request is PENDING strictly before `expires_at`.
 - **The sidecar never re-executes on its own.** After a restart it neither rebuilds nor resubmits anything (SAW-010).
 
 The table is `TRANSITIONS` in `lifecycle.ts`, and its tests spell out each kind's table independently.
 
 Not every sidecar-driven transition in it has an implementation yet. SAW-022 implements the three a signature can settle — `SUBMITTED → CONFIRMED`, `SUBMITTED → FAILED`, and expiry — and no more. The rest need the sidecar to find a transaction it was never told the signature of, which would mean searching the wallet's own history; nothing does that today, and nothing pretends to. They stay in the table as what a later stage may implement, not as something the sidecar already does.
+
+### Reopening
+
+`not_sent` moves an UNKNOWN transfer, swap or staking action back to PENDING. It is the one backward step in the lifecycle, and it exists for one case: the owner approved, the wallet never answered, and the phone has since proved that the approved transaction was never sent — its blockhash has expired, and the wallet's history on chain holds no transaction carrying the approved message ([`docs/wiki/chain-confirmation.md`](wiki/chain-confirmation.md#a-wallet-that-never-answered)). Ending such a request as FAILED would make the agent start over for something the owner still wants; reopening it lets the owner approve it again.
+
+Why it is safe:
+
+- **The approved bytes can never land.** A transaction is valid only through its blockhash's `last_valid_block_height`. Once the chain is past it, those bytes are dead whatever happened to them, so going back cannot leave a second copy of the transfer in flight.
+- **The sidecar checks the expiry itself.** The phone's word isn't enough. Before it accepts `not_sent`, the sidecar reads the chain through its own endpoint: it confirms the endpoint serves the request's network (the genesis hash, as for [confirmation](#confirmation)), then that the current block height is past the approved version's `last_valid_block_height`. Until both hold, it refuses with `CHAIN_UNAVAILABLE` (`unavailable`) and moves nothing; the phone tries again later. The same answer covers an endpoint that doesn't answer or serves another cluster. A sidecar with no endpoint configured can check nothing and answers `unimplemented`; one that no longer holds the approved version answers `INVALID_PARAMETERS`. In both cases the phone reports `execution_failure` instead.
+- **The wallet is asked again only after a new review of a new preparation.** A version, once approved, is spent: an approval naming it, or any older version, gets `STALE_PREPARATION`. The phone prepares the request again, the owner reviews the new version, and only an accepted approval of it invokes the wallet.
+
+What reopening changes:
+
+- **The outcome starts over.** `Outcome.approval`, `signature` and `confirmation` belonged to the attempt that was never sent, so they are cleared, and `Outcome.detail` says the request is waiting for approval again. This is the one exception to Outcome fields never being cleared. The phone's own `detail` is kept with the accepted result.
+- **The deadline applies again.** A reopened request is PENDING, so `expires_at` is back in force. If it has already passed, the sidecar expires the request in the same operation, and `not_sent` answers with it EXPIRED.
+- **A new attempt has new results.** [Repeating an accepted result](#phone-api) is judged within the current attempt, so the second attempt's `unknown_outcome` is a new result even when its bytes match the first's. A retried `not_sent` is still a repeat until anything else is accepted.
+- **Events fire as for any other move.** The phone's update stream and an agent polling `vault_get_request` see PENDING, with `terminal` false.
+
+An older sidecar doesn't know the `not_sent` field, so it reads the submission as one without a result and answers `INVALID_PARAMETERS` (`invalid_argument`, "result is missing"); the phone then reports `execution_failure`.
 
 ### Two expiries
 
@@ -348,9 +369,10 @@ A `SubmitResult` carries one result:
 | `transaction_submission {signature}` | PROCESSING, UNKNOWN | SUBMITTED | transfer, swap |
 | `execution_failure {detail}` | PROCESSING, UNKNOWN | FAILED | sign_message, transfer, swap |
 | `unknown_outcome {detail}` | PROCESSING | UNKNOWN | sign_message, transfer, swap |
+| `not_sent {detail}` | UNKNOWN | PENDING, after the sidecar checks the approved blockhash has expired ([reopening](#reopening)) | transfer, swap, staking |
 
 - **Signatures are 64 bytes, and hashes 32.** From SAW-016 on, the sidecar verifies a `message_signature` against the request's wallet and its exact bytes before it accepts it; see [message results](#message-results).
-- **Repeating an accepted result has no further effect.** The sidecar compares the submitted result with every result it has already stored for that request, byte for byte, and a match returns the request as it is now — the same terminal result each time, after a restart as well. The phone stores each result before it sends it, and sends it again on each refresh until the sidecar answers (SAW-013; [`docs/guides/pending-requests.md`](guides/pending-requests.md)), so a lost response costs nothing (SAW-017; [`docs/testing/wallet-lifecycle.md`](testing/wallet-lifecycle.md)).
+- **Repeating an accepted result has no further effect.** The sidecar compares the submitted result with every result it has already stored for that request, byte for byte, and a match returns the request as it is now — the same terminal result each time, after a restart as well. After a [reopening](#reopening), only the results of the current attempt count. The phone stores each result before it sends it, and sends it again on each refresh until the sidecar answers (SAW-013; [`docs/guides/pending-requests.md`](guides/pending-requests.md)), so a lost response costs nothing (SAW-017; [`docs/testing/wallet-lifecycle.md`](testing/wallet-lifecycle.md)).
 - **A result belongs to its own connection.** `ref` names both the connection and the request, and a reference to a request another connection owns gets `NOT_FOUND`, whatever credential sent it. One connection's reply can never settle another's request.
 - **Any other result for a request that has moved on** gets `INVALID_STATE`, with the request as it is now.
 
@@ -385,10 +407,10 @@ The rules behind it:
 - **A confirmed result is checked against the approved bytes.** The sidecar fetches the transaction the chain holds under that signature and compares it with the exact `PreparedTransaction` the approval named, over the message — everything the signatures cover. A wallet's signature fills the slots the approved bytes leave empty, so that part differs and nothing else may. A transaction it can't take apart is not a match.
 - **The endpoint has to be serving the request's own cluster.** The database outlives the process and `SOLANA_RPC_URL` does not, so a restart can point stored requests at another chain. There, the signature is absent and the block height is somebody else's — which together read exactly like "the transaction expired, and nothing was spent". That is a terminal answer about money that may well have moved, so the genesis hash is compared first, the same way a preparation compares it, and a mismatch settles nothing at all: no status, no transaction, and above all no block height is read.
 - **A missing status is never proof.** A signature drops out of a node's status cache after a while, and an endpoint that didn't answer has said nothing at all. Only the approved transaction's own blockhash window closing, together with a search of the ledger that still finds nothing, means it can never land ([R9](https://solana.com/developers/cookbook/transactions/confirmation)).
-- **A check settles a request or leaves it exactly as it was.** It never moves one backward, never returns one to PENDING, and never opens a wallet. A finished request is left alone, whatever the chain says later.
+- **A check settles a request or leaves it exactly as it was.** It never moves one backward, never returns one to PENDING, and never opens a wallet. Only the phone's `not_sent`, verified by the sidecar, reopens a request ([reopening](#reopening)). A finished request is left alone, whatever the chain says later.
 - **The result rests on one endpoint.** `Outcome.confirmation.endpoint` is the host of the configured `SOLANA_RPC_URL` — the host and nothing else, because the URL can carry an API key. There is no second opinion behind a CONFIRMED or a FAILED transfer, and the agent (`checked_with`) and the owner are both told whose word it is.
-- **Nothing replaces a transaction.** A failure on chain, an expired blockhash, and an unaccountable signature are all reported as what they are. The sidecar builds no replacement, and the phone sends nothing to a wallet a second time. Another attempt is a new request, from the agent, approved by the owner.
-- **An UNKNOWN transfer has nothing to look up.** The phone lost the wallet before it reported anything, so no signature exists to ask about. A check says so and changes nothing; it stays UNKNOWN ([`docs/guides/troubleshooting.md`](guides/troubleshooting.md#a-transfer-whose-outcome-is-unknown)).
+- **Nothing replaces a transaction.** A failure on chain, an expired blockhash, and an unaccountable signature are all reported as what they are. The sidecar builds no replacement, and the phone never sends the same bytes to a wallet a second time. Another attempt is a new request, from the agent, approved by the owner — except a transaction proven never sent, which the owner may approve again as a new preparation ([reopening](#reopening)).
+- **An UNKNOWN transfer has nothing for the sidecar to look up.** The phone lost the wallet before it reported anything, so no signature exists to ask about. A sidecar check says so and changes nothing. The phone settles it instead: it keeps the approved bytes, and once their blockhash has expired it searches the wallet's history for them. Found, it reports `transaction_submission` (UNKNOWN → SUBMITTED); proven absent, `not_sent` (UNKNOWN → PENDING, [reopening](#reopening)), or `execution_failure` (UNKNOWN → FAILED), which an agent may act on, when the sidecar can't verify `not_sent` ([`docs/wiki/chain-confirmation.md`](wiki/chain-confirmation.md#a-wallet-that-never-answered)).
 - **Without an endpoint, nothing is checked.** A sidecar with no `SOLANA_RPC_URL` serves no transfer to begin with; one that had a request from before answers `CHAIN_UNAVAILABLE` to `CheckStatus`, and the request stays SUBMITTED.
 
 `Outcome.confirmation` carries `level`, `slot`, `chain_error`, `checked_at`, `checks`, `endpoint`, `matches_approval`, and `detail`. It is stored with the request, so a signature and every unsettled attempt survive a restart of the sidecar and of the phone. `requests/confirmation.ts` decides, `storage/request-store.ts` commits, and `solana/confirmation.ts` compares the bytes.
@@ -433,7 +455,7 @@ A `sign_message` request is the one wallet action with no transaction: it produc
   - An ack's text follows the Stage 1 text rules, and a note is at most 1024 UTF-8 bytes.
   - A whole `/mcp` body is at most 64 KiB; a larger one gets 413.
   - Each phone API message is at most 64 KiB; a larger one gets `resource_exhausted`.
-- **An agent polls `vault_get_request` until `terminal` is true.** An UNKNOWN request isn't finished, and the agent must not create a replacement for it. Neither is a SUBMITTED one: polling is also what makes the sidecar look, so a transfer reaches CONFIRMED or FAILED because somebody asked ([confirmation](#confirmation)).
+- **An agent polls `vault_get_request` until `terminal` is true.** An UNKNOWN request isn't finished, and the agent must not create a replacement for it: it may yet return to PENDING for the owner to approve again ([reopening](#reopening)). Neither is a SUBMITTED one: polling is also what makes the sidecar look, so a transfer reaches CONFIRMED or FAILED because somebody asked ([confirmation](#confirmation)).
 
 Every tool returns the same view in `structuredContent`:
 
@@ -567,13 +589,20 @@ is the contract.
 | `settings_revision` | The revision of everything else here | A positive `uint64` that changes whenever the content does and never goes backwards. |
 | `mode` | `CONNECTION_MODE_DIRECT` or `CONNECTION_MODE_GATEWAY_FEED` | Never unspecified. The phone does not guess a mode, and never reads a missing one as a feed. |
 | `required_plugins` | The bundled client plugins its operations need | At most 16, each a well-formed plugin ID (`jupiter.swap`) with `1 <= min_contract <= max_contract`, no duplicates. |
-| `environments` | `production`, `sandbox`, or both | At least one, never unspecified, no repeats. It says which the server *serves*; the phone records which one each connection *keeps*, and the shared gateway refuses a manifest that changes the set a server ID already published (SEE-97, [`docs/wiki/environments.md`](wiki/environments.md)). |
 | `display_name` | What the server calls itself | Optional; at most 64 UTF-8 bytes of printable, trimmed text. Never verified, and only ever a default label. |
 | `direct.url` | Where a direct server is reached | The connection's own server URL, character for character, in the pairing code's normalized form. |
-| `feed.gateway_url` | The shared gateway's origin | The origin the feed was added through, with no path, query, user info, or fragment. |
+| `feed.gateway_url` | The shared gateway's origin | The origin the feed was added through, with no path, query, user info, or fragment. Since SEE-185 it must also be the one gateway the app's build names: it confirms an origin and never redirects one. |
 | `feed.channel` | The channel the publisher publishes on | `server/<server_id>` for this manifest's own `server_id`: a publisher may name only its own. |
 | `direct.supported_networks` / `feed.supported_networks` | The Solana networks the server's wallet operations run on (SEE-174) | `SOLANA_NETWORK_MAINNET`, `_DEVNET`, `_TESTNET`; never unspecified, no repeats, canonical order ascending. Empty means **no networks declared** — never Mainnet or all — and the phone signs nothing for such a server. Inside the reference so the reference stays last in every runtime's bytes. May change on a higher revision ([`docs/wiki/server-manifests.md`](wiki/server-manifests.md#supported-networks)). |
 | `feed.access` | Who may read the feed (SEE-156) | Absent means public, which is what every manifest before SEE-156 said. A restricted feed carries `FEED_ACCESS_POLICY_RESTRICTED` and the HTTPS origin its subscribers prove a wallet at. The gateway writes the field from the operator's registration, so a publisher cannot claim it and a feed reference cannot supply it (`## Restricted feeds`). |
+
+**Field 6, `environments`, is retired (SEE-185)** and reserved with the `ServerEnvironment` enum it
+used. A server no longer says whether it is a sandbox or production: whether an operation is
+previewed or executed is the owner's choice on the phone, per operation
+([`docs/wiki/environments.md`](wiki/environments.md)). The gateway no longer validates the field or
+holds a server ID to the set it published first, and its storage migration (SQLite version 9,
+Postgres version 5) drops the field from every manifest it already holds, so a publisher's identical
+republication is not a revision conflict.
 
 **`PairingService.GetServerManifest`** serves it, authenticated with the phone credential and scoped
 to the caller's connection like `GetConnectionCapabilities`: a `connection_id` that isn't the
@@ -585,8 +614,8 @@ has. It is an absence, not a failure, and the phone records it as one. Since SEE
 no Solana network, so an up-to-date phone reads its requests but signs nothing for it until it is
 updated.
 
-**The Node sidecar always declares `direct`,** its own public URL, no required plugins, and
-`production`, with the Solana networks `SAC_SUPPORTED_NETWORKS` names (none when unset; SEE-174,
+**The Node sidecar always declares `direct`,** its own public URL and no required plugins, with the
+Solana networks `SAC_SUPPORTED_NETWORKS` names (none when unset; SEE-174,
 [`docs/development/mcp-server.md`](development/mcp-server.md#configuration)). Its revision is real: it is stored, and it moves by one exactly when the content the
 manifest is built from changes, so restarting with the same settings republishes the same revision.
 
@@ -786,10 +815,11 @@ source-authored contract for a private request and a feed signal. It contains:
 
 | Part | Rule |
 | --- | --- |
+| `contract_version` | `2` since SEE-185: the action names its Solana network. `1` is the legacy contract, with no network; a client keeps such a document readable and never executes it, and the gateway accepts only `2` for a new publication |
 | `identity` | The source, source-owned scope and stable request ID form the identity. A private and feed ID cannot collide because their scopes and audiences differ |
 | `lifecycle` | Positive ordered revision, explicit status, creation/update times and an absolute expiry. A legacy direct request adapts its immutable content as revision 1 and exposes its durable direct status |
 | `presentation` | Bounded unverified title and description plus `REQUEST` or `SIGNAL`. Signal is presentation, not an action |
-| `action` | Capability ID and version, a bundled-plugin compatibility name, and bounded typed parameters |
+| `action` | Capability ID and version, a bundled-plugin compatibility name, bounded typed parameters, and `network` (SEE-185): the Solana network the action executes on, required from contract 2 |
 | `owner_inputs` | The shapes and bounds of values chosen locally. An owner's answer is never source-authored |
 | `audience` | One private recipient or one publisher-owned feed channel |
 | `result_handling` | `RETURN_TO_ORIGIN` for the authenticated direct adapter or `DEVICE_LOCAL` for a feed |
@@ -804,6 +834,16 @@ tool contracts, `PrepareRequest`, `SubmitResult` and result retry do not change.
 requires a feed audience, `SIGNAL`, and `DEVICE_LOCAL`. The publisher write listener and subscriber
 read listener remain different services. See
 [`docs/wiki/common-requests.md`](wiki/common-requests.md).
+
+**The network is the signal's, and never inferred (SEE-185).** `ActionCapability.network` is a
+`seekervault.server.v1.SolanaNetwork`. The assets and markets a document names are identified by
+network plus address, so the same mint on another cluster is a different thing. One feed may publish
+successive signals for different networks, each one its manifest's `supported_networks` lists; a
+connection is never bound to one execution network. A document with `SOLANA_NETWORK_UNSPECIFIED`, a
+value the client doesn't know, or contract version 1 stays readable and is not executable. Nothing
+reads it as Mainnet, or as the network of whichever wallet the owner selects. A direct request's
+network is unchanged: it is the network of the connection's explicit wallet binding
+([the wallet binding](#the-wallet-binding)).
 
 ## Shared proposals (SEE-89; v1 compatibility)
 
@@ -832,6 +872,11 @@ the contract.
 
 **There is no per-proposal protocol version.** Which contract a publisher speaks is in its
 `ServerManifest`, and a phone holds no feed without having validated that manifest first.
+
+**A proposal has no network (SEE-185).** It is read as a legacy contract-1 request: readable, never
+executable. The gateway keeps a network-declaring signal out of the protocol-1 views entirely
+(`ListProposals` and `GetProposal`), because projecting it into this shape would drop the one
+declaration that makes it safe to execute. It is read through `ListRequests` and `GetRequest`.
 
 **There is nothing in it about a subscriber** — no address, no chosen quantity, nothing prepared to
 sign — and the phone's boundary check reads the proto and fails if the field set changes.
@@ -937,8 +982,8 @@ runs the real gateway to keep the two honest about it.
 | Method | What it does | Rules |
 | --- | --- | --- |
 | `PublishManifest` | Registers or replaces what the server says about itself | Must be a `CONNECTION_MODE_GATEWAY_FEED` manifest naming this gateway's own origin and the caller's own channel, at `protocol_version` 1. A direct manifest is refused: relaying one would let a publisher point a phone at an address of its choosing. |
-| `PublishProposal` | Creates or updates one proposal | The whole current document, `PROPOSAL_STATUS_OPEN`, by the same bounds the phone applies (`## Shared proposals`). A cancelled status is refused — withdrawing is a transition, and `CancelProposal` is where it happens. |
-| `PublishRequest` | Primary create/update operation | A v2 feed-audience request with `SIGNAL` presentation and `DEVICE_LOCAL` result handling. It is validated, rebuilt, revision-checked and committed with its notice exactly like the compatibility operation |
+| `PublishProposal` | Creates or updates one proposal | The whole current document, `PROPOSAL_STATUS_OPEN`, by the same bounds the phone applies (`## Shared proposals`). A cancelled status is refused — withdrawing is a transition, and `CancelProposal` is where it happens. A proposal names no network, so phones keep it readable and never execute it (SEE-185). |
+| `PublishRequest` | Primary create/update operation | A v2 feed-audience request at `contract_version` 2 with `SIGNAL` presentation, `DEVICE_LOCAL` result handling and a known `action.network` (`BAD_NETWORK` otherwise; another contract version is `OTHER_PROTOCOL`). The network must be one the manifest this gateway holds for the publisher declares, read in the same transaction as the write (`OTHER_NETWORK`, also when no manifest is held). It is validated, rebuilt, revision-checked and committed with its notice exactly like the compatibility operation |
 | `CancelRequest` | Primary final withdrawal operation | Request ID and a higher revision; the stored v2 request is returned cancelled |
 | `CancelProposal` | Withdraws one | Takes an ID and a revision, so a publisher that no longer holds the document can still withdraw it. The gateway keeps every other field and writes the status and the update time. |
 | `DescribeAccess` | Says which access policy this gateway enforces for the caller's feed (SEE-156) | The operator's registration, explicitly either way, and the longest grant this gateway allows. A restricted publisher asks before it publishes anything and publishes nothing unless the answer is restricted |
@@ -963,13 +1008,14 @@ document got wrong.
 | Method | Answers | Version-aware |
 | --- | --- | --- |
 | `GetServerManifest` | The manifest the publisher registered, by server ID | `known_settings_revision` answers `unchanged` with no document |
-| `ListProposals` | A page of the channel's current proposals, at most 200, ordered by proposal ID | `known_snapshot_sequence` answers `unchanged` with no proposals, on a first page |
-| `GetProposal` | One proposal, by channel and ID | — |
+| `ListProposals` | A page of the channel's current proposals, at most 200, ordered by proposal ID. A network-declaring signal is left out (SEE-185), so a page may be shorter; the cursor still continues after the last row read | `known_snapshot_sequence` answers `unchanged` with no proposals, on a first page |
+| `GetProposal` | One proposal, by channel and ID. A network-declaring signal answers `NO_SUCH_PROPOSAL` here | — |
 | `ListRequests` | Primary page of common requests over the same rows, order, sequence and cursor rules | A legacy proposal row is adapted on read; no data migration can lose it |
 | `GetRequest` | One common request, by channel and request ID | — |
 | `GetStreamTicket` | Permission to listen to channels this gateway hosts (SEE-91) | — |
 | `GetFeedTopics` | Where hints about those channels arrive (SEE-92) | — |
 | `SetFeedPushTarget` | Where one approved device's hints arrive for a restricted channel, which has no topic (SEE-156) | — |
+| `GetClientConfig` | The operator's client configuration (SEE-185): one Solana RPC endpoint per network and the SAC swap service fee, with a revision. Unauthenticated, the same for every caller, and revision 0 with no endpoints and no fee when never configured ([`docs/wiki/client-config.md`](wiki/client-config.md)) | — |
 
 **The snapshot boundary is documented and not a transaction.** Every page of one walk reports the
 `snapshot_sequence` the walk began at — the channel's count of accepted publications, which never
@@ -1139,12 +1185,18 @@ a meaning that range carried.
 The order of the first three is the order a phone acts on: ask the publisher for access, accept that
 access ended, or wait for a renewal.
 
-SEE-174 adds one more, outside that group:
+SEE-174 adds one more, outside that group, and SEE-185 widens it and adds a second:
 
 | Problem | When | Connect code |
 | --- | --- | --- |
-| `GATEWAY_PROBLEM_BAD_NETWORK` = 55 | A manifest's `feed.supported_networks` names `SOLANA_NETWORK_UNSPECIFIED`, a value this gateway does not know, or a network twice. An empty list is not this ([supported networks](wiki/server-manifests.md#supported-networks)) | `invalid_argument` | `SetFeedPushTarget` on a deployment that relays nothing answers
-`GATEWAY_PROBLEM_NO_PUSH`, as `GetFeedTopics` does.
+| `GATEWAY_PROBLEM_BAD_NETWORK` = 55 | A manifest's `feed.supported_networks` names `SOLANA_NETWORK_UNSPECIFIED`, a value this gateway does not know, or a network twice. An empty list is not this ([supported networks](wiki/server-manifests.md#supported-networks)). Since SEE-185 also a signal whose `action.network` is missing or unknown | `invalid_argument` |
+| `GATEWAY_PROBLEM_OTHER_NETWORK` = 56 | A signal's `action.network` is one the publisher's held manifest does not declare, or the gateway holds no manifest for it yet (SEE-185). The field is `action.network`. Publishing a manifest that declares the network is what fixes it | `failed_precondition` |
+
+SEE-185 retires `GATEWAY_PROBLEM_BAD_ENVIRONMENT` = 12 and `GATEWAY_PROBLEM_OTHER_ENVIRONMENT` = 34
+with server-declared environments. Both numbers and names stay reserved.
+
+`SetFeedPushTarget` on a deployment that relays nothing answers `GATEWAY_PROBLEM_NO_PUSH`, as
+`GetFeedTopics` does.
 
 **Both old sides fail closed.** An old client sends no `session`,
 so every read of a restricted channel answers `ACCESS_REQUIRED`: there is no anonymous fallback and

@@ -59,7 +59,11 @@ There is no default. A server that sets nothing publishes an empty list, which d
 it is never read as Mainnet or as every network, and an up-to-date phone shows the connection but
 signs nothing on it until the server declares one. List what the server really uses — the cluster
 its RPC endpoint serves, and any network the owner signs messages on — not every network the
-protocol names, and do not derive it from the environment: `production` is not Mainnet.
+protocol names.
+
+The manifest declares no sandbox or production environment (SEE-185): a direct server is always real
+execution on the phone, and the SDK no longer emits the retired `environments` field. The first start
+after upgrading moves the settings revision once, because the published manifest changed.
 
 The list is part of the manifest, so changing it moves the settings revision on the next start and
 the phone rereads it; the same list, in any order, keeps the revision. Update servers first and set
@@ -76,14 +80,16 @@ one that does not passes `relay`, and the gateway's operator sends on its behalf
 openDirectServer({
   // …
   relay: {
-    relayUrl: "https://feeds.example.com",       // the gateway's origin, from its operator
+    relayUrl: "https://feeds.example.com",       // the phone build's gateway, from its operator
     serverId: "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
     credential: process.env.RELAY_CREDENTIAL!,   // scoped: it cannot publish and is not admin
   },
 });
 ```
 
-Configuring both is refused at startup: they fire on the same committed update, so a phone would be
+The phone registers only with the one gateway its build trusts (`-Pseekervault.gatewayUrl`,
+[client-config.md](../wiki/client-config.md#the-trusted-gateway)), so a relay on any other origin
+wakes nothing. Configuring both is refused at startup: they fire on the same committed update, so a phone would be
 woken twice for one change. The relay configuration is validated when the server opens, so a URL
 that is not an origin or a server ID that is not a lowercase UUID is a named failure rather than
 wake-ups that go nowhere.

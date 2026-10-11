@@ -2,10 +2,11 @@
 // it from (SEE-88, SEE-95).
 //
 // A manifest is bounded declarative data: the server's lasting ID, the phone–server contract it
-// speaks, a settings revision, the mode, the bundled plugins its operations need, the environments
-// it serves, the Solana networks its operations run on, and a name that is never believed. There is no field in it that installs code, asks
-// for a permission, carries a policy or names a wallet endpoint — what a phone will do with this
-// server is decided by the build it is running and by its owner, never by this document.
+// speaks, a settings revision, the mode, the bundled plugins its operations need, the Solana
+// networks its operations may run on, and a name that is never believed. There is no field in it
+// that installs code, asks for a permission, carries a policy or names a wallet endpoint — what a
+// phone will do with this server is decided by the build it is running and by its owner, never by
+// this document.
 //
 // A template publishes a **gateway feed** manifest and nothing else. A direct manifest carries a
 // URL, and the gateway refuses to relay one: relaying it would let a publisher point a phone at an
@@ -19,7 +20,6 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
@@ -31,21 +31,18 @@ import (
 const Protocol uint32 = 1
 
 // Settings are the parts of a manifest that come from the deployment rather than from a document:
-// who this publisher is, which gateway serves it, what it proposes and what it promises.
+// who this publisher is, which gateway serves it, what it proposes and which networks it runs on.
 type Settings struct {
 	ServerID string
 	// The gateway's own canonical origin. It must be the origin that gateway publishes as
 	// (BROADCAST_PUBLIC_URL), because the phone compares the two character for character.
 	GatewayURL string
-	// Exactly one promise, and a phone refuses to treat a server as supported in an environment
-	// the server does not name: the two are different promises about what happens when the owner
-	// approves (SEE-97).
-	Environment environment.Environment
 	// The Solana networks this deployment's wallet operations run on (SEE-174), from the
 	// configuration (PUBLISHER_SUPPORTED_NETWORKS). Empty declares none — a feed whose proposals
 	// never reach a wallet — and never means Mainnet: a phone signs nothing for a connection whose
-	// network is not listed here. Unlike the environment it may change between revisions, and the
-	// fingerprint moves with it, so adding Devnet is a new revision every phone re-reads.
+	// network is not listed here. It is capability information: each signal names its own network,
+	// which must be one of these (SEE-185). It may change between revisions, and the fingerprint
+	// moves with it, so adding Devnet is a new revision every phone re-reads.
 	Networks []network.Network
 	// The bundled plugin the template's operation needs, from the kind it registered.
 	Requirement signals.Requirement
@@ -81,12 +78,7 @@ func Document(settings Settings, revision uint64) *serverv1.ServerManifest {
 			MinContract: settings.Requirement.MinContract,
 			MaxContract: settings.Requirement.MostContract,
 		}},
-		// Exactly one, always. A deployment serves one environment, and a second one is a second
-		// deployment with its own server ID and its own database (packages/publisher-support/store). An environment
-		// that came from nowhere is published as unspecified rather than as production, and the
-		// gateway refuses it (packages/publisher-support/environment).
-		Environments: []serverv1.ServerEnvironment{settings.Environment.Wire()},
-		DisplayName:  settings.DisplayName,
+		DisplayName: settings.DisplayName,
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: settings.GatewayURL,
 			Channel:    signals.ChannelFor(settings.ServerID),

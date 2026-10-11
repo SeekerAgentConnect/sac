@@ -13,6 +13,7 @@ import io.github.brrenat.seekervault.request.v1.RequestState
 import io.github.brrenat.seekervault.skr.staking
 import io.github.brrenat.seekervault.solana.SolanaException
 import io.github.brrenat.seekervault.solana.SolanaProblem
+import io.github.brrenat.seekervault.transactions.isApprovedMessage
 import io.github.brrenat.seekervault.transactions.messageBytes
 import io.github.brrenat.seekervault.transactions.recentBlockhashOf
 import io.github.brrenat.seekervault.transactions.transfer
@@ -52,6 +53,19 @@ interface SubmissionTracking {
 
     /** Nothing was sent — declined, refused, rehearsed — so there is nothing to look up. */
     fun abandoned(key: RequestKey)
+
+    /**
+     * The wallet never answered, so whether it sent the transaction isn't known and there is no
+     * signature to look up. The capture is kept, and once the transaction can no longer land the
+     * wallet's own history is searched for it ([ConfirmationTracker.onLostSettled]).
+     */
+    fun lost(key: RequestKey)
+
+    /**
+     * The request was reopened for a new approval (docs/protocol.md#reopening): the old capture,
+     * proven never sent, is dropped so the next one is taken afresh.
+     */
+    fun forget(key: RequestKey)
 }
 
 /** What was captured before the wallet was opened. */
@@ -115,6 +129,13 @@ class ConfirmationTracker(
     @Volatile var onDue: () -> Unit = {}
 
     /**
+     * A transaction whose wallet never answered was settled by a search: found on chain under the
+     * signature given, or proven never sent (null). Whoever stored the unresolved answer is told,
+     * so it can report what is now known. Called outside the lock.
+     */
+    @Volatile var onLostSettled: (RequestKey, String?) -> Unit = { _, _ -> }
+
+    /**
      * Reads what is stored. Anything that stopped for want of an endpoint is armed again when this
      * build has one for its cluster, and nothing else is changed.
      */
@@ -123,7 +144,7 @@ class ConfirmationTracker(
             store.list().forEach { tracking ->
                 val check = tracking.check
                 if (
-                    tracking.signature != null &&
+                    (tracking.signature != null || tracking.searching) &&
                         check.state == ChainState.Checking &&
                         check.nextCheckAt == null &&
                         endpoints.configured(tracking.network)
@@ -195,6 +216,29 @@ class ConfirmationTracker(
     override fun abandoned(key: RequestKey) {
         synchronized(lock) {
             val tracking = store.get(key) ?: return
+            // A search that proved it was never sent is the record of that, and stays.
+            if (tracking.signature != null || tracking.check.state.verified) return
+            store.delete(key)
+            publishAll()
+        }
+    }
+
+    override fun lost(key: RequestKey) {
+        val armed =
+            synchronized(lock) {
+                val tracking = store.get(key) ?: return@synchronized false
+                if (tracking.signature != null || tracking.searching) return@synchronized false
+                store.put(tracking.copy(check = searchCheck(tracking.capturedAt)))
+                publishAll()
+                true
+            }
+        if (armed) onDue()
+    }
+
+    override fun forget(key: RequestKey) {
+        synchronized(lock) {
+            val tracking = store.get(key) ?: return
+            // Only an attempt proven never sent: anything with a signature is still the chain's.
             if (tracking.signature != null) return
             store.delete(key)
             publishAll()
@@ -225,6 +269,10 @@ class ConfirmationTracker(
             synchronized(lock) {
                 var armed = false
                 results.forEach { result ->
+                    if (result.signing is SigningOutcome.Unresolved) {
+                        if (searchLost(result)) armed = true
+                        return@forEach
+                    }
                     val sent = result.signing as? SigningOutcome.Sent ?: return@forEach
                     if (store.get(result.key) != null) {
                         val signature = sent.signature.toByteArray()
@@ -275,6 +323,49 @@ class ConfirmationTracker(
     }
 
     /**
+     * An unresolved transfer whose capture an earlier build deleted is captured again from the
+     * stored approval, which holds the same bytes, and searched for. Answers whether one was armed.
+     * Call under the lock.
+     */
+    private fun searchLost(result: LocalResult): Boolean {
+        if (result.request.state in SERVER_SETTLED) return false
+        val held = store.get(result.key)
+        if (held != null) {
+            // Captured, and never armed: the process stopped between storing the answer and
+            // telling the tracker.
+            if (held.signature != null || held.searching) return false
+            store.put(held.copy(check = searchCheck(held.capturedAt)))
+            return true
+        }
+        val submission = directSubmission(result) ?: return false
+        val message = messageBytes(submission.transaction) ?: return false
+        store.put(
+            ChainTracking(
+                key = result.key,
+                origin = TrackingOrigin.Direct,
+                network = submission.network,
+                wallet = submission.wallet,
+                message = message,
+                blockhash = recentBlockhashOf(submission.transaction),
+                capturedAt = result.answeredAt,
+                check = searchCheck(result.answeredAt),
+            )
+        )
+        return true
+    }
+
+    /**
+     * A search's first check. Nothing can be concluded before the blockhash has had time to expire,
+     * so it is not due before then.
+     */
+    private fun searchCheck(capturedAt: Instant): ChainCheck =
+        ChainCheck(
+            state = ChainState.Checking,
+            reason = ChainReason.NotYetVisible,
+            nextCheckAt = maxOf(now(), capturedAt.plus(EXPIRY_GRACE)),
+        )
+
+    /**
      * The phone is online again. A check that is only waiting because the endpoint couldn't be
      * reached is due now rather than at the end of its backoff, which can be hours long by then.
      * Nothing else is re-armed: an endpoint that answered, even unhelpfully, keeps its backoff, and
@@ -294,6 +385,34 @@ class ConfirmationTracker(
             if (waiting.isNotEmpty()) publishAll()
             waiting.isNotEmpty()
         }
+
+    /**
+     * The owner changed where [network] is asked (SEE-184). A record of that network whose last
+     * check stopped at the endpoint — none set, another cluster, unreachable, refused, unusable,
+     * rate limited — is due now, through the endpoint as it is now. Records of every other network
+     * are left exactly as they were, and no record is ever moved to another network: the cluster a
+     * record was bound to when its transaction was sent is the only one it is asked about. Returns
+     * whether anything became due.
+     */
+    fun endpointChanged(network: Network): Boolean {
+        val due =
+            synchronized(lock) {
+                val at = now()
+                val waiting =
+                    store.list().filter { tracking ->
+                        tracking.network == network &&
+                            (tracking.signature != null || tracking.searching) &&
+                            tracking.check.state == ChainState.Checking &&
+                            tracking.check.reason in ENDPOINT_REASONS &&
+                            tracking.check.nextCheckAt?.let { it <= at } != true
+                    }
+                waiting.forEach { store.put(it.copy(check = it.check.copy(nextCheckAt = at))) }
+                if (waiting.isNotEmpty()) publishAll()
+                waiting.isNotEmpty()
+            }
+        if (due) onDue()
+        return due
+    }
 
     /** When the next automatic check is due, or null when nothing is waiting. */
     fun nextDue(): Instant? =
@@ -329,7 +448,7 @@ class ConfirmationTracker(
     suspend fun check(key: RequestKey): ChainCheck? {
         run.withLock {
             val tracking = synchronized(lock) { store.get(key) } ?: return null
-            if (tracking.signature != null && tracking.check.checkable) {
+            if ((tracking.signature != null || tracking.searching) && tracking.check.checkable) {
                 check(listOf(tracking), manual = true)
             }
         }
@@ -348,7 +467,24 @@ class ConfirmationTracker(
                         }
                         return@forEach
                     }
-                trackings.chunked(MOST_SIGNATURES).forEach { chunk ->
+                val (searches, signed) = trackings.partition { it.signature == null }
+                searches.forEach { tracking ->
+                    val next =
+                        try {
+                            search(reader, tracking, manual)
+                        } catch (e: SolanaException) {
+                            inconclusive(tracking, reasonOf(e), reader.host, manual)
+                        }
+                    val stored = record(tracking, next) ?: return@forEach
+                    when {
+                        stored.signature != null -> {
+                            onLostSettled(stored.key, stored.signature)
+                            onDue()
+                        }
+                        stored.check.state == ChainState.Expired -> onLostSettled(stored.key, null)
+                    }
+                }
+                signed.chunked(MOST_SIGNATURES).forEach { chunk ->
                     val statuses =
                         try {
                             reader.statuses(chunk.map { checkNotNull(it.signature) }, false)
@@ -460,6 +596,103 @@ class ConfirmationTracker(
         )
     }
 
+    /**
+     * Looks for a transaction whose wallet never answered, so there is no signature to ask about.
+     * Absence is concluded on the same standard as [absent]: the approved blockhash can no longer
+     * be used on the finalized chain, and the endpoint's ledger reaches back past the capture. Then
+     * the wallet's own history over every slot the transaction could have landed in is read, and
+     * each transaction there is compared with the approved message byte for byte. One that matches
+     * gives the record its signature, and it is followed like any other; none means it was never
+     * sent and never can be. A history too long to read in one search proves nothing.
+     */
+    private suspend fun search(
+        reader: ChainReader,
+        tracking: ChainTracking,
+        manual: Boolean,
+    ): ChainTracking {
+        val blockhash =
+            tracking.blockhash
+                ?: return tracking.copy(
+                    check =
+                        ChainCheck(
+                            state = ChainState.Unresolved,
+                            checkedAt = now(),
+                            checks = tracking.check.checks + 1,
+                            host = reader.host,
+                            reason = ChainReason.MissingContext,
+                        ),
+                    attempts = 0,
+                )
+        if (now() < tracking.capturedAt.plus(EXPIRY_GRACE) || reader.blockhashValid(blockhash)) {
+            return inconclusive(tracking, ChainReason.NotYetVisible, reader.host, manual)
+        }
+        val from = tracking.capturedAt.minus(COVERAGE_MARGIN)
+        val retained = reader.retainedSince()
+        if (retained == null || !retained.isBefore(from)) {
+            return inconclusive(tracking, ChainReason.HistoryNotRetained, reader.host, manual)
+        }
+        // It can't have landed before the wallet was handed it, nor after its blockhash, fetched
+        // before that, stopped counting — which [EXPIRY_GRACE] is well past.
+        val until = tracking.capturedAt.plus(EXPIRY_GRACE).plus(COVERAGE_MARGIN)
+        val candidates = mutableListOf<String>()
+        var before: String? = null
+        var covered = false
+        for (page in 0 until SEARCH_PAGES) {
+            val entries = reader.history(tracking.wallet, before, SEARCH_PAGE)
+            for (entry in entries) {
+                val time = entry.blockTime
+                if (time != null && time.isBefore(from)) {
+                    covered = true
+                    break
+                }
+                // A block with no time can't be placed, so it is looked at rather than skipped.
+                if (time == null || !time.isAfter(until)) candidates += entry.signature
+            }
+            // A short page is the start of the address's history.
+            if (covered || entries.size < SEARCH_PAGE) {
+                covered = true
+                break
+            }
+            before = entries.last().signature
+        }
+        if (!covered || candidates.size > MOST_CANDIDATES) {
+            return inconclusive(tracking, ChainReason.SearchIncomplete, reader.host, manual)
+        }
+        for (signature in candidates) {
+            val onChain =
+                reader.transaction(signature)
+                    ?: return inconclusive(tracking, ChainReason.BodyNotServed, reader.host, manual)
+            if (
+                messageBytes(onChain.transaction)?.let {
+                    isApprovedMessage(tracking.message, it)
+                } == true
+            ) {
+                val at = now()
+                return tracking.copy(
+                    signature = signature,
+                    submittedAt = tracking.capturedAt,
+                    check =
+                        ChainCheck(
+                            state = ChainState.Checking,
+                            checkedAt = at,
+                            checks = tracking.check.checks + 1,
+                            host = reader.host,
+                            nextCheckAt = at,
+                        ),
+                    attempts = 0,
+                )
+            }
+        }
+        return settled(
+            tracking,
+            ChainState.Expired,
+            level = null,
+            slot = null,
+            error = null,
+            reader,
+        )
+    }
+
     /** A confirmed or finalized status: settle it only against the approved message. */
     private suspend fun seen(
         reader: ChainReader,
@@ -478,7 +711,7 @@ class ConfirmationTracker(
                     slot = status.slot,
                 )
         val message = messageBytes(onChain.transaction)
-        if (message == null || !message.contentEquals(tracking.message)) {
+        if (message == null || !isApprovedMessage(tracking.message, message)) {
             // The signature names something else: not evidence that the approved transaction ran,
             // nor that it didn't. Nothing automatic will change that.
             return tracking.copy(
@@ -606,10 +839,10 @@ class ConfirmationTracker(
      * Writes what a check found, if the record is still there and still about the same signature. A
      * settled answer is never replaced by an unsettled one.
      */
-    private fun record(before: ChainTracking, after: ChainTracking) {
+    private fun record(before: ChainTracking, after: ChainTracking): ChainTracking? =
         synchronized(lock) {
-            val current = store.get(before.key) ?: return
-            if (current.signature != before.signature) return
+            val current = store.get(before.key) ?: return null
+            if (current.signature != before.signature) return null
             val merged =
                 if (current.check.state.verified && !after.check.state.verified) {
                     current.copy(
@@ -626,16 +859,23 @@ class ConfirmationTracker(
             try {
                 store.put(merged)
             } catch (_: IOException) {
-                return
+                return null
             }
-            history.confirm(merged.key, merged.check)
+            // A search is about a transaction nobody saw sent. History hears from it only once it
+            // finds one; a proof that none was sent reaches History through the stored answer
+            // (onLostSettled), which says "not sent" rather than "failed on the network".
+            if (!merged.searching) history.confirm(merged.key, merged.check)
             publishAll()
+            merged
         }
-    }
 
     // Call under the lock.
     private fun publishAll() {
-        _checks.value = store.list().associate { it.key to it.check }
+        _checks.value =
+            store
+                .list()
+                .filter { !it.searching || it.check.state.verified }
+                .associate { it.key to it.check }
     }
 
     companion object {
@@ -673,6 +913,13 @@ class ConfirmationTracker(
 
         const val MOST_SIGNATURES = 256
 
+        /** How a search for a transaction with no signature reads the wallet's history. */
+        const val SEARCH_PAGE = 1000
+        const val SEARCH_PAGES = 5
+
+        /** The most transactions a search compares, each one a read of its own. */
+        const val MOST_CANDIDATES = 100
+
         /** Server states that already settled the chain question; nothing more to check. */
         private val SERVER_SETTLED =
             setOf(
@@ -683,14 +930,24 @@ class ConfirmationTracker(
 
         private val UNSETTLED = setOf(ActivityOutcome.Sent, ActivityOutcome.Unknown)
 
+        /** Why a check stopped at the endpoint rather than at anything about the transaction. */
+        private val ENDPOINT_REASONS =
+            setOf(
+                ChainReason.NoEndpoint,
+                ChainReason.WrongCluster,
+                ChainReason.Unreachable,
+                ChainReason.RateLimited,
+                ChainReason.Refused,
+                ChainReason.Unusable,
+            )
+
         fun reasonOf(e: SolanaException): ChainReason =
             when (e.problem) {
                 SolanaProblem.NoEndpoint -> ChainReason.NoEndpoint
                 SolanaProblem.Unreachable -> ChainReason.Unreachable
                 SolanaProblem.RateLimited -> ChainReason.RateLimited
-                SolanaProblem.Refused ->
-                    if (e.detail == ChainEndpoints.WRONG_CLUSTER) ChainReason.WrongCluster
-                    else ChainReason.Refused
+                SolanaProblem.WrongNetwork -> ChainReason.WrongCluster
+                SolanaProblem.Refused -> ChainReason.Refused
                 SolanaProblem.Unusable -> ChainReason.Unusable
             }
 

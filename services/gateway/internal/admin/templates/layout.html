@@ -48,6 +48,10 @@
         <span class="nav-glyph" aria-hidden="true">＋</span>
         <span>Add server</span>
       </a>
+      <a class="nav-item{{if .ClientConfigActive}} active{{end}}" href="{{at "/client-config"}}">
+        <span class="nav-glyph" aria-hidden="true">⚙</span>
+        <span>Client configuration</span>
+      </a>
     </nav>
 
     <p class="sidebar-explanation">Administration is this gateway only. A publisher configures

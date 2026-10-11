@@ -97,13 +97,13 @@ fun OwnerInputCard(
 
 private fun OwnerInputCardKind.title(): String =
     when (this) {
-        OwnerInputCardKind.Swap -> "Your part · amount"
+        OwnerInputCardKind.Swap -> "Your part · amount and wallet"
         OwnerInputCardKind.Prediction -> "Your part · side and amount"
     }
 
 private fun OwnerInputCardKind.chooseLabel(): String =
     when (this) {
-        OwnerInputCardKind.Swap -> "Choose an amount"
+        OwnerInputCardKind.Swap -> "Choose amount and wallet"
         OwnerInputCardKind.Prediction -> "Choose side and amount"
     }
 
@@ -117,7 +117,7 @@ private fun OwnerInputCardKind.changeLabel(): String =
 private fun OwnerInputCardKind.description(): String =
     when (this) {
         OwnerInputCardKind.Swap ->
-            "The signal names the route and caps slippage, not the amount. That is yours to choose."
+            "The signal names the route and caps slippage, not the amount or the wallet. Both are yours to choose."
         OwnerInputCardKind.Prediction ->
             "The signal names the market, not your side or your amount. Both are yours to choose."
     }
@@ -167,7 +167,7 @@ internal fun OwnerInputCardSwapChosenPreview() =
     OwnerInputCardPreview(
         kind = OwnerInputCardKind.Swap,
         state = OwnerInputCardState.Chosen,
-        summary = "1.5 SOL · slippage 0.5%",
+        summary = "1.5 SOL · Main wallet",
     )
 
 @DesignRef(component = "owner-input-card", variant = "state=unchosen kind=swap")

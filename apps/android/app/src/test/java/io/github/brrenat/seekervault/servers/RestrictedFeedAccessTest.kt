@@ -200,10 +200,10 @@ class RestrictedFeedAccessTest {
     }
 
     private fun parsed(text: String): FeedReference =
-        (FeedReferences.parse(text) { false } as FeedReferenceResult.Valid).reference
+        (FeedReferences.parse(text, GATEWAY) { false } as FeedReferenceResult.Valid).reference
 
     private fun problem(text: String): FeedReferenceProblem =
-        (FeedReferences.parse(text) { false } as FeedReferenceResult.Invalid).problem
+        (FeedReferences.parse(text, GATEWAY) { false } as FeedReferenceResult.Invalid).problem
 
     private companion object {
         const val ORIGIN = "https://auth.copytrading.example.com"

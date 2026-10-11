@@ -301,7 +301,7 @@ func (r *routerRefusals) Write(data []byte) (int, error) {
 
 // health says the process is up and nothing else. It is what a proxy or a container probe calls,
 // so it is the one route with no credential — and therefore the one route that must say nothing: a
-// publisher's settings, its pending count and its environment are all behind the token.
+// publisher's settings, its pending count and its networks are all behind the token.
 func (s *Server) health(writer http.ResponseWriter, _ *http.Request) {
 	send(writer, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -330,7 +330,7 @@ func (s *Server) authorized(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // status is what an operator wants to know: which publisher this is, which gateway it publishes
-// through, what it promises, and whether anything is waiting to be published.
+// through, and whether anything is waiting to be published.
 func (s *Server) status(writer http.ResponseWriter, request *http.Request) {
 	revision, state, err := s.documents.Manifest(request.Context())
 	if err != nil {
@@ -346,7 +346,6 @@ func (s *Server) status(writer http.ResponseWriter, request *http.Request) {
 		"server_id":   s.settings.ServerID,
 		"channel":     signals.ChannelFor(s.settings.ServerID),
 		"gateway_url": s.settings.GatewayURL,
-		"environment": s.settings.Environment,
 		"operation":   s.kind.Operation(),
 		"plugin_id":   s.kind.Requirement().PluginID,
 		"reference":   manifest.ReferenceOf(s.settings),
@@ -514,7 +513,6 @@ func (s *Server) manifest(writer http.ResponseWriter, request *http.Request) {
 			"protocol_version":   document.GetProtocolVersion(),
 			"settings_revision":  number(revision),
 			"mode":               "gateway_feed",
-			"environments":       environmentsOf(document),
 			"supported_networks": networksOf(document),
 			"display_name":       document.GetDisplayName(),
 			"required_plugins": []map[string]any{{
@@ -529,8 +527,8 @@ func (s *Server) manifest(writer http.ResponseWriter, request *http.Request) {
 	})
 }
 
-// statement is the whole of what a caller may say about a signal: when it stops being actionable,
-// the prose a person will read, and the operation's terms.
+// statement is the whole of what a caller may say about a signal: the network it executes on, when
+// it stops being actionable, the prose a person will read, and the operation's terms.
 //
 // What is not in it is the point. There is no amount, no wallet, no slippage a subscriber settled
 // on, no decision and no result — a publisher has nobody to say those about, and the decoder
@@ -541,6 +539,12 @@ func (s *Server) manifest(writer http.ResponseWriter, request *http.Request) {
 // a partial one, so a field-level merge here would be this template inventing a document nobody
 // wrote.
 type statement struct {
+	// The Solana network the action executes on (SEE-185): "mainnet", "devnet" or "testnet".
+	// Required, and one of the networks this deployment's manifest declares. It is never inferred,
+	// not even when the manifest declares only one: a caller says where its signal executes. An
+	// update names the network the signal was created with, because the same terms on another
+	// cluster are another signal.
+	Network string `json:"network"`
 	// The instant after which nothing is executed from this signal: RFC 3339, absolute, and in the
 	// future. Absolute rather than a duration because a phone that was switched off for a day has
 	// to reach the same conclusion as one that was not.
@@ -655,6 +659,18 @@ func (s *Server) update(writer http.ResponseWriter, request *http.Request) {
 				"on it keeps its own record for ever. Publish a new signal instead",
 		})
 		return
+	case errors.Is(err, store.ErrNetworkFixed):
+		// 409 rather than 400: the network is a real one this deployment declares, and what makes
+		// it wrong is the signal that is already held (SEE-185).
+		refuse(writer, http.StatusConflict, &problem{
+			Error: "network_fixed",
+			Term:  "network",
+			Detail: "a signal's network is fixed when it is created, and this update names " +
+				"another one (or the signal was stored before signals named a network, and none " +
+				"is given to it afterwards). Withdraw it and publish a new signal on the network " +
+				"you mean",
+		})
+		return
 	case err != nil:
 		s.fail(writer, err)
 		return
@@ -735,9 +751,26 @@ func (s *Server) list(writer http.ResponseWriter, request *http.Request) {
 
 // statement reads what a caller said into the parts of a signal that are theirs, or answers with
 // the one rule it broke.
+//
+// The network is checked first, because it is what every other term means something on. Its two
+// refusals are 400s with the term `network` (SEE-185):
+//
+//   - `bad_network`: missing, or not mainnet, devnet or testnet.
+//   - `other_network`: a real network this deployment's manifest does not declare
+//     (PUBLISHER_SUPPORTED_NETWORKS), which the gateway would refuse with
+//     GATEWAY_PROBLEM_OTHER_NETWORK.
 func (s *Server) statement(writer http.ResponseWriter, asked statement, into signals.Signal) (
 	signals.Signal, bool,
 ) {
+	declared, fault := signals.CheckNetwork(strings.TrimSpace(asked.Network), s.settings.Networks)
+	if fault != nil {
+		refuse(writer, http.StatusBadRequest, &problem{
+			Error:  fault.Code,
+			Term:   fault.Term,
+			Detail: s.explainNetwork(fault),
+		})
+		return signals.Signal{}, false
+	}
 	expires, err := time.Parse(time.RFC3339, strings.TrimSpace(asked.ExpiresAt))
 	if asked.ExpiresAt == "" || err != nil {
 		refuse(writer, http.StatusBadRequest, &problem{
@@ -764,10 +797,26 @@ func (s *Server) statement(writer http.ResponseWriter, asked statement, into sig
 		})
 		return signals.Signal{}, false
 	}
+	into.Network = declared
 	into.Note = note
 	into.ExpiresAt = expiry
 	into.Terms = terms
 	return into, true
+}
+
+// explainNetwork is a network refusal as a sentence, naming what this deployment does declare.
+func (s *Server) explainNetwork(fault *signals.Fault) string {
+	declared := networksOf(manifest.Document(s.settings, 0))
+	offered := "none, so this deployment publishes no signal (PUBLISHER_SUPPORTED_NETWORKS)"
+	if len(declared) > 0 {
+		offered = strings.Join(declared, ", ")
+	}
+	if fault.Code == "other_network" {
+		return "`network` names a network this publisher's manifest does not declare, and the " +
+			"gateway would refuse the signal. It declares: " + offered
+	}
+	return "`network` is required: the Solana network this signal executes on, as mainnet, " +
+		"devnet or testnet. None is assumed. This publisher declares: " + offered
 }
 
 // answer publishes the record if there is anything to publish, then answers with it as it stands.
@@ -832,12 +881,14 @@ func (s *Server) view(signal signals.Signal) map[string]any {
 		"status":      string(signal.Status),
 		"operation":   signal.Operation,
 		"plugin_id":   signal.PluginID,
-		"created_at":  instant(signal.CreatedAt),
-		"updated_at":  instant(signal.UpdatedAt),
-		"expires_at":  instant(signal.ExpiresAt),
-		"note":        signal.Note,
-		"terms":       terms,
-		"environment": s.settings.Environment,
+		// As stored: empty only for a signal from before networks were declared, which is never
+		// published as an open document again (SEE-185).
+		"network":    signal.Network.String(),
+		"created_at": instant(signal.CreatedAt),
+		"updated_at": instant(signal.UpdatedAt),
+		"expires_at": instant(signal.ExpiresAt),
+		"note":       signal.Note,
+		"terms":      terms,
 	}
 }
 
@@ -935,22 +986,9 @@ func send(writer http.ResponseWriter, status int, body any) {
 	_ = encoder.Encode(body)
 }
 
-// environmentsOf is what a manifest answer says a deployment promises, read out of the document
-// that will be published rather than out of the setting beside it (SEE-97).
-//
-// One fact, one source. The setting and the document cannot disagree if only one of them is ever
-// rendered, and the document is the one a phone will read.
-func environmentsOf(document *serverv1.ServerManifest) []string {
-	named := make([]string, 0, len(document.GetEnvironments()))
-	for _, environment := range document.GetEnvironments() {
-		named = append(named, strings.ToLower(
-			strings.TrimPrefix(environment.String(), "SERVER_ENVIRONMENT_")))
-	}
-	return named
-}
-
 // networksOf is the Solana networks a manifest answer says a deployment runs on (SEE-174), read
-// out of the document for the same reason as [environmentsOf]. Empty is an answer — the deployment
+// out of the document that will be published rather than out of the setting beside it: one fact,
+// one source, and the source is the one a phone will read. Empty is an answer — the deployment
 // declares none — and it is an empty list rather than nothing, so a client cannot mistake it for a
 // template too old to say.
 func networksOf(document *serverv1.ServerManifest) []string {

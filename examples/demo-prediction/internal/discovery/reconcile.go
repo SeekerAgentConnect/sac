@@ -7,14 +7,24 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/demo-prediction/internal/jupiter"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/ids"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/markets"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
+
+// Network is the Solana network every signal this template publishes executes on (SEE-185).
+//
+// It is a fact about the provider, not a setting: Jupiter's prediction markets exist and settle on
+// Solana Mainnet and nowhere else, so an order for one of them can only land there. It is named
+// here, on every signal, explicitly — never read off the manifest's networks, even though the
+// manifest of a default deployment declares exactly this one, because a network a signal did not
+// say is a network nobody chose. The deployment's networks are asked one question only: whether
+// they include this one (see [Reconciler.statement]).
+const Network = network.Mainnet
 
 // Source is the part of the provider a reconciliation uses: the listing, and one market by its own
 // identifier. It is an interface so that this package is written against two questions rather than
@@ -22,6 +32,7 @@ import (
 type Source interface {
 	Events(ctx context.Context, query jupiter.Query) (jupiter.Page, error)
 	Market(ctx context.Context, id string) (jupiter.Market, error)
+	Event(ctx context.Context, id string) (jupiter.Event, error)
 }
 
 // Documents is the part of the store a reconciliation uses.
@@ -45,6 +56,10 @@ type Documents interface {
 	Checked(ctx context.Context, provider, marketID, state string, at time.Time) error
 	// A market the source has ended: the signal is withdrawn at the next revision.
 	Withdraw(ctx context.Context, provider, marketID, state string, now time.Time) (
+		signals.Record, bool, error)
+	// A market an operator unpublished by name: the signal is withdrawn and the row marked, so no
+	// later cycle publishes it again on its own.
+	Dismiss(ctx context.Context, provider, marketID, state string, now time.Time) (
 		signals.Record, bool, error)
 	// What the cycle did, which replaces the last one and comes back with its number.
 	Recorded(ctx context.Context, cycle markets.Cycle) (markets.Cycle, error)
@@ -72,15 +87,19 @@ type Reconciler struct {
 	filters   Filters
 	deposit   Deposit
 	// The operator's own line, published above the generated one in every note. Optional.
-	note  string
-	log   *slog.Logger
-	now   func() time.Time
-	newID func() string
+	note string
+	// The networks the deployment's manifest declares, consulted only to check that [Network] is
+	// one of them: a signal on a network the manifest does not declare is one the gateway refuses.
+	networks []network.Network
+	log      *slog.Logger
+	now      func() time.Time
+	newID    func() string
 	// Asks the drainer for a pass, when a cycle changed anything. Publication is the drainer's
 	// (packages/publisher-support/publish): one path to the gateway, one place that decides what a failure was.
 	wake func()
-	// One cycle at a time.
-	running sync.Mutex
+	// One cycle — or one operator's select or unpublish — at a time. A one-slot channel rather than
+	// a mutex, so an operator's action can wait for a running cycle instead of being refused.
+	running chan struct{}
 }
 
 // Plan is what a [Reconciler] needs.
@@ -91,10 +110,13 @@ type Plan struct {
 	Filters   Filters
 	Deposit   Deposit
 	Note      string
-	Log       *slog.Logger
-	Now       func() time.Time
-	NewID     func() string
-	Wake      func()
+	// The deployment's supported networks (config.Networks). Never the network a signal names:
+	// that is [Network], always.
+	Networks []network.Network
+	Log      *slog.Logger
+	Now      func() time.Time
+	NewID    func() string
+	Wake     func()
 }
 
 // New builds one.
@@ -118,12 +140,46 @@ func New(plan Plan) *Reconciler {
 		filters:   plan.Filters,
 		deposit:   plan.Deposit,
 		note:      plan.Note,
+		networks:  plan.Networks,
 		log:       plan.Log,
 		now:       now,
 		newID:     newID,
 		wake:      wake,
+		running:   make(chan struct{}, 1),
 	}
 }
+
+// operatorWait is how long an operator's select or unpublish waits for a running cycle before it
+// is answered busy. A cycle walking the whole listing takes tens of seconds; the admin page's own
+// call to this API gives up after 45.
+const operatorWait = 30 * time.Second
+
+// tryLock takes the slot only if it is free: a cycle due while another runs is skipped.
+func (r *Reconciler) tryLock() bool {
+	select {
+	case r.running <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+// wait takes the slot once it is free, or answers [markets.ErrBusy] when it is not free within
+// [operatorWait] or the caller gives up first.
+func (r *Reconciler) wait(ctx context.Context) error {
+	timer := time.NewTimer(operatorWait)
+	defer timer.Stop()
+	select {
+	case r.running <- struct{}{}:
+		return nil
+	case <-timer.C:
+		return markets.ErrBusy
+	case <-ctx.Done():
+		return markets.ErrBusy
+	}
+}
+
+func (r *Reconciler) unlock() { <-r.running }
 
 // Filters are the filters in force, for the startup line and the API's own answer.
 func (r *Reconciler) Filters() Filters { return r.filters }
@@ -180,10 +236,10 @@ func (r *Reconciler) Run(ctx context.Context) {
 // — no cursor is kept in memory between cycles — so a cycle that is killed half way leaves the
 // store consistent and the next one reaches the same conclusions.
 func (r *Reconciler) Pass(ctx context.Context) (markets.Cycle, error) {
-	if !r.running.TryLock() {
+	if !r.tryLock() {
 		return markets.Cycle{}, markets.ErrBusy
 	}
-	defer r.running.Unlock()
+	defer r.unlock()
 
 	now := r.now().UTC().Truncate(time.Second)
 	cycle := markets.Cycle{StartedAt: now, Outcome: markets.OK, Reasons: map[string]int{}}
@@ -207,6 +263,7 @@ func (r *Reconciler) Pass(ctx context.Context) (markets.Cycle, error) {
 	if fault != nil {
 		r.noted(&cycle, fault)
 	}
+	found = r.undismissed(&cycle, found, held)
 	cycle.Matched = len(found)
 	ordered(found)
 	chosen := r.filters.choose(found, tracked, now, fault == nil)
@@ -421,6 +478,25 @@ func (r *Reconciler) refresh(
 	if fault != nil {
 		r.unpublishable(cycle, one, fault)
 		return false, nil
+	}
+	if existing.Record.Signal.Network != signal.Network {
+		// A proposal held from before signals named their network (SEE-185). Its network is never
+		// filled in afterwards — that would be a statement it never made — so it is withdrawn, and
+		// the market is published again as its next generation, on the network this template's
+		// signals name. Its withdrawal still publishes: a withdrawal names an identity and a
+		// revision, not a document.
+		r.log.Info("a published market names no network; it is withdrawn and published again "+
+			"with one", "market", row.MarketID, "signal", row.ProposalID,
+			"held_network", existing.Record.Signal.Network.String(), "network", signal.Network.String())
+		withdrawn, err := r.withdraw(ctx, cycle, existing.Market, row.State, now)
+		if err != nil {
+			return false, err
+		}
+		published, err := r.discover(ctx, cycle, one, existing.Market, true, now)
+		if err != nil {
+			return false, err
+		}
+		return withdrawn || published, nil
 	}
 	_, moved, err := r.documents.Refresh(ctx, row, signal, now)
 	if err != nil {
@@ -637,6 +713,14 @@ func (r *Reconciler) statement(one candidate, row markets.Market, now time.Time)
 		terms[signals.ProviderWebURL] = one.event.SourceURL
 	}
 
+	// The network is this template's own (see [Network]); the deployment's networks are asked only
+	// whether they declare it. A deployment that declares none — PUBLISHER_SUPPORTED_NETWORKS=none —
+	// publishes no market at all, and says so per market (`other_network`), rather than having its
+	// signals refused one by one at the gateway.
+	declared, fault := signals.CheckNetwork(string(Network), r.networks)
+	if fault != nil {
+		return signals.Signal{}, fault
+	}
 	written, expiry, checked, fault := signals.Check(r.kind,
 		note(r.note, one.event, one.market, expires), expires, now, terms)
 	if fault != nil {
@@ -647,6 +731,7 @@ func (r *Reconciler) statement(one candidate, row markets.Market, now time.Time)
 		Status:     signals.Open,
 		Operation:  r.kind.Operation(),
 		PluginID:   r.kind.Requirement().PluginID,
+		Network:    declared,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 		ExpiresAt:  expiry,

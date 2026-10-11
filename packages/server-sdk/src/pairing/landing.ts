@@ -2,6 +2,9 @@
  * HTTPS landing URLs for pairing codes, shared by every server that hosts the page (SEE-149).
  * The custom-scheme URI stays `seekervault://pair?...`. Credentials live in the URL fragment so
  * a new landing request has no token in its path or query. The fragment is not encryption.
+ *
+ * The fragment is the compact form (see `page/payload.js`): agents relay this URL to the owner,
+ * and they abbreviated the earlier several-hundred-character base64 JSON fragment.
  */
 import type { IssuedPairing } from "../direct-server.ts";
 import { parsePairingUri } from "./uri.ts";
@@ -10,6 +13,7 @@ import {
   CONDITIONAL_REPLACEMENT_WARNING,
   REPLACEMENT_WARNING,
   decodePairingFragment,
+  encodeCompactPairingFragment,
   encodePairingFragment,
   originOf,
   sameOrigin,
@@ -21,28 +25,22 @@ export {
   CONDITIONAL_REPLACEMENT_WARNING,
   REPLACEMENT_WARNING,
   decodePairingFragment,
+  encodeCompactPairingFragment,
   encodePairingFragment,
 };
 export type { FragmentDecode, PairingFragmentPayload };
 
 export function pairingLandingUrl(issued: IssuedPairing): string {
-  const expiresAt = new Date(issued.expiresAtMs).toISOString();
-  const payload: PairingFragmentPayload = {
-    v: 1,
-    pairing_uri: issued.uri,
-    expires_at: expiresAt,
-    ...(issued.replaces === undefined
-      ? {}
-      : {
-          warning: REPLACEMENT_WARNING,
-          replaces: issued.replaces.connectionId,
-        }),
-  };
   const parsed = parsePairingUri(issued.uri);
   if (!parsed.ok) {
     throw new Error("issued pairing URI is not a seekervault://pair code");
   }
-  return `${originOf(issued.serverUrl)}/pair#${encodePairingFragment(payload)}`;
+  const fragment = encodeCompactPairingFragment(
+    parsed.code,
+    new Date(issued.expiresAtMs).toISOString(),
+    issued.replaces !== undefined,
+  );
+  return `${originOf(issued.serverUrl)}/pair#${fragment}`;
 }
 
 export function landingUrlHasCredential(url: string): boolean {
@@ -60,7 +58,7 @@ export function decodeLandingFragment(
   fragment: string,
   trustedOrigin: string,
 ): FragmentDecode | { readonly ok: false; readonly reason: "foreign_origin" } {
-  const decoded = decodePairingFragment(fragment);
+  const decoded = decodePairingFragment(fragment, trustedOrigin);
   if (!decoded.ok) return decoded;
   const parsed = parsePairingUri(decoded.payload.pairing_uri);
   if (!parsed.ok) return { ok: false, reason: "pairing_uri" };

@@ -120,7 +120,6 @@ cd examples/demo-signals
 PUBLISHER_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
-PUBLISHER_ENVIRONMENT=sandbox \
 PUBLISHER_DATABASE_PATH=./copytrading.db \
 BROADCAST_CREDENTIAL=<the credential feed-gatewayctl printed> \
 PUBLISHER_API_TOKEN=$(openssl rand -base64 32) \
@@ -140,7 +139,7 @@ A publication then looks like this, and the demo prints the feed reference on st
 
 ```sh
 export PUBLISHER_API_TOKEN=…
-go run ./cmd/publishctl create --in 2h --note "trimming SOL into USDC" \
+go run ./cmd/publishctl create --network mainnet --in 2h --note "trimming SOL into USDC" \
   --term input_mint=So11111111111111111111111111111111111111112 \
   --term input_decimals=9 \
   --term output_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
@@ -168,7 +167,6 @@ cd examples/demo-prediction
 PUBLISHER_SERVER_ID=7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
-PUBLISHER_ENVIRONMENT=sandbox \
 PUBLISHER_DATABASE_PATH=./prediction.db \
 PUBLISHER_API_ADDRESS=127.0.0.1:8094 \
 BROADCAST_CREDENTIAL=<the credential feed-gatewayctl printed for *this* server> \
@@ -221,8 +219,7 @@ file an operator actually copies are two tables that drift.
 
 What is worth saying here is the code behind them, because it is shared and its shape is deliberate
 ([`packages/publisher-support/config`](../../packages/publisher-support/config)). `Config` and `Load` read the settings
-every publisher has — the identity, the gateway, the environment, the database, the API and its
-token — and both demos call exactly the same `Load`, so a missing variable or a bad number is
+every publisher has — the identity, the gateway, the database, the API and its token — and both demos call exactly the same `Load`, so a missing variable or a bad number is
 reported identically wherever it is set. Beside it the package exports `Reader`: `NewReader`, `Note`,
 `Text`, `Secret`, `Whole`, `List` and `Problems`, which is the same collecting reader the library
 uses for its own half. [`examples/demo-prediction/internal/config`](../../examples/demo-prediction/internal/config)
@@ -240,8 +237,15 @@ Jupiter's prediction markets execute nowhere else, so both declare `mainnet` by 
 name any of the three, and unset declares **none** — never Mainnet by default, because a network
 nobody chose is the one with the money on it. Whatever order it is written in, the list is
 published in canonical order (Mainnet, Devnet, Testnet), and it is part of the manifest's
-fingerprint, so changing it is a new revision that every phone re-reads. It is a different
-question from `PUBLISHER_ENVIRONMENT`: a sandbox deployment still runs against Mainnet data.
+fingerprint, so changing it is a new revision that every phone re-reads. It is capability
+information, not a selection: every signal names its own network (`network` on the API, SEE-185),
+which must be one of these, and nothing is inferred from the list.
+
+**`PUBLISHER_ENVIRONMENT` is retired (SEE-185).** A deployment is no longer sandbox or production:
+whether an operation is previewed or executed is the owner's choice on the phone
+([environments.md](../wiki/environments.md)), so one deployment serves both. `config.Retired` names
+the variable, and a deployment that still sets it starts and logs the line in `Config.Warnings`
+rather than refusing to start over a setting that now means nothing.
 
 **Both credentials have to be usable rather than compared**, which is why they are configuration at
 all — the gateway keeps a publisher's credential as a SHA-256 and has none in its own environment
@@ -278,10 +282,10 @@ parameters** and decide which events come back at all; everything else — the t
 state, the two close-time edges, the lifetime, and the ceilings `PREDICTION_MOST_OPEN` and
 `PREDICTION_MOST_CHECKS` — is applied here, to the records that arrived.
 
-Two of them refuse things rather than accept anything: `PREDICTION_STATE=any` is refused when
-`PUBLISHER_ENVIRONMENT=production`, and `PREDICTION_DEPOSIT_MINT` is refused for anything but the two
-tokens the provider takes — including a real mint that is neither, because that is a signal every
-phone would refuse.
+`PREDICTION_DEPOSIT_MINT` refuses anything but the two tokens the provider takes — including a real
+mint that is neither, because that is a signal every phone would refuse. `PREDICTION_STATE=any` is
+accepted with a startup warning: it publishes closed markets as signals no phone can execute, which
+is only useful for exercising the closure path.
 
 ## The operator's tool
 
@@ -295,8 +299,8 @@ import the other, and two copies of one CLI would be two CLIs.
 | --- | --- |
 | `status` | What this publisher is, and whether anything is unpublished |
 | `reference` | The `seekervault://feed` reference a phone adds this feed from, alone on stdout |
-| `create --in 2h --term k=v …` | Publish a new signal. Mints and prints an idempotency key unless `--key` gives one |
-| `update <id> --in 1h --term k=v …` | Replace a signal's whole statement |
+| `create --network <n> --in 2h --term k=v …` | Publish a new signal on `mainnet`, `devnet` or `testnet` (required, SEE-185). Mints and prints an idempotency key unless `--key` gives one |
+| `update <id> --network <n> --in 1h --term k=v …` | Replace a signal's whole statement; the network is required and must be the one it was created with |
 | `cancel <id>` | Withdraw one |
 | `retry <id>` | Try a refused publication again |
 | `list`, `show <id>` | What this demo holds, and what the gateway has confirmed |
@@ -314,20 +318,19 @@ an absolute one. The answer is JSON on stdout so it can be piped; what a person 
 | Path | What is in it |
 | --- | --- |
 | `gen/` | Generated from `packages/protocol/proto/` by `buf.gen.publisher-support.yaml`, committed, and never edited by hand |
-| `signals/` | What a signal is, as pure data: `signals.go` with the `Kind` seam a demo supplies, `swap.go` and `prediction.go` with the two kinds and their terms, the document a signal becomes, and its fingerprint |
+| `signals/` | What a signal is, as pure data, including the Solana network it executes on (SEE-185): `signals.go` with the `Kind` seam a demo supplies, `swap.go` and `prediction.go` with the two kinds and their terms, the document a signal becomes, and its fingerprint |
 | `manifest/` | What a publisher says about itself, its fingerprint, and the `seekervault://feed` reference — which carries no secret, because a feed is a broadcast |
-| `environment/` | Which promise a deployment keeps (SEE-97): one type, one pair of words, shared by everything that validates, stamps, publishes or answers with it |
-| `network/` | Which Solana networks a deployment's wallet operations run on (SEE-174): one type, three words, a list parsed as a set and returned in the manifest's canonical order, and a value from nowhere published as unspecified rather than as Mainnet |
+| `network/` | Which Solana networks a deployment's wallet operations may run on (SEE-174), as capability information: one type, three words, a list parsed as a set and returned in the manifest's canonical order, and a value from nowhere published as unspecified rather than as Mainnet |
 | `ids/` | A lowercase v4 UUID from `crypto/rand`, which is the only identity shape this protocol has, and no dependency to get it |
 | `limit/` | The in-memory sliding window behind the optional rolling-hour create cap and the trader UI's own limits (SEE-126) |
-| `config/` | The base deployment: `Config`, `Load` and `LoadTemplate` (a template's own networks, SEE-174), the exported `Reader` (`NewReader`/`Note`/`Text`/`Secret`/`Whole`/`List`/`Problems`), and the address rules `Origin`, `Reachable` and `HeaderSafe` |
+| `config/` | The base deployment: `Config`, `Load` and `LoadTemplate` (a template's own networks, SEE-174), `Retired` and `Config.Warnings` (SEE-185), the exported `Reader` (`NewReader`/`Note`/`Text`/`Secret`/`Whole`/`List`/`Problems`), and the address rules `Origin`, `Reachable` and `HeaderSafe` |
 | `markets/` | The market records the store persists: `Market`, `Tracked`, `Cycle`, `ErrBusy`, and the `OK`/`Partial`/`Failed` outcomes. It knows no provider |
-| `store/` | The only place that speaks SQL: six tables, one writer, two revisions per row that are the whole of the outbox, the market rows, and schema v3 brought forward rather than refused. Version 3 adds the source-authored request title while old rows retain their operation fallback. |
-| `gateway/` | The authenticated HTTP/Connect `PublisherService` client, and the classification of every refusal into retry or refuse |
-| `publish/` | The durable drainer: it publishes what the store says is pending, manifest first, because a phone holds no feed without one. The manifest is sent again on every start, and a `stale_revision` or `revision_conflict` that names the gateway's held revision is answered by publishing at it and then past it, so a publisher whose database did not survive a redeployment catches up rather than stopping (SEE-179) |
+| `store/` | The only place that speaks SQL: six tables, one writer, two revisions per row that are the whole of the outbox, the market rows, and older schemas brought forward rather than refused. Version 3 adds the source-authored request title while old rows retain their operation fallback; version 6 adds each signal's network and drops the deployment's environment stamp, and a row from before it is never given a network (SEE-185). |
+| `gateway/` | The authenticated HTTP/Connect `PublisherService` client — `PublishRequest` only, since a protocol-1 proposal has no field for a network and the `PublishProposal` fallback is gone (SEE-185) — and the classification of every refusal into retry or refuse |
+| `publish/` | The durable drainer: it publishes what the store says is pending, manifest first, because a phone holds no feed without one. A signal with no network is refused locally as `no_network` rather than sent; its withdrawal still goes out (SEE-185). The manifest is sent again on every start, and a `stale_revision` or `revision_conflict` that names the gateway's held revision is answered by publishing at it and then past it, so a publisher whose database did not survive a redeployment catches up rather than stopping (SEE-179) |
 | `api/` | The shared business-API frame both demos serve: its authorization, its strict decoding, `Authorship`, and the stage boundary in `boundary_test.go` |
 | `publisherctl/` | The operator CLI as a library; each demo ships the binary |
-| `publishertest/` | Exported test support: the fake gateway, the shared environment fixture, and the real-gateway process harness (`RunGateway`, `ReadFeed`, `CredentialFrom`, `FreePort`, `WaitFor`) |
+| `publishertest/` | Exported test support: the fake gateway and the real-gateway process harness (`RunGateway`, `ReadFeed`, `CredentialFrom`, `FreePort`, `WaitFor`) |
 | `demotest/` | Exported test support: the whole-demo driver — a real store, the real drainer, the real API and a gateway of our own at the end of it |
 
 ### demo-signals
@@ -410,22 +413,21 @@ publishing to one gateway.
 
 | File | What it holds |
 | --- | --- |
-| `config/config_test.go` | The settings with no default, every problem at once, the two canonical address forms, a secret as a file, that a credential must be one word an HTTP header can carry, and the supported networks: none unless set or fixed by the template, and a template's own networks narrowed but never widened (SEE-174) |
-| `signals/signals_test.go` | The expiry rules, the note's bounds, the terms' bounds, that the document lists its terms in key order, and what the fingerprint is and is not |
+| `config/config_test.go` | The settings with no default, every problem at once, the two canonical address forms, a secret as a file, that a credential must be one word an HTTP header can carry, the supported networks: none unless set or fixed by the template, and a template's own networks narrowed but never widened (SEE-174), and a retired `PUBLISHER_ENVIRONMENT` ignored with a warning (SEE-185) |
+| `signals/signals_test.go` | The expiry rules, the note's bounds, the terms' bounds, that the document lists its terms in key order, what the fingerprint is and is not, and that a document names its network under request contract 2, with the network part of the statement and the fingerprint (SEE-185) |
 | `signals/swap_test.go` | Every way a swap's terms can be wrong with the code a caller is told, that direction is the pair and there is no side field, canonical numbers, absent-is-absent, a label counted the way the phone counts it, and base58 |
 | `signals/prediction_test.go` | Every way a market's terms can be wrong, that no term can carry a side, the provider's floor being published rather than assumed, both deposit mints with their own decimals, and the identifier rule |
-| `signals/contract_test.go` | The bounds are the **gateway's own** and the prediction rules are the **phone's own**, both read out of their source rather than trusted |
-| `manifest/manifest_test.go` | A manifest is always a gateway feed, names one environment, carries the kind's plugin requirement, and a reference that carries no secret. An environment that came from anywhere but the configuration is published as unspecified rather than as production (SEE-97). The supported networks are published in canonical order, none as none, and every change to them — added, dropped, replaced — moves the fingerprint while a reorder does not (SEE-174) |
+| `signals/contract_test.go` | The bounds and the request contract version are the **gateway's own** and the prediction rules are the **phone's own**, all read out of their source rather than trusted |
+| `manifest/manifest_test.go` | A manifest is always a gateway feed, names no environment (SEE-185), carries the kind's plugin requirement, and a reference that carries no secret. The supported networks are published in canonical order, none as none, and every change to them — added, dropped, replaced — moves the fingerprint while a reorder does not (SEE-174) |
 | `network/network_test.go` | Only the three words are a network; a list is a set in canonical order, and a repeated or unknown name is refused; a network from nowhere is unspecified on the wire rather than Mainnet, and the wire form narrows nothing (SEE-174) |
-| `environment/environment_test.go` | Only the two words are an environment, including the ways an operator nearly gets it right; one from nowhere has no wire value at all; and the two words are **the phone's own**, read out of `ActionPlugin.kt` rather than trusted |
 | `ids/ids_test.go` | The shape, the version and variant bits, and that two are not the same |
 | `limit/limit_test.go` | Sliding window, unlimited zero, independent keys, undo freeing a slot |
-| `store/store_test.go` | The live schema has no column for a subscriber; the file remembers whose it is and which environment; revisions, idempotency, a withdrawal being final, a late answer confirming nothing, deferral and refusal, and everything surviving a restart |
+| `store/store_test.go` | The live schema has no column for a subscriber; the file remembers whose it is; a new signal keeps its network, and a version-5 database of either environment opens with no network inferred (SEE-185); revisions, idempotency, a withdrawal being final, a late answer confirming nothing, deferral and refusal, and everything surviving a restart |
 | `store/markets_test.go` | A market and its signal as one write, the same market twice being one proposal, the `UNIQUE` proposal, a re-opened market at the next generation, the cycle's number surviving a restart, and **a version-1 database brought forward with its signals intact** |
-| `gateway/gateway_test.go` | The credential goes in a header and nowhere else, the same document again is unchanged, a withdrawal of nothing is not an error, **every refusal classified** with the reason, and that a publication is never redirected |
-| `publish/drain_test.go` | The manifest first, a restart republishing identical bytes, a gateway that is down, a refusal that stops, catching up with a held revision — past it when the gateway holds other settings, at it when it holds the same, and a conflict a revision cannot answer still refused (SEE-179) — a withdrawal before anything was published, and the drainer running on a wake-up |
+| `gateway/gateway_test.go` | The credential goes in a header and nowhere else, a signal is published with its network, one with none is refused before anything is sent, and one on a network the manifest does not declare is refused for good (SEE-185), the same document again is unchanged, a withdrawal of nothing is not an error, **every refusal classified** with the reason, and that a publication is never redirected |
+| `publish/drain_test.go` | The manifest first, a gateway without the request RPCs never sent a proposal instead (SEE-185), a restart republishing identical bytes, a gateway that is down, a refusal that stops, catching up with a held revision — past it when the gateway holds other settings, at it when it holds the same, and a conflict a revision cannot answer still refused (SEE-179) — a withdrawal before anything was published, and the drainer running on a wake-up |
 | `publish/feedgateway_test.go` | The **real gateway**, as a separate process. Opt-in; see below |
-| `api/api_test.go` | A signal published end to end, a retried create, a reused key, a create with no key, the token on every route, every malformed statement, a gateway that is down, a refusal and its retry, an update that changes nothing, a withdrawal being final, 404s, 405s, strict decoding, and the optional create cap (SEE-126) |
+| `api/api_test.go` | A signal published end to end, `network` required and declared by the manifest, an update that cannot move it, and a signal from before networks never published open again (SEE-185), a retried create, a reused key, a create with no key, the token on every route, every malformed statement, a gateway that is down, a refusal and its retry, an update that changes nothing, a withdrawal being final, 404s, 405s, strict decoding, and the optional create cap (SEE-126) |
 | `api/boundary_test.go` | The stage boundary over the library: no feed client compiled, one package calling the gateway, no Firebase or broker or MCP, no service address compiled in, no credential in a log line, nothing about a subscriber accepted in a body or a term, no command importing the test support, and a caller unable to name an operation or a plugin |
 | `publisherctl/publisherctl_test.go` | What each command sends, the key it mints and prints, terms from a file, what it refuses to send at all, and how it reports a refusal and a pending publication |
 

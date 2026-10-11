@@ -9,7 +9,8 @@
 //
 // It deliberately emulates only the rules a publisher's own behaviour depends on — the same
 // document again is "unchanged", a withdrawal of something it does not hold is "no such proposal",
-// and a cancelled status is not a publication. The authority for the gateway's rules is the real
+// a cancelled status is not a publication, and a signal names a network its manifest declares
+// (SEE-185). The authority for the gateway's rules is the real
 // binary, which [RunGateway] starts when SEEKERVAULT_FEED_GATEWAY names one.
 package publishertest
 
@@ -18,6 +19,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -31,31 +33,43 @@ import (
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/proposal/v1"
 	requestv2 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
 // A gateway of our own, served through the generated handler so that everything between this
 // template and it is real: the Connect protocol, the codec, the headers, the error details.
 //
-// It emulates only the two rules a publisher's own behaviour depends on — the same document again
-// is "unchanged", and a withdrawal of something it does not hold is "no such proposal" — and it is
-// deliberately not a second implementation of the gateway's rules. The authority for those is the
-// real binary, which [RunGateway] runs when it is available.
+// It emulates the rules a publisher's own behaviour depends on, and deliberately no others — the
+// authority for those is the real binary, which [RunGateway] runs when it is available:
+//
+//   - the same document again is "unchanged", and a withdrawal of something it does not hold is
+//     "no such proposal";
+//   - a cancelled status is not a publication;
+//   - only request contract 2 is accepted (OTHER_PROTOCOL otherwise), its action has to name a
+//     known network (BAD_NETWORK), and that network has to be one the manifest it holds for this
+//     publisher declares — with no manifest held, none is (OTHER_NETWORK, SEE-185). Those three are
+//     here because the tests' own claims depend on them: a template that published a network-less
+//     document, or one on a network it never declared, must fail a test rather than pass one.
 type FakeGateway struct {
 	gatewayv1connect.UnimplementedPublisherServiceHandler
 	mutex sync.Mutex
 	// Every credential presented, so a test can assert that one was and that it is the right one.
 	Credentials []string
 	Manifests   []*serverv1.ServerManifest
+	// Every request document it stored or answered unchanged, in order.
+	Requests []*requestv2.Request
+	// The same documents read as Stage 7.1 proposals, for the assertions written against that
+	// shape. A proposal has no network: a test about the network reads Requests.
 	Proposals   []*proposalv1.Proposal
-	Withdrawals []*gatewayv1.CancelProposalRequest
+	Withdrawals []*gatewayv1.CancelRequestRequest
 	// What it holds, by identity, for the unchanged answer.
-	heldManifest  *serverv1.ServerManifest
-	heldProposals map[string]*proposalv1.Proposal
+	heldManifest *serverv1.ServerManifest
+	heldRequests map[string]*requestv2.Request
 	// Every call, by procedure name, whether it was refused or not: an attempt is a thing a test
 	// about retrying has to be able to count.
 	attempts map[string]int
-	// Injected refusals, by procedure name ("PublishProposal"). A nil error lets the call through.
+	// Injected refusals, by procedure name ("PublishRequest"). A nil error lets the call through.
 	Refuse func(procedure string) error
 	// What Heartbeat answers with, in seconds (SEE-150). Zero means the gateway's own default, so
 	// a test that does not care about the interval says nothing about it.
@@ -85,58 +99,97 @@ func (f *FakeGateway) Heartbeat(
 }
 
 func (f *FakeGateway) PublishRequest(
-	ctx context.Context,
+	_ context.Context,
 	request *connect.Request[gatewayv1.PublishRequestRequest],
 ) (*connect.Response[gatewayv1.PublishRequestResponse], error) {
 	f.mutex.Lock()
+	defer f.mutex.Unlock()
 	f.note("PublishRequest", request.Header().Get("Authorization"))
 	if err := f.refusal("PublishRequest"); err != nil {
-		f.mutex.Unlock()
 		return nil, err
 	}
-	f.mutex.Unlock()
-	legacy := connect.NewRequest(&gatewayv1.PublishProposalRequest{Proposal: ProposalFromRequest(request.Msg.GetRequest())})
-	legacy.Header().Set("Authorization", request.Header().Get("Authorization"))
-	answer, err := f.PublishProposal(ctx, legacy)
-	if err != nil {
-		return nil, err
+	document := request.Msg.GetRequest()
+	if document.GetContractVersion() != signals.ContractVersion {
+		return nil, Problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_PROTOCOL,
+			connect.CodeInvalidArgument, "contract_version")
+	}
+	// The gateway's own rule: a cancelled status is not a publication. Withdrawing is a transition
+	// and CancelRequest is where it happens, so publishing a withdrawn document is refused rather
+	// than stored (services/gateway/internal/rules).
+	if document.GetLifecycle().GetStatus() == requestv2.RequestStatus_REQUEST_STATUS_CANCELLED {
+		return nil, Problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_CANCEL_ON_PUBLISH,
+			connect.CodeInvalidArgument, "lifecycle.status")
+	}
+	declared := document.GetAction().GetNetwork()
+	if _, known := serverv1.SolanaNetwork_name[int32(declared)]; !known ||
+		declared == serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED {
+		return nil, Problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK,
+			connect.CodeInvalidArgument, "action.network")
+	}
+	if !slices.Contains(f.heldManifest.GetFeed().GetSupportedNetworks(), declared) {
+		return nil, Problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_NETWORK,
+			connect.CodeFailedPrecondition, "action.network")
+	}
+	f.Requests = append(f.Requests, proto.CloneOf(document))
+	f.Proposals = append(f.Proposals, ProposalFromRequest(document))
+	if f.heldRequests == nil {
+		f.heldRequests = map[string]*requestv2.Request{}
+	}
+	id := document.GetIdentity().GetRequestId()
+	status := gatewayv1.PublishStatus_PUBLISH_STATUS_STORED
+	if proto.Equal(f.heldRequests[id], document) {
+		status = gatewayv1.PublishStatus_PUBLISH_STATUS_UNCHANGED
+	} else {
+		f.heldRequests[id] = proto.CloneOf(document)
 	}
 	return connect.NewResponse(&gatewayv1.PublishRequestResponse{
-		Status: answer.Msg.GetStatus(), Revision: answer.Msg.GetRevision(), SnapshotSequence: answer.Msg.GetSnapshotSequence(),
+		Status: status, Revision: document.GetLifecycle().GetRevision(),
 	}), nil
 }
 
 func (f *FakeGateway) CancelRequest(
-	ctx context.Context,
+	_ context.Context,
 	request *connect.Request[gatewayv1.CancelRequestRequest],
 ) (*connect.Response[gatewayv1.CancelRequestResponse], error) {
 	f.mutex.Lock()
+	defer f.mutex.Unlock()
 	f.note("CancelRequest", request.Header().Get("Authorization"))
 	if err := f.refusal("CancelRequest"); err != nil {
-		f.mutex.Unlock()
 		return nil, err
 	}
-	f.mutex.Unlock()
-	legacy := connect.NewRequest(&gatewayv1.CancelProposalRequest{ProposalId: request.Msg.GetRequestId(), Revision: request.Msg.GetRevision()})
-	legacy.Header().Set("Authorization", request.Header().Get("Authorization"))
-	answer, err := f.CancelProposal(ctx, legacy)
-	if err != nil {
-		return nil, err
+	f.Withdrawals = append(f.Withdrawals, proto.CloneOf(request.Msg))
+	held := f.heldRequests[request.Msg.GetRequestId()]
+	if held == nil {
+		return nil, Problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL,
+			connect.CodeNotFound, "request_id")
 	}
-	return connect.NewResponse(&gatewayv1.CancelRequestResponse{
-		Status: answer.Msg.GetStatus(), SnapshotSequence: answer.Msg.GetSnapshotSequence(),
-	}), nil
+	withdrawn := proto.CloneOf(held)
+	withdrawn.Lifecycle.Revision = request.Msg.GetRevision()
+	withdrawn.Lifecycle.Status = requestv2.RequestStatus_REQUEST_STATUS_CANCELLED
+	status := gatewayv1.PublishStatus_PUBLISH_STATUS_STORED
+	if proto.Equal(held, withdrawn) {
+		status = gatewayv1.PublishStatus_PUBLISH_STATUS_UNCHANGED
+	}
+	f.heldRequests[request.Msg.GetRequestId()] = withdrawn
+	return connect.NewResponse(&gatewayv1.CancelRequestResponse{Status: status}), nil
 }
 
+// ProposalFromRequest is a request document read as the Stage 7.1 proposal it corresponds to,
+// for the assertions written against that shape. It drops the network, which a proposal has no
+// field for.
 func ProposalFromRequest(request *requestv2.Request) *proposalv1.Proposal {
 	values := make([]*proposalv1.ProposalValue, 0, len(request.GetAction().GetParameters()))
 	for _, value := range request.GetAction().GetParameters() {
 		values = append(values, &proposalv1.ProposalValue{Key: value.GetKey(), Text: value.GetText()})
 	}
+	status := proposalv1.ProposalStatus_PROPOSAL_STATUS_OPEN
+	if request.GetLifecycle().GetStatus() == requestv2.RequestStatus_REQUEST_STATUS_CANCELLED {
+		status = proposalv1.ProposalStatus_PROPOSAL_STATUS_CANCELLED
+	}
 	return &proposalv1.Proposal{
 		ServerId: request.GetIdentity().GetSourceId(), Channel: request.GetIdentity().GetScope(), ProposalId: request.GetIdentity().GetRequestId(),
 		Revision: request.GetLifecycle().GetRevision(), Operation: request.GetAction().GetCapabilityId(), PluginId: request.GetAction().GetPluginId(),
-		Status: proposalv1.ProposalStatus_PROPOSAL_STATUS_OPEN, CreatedAt: request.GetLifecycle().GetCreatedAt(),
+		Status: status, CreatedAt: request.GetLifecycle().GetCreatedAt(),
 		UpdatedAt: request.GetLifecycle().GetUpdatedAt(), ExpiresAt: request.GetLifecycle().GetExpiresAt(),
 		PublisherNote: request.GetPresentation().GetDescription(), Values: values,
 	}
@@ -166,66 +219,6 @@ func (f *FakeGateway) PublishManifest(
 	}), nil
 }
 
-func (f *FakeGateway) PublishProposal(
-	ctx context.Context,
-	request *connect.Request[gatewayv1.PublishProposalRequest],
-) (*connect.Response[gatewayv1.PublishProposalResponse], error) {
-	f.mutex.Lock()
-	defer f.mutex.Unlock()
-	f.note("PublishProposal", request.Header().Get("Authorization"))
-	if err := f.refusal("PublishProposal"); err != nil {
-		return nil, err
-	}
-	proposal := request.Msg.GetProposal()
-	// The gateway's own rule: a cancelled status is not a publication. Withdrawing is a transition
-	// and CancelProposal is where it happens, so publishing a withdrawn document is refused rather
-	// than stored (packages/protocol/proto/seekervault/gateway/v1/publish.proto, rules.Proposal).
-	if proposal.GetStatus() == proposalv1.ProposalStatus_PROPOSAL_STATUS_CANCELLED {
-		return nil, Problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_CANCEL_ON_PUBLISH,
-			connect.CodeInvalidArgument, "status")
-	}
-	f.Proposals = append(f.Proposals, proto.CloneOf(proposal))
-	if f.heldProposals == nil {
-		f.heldProposals = map[string]*proposalv1.Proposal{}
-	}
-	status := gatewayv1.PublishStatus_PUBLISH_STATUS_STORED
-	if proto.Equal(f.heldProposals[proposal.GetProposalId()], proposal) {
-		status = gatewayv1.PublishStatus_PUBLISH_STATUS_UNCHANGED
-	} else {
-		f.heldProposals[proposal.GetProposalId()] = proto.CloneOf(proposal)
-	}
-	return connect.NewResponse(&gatewayv1.PublishProposalResponse{
-		Status:   status,
-		Revision: proposal.GetRevision(),
-	}), nil
-}
-
-func (f *FakeGateway) CancelProposal(
-	ctx context.Context,
-	request *connect.Request[gatewayv1.CancelProposalRequest],
-) (*connect.Response[gatewayv1.CancelProposalResponse], error) {
-	f.mutex.Lock()
-	defer f.mutex.Unlock()
-	f.note("CancelProposal", request.Header().Get("Authorization"))
-	if err := f.refusal("CancelProposal"); err != nil {
-		return nil, err
-	}
-	f.Withdrawals = append(f.Withdrawals, proto.CloneOf(request.Msg))
-	held := f.heldProposals[request.Msg.GetProposalId()]
-	if held == nil {
-		return nil, Problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL,
-			connect.CodeNotFound, "proposal_id")
-	}
-	withdrawn := proto.CloneOf(held)
-	withdrawn.Revision = request.Msg.GetRevision()
-	withdrawn.Status = proposalv1.ProposalStatus_PROPOSAL_STATUS_CANCELLED
-	f.heldProposals[request.Msg.GetProposalId()] = withdrawn
-	return connect.NewResponse(&gatewayv1.CancelProposalResponse{
-		Status:   gatewayv1.PublishStatus_PUBLISH_STATUS_STORED,
-		Proposal: withdrawn,
-	}), nil
-}
-
 func (f *FakeGateway) note(procedure, credential string) {
 	f.Credentials = append(f.Credentials, credential)
 	if f.attempts == nil {
@@ -248,12 +241,23 @@ func (f *FakeGateway) refusal(procedure string) error {
 	return f.Refuse(procedure)
 }
 
-// Held is what the fake currently holds for a proposal, for a test that asserts a withdrawal
-// landed.
+// Held is what the fake currently holds for a proposal, read as one, for a test that asserts a
+// withdrawal landed. Nil when it holds nothing of that identity.
 func (f *FakeGateway) Held(id string) *proposalv1.Proposal {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
-	return f.heldProposals[id]
+	held := f.heldRequests[id]
+	if held == nil {
+		return nil
+	}
+	return ProposalFromRequest(held)
+}
+
+// HeldRequest is the request document the fake currently holds, network and all.
+func (f *FakeGateway) HeldRequest(id string) *requestv2.Request {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	return proto.CloneOf(f.heldRequests[id])
 }
 
 func (f *FakeGateway) Seen() (manifests, proposals, withdrawals int) {
@@ -325,6 +329,7 @@ func Swap() signals.Signal {
 		Status:     signals.Open,
 		Operation:  "swap",
 		PluginID:   "jupiter.swap",
+		Network:    network.Mainnet,
 		CreatedAt:  Now,
 		UpdatedAt:  Now,
 		ExpiresAt:  Now.Add(time.Hour),
@@ -339,7 +344,8 @@ func Swap() signals.Signal {
 	}
 }
 
-// ManifestAt is the manifest this publisher publishes about itself at one revision.
+// ManifestAt is the manifest this publisher publishes about itself at one revision: a feed that
+// declares Mainnet, which is where [Swap] executes.
 func ManifestAt(revision uint64) *serverv1.ServerManifest {
 	return &serverv1.ServerManifest{
 		ServerId:         ServerID,
@@ -349,12 +355,10 @@ func ManifestAt(revision uint64) *serverv1.ServerManifest {
 		RequiredPlugins: []*serverv1.PluginRequirement{{
 			PluginId: "jupiter.swap", MinContract: 1, MaxContract: 1,
 		}},
-		Environments: []serverv1.ServerEnvironment{
-			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-		},
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
-			GatewayUrl: "https://feeds.example.com",
-			Channel:    signals.ChannelFor(ServerID),
+			GatewayUrl:        "https://feeds.example.com",
+			Channel:           signals.ChannelFor(ServerID),
+			SupportedNetworks: []serverv1.SolanaNetwork{serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET},
 		}},
 	}
 }

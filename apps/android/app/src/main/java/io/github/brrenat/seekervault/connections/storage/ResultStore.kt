@@ -172,6 +172,7 @@ class ResultStore(private val dir: File) {
                     JSONObject().put("outcome", "Failed").put("detail", outcome.detail)
                 is SigningOutcome.Unresolved ->
                     JSONObject().put("outcome", "Unresolved").put("detail", outcome.detail)
+                SigningOutcome.NotSent -> JSONObject().put("outcome", "NotSent")
             }
 
         fun decodeSigning(json: JSONObject?): SigningOutcome? =
@@ -187,6 +188,7 @@ class ResultStore(private val dir: File) {
                 "Declined" -> SigningOutcome.Declined
                 "Failed" -> SigningOutcome.Failed(json.getString("detail"))
                 "Unresolved" -> SigningOutcome.Unresolved(json.getString("detail"))
+                "NotSent" -> SigningOutcome.NotSent
                 else -> null
             }
 

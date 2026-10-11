@@ -1,12 +1,10 @@
 package io.github.brrenat.seekervault.servers
 
 import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.TestExecutionProvider
 import io.github.brrenat.seekervault.plugins.jupiterLike
-import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -32,15 +30,12 @@ class ServerSupportTest {
     private fun manifest(
         required: List<Pair<String, IntRange>> = emptyList(),
         protocol: Int = SERVER_PROTOCOL,
-        environments: List<ServerEnvironment> =
-            listOf(ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION),
     ): ServerRecord =
         ServerRecord.Known(
             (manifestFrom(
                     feedManifest(
                         required = required,
                         protocol = protocol,
-                        environments = environments,
                     ),
                     ManifestExpectation(
                         serverId = SERVER_B,
@@ -55,8 +50,7 @@ class ServerSupportTest {
     private fun support(
         record: ServerRecord,
         plugins: ProviderRegistry = registry(),
-        environment: PluginEnvironment = PluginEnvironment.Production,
-    ) = serverSupport(record, plugins, environment)
+    ) = serverSupport(record, plugins)
 
     @Test
     fun aServerWhosePluginsAreAllHereIsSupportedAndExecutable() {
@@ -138,15 +132,21 @@ class ServerSupportTest {
     }
 
     @Test
-    fun aServerIsNotSupportedInAnEnvironmentItDoesNotServe() {
-        val state =
-            support(
-                manifest(environments = listOf(ServerEnvironment.SERVER_ENVIRONMENT_SANDBOX)),
-                environment = PluginEnvironment.Production,
-            )
+    fun aFeedHeldFromAGatewayThisBuildDoesNotTrustIsReadableAndNeverExecutable() {
+        // SEE-185: one trusted gateway. A feed added from another one before is held as it stands,
+        // and nothing from it is executable however supported its manifest is.
+        val record = manifest(required = listOf(SWAP_PLUGIN to 1..1))
+        val plugins = registry(jupiterLike())
 
-        assertEquals(ServerSupport.EnvironmentUnsupported(PluginEnvironment.Production), state)
-        assertFalse(state.executable)
+        val other = feedSupport(GATEWAY, record, plugins, "https://other.example.com")
+        assertEquals(ServerSupport.OtherGateway, other)
+        assertFalse(other.executable)
+        // The trusted one, compared as an origin: a trailing slash is the same gateway.
+        assertEquals(ServerSupport.Supported, feedSupport(GATEWAY, record, plugins, "$GATEWAY/"))
+        // No trusted gateway to compare against is refused too, never read as "any gateway".
+        assertEquals(ServerSupport.OtherGateway, feedSupport(GATEWAY, record, plugins, ""))
+        // Null skips the comparison, which only a test of something else asks for.
+        assertEquals(ServerSupport.Supported, feedSupport(GATEWAY, record, plugins, null))
     }
 
     @Test

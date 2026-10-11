@@ -52,9 +52,9 @@ enum GatewayProblem {
   GATEWAY_PROBLEM_DUPLICATE_PLUGIN = 10;
   // More required plugins than one manifest may name.
   GATEWAY_PROBLEM_TOO_MANY_PLUGINS = 11;
-  // No environment, a repeated one, or an unspecified one. A server that names no environment
-  // says nothing a phone can act on (SEE-97).
-  GATEWAY_PROBLEM_BAD_ENVIRONMENT = 12;
+  // Retired with server-declared environments (SEE-185). Never reuse.
+  reserved 12;
+  reserved "GATEWAY_PROBLEM_BAD_ENVIRONMENT";
   // A display name that is too long, or not printable text.
   GATEWAY_PROBLEM_BAD_NAME = 13;
   // An operation that isn't an operation name at the protocol's own level.
@@ -122,17 +122,10 @@ enum GatewayProblem {
   // which is again the whole feature working at a smaller size rather than a failure.
   GATEWAY_PROBLEM_NO_PUSH = 33;
 
-  // --- What is already here, continued (SEE-97) -----------------------------
-  // A manifest whose environments are not the ones this server published before. It belongs with
-  // the "what is already here" codes above and is numbered here instead because a number is the
-  // wire and only the last one is free.
-  //
-  // An environment is what a server promises when the owner approves, and a promise that can be
-  // raised by publishing a higher revision is not one: every subscribed phone would be moved from
-  // a demonstration to real money by a document. A second environment is a second deployment,
-  // with its own server ID, credential and database — which is what the publisher's own database
-  // stamp already enforces at its end.
-  GATEWAY_PROBLEM_OTHER_ENVIRONMENT = 34;
+  // Retired with server-declared environments (SEE-185): a server no longer promises sandbox or
+  // production, so there is no promise left to hold still. Never reuse.
+  reserved 34;
+  reserved "GATEWAY_PROBLEM_OTHER_ENVIRONMENT";
 
   // Retired gateway-private problems (SEE-130). Never reuse: old logs, stored status and clients
   // may still carry these values while the corresponding routes remain permanently unavailable.
@@ -175,7 +168,13 @@ enum GatewayProblem {
   // A manifest's supported_networks names SOLANA_NETWORK_UNSPECIFIED, a value this gateway does
   // not know, or the same network twice. An empty list is not this: it is a feed whose proposals
   // never reach a wallet, which is allowed (docs/wiki/server-manifests.md#supported-networks).
+  // Since SEE-185 it is also a signal whose action names no network, or one this gateway does not
+  // know: a network is required, and never inferred.
   GATEWAY_PROBLEM_BAD_NETWORK = 55;
+  // A signal's network is one its publisher's manifest does not declare in supported_networks, or
+  // the publisher has no manifest here yet (SEE-185). A feed may publish for several networks, but
+  // only for ones it says it supports.
+  GATEWAY_PROBLEM_OTHER_NETWORK = 56;
 }
 
 // GatewayErrorDetail is the Connect error detail on every FeedService and PublisherService error.

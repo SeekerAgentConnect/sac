@@ -96,6 +96,7 @@
     <string name="status_declined_in_wallet">You declined in the wallet. Nothing was signed.</string>
     <string name="status_to_send_declined_in_wallet">You declined in the wallet. Nothing was signed. Your answer is saved on this phone, and is sent when the server can be reached.</string>
     <string name="status_not_signed">Nothing was signed. %1$s</string>
+    <string name="status_not_sent">Not sent. The wallet never answered, and the transaction\'s blockhash has since expired with no matching transaction on chain, so it can never land. Nothing was spent, and the server is told it failed.</string>
     <string name="status_unresolved">This phone never learned what the wallet did. %1$s No signature reached this phone, and nothing was sent to the network.</string>
     <string name="status_unknown_transfer">This phone never learned what the wallet did. %1$s The transaction may or may not have been sent, so the server is told the outcome is unknown. Nothing is sent to the wallet again.</string>
     <string name="problem_no_wallet">This connection has no wallet ready to sign, so nothing can be signed. Choose or reconnect its wallet on the connection\'s page.</string>
@@ -118,6 +119,7 @@
     <string name="answer_chain_failed">Failed on the network</string>
     <string name="answer_declined_in_wallet">Declined in the wallet</string>
     <string name="answer_not_signed">Not signed</string>
+    <string name="answer_not_sent">Not sent</string>
     <string name="answer_unresolved">Wallet declined</string>
     <string name="answer_unknown">Wallet declined</string>
     <string name="summary_waiting">%1$s, waiting to be sent</string>

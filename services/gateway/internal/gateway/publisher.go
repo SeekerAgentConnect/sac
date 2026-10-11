@@ -55,6 +55,21 @@ func (p *Publisher) PublishRequest(
 	answer := &gatewayv1.PublishRequestResponse{Revision: lifecycle.GetRevision()}
 	var refused *rules.Fault
 	err := p.storage.Write(ctx, func(tx storage.PublicationTx) error {
+		// The signal's network must be one the manifest this gateway holds declares (SEE-185), read
+		// in the same transaction as the write, so a manifest that drops a network and a signal for
+		// it cannot both be decided against the older manifest.
+		manifest, err := tx.Manifest(ctx, identity.GetSourceId())
+		if err != nil {
+			return err
+		}
+		var declared *serverv1.ServerManifest
+		if manifest != nil {
+			declared = manifest.Document
+		}
+		if fault := rules.NetworkDeclared(declared, document.GetAction().GetNetwork()); fault != nil {
+			refused = fault
+			return nil
+		}
 		held, err := tx.Request(ctx, identity.GetScope(), identity.GetRequestId())
 		if err != nil {
 			return err

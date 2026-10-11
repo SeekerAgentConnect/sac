@@ -3,6 +3,7 @@ package io.github.brrenat.seekervault.proposals
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.plugins.ParameterChoice
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.executable
 import java.time.Instant
@@ -36,6 +37,13 @@ data class ProposalRecord(
     val review: ProposalReview? = null,
     /** What this device did about it. Null until it began, and there is never more than one. */
     val execution: ProposalExecution? = null,
+    /**
+     * The owner's latest preview of it (SEE-185): prepared and inspected for real, and neither
+     * signed nor sent. It never consumes the proposal — its standing is untouched, so the owner may
+     * prepare it again and execute it for real while it stands — and it is replaced by the next
+     * preview. Null until the owner previews.
+     */
+    val preview: ProposalPreview? = null,
     /**
      * A delivery this phone refused for this proposal, and which rule it broke. Null when the
      * publisher has said nothing the phone could not accept.
@@ -102,6 +110,14 @@ data class ProposalExecution(
 )
 
 /**
+ * One preview of a proposal (SEE-185, docs/wiki/environments.md): what was bound — with
+ * [ExecutionBinding.environment] [io.github.brrenat.seekervault.plugins.PluginEnvironment.Sandbox]
+ * — and when. Nothing was signed and nothing was sent, so there is no signature, no fill and no
+ * position, and nothing for the confirmation tracker to follow.
+ */
+data class ProposalPreview(val binding: ExecutionBinding, val at: Instant)
+
+/**
  * What came of the one operation this device executed.
  *
  * It is not a [io.github.brrenat.seekervault.connections.SigningOutcome], and the difference is the
@@ -129,19 +145,10 @@ sealed interface ProposalOutcome {
     data object Declined : ProposalOutcome
 
     /**
-     * The connection is a sandbox, so the operation was rehearsed and not performed (SEE-97,
-     * docs/wiki/environments.md).
-     *
-     * Everything up to the wallet happened, and happened for real: the plugin read the provider,
-     * built the bytes and they were inspected, the owner's rules were applied, and the binding
-     * below was written. Then nothing was signed and nothing was sent. There is deliberately no
-     * signature here and none is invented — an explorer link needs one, so a rehearsal offers none
-     * — and this is a settled outcome, because a rehearsal is over when it is over.
-     *
-     * Like every other outcome, it means this device has finished with the proposal. A rehearsal is
-     * what the owner asked for under this connection's promise, and a phone that then let the same
-     * proposal be executed for real would be treating what they asked for as not having counted
-     * (`proposalStanding`).
+     * A rehearsal recorded as this proposal's one execution, before SEE-185 — when a sandbox
+     * connection spent its proposal on one. Nothing writes it any more: a preview is now
+     * [ProposalPreview], which never consumes the proposal. A record that holds it still reads as
+     * what it was: nothing signed, nothing sent, and the proposal finished on this device.
      */
     data object Simulated : ProposalOutcome
 
@@ -224,11 +231,41 @@ sealed interface ProposalStanding {
      * readable and says so; nothing is prepared and no wallet is opened.
      */
     data class Unsupported(val support: ServerSupport) : ProposalStanding
+
+    /**
+     * The signal declares no network, one this build does not know, or one its feed's manifest does
+     * not declare (SEE-185). Readable with that explanation, and never executed: the network is not
+     * inferred from a wallet or from the manifest.
+     */
+    data class NetworkUnusable(val reason: NetworkReason) : ProposalStanding
 }
+
+/** Why a signal's network can't be executed on (SEE-185). */
+enum class NetworkReason(val code: String) {
+    /** It declares none: a contract-1 or legacy document, or an unspecified value. */
+    Missing("network_missing"),
+    /** It declares a value this build does not know. */
+    Unknown("network_unknown"),
+    /** It declares a network its feed's manifest does not list in its supported networks. */
+    NotDeclared("network_not_declared"),
+}
+
+/**
+ * Whether [proposal]'s network can be executed on by a feed that declares [networks], or why not.
+ */
+fun networkReason(proposal: Proposal, networks: Set<Network>): NetworkReason? =
+    when (val network = proposal.network) {
+        SignalNetwork.Missing -> NetworkReason.Missing
+        is SignalNetwork.Unknown -> NetworkReason.Unknown
+        is SignalNetwork.Declared ->
+            if (network.network in networks) null else NetworkReason.NotDeclared
+    }
 
 fun proposalStanding(
     record: ProposalRecord,
     support: ServerSupport,
+    /** The networks the feed's manifest declares now: capability, never a selection (SEE-185). */
+    networks: Set<Network>,
     now: Instant,
 ): ProposalStanding {
     record.execution?.let {
@@ -244,7 +281,12 @@ fun proposalStanding(
         ProposalAvailability.Cancelled -> ProposalStanding.Cancelled
         ProposalAvailability.Expired -> ProposalStanding.Expired
         ProposalAvailability.Open ->
-            if (support.executable) ProposalStanding.Open else ProposalStanding.Unsupported(support)
+            when {
+                !support.executable -> ProposalStanding.Unsupported(support)
+                else ->
+                    networkReason(record.proposal, networks)?.let(ProposalStanding::NetworkUnusable)
+                        ?: ProposalStanding.Open
+            }
     }
 }
 
@@ -266,5 +308,6 @@ val ProposalStanding.executable: Boolean
             is ProposalStanding.Refused,
             is ProposalStanding.Cancelled,
             is ProposalStanding.Expired,
-            is ProposalStanding.Unsupported -> false
+            is ProposalStanding.Unsupported,
+            is ProposalStanding.NetworkUnusable -> false
         }

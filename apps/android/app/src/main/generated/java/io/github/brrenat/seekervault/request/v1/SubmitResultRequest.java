@@ -33,6 +33,7 @@ public  final class SubmitResultRequest extends
     TRANSACTION_SUBMISSION(6),
     EXECUTION_FAILURE(7),
     UNKNOWN_OUTCOME(8),
+    NOT_SENT(9),
     RESULT_NOT_SET(0);
     private final int value;
     private ResultCase(int value) {
@@ -55,6 +56,7 @@ public  final class SubmitResultRequest extends
         case 6: return TRANSACTION_SUBMISSION;
         case 7: return EXECUTION_FAILURE;
         case 8: return UNKNOWN_OUTCOME;
+        case 9: return NOT_SENT;
         case 0: return RESULT_NOT_SET;
         default: return null;
       }
@@ -618,6 +620,86 @@ public  final class SubmitResultRequest extends
    */
   private void clearUnknownOutcome() {
     if (resultCase_ == 8) {
+      resultCase_ = 0;
+      result_ = null;
+    }
+  }
+
+  public static final int NOT_SENT_FIELD_NUMBER = 9;
+  /**
+   * <pre>
+   * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+   * user to approve again. The sidecar first checks for itself that the approved version's
+   * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+   */
+  @java.lang.Override
+  public boolean hasNotSent() {
+    return resultCase_ == 9;
+  }
+  /**
+   * <pre>
+   * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+   * user to approve again. The sidecar first checks for itself that the approved version's
+   * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+   */
+  @java.lang.Override
+  public io.github.brrenat.seekervault.request.v1.NotSent getNotSent() {
+    if (resultCase_ == 9) {
+       return (io.github.brrenat.seekervault.request.v1.NotSent) result_;
+    }
+    return io.github.brrenat.seekervault.request.v1.NotSent.getDefaultInstance();
+  }
+  /**
+   * <pre>
+   * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+   * user to approve again. The sidecar first checks for itself that the approved version's
+   * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+   */
+  private void setNotSent(io.github.brrenat.seekervault.request.v1.NotSent value) {
+    java.util.Objects.requireNonNull(value);
+    result_ = value;
+    resultCase_ = 9;
+  }
+  /**
+   * <pre>
+   * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+   * user to approve again. The sidecar first checks for itself that the approved version's
+   * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+   */
+  private void mergeNotSent(io.github.brrenat.seekervault.request.v1.NotSent value) {
+    java.util.Objects.requireNonNull(value);
+    if (resultCase_ == 9 &&
+        result_ != io.github.brrenat.seekervault.request.v1.NotSent.getDefaultInstance()) {
+      result_ = io.github.brrenat.seekervault.request.v1.NotSent.newBuilder((io.github.brrenat.seekervault.request.v1.NotSent) result_)
+          .mergeFrom(value).buildPartial();
+    } else {
+      result_ = value;
+    }
+    resultCase_ = 9;
+  }
+  /**
+   * <pre>
+   * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+   * user to approve again. The sidecar first checks for itself that the approved version's
+   * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+   * </pre>
+   *
+   * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+   */
+  private void clearNotSent() {
+    if (resultCase_ == 9) {
       resultCase_ = 0;
       result_ = null;
     }
@@ -1300,6 +1382,90 @@ public  final class SubmitResultRequest extends
       return this;
     }
 
+    /**
+     * <pre>
+     * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+     * user to approve again. The sidecar first checks for itself that the approved version's
+     * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+     */
+    @java.lang.Override
+    public boolean hasNotSent() {
+      return instance.hasNotSent();
+    }
+    /**
+     * <pre>
+     * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+     * user to approve again. The sidecar first checks for itself that the approved version's
+     * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+     */
+    @java.lang.Override
+    public io.github.brrenat.seekervault.request.v1.NotSent getNotSent() {
+      return instance.getNotSent();
+    }
+    /**
+     * <pre>
+     * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+     * user to approve again. The sidecar first checks for itself that the approved version's
+     * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+     */
+    public Builder setNotSent(io.github.brrenat.seekervault.request.v1.NotSent value) {
+      copyOnWrite();
+      instance.setNotSent(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+     * user to approve again. The sidecar first checks for itself that the approved version's
+     * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+     */
+    public Builder setNotSent(
+        io.github.brrenat.seekervault.request.v1.NotSent.Builder builderForValue) {
+      copyOnWrite();
+      instance.setNotSent(builderForValue.build());
+      return this;
+    }
+    /**
+     * <pre>
+     * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+     * user to approve again. The sidecar first checks for itself that the approved version's
+     * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+     */
+    public Builder mergeNotSent(io.github.brrenat.seekervault.request.v1.NotSent value) {
+      copyOnWrite();
+      instance.mergeNotSent(value);
+      return this;
+    }
+    /**
+     * <pre>
+     * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+     * user to approve again. The sidecar first checks for itself that the approved version's
+     * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+     * </pre>
+     *
+     * <code>.seekervault.request.v1.NotSent not_sent = 9 [json_name = "notSent"];</code>
+     */
+    public Builder clearNotSent() {
+      copyOnWrite();
+      instance.clearNotSent();
+      return this;
+    }
+
     // @@protoc_insertion_point(builder_scope:seekervault.request.v1.SubmitResultRequest)
   }
   @java.lang.Override
@@ -1327,10 +1493,11 @@ public  final class SubmitResultRequest extends
             io.github.brrenat.seekervault.request.v1.TransactionSubmission.class,
             io.github.brrenat.seekervault.request.v1.ExecutionFailure.class,
             io.github.brrenat.seekervault.request.v1.UnknownOutcome.class,
+            io.github.brrenat.seekervault.request.v1.NotSent.class,
           };
           java.lang.String info =
-              "\u0000\b\u0001\u0001\u0001\b\b\u0000\u0000\u0000\u0001\u1009\u0000\u0002<\u0000\u0003" +
-              "<\u0000\u0004<\u0000\u0005<\u0000\u0006<\u0000\u0007<\u0000\b<\u0000";
+              "\u0000\t\u0001\u0001\u0001\t\t\u0000\u0000\u0000\u0001\u1009\u0000\u0002<\u0000\u0003" +
+              "<\u0000\u0004<\u0000\u0005<\u0000\u0006<\u0000\u0007<\u0000\b<\u0000\t<\u0000";
           return newMessageInfo(DEFAULT_INSTANCE, info, objects);
       }
       case GET_DEFAULT_INSTANCE: {

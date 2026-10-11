@@ -5,6 +5,5 @@
   "mode": "CONNECTION_MODE_DIRECT",
   "direct": {
     "url": "https://vault.example.com"
-  },
-  "environments": ["SERVER_ENVIRONMENT_PRODUCTION"]
+  }
 }

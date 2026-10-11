@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/markets"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
@@ -31,6 +32,7 @@ func market() markets.Market {
 func prediction(id string, expires time.Time) signals.Signal {
 	return signals.Signal{
 		ProposalID: id,
+		Network:    network.Mainnet,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 		ExpiresAt:  expires,
@@ -99,6 +101,8 @@ func TestAMarketAndItsSignalAreOneWrite(t *testing.T) {
 		t.Fatalf("source %q", held.Market.SourceURL)
 	case held.Record.Signal.Terms[signals.MarketID] != row.MarketID:
 		t.Fatalf("the signal's terms are %v", held.Record.Signal.Terms)
+	case held.Record.Signal.Network != network.Mainnet:
+		t.Fatalf("the tracked signal reads back on network %q", held.Record.Signal.Network)
 	case held.Record.Publication.ConfirmedRevision != 0:
 		t.Fatal("a market's first signal is not published yet")
 	}

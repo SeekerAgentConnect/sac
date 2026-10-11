@@ -4,9 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
-import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
 import io.github.brrenat.seekervault.server.v1.SolanaNetwork
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -20,7 +18,6 @@ import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.ServerSupport
 import io.github.brrenat.seekervault.servers.channelFor
 import io.github.brrenat.seekervault.servers.directManifest
-import io.github.brrenat.seekervault.servers.executable
 import io.github.brrenat.seekervault.servers.feedManifest
 import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.servers.serverSupport
@@ -266,114 +263,35 @@ class ConnectionManifestTest {
     }
 
     @Test
-    fun aFeedStartsInSandboxWheneverItsPublisherServesOne() = runBlocking {
-        // SEE-97. A publisher that offers a demonstration as well as the real thing is taken at
-        // the demonstration, and production is an act by a person afterwards.
+    fun aFeedKeepsNoEnvironmentAndItsNetworksAreCapabilityThatOutlivesARestart() = runBlocking {
+        // SEE-185: preview or execution is chosen per operation, never kept on a connection, and a
+        // publisher's networks are what its signals may run on — not a selection.
         feeds.answer =
             feedManifest(
-                environments =
+                required = emptyList(),
+                networks =
                     listOf(
-                        ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION,
-                        ServerEnvironment.SERVER_ENVIRONMENT_SANDBOX,
-                    )
+                        SolanaNetwork.SOLANA_NETWORK_MAINNET,
+                        SolanaNetwork.SOLANA_NETWORK_DEVNET,
+                    ),
             )
+        val added = (repository.addFeed(FeedReference(GATEWAY, SERVER_B)) as FeedOutcome.Added)
 
-        val both = (repository.addFeed(FeedReference(GATEWAY, SERVER_B)) as FeedOutcome.Added)
-
-        assertEquals(PluginEnvironment.Sandbox, both.connection.environment)
-
-        // A publisher that serves one leaves nothing to choose, and the connection keeps that one.
-        feeds.answer = feedManifest(serverId = SERVER_C)
-        val only = (repository.addFeed(FeedReference(GATEWAY, SERVER_C)) as FeedOutcome.Added)
-        assertEquals(PluginEnvironment.Production, only.connection.environment)
-    }
-
-    @Test
-    fun onlyTheOwnerMovesAFeedBetweenEnvironments() = runBlocking {
-        feeds.answer =
-            feedManifest(
-                environments =
-                    listOf(
-                        ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION,
-                        ServerEnvironment.SERVER_ENVIRONMENT_SANDBOX,
-                    )
-            )
-        val feed = (repository.addFeed(FeedReference(GATEWAY, SERVER_B)) as FeedOutcome.Added)
-        val id = feed.connection.id
-
-        // Where the publisher serves both, the owner may switch, and it survives a restart.
+        val restarted = repository().also { it.load() }.get(added.connection.id)
         assertEquals(
-            EnvironmentOutcome.Changed,
-            repository.setEnvironment(id, PluginEnvironment.Production),
+            setOf(WalletNetwork.Mainnet, WalletNetwork.Devnet),
+            restarted.server.manifest?.supportedNetworks,
         )
+        assertEquals(added.connection, restarted)
+        // Nothing on disk says which environment it is in: there is no such thing any more.
+        val file =
+            folder.root.walk().single { it.isFile && it.name == "${added.connection.id}.json" }
+        assertFalse(file.readText().contains("\"environment\""))
+        // Its server is supported as it is, with nothing about environments to agree on.
         assertEquals(
-            PluginEnvironment.Production,
-            repository().also { it.load() }.connection(id)?.environment,
+            ServerSupport.Supported,
+            serverSupport(restarted.server, ProviderRegistry.of()),
         )
-        assertEquals(
-            EnvironmentOutcome.Unchanged,
-            repository.setEnvironment(id, PluginEnvironment.Production),
-        )
-
-        // Where it serves one, there is nothing to switch to: a connection cannot be put into a
-        // promise its server never made, and the one it keeps is left alone.
-        feeds.answer =
-            feedManifest(
-                serverId = SERVER_C,
-                environments = listOf(ServerEnvironment.SERVER_ENVIRONMENT_SANDBOX),
-            )
-        val sandbox = (repository.addFeed(FeedReference(GATEWAY, SERVER_C)) as FeedOutcome.Added)
-        assertEquals(
-            EnvironmentOutcome.NotServed,
-            repository.setEnvironment(sandbox.connection.id, PluginEnvironment.Production),
-        )
-        assertEquals(
-            PluginEnvironment.Sandbox,
-            repository.connection(sandbox.connection.id)?.environment,
-        )
-
-        // A direct connection is production and cannot be moved: an agent waiting for a signature
-        // cannot be handed a rehearsal.
-        val direct = repository.pair(server.issue(URL))
-        assertEquals(
-            EnvironmentOutcome.NotAFeed,
-            repository.setEnvironment(direct.id, PluginEnvironment.Sandbox),
-        )
-        assertEquals(PluginEnvironment.Production, repository.connection(direct.id)?.environment)
-        assertEquals(
-            EnvironmentOutcome.Gone,
-            repository.setEnvironment(SERVER, PluginEnvironment.Sandbox),
-        )
-    }
-
-    @Test
-    fun aPublisherCannotMoveAFeedIntoTheOtherEnvironmentByRepublishing() = runBlocking {
-        // The rule SEE-97 exists for, at this end. The gateway refuses a manifest that changes its
-        // environments; if one ever reached a phone anyway, the connection stays where the owner
-        // put it and the server becomes unsupported — which is readable, and executes nothing.
-        feeds.answer =
-            feedManifest(environments = listOf(ServerEnvironment.SERVER_ENVIRONMENT_SANDBOX))
-        val feed = (repository.addFeed(FeedReference(GATEWAY, SERVER_B)) as FeedOutcome.Added)
-        assertEquals(PluginEnvironment.Sandbox, feed.connection.environment)
-
-        feeds.answer =
-            feedManifest(
-                revision = 2,
-                environments = listOf(ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION),
-            )
-        assertTrue(repository.refreshSettings(feed.connection.id) is FeedSettings.Stored)
-
-        val after = checkNotNull(repository.connection(feed.connection.id))
-        assertEquals(PluginEnvironment.Sandbox, after.environment)
-        assertEquals(
-            setOf(PluginEnvironment.Production),
-            after.server.manifest?.environments,
-        )
-        // Nothing this build could act on: the promise the owner kept is not one this server makes
-        // any more, and that is said rather than resolved either way.
-        val support = serverSupport(after.server, ProviderRegistry.of(), after.environment)
-        assertEquals(ServerSupport.EnvironmentUnsupported(PluginEnvironment.Sandbox), support)
-        assertFalse(support.executable)
     }
 
     @Test

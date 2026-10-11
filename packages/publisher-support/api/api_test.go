@@ -2,17 +2,20 @@ package api_test
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
+	_ "modernc.org/sqlite"
 
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/api"
-	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/gateway/v1"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/proposal/v1"
+	serverv1 "github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/server/v1"
+	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
@@ -31,7 +34,9 @@ func TestTheCommonRequestAPIIsThePrimaryViewOfTheSameDurablePublication(t *testi
 	presentation, _ := request["presentation"].(map[string]any)
 	audience, _ := request["audience"].(map[string]any)
 	result, _ := request["result_handling"].(map[string]any)
-	if request["contract_version"] != float64(1) ||
+	action, _ := request["action"].(map[string]any)
+	if request["contract_version"] != float64(2) ||
+		action["network"] != "SOLANA_NETWORK_MAINNET" ||
 		identity["request_id"] != proposal ||
 		presentation["category"] != "PRESENTATION_CATEGORY_SIGNAL" ||
 		audience["feed"] == nil || result["mode"] != "RESULT_MODE_DEVICE_LOCAL" {
@@ -64,14 +69,14 @@ func TestASignalIsPublishedOnce(t *testing.T) {
 	}
 	signal := answered.Signal()
 	for name, expected := range map[string]any{
-		"server_id":   server,
-		"channel":     "server/" + server,
-		"revision":    "1",
-		"status":      "open",
-		"operation":   "swap",
-		"plugin_id":   "jupiter.swap",
-		"environment": "production",
-		"note":        "trimming SOL into USDC",
+		"server_id": server,
+		"channel":   "server/" + server,
+		"revision":  "1",
+		"status":    "open",
+		"operation": "swap",
+		"plugin_id": "jupiter.swap",
+		"network":   "mainnet",
+		"note":      "trimming SOL into USDC",
 	} {
 		if signal[name] != expected {
 			t.Fatalf("%s is %v, expected %v", name, signal[name], expected)
@@ -79,6 +84,15 @@ func TestASignalIsPublishedOnce(t *testing.T) {
 	}
 	if answered.Body["idempotent"] != false {
 		t.Fatalf("idempotent %v on a first create", answered.Body["idempotent"])
+	}
+	if _, said := signal["environment"]; said {
+		t.Fatalf("a signal still names an environment: %s", answered.Raw)
+	}
+	// The document the gateway holds is request contract 2 on the network the caller named.
+	if sent := held.Gateway.HeldRequest(signal["proposal_id"].(string)); sent.GetContractVersion() != 2 ||
+		sent.GetAction().GetNetwork() != serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET {
+		t.Fatalf("the gateway holds contract %d on %s", sent.GetContractVersion(),
+			sent.GetAction().GetNetwork())
 	}
 
 	// One document reached the gateway, and it is the signal the caller asked for.
@@ -293,6 +307,23 @@ func TestAMalformedSignalIsRefusedWithTheTermItWasAbout(t *testing.T) {
 		{"a term nothing reads", func(body map[string]any) {
 			body["terms"].(map[string]string)["urgency"] = "high"
 		}, "unknown_term", "urgency"},
+		// The network is required and never guessed, even though this deployment declares only
+		// one (SEE-185).
+		{"no network", func(body map[string]any) {
+			delete(body, "network")
+		}, "bad_network", "network"},
+		{"an empty network", func(body map[string]any) {
+			body["network"] = ""
+		}, "bad_network", "network"},
+		{"a network that is not one", func(body map[string]any) {
+			body["network"] = "localnet"
+		}, "bad_network", "network"},
+		{"a chain identifier for a network", func(body map[string]any) {
+			body["network"] = "solana:mainnet"
+		}, "bad_network", "network"},
+		{"a network the manifest does not declare", func(body map[string]any) {
+			body["network"] = "devnet"
+		}, "other_network", "network"},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			body := swapStatement()
@@ -368,7 +399,7 @@ func TestAGatewayThatIsDownHoldsTheSignalAndKeepsTrying(t *testing.T) {
 func TestARefusedSignalSaysWhyAndIsRetriedOnlyWhenAsked(t *testing.T) {
 	refusing := true
 	fake := &fakeGateway{Refuse: func(procedure string) error {
-		if refusing && procedure == "PublishProposal" {
+		if refusing && procedure == "PublishRequest" {
 			return refusal(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_PROPOSALS,
 				connect.CodeFailedPrecondition)("")
 		}
@@ -534,10 +565,6 @@ func TestAWrongMethodIsRefused(t *testing.T) {
 func TestTheManifestAndTheReferenceAreTheDeploymentsOwn(t *testing.T) {
 	fake := &fakeGateway{}
 	held := start(t, fake)
-	ctx := context.Background()
-	if _, err := held.Store.ManifestRevision(ctx, "fingerprint-a", now); err != nil {
-		t.Fatal(err)
-	}
 
 	answered := held.Call(http.MethodGet, "/v1/manifest", nil)
 	if answered.Status != http.StatusOK {
@@ -555,40 +582,16 @@ func TestTheManifestAndTheReferenceAreTheDeploymentsOwn(t *testing.T) {
 			t.Fatalf("%s is %v, expected %v", name, document[name], expected)
 		}
 	}
-	if environments := document["environments"].([]any); len(environments) != 1 ||
-		environments[0] != "production" {
-		t.Fatalf("environments %v: one deployment serves one of them", environments)
+	// A deployment no longer promises sandbox or production (SEE-185): the answer says nothing
+	// about either, and neither does the status.
+	if _, said := document["environments"]; said {
+		t.Fatalf("the manifest answer still names environments: %s", answered.Raw)
 	}
 	// The Solana networks, from the same document (SEE-174): the test deployment declares
 	// Mainnet, as both demos do.
 	if networks := document["supported_networks"].([]any); len(networks) != 1 ||
 		networks[0] != "mainnet" {
 		t.Fatalf("supported_networks %v", networks)
-	}
-	// And it is the document's own answer rather than the setting beside it (SEE-97): one fact,
-	// one source, and the source is the one a phone will read.
-	for _, one := range []struct {
-		named    environment.Environment
-		expected string
-	}{
-		{environment.Production, "production"},
-		{environment.Sandbox, "sandbox"},
-		// A setting nobody validated does not become the promise with the money attached to it:
-		// the document says unspecified, the gateway refuses it, and the answer says so too.
-		{"staging", "unspecified"},
-	} {
-		deployment := startIn(t, &fakeGateway{}, one.named)
-		manifested := deployment.Call(http.MethodGet, "/v1/manifest", nil)
-		document := manifested.Body["manifest"].(map[string]any)
-		environments := document["environments"].([]any)
-		if len(environments) != 1 || environments[0] != one.expected {
-			t.Fatalf("%q answered %v, expected [%s]", one.named, environments, one.expected)
-		}
-		// The status answers the word itself, which is what an operator reads.
-		status := deployment.Call(http.MethodGet, "/v1/status", nil)
-		if status.Body["environment"] != one.named.String() {
-			t.Fatalf("status said %v", status.Body["environment"])
-		}
 	}
 	plugins := document["required_plugins"].([]any)
 	if len(plugins) != 1 {
@@ -620,7 +623,6 @@ func TestStatusSaysWhatThisPublisherIs(t *testing.T) {
 		"server_id":   server,
 		"channel":     "server/" + server,
 		"gateway_url": "https://feeds.example.com",
-		"environment": "production",
 		"operation":   "swap",
 		"plugin_id":   "jupiter.swap",
 		"pending":     0.0,
@@ -628,6 +630,71 @@ func TestStatusSaysWhatThisPublisherIs(t *testing.T) {
 		if answered.Body[name] != expected {
 			t.Fatalf("%s is %v, expected %v", name, answered.Body[name], expected)
 		}
+	}
+	if _, said := answered.Body["environment"]; said {
+		t.Fatalf("the status still names an environment: %s", answered.Raw)
+	}
+}
+
+// A signal's network is fixed when it is created (SEE-185): an update is the whole statement, so
+// it names the network again, and naming another one — or none — is refused rather than applied.
+func TestAnUpdateCannotMoveASignalsNetwork(t *testing.T) {
+	fake := &fakeGateway{}
+	held := start(t, fake)
+	created := held.Create("key-1", swapStatement())
+	id := created.Signal()["proposal_id"].(string)
+
+	devnet := swapStatement()
+	devnet["network"] = "devnet"
+	// Devnet is not declared here, so it is refused as undeclared before the held signal is read.
+	if answered := held.Call(http.MethodPut, "/v1/signals/"+id, devnet); answered.Status != http.StatusBadRequest ||
+		answered.Problem() != "other_network" || answered.Term() != "network" {
+		t.Fatalf("%d: %s", answered.Status, answered.Raw)
+	}
+	nameless := swapStatement()
+	delete(nameless, "network")
+	if answered := held.Call(http.MethodPut, "/v1/signals/"+id, nameless); answered.Status != http.StatusBadRequest ||
+		answered.Problem() != "bad_network" {
+		t.Fatalf("%d: %s", answered.Status, answered.Raw)
+	}
+	if len(documents(fake)) != 1 {
+		t.Fatalf("%d documents reached the gateway", len(documents(fake)))
+	}
+}
+
+// On a deployment that declares two networks, a signal may be published on either, and one on
+// Devnet cannot be moved to Mainnet by an update (SEE-185).
+func TestASignalOnEitherDeclaredNetworkKeepsIt(t *testing.T) {
+	fake := &fakeGateway{}
+	held := startWith(t, fake, signals.Swap{}, func(held *template, plan *api.Plan) {
+		both := []network.Network{network.Mainnet, network.Devnet}
+		held.Settings.Networks = both
+		plan.Settings.Networks = both
+	})
+	devnet := swapStatement()
+	devnet["network"] = "devnet"
+	created := held.Create("key-devnet", devnet)
+	if created.Status != http.StatusCreated || created.Signal()["network"] != "devnet" {
+		t.Fatalf("%d: %s", created.Status, created.Raw)
+	}
+	mainnet := held.Create("key-mainnet", swapStatement())
+	if mainnet.Status != http.StatusCreated || mainnet.Signal()["network"] != "mainnet" {
+		t.Fatalf("%d: %s", mainnet.Status, mainnet.Raw)
+	}
+	// The same key with the same terms on another network is another signal, so it is a conflict.
+	if again := held.Create("key-devnet", swapStatement()); again.Status != http.StatusConflict ||
+		again.Problem() != "key_reused" {
+		t.Fatalf("%d: %s", again.Status, again.Raw)
+	}
+	id := created.Signal()["proposal_id"].(string)
+	moved := held.Call(http.MethodPut, "/v1/signals/"+id, swapStatement())
+	if moved.Status != http.StatusConflict || moved.Problem() != "network_fixed" ||
+		moved.Term() != "network" {
+		t.Fatalf("%d: %s", moved.Status, moved.Raw)
+	}
+	if sent := fake.HeldRequest(id); sent.GetAction().GetNetwork() !=
+		serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET {
+		t.Fatalf("the gateway holds %s", sent.GetAction().GetNetwork())
 	}
 }
 
@@ -756,5 +823,51 @@ func TestNoCreateLimitIsTheDefault(t *testing.T) {
 		if answered.Status != http.StatusCreated {
 			t.Fatalf("create %d answered %d: %s", i, answered.Status, answered.Raw)
 		}
+	}
+}
+
+// A signal stored before networks were declared (SEE-185) is shown as it is, with no network, and
+// is never given one: an update naming a network is refused, a retry is refused here before
+// anything is sent, and withdrawing it still works.
+func TestASignalFromBeforeNetworksIsNeverPublishedOpenAgain(t *testing.T) {
+	fake := &fakeGateway{}
+	held := start(t, fake)
+	created := held.Create("key-1", swapStatement())
+	id := created.Signal()["proposal_id"].(string)
+
+	// What a version-5 database brought forward looks like: the row, with no network — here one
+	// that was refused once and is still waiting to be published.
+	database, err := sql.Open("sqlite", "file:"+held.PathValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`UPDATE signal SET network = '', problem = 'too_many_proposals',
+	                                   confirmed_revision = 0 WHERE proposal_id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	shown := held.Call(http.MethodGet, "/v1/signals/"+id, nil)
+	if shown.Signal()["network"] != "" {
+		t.Fatalf("a network was inferred: %s", shown.Raw)
+	}
+	updated := held.Call(http.MethodPut, "/v1/signals/"+id, swapStatement())
+	if updated.Status != http.StatusConflict || updated.Problem() != "network_fixed" {
+		t.Fatalf("%d: %s", updated.Status, updated.Raw)
+	}
+	publications := fake.Tried("PublishRequest")
+	retried := held.Call(http.MethodPost, "/v1/signals/"+id+"/retry", nil)
+	if retried.State() != "refused" || retried.Publication()["problem"] != "no_network" {
+		t.Fatalf("%d: %s", retried.Status, retried.Raw)
+	}
+	if fake.Tried("PublishRequest") != publications {
+		t.Fatal("a signal with no network was sent to the gateway")
+	}
+	withdrawn := held.Call(http.MethodPost, "/v1/signals/"+id+"/cancel", nil)
+	if withdrawn.Status != http.StatusOK || withdrawn.State() != "published" ||
+		withdrawn.Signal()["status"] != "cancelled" {
+		t.Fatalf("%d: %s", withdrawn.Status, withdrawn.Raw)
 	}
 }

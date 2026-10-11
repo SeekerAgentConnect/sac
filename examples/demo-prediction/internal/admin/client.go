@@ -27,10 +27,11 @@ func newAPI(url, token string, client *http.Client) *API {
 	return &API{url: strings.TrimRight(url, "/"), token: token, http: client}
 }
 
-// Feed is the public reference and the environment the template promises.
+// Feed is the public reference and the Solana networks the template's manifest declares. Each
+// signal names its own network (SEE-185); these are the ones it may name.
 type Feed struct {
-	Reference   string
-	Environment string
+	Reference string
+	Networks  string
 }
 
 // Item is one published signal as the admin page shows it. No wallet, amount, side, subscriber or
@@ -59,6 +60,7 @@ type Market struct {
 	State      string
 	CloseAt    string
 	Published  bool
+	Dismissed  bool
 }
 
 // Query is the operator's listing filters, as the search form posts them.
@@ -100,17 +102,17 @@ func (a *API) feed() (Feed, error) {
 	var read struct {
 		Reference string `json:"reference"`
 		Manifest  struct {
-			Environments []string `json:"environments"`
+			Networks []string `json:"supported_networks"`
 		} `json:"manifest"`
 	}
 	if err := json.Unmarshal(body, &read); err != nil {
 		return Feed{}, err
 	}
-	environment := ""
-	if len(read.Manifest.Environments) > 0 {
-		environment = read.Manifest.Environments[0]
+	networks := strings.Join(read.Manifest.Networks, ", ")
+	if networks == "" {
+		networks = "none"
 	}
-	return Feed{Reference: read.Reference, Environment: environment}, nil
+	return Feed{Reference: read.Reference, Networks: networks}, nil
 }
 
 func (a *API) defaults() Query {
@@ -281,6 +283,7 @@ func (a *API) search(query Query) ([]Market, error) {
 			State      string   `json:"state"`
 			CloseAt    string   `json:"close_at"`
 			Published  bool     `json:"published"`
+			Dismissed  bool     `json:"dismissed"`
 		} `json:"markets"`
 	}
 	if err := json.Unmarshal(body, &read); err != nil {
@@ -298,6 +301,7 @@ func (a *API) search(query Query) ([]Market, error) {
 			State:      one.State,
 			CloseAt:    one.CloseAt,
 			Published:  one.Published,
+			Dismissed:  one.Dismissed,
 		})
 	}
 	return markets, nil
@@ -324,6 +328,23 @@ func (a *API) selectMarket(id string) (Market, error) {
 		return Market{}, err
 	}
 	return Market{MarketID: read.MarketID, Title: read.Title, State: read.State}, nil
+}
+
+// unpublish asks discovery to withdraw one proposal and keep its market off the feed until an
+// operator selects it again.
+func (a *API) unpublish(id string) error {
+	payload, err := json.Marshal(map[string]string{"request_id": id})
+	if err != nil {
+		return err
+	}
+	status, body, err := a.call(http.MethodPost, "/v1/discovery/unpublish", "", payload)
+	if err != nil {
+		return err
+	}
+	if status < 200 || status > 299 {
+		return decodeError(status, body)
+	}
+	return nil
 }
 
 func (a *API) call(method, path, key string, body []byte) (int, []byte, error) {

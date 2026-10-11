@@ -40,7 +40,7 @@ import io.github.brrenat.seekervault.skr.StakingInspection
 import io.github.brrenat.seekervault.skr.inspectStaking
 import io.github.brrenat.seekervault.skr.readSkrPosition
 import io.github.brrenat.seekervault.skr.staking
-import io.github.brrenat.seekervault.solana.SolanaAccounts
+import io.github.brrenat.seekervault.solana.NetworkAccounts
 import io.github.brrenat.seekervault.transactions.TransferInspection
 import io.github.brrenat.seekervault.transactions.inspectTransfer
 import io.github.brrenat.seekervault.transactions.transfer
@@ -292,14 +292,15 @@ class InboxViewModel(
      */
     private val plugins: ProviderRegistry = ProviderRegistry.of(),
     /**
-     * This phone's own Solana endpoint, used to read a staking position for itself (SEE-146).
+     * This phone's own Solana endpoints, used to read a staking position for itself (SEE-146) on
+     * the network the request is bound to (SEE-184).
      *
      * Null when none is configured, and then a staking review says what it could not read rather
      * than taking the server's word for a share price. An unstake or a withdrawal is refused in
      * that state; a stake is still fully readable, because its amount and all of its accounts come
      * from the bytes and from this app's own derivations.
      */
-    private val chain: SolanaAccounts? = null,
+    private val chain: NetworkAccounts? = null,
     /**
      * How long the app waits for the wallet before it gives up on an approval. It is the owner's
      * own time in the wallet app, so it is generous; a wallet that never answers at all must still
@@ -361,6 +362,25 @@ class InboxViewModel(
                     repository.connections.value.associate { it.id to wallet.readiness(it.id) },
                 ),
             )
+
+    init {
+        // A transaction is inspected against the wallet its connection had at that moment. If the
+        // wallet becomes ready later, or changes, a review opened earlier would keep showing "no
+        // wallet ready" or the old wallet. Examples: the app opened from a notification before
+        // the server confirmed the binding, or the owner chose another wallet. So that review is
+        // prepared again for the wallet the connection has now. A connection that stops being
+        // ready is left as it is, because approving re-checks the wallet anyway.
+        viewModelScope.launch {
+            wallet.readinessByConnection().collect { readiness ->
+                val now = activity.value
+                for ((key, held) in now.preparations) {
+                    if (held !is Preparation.Ready || key in now.sending) continue
+                    val ready = readiness[key.connectionId] as? WalletReadiness.Ready ?: continue
+                    if (ready.profile.selected() != held.wallet) prepare(key, force = true)
+                }
+            }
+        }
+    }
 
     /** Fetches one connection's requests, or every usable connection's at once. */
     fun refresh(connectionId: String? = null) {
@@ -600,7 +620,8 @@ class InboxViewModel(
                         action = owner.action,
                         schemaVersion = SWAP_SCHEMA_VERSION,
                         network = network,
-                        environment = environmentOf(key.connectionId),
+                        // A direct connection is always real execution (SEE-97, SEE-185).
+                        environment = PluginEnvironment.Production,
                     ),
             )
         }
@@ -622,23 +643,7 @@ class InboxViewModel(
      * nothing.
      */
     fun support(connectionId: String): ServerSupport =
-        serverSupport(
-            repository.connection(connectionId)?.server ?: ServerRecord.Unknown,
-            plugins,
-            environmentOf(connectionId),
-        )
-
-    /**
-     * Which promise this connection keeps (SEE-97). For everything this screen is about it is
-     * always [PluginEnvironment.Production], and the reason is a rule rather than a default: a
-     * direct connection cannot be anything else, because the agent that asked for a signature is
-     * waiting for one and cannot be handed a rehearsal (`Connection.environment`).
-     *
-     * It is read rather than assumed all the same, so that the one place this app decides what an
-     * approval means is the connection it is for.
-     */
-    private fun environmentOf(connectionId: String): PluginEnvironment =
-        repository.connection(connectionId)?.environment ?: PluginEnvironment.Production
+        serverSupport(repository.connection(connectionId)?.server ?: ServerRecord.Unknown, plugins)
 
     private fun preparedFor(key: RequestKey): PreparedTransaction? =
         (activity.value.preparations[key] as? Preparation.Ready)?.prepared
@@ -754,7 +759,7 @@ class InboxViewModel(
                     // the server built the transaction could make an honest unstake look wrong.
                     val position =
                         if (staking == null) null
-                        else chain?.let { readSkrPosition(it, staking.wallet) }
+                        else chain?.let { readSkrPosition(it.on(staking.network), staking.wallet) }
                     val prepared = repository.prepare(key)
                     val selected = wallet.walletFor(key.connectionId)
                     if (staking == null) {

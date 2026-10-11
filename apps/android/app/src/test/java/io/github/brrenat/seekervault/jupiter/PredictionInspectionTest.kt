@@ -94,6 +94,28 @@ class PredictionInspectionTest {
     }
 
     @Test
+    fun slippageTighterThanQuotedIsApprovable() {
+        // What Jupiter answered on 2026-10-11: the order's JSON states a slippage of 134620 while
+        // the instruction carries 0. The bytes allow no more than was quoted, and the ceiling, the
+        // contracts and the cost match exactly, so nothing about the owner's outcome is looser.
+        val built = orderTransaction()
+        val inspection =
+            inspect(
+                built,
+                order =
+                    predictionOrder(
+                        built.transaction,
+                        yes = true,
+                        owner = OWNER,
+                        slippageBps = 134_620,
+                    ),
+            )
+
+        assertFalse(PredictionFinding.QuoteMismatch.code in codes(inspection))
+        assertTrue(inspection.approvable)
+    }
+
+    @Test
     fun everyWayTheBytesCanDisagreeWithTheOrderIsRefused() {
         val cases =
             listOf(

@@ -244,6 +244,10 @@ message SubmitResultRequest {
     ExecutionFailure execution_failure = 7;
     // The phone can't tell whether the wallet signed or sent: PROCESSING to UNKNOWN.
     UnknownOutcome unknown_outcome = 8;
+    // The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+    // user to approve again. The sidecar first checks for itself that the approved version's
+    // blockhash has expired on the request's network. Transfers, swaps and staking actions.
+    NotSent not_sent = 9;
   }
 }
 
@@ -303,5 +307,13 @@ message ExecutionFailure {
 // UnknownOutcome says the phone lost track of the wallet after the approval.
 message UnknownOutcome {
   // What happened, as far as the phone knows. Display text; at most 1024 UTF-8 bytes.
+  string detail = 1;
+}
+
+// NotSent says the transaction the user approved was never sent and can no longer be: its
+// blockhash expired, and the wallet's history on chain holds no transaction carrying the approved
+// message. The phone searched for it after the wallet never answered (docs/protocol.md#reopening).
+message NotSent {
+  // What the phone found. Display text; at most 1024 UTF-8 bytes.
   string detail = 1;
 }

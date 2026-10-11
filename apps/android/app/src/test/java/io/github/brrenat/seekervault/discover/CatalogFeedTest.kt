@@ -59,7 +59,7 @@ class CatalogFeedTest {
 
     @Test
     fun aPublicAndARestrictedListingAreReadWithTheirNetworksInCanonicalOrder() {
-        val public = CatalogFeeds.from(wire(), noCleartext)!!
+        val public = CatalogFeeds.from(wire(), GATEWAY, noCleartext)!!
         assertEquals("Copy trading", public.name)
         assertEquals("Daily swap ideas.\nReview each one yourself.", public.description)
         assertFalse(public.restricted)
@@ -67,7 +67,7 @@ class CatalogFeedTest {
         assertEquals(listOf("jupiter.swap"), public.plugins)
         assertEquals(CatalogKey(GATEWAY, SERVER_B), public.key)
 
-        val restricted = CatalogFeeds.from(wire(restricted = true), noCleartext)!!
+        val restricted = CatalogFeeds.from(wire(restricted = true), GATEWAY, noCleartext)!!
         assertTrue(restricted.restricted)
         assertTrue(restricted.reference.restricted)
     }
@@ -90,7 +90,7 @@ class CatalogFeedTest {
                 wire { it.addSupportedNetworks(SolanaNetwork.SOLANA_NETWORK_DEVNET) },
                 wire { it.addSupportedNetworks(SolanaNetwork.SOLANA_NETWORK_UNSPECIFIED) },
             )
-        bad.forEach { assertNull("accepted $it", CatalogFeeds.from(it, noCleartext)) }
+        bad.forEach { assertNull("accepted $it", CatalogFeeds.from(it, GATEWAY, noCleartext)) }
 
         val page =
             CatalogFeeds.page(
@@ -100,12 +100,17 @@ class CatalogFeedTest {
                     feeds += wire() // a repeated item is one card
                     nextPageToken = "next"
                 },
+                GATEWAY,
                 noCleartext,
             )
         assertEquals(listOf(SERVER_B), page.feeds.map { it.serverId })
         assertEquals("next", page.nextPageToken)
         assertNull(
-            CatalogFeeds.page(listRecommendedFeedsResponse { feeds += wire() }, noCleartext)
+            CatalogFeeds.page(
+                    listRecommendedFeedsResponse { feeds += wire() },
+                    GATEWAY,
+                    noCleartext,
+                )
                 .nextPageToken
         )
     }
@@ -117,21 +122,24 @@ class CatalogFeedTest {
         assertEquals(CatalogFeeds.MAX_DESCRIPTION + 1, atLimit.length)
         assertEquals(
             atLimit,
-            CatalogFeeds.from(wire { it.description = atLimit }, noCleartext)?.description,
+            CatalogFeeds.from(wire { it.description = atLimit }, GATEWAY, noCleartext)?.description,
         )
-        assertNull(CatalogFeeds.from(wire { it.description = atLimit + "x" }, noCleartext))
+        assertNull(CatalogFeeds.from(wire { it.description = atLimit + "x" }, GATEWAY, noCleartext))
 
         val name = "n".repeat(CatalogFeeds.MAX_NAME - 1) + "\uD83D\uDE80"
-        assertEquals(name, CatalogFeeds.from(wire { it.displayName = name }, noCleartext)?.name)
+        assertEquals(
+            name,
+            CatalogFeeds.from(wire { it.displayName = name }, GATEWAY, noCleartext)?.name,
+        )
     }
 
     @Test
     fun aLoopbackGatewayIsAcceptedOnlyWhereTheBuildPermitsCleartext() {
         val loopback = wire(gateway = "http://127.0.0.1:8080")
-        assertNull(CatalogFeeds.from(loopback, noCleartext))
+        assertNull(CatalogFeeds.from(loopback, "http://127.0.0.1:8080", noCleartext))
         assertEquals(
             "http://127.0.0.1:8080",
-            CatalogFeeds.from(loopback) { it == "127.0.0.1" }?.gatewayUrl,
+            CatalogFeeds.from(loopback, "http://127.0.0.1:8080") { it == "127.0.0.1" }?.gatewayUrl,
         )
     }
 
@@ -139,9 +147,30 @@ class CatalogFeedTest {
     @Test
     fun aCardsReferenceReadsBackThroughTheOrdinaryParser() {
         listOf(false, true).forEach { restricted ->
-            val feed = CatalogFeeds.from(wire(restricted = restricted), noCleartext)!!
-            val parsed = FeedReferences.parse(FeedReferences.format(feed.reference), noCleartext)
+            val feed = CatalogFeeds.from(wire(restricted = restricted), GATEWAY, noCleartext)!!
+            val parsed =
+                FeedReferences.parse(FeedReferences.format(feed.reference), GATEWAY, noCleartext)
             assertEquals(FeedReferenceResult.Valid(feed.reference), parsed)
         }
+    }
+
+    @Test
+    fun aCardNamingAnotherGatewayIsLeftOutOfThePage() {
+        // SEE-185: the catalog is read from the trusted gateway, and a card it lists naming any
+        // other gateway is not a feed this build can add, so it is never shown.
+        val foreign = wire(gateway = "https://other-gateway.example.com")
+        assertNull(CatalogFeeds.from(foreign, GATEWAY, noCleartext))
+        val page =
+            CatalogFeeds.page(
+                listRecommendedFeedsResponse {
+                    feeds += foreign
+                    feeds += wire()
+                },
+                GATEWAY,
+                noCleartext,
+            )
+        assertEquals(listOf(GATEWAY), page.feeds.map { it.gatewayUrl })
+        // A build with no gateway lists nothing at all.
+        assertNull(CatalogFeeds.from(wire(), "", noCleartext))
     }
 }

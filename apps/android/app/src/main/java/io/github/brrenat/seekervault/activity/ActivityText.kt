@@ -79,6 +79,7 @@ fun outcomeText(outcome: ActivityOutcome): Int =
         ActivityOutcome.Confirmed -> R.string.activity_outcome_confirmed
         ActivityOutcome.ChainFailed -> R.string.activity_outcome_chain_failed
         ActivityOutcome.NotSigned -> R.string.activity_outcome_not_signed
+        ActivityOutcome.NotSent -> R.string.activity_outcome_not_sent
         ActivityOutcome.Simulated -> R.string.activity_outcome_simulated
         ActivityOutcome.Unknown -> R.string.activity_outcome_unknown
         ActivityOutcome.NotDelivered -> R.string.activity_outcome_not_delivered

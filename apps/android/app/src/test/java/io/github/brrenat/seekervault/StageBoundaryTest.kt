@@ -226,6 +226,11 @@ class StageBoundaryTest {
                 // addresses, amounts, the provider's words for a state, a sale's signature and a
                 // hash of the bytes approved — never a URL and never a transaction.
                 File(main, "java/io/github/brrenat/seekervault/positions/storage"),
+                // The trusted gateway's last validated client configuration (SEE-185): an RPC
+                // endpoint per network and the swap fee's public terms, and when they were
+                // fetched. A cache of what that one gateway said, validated before it was written;
+                // nothing a server, feed or owner types is kept here.
+                File(main, "java/io/github/brrenat/seekervault/config/storage"),
             )
         val syncPackage = File(main, "java/io/github/brrenat/seekervault/sync")
         val storagePackages =
@@ -417,6 +422,8 @@ class StageBoundaryTest {
                 .sorted()
         assertEquals(
             listOf(
+                // The protocol's network, so every read names the cluster it is about (SEE-184).
+                "io.github.brrenat.seekervault.request.v1",
                 "io.github.brrenat.seekervault.transactions",
                 "io.github.brrenat.seekervault.wallet",
             ),
@@ -451,23 +458,12 @@ class StageBoundaryTest {
             sources.filter { provider.containsMatchIn(it.readText()) }.map { it.name },
         )
         // And the endpoint is the application's own. Nothing a server sends can set it: it comes
-        // from the build, through the composition root, and no manifest, proposal or provider
-        // answer reaches it.
+        // from the trusted gateway's client configuration, through the one resolver the
+        // composition root builds (SEE-184, SEE-185), and no manifest, proposal or provider answer
+        // reaches it.
         val composition = File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt")
-        assertTrue(
-            composition
-                .readText()
-                .contains("HttpSolanaAccounts(httpClient, BuildConfig.SOLANA_RPC)")
-        )
-        assertEquals(
-            listOf("SeekerVaultApplication.kt"),
-            File(main, "java")
-                .walk()
-                .filter { it.extension == "kt" }
-                .filter { Regex("""SOLANA_RPC""").containsMatchIn(it.readText()) }
-                .map { it.name }
-                .toList(),
-        )
+        assertTrue(composition.readText().contains("HttpSolanaAccounts(httpClient, url)"))
+        assertTrue(composition.readText().contains("initial = clientConfig.current?.rpc.orEmpty()"))
         // No URL is ever persisted. A link read back off disk is a link something else could have
         // written, so every destination is built at the moment it is shown (SEE-94).
         val stores =
@@ -494,6 +490,98 @@ class StageBoundaryTest {
                 .filter { Regex("""https?://""").containsMatchIn(withoutComments(it)) }
                 .map { it.name },
         )
+    }
+
+    @Test
+    fun everyChainReadGoesThroughTheOneResolver() {
+        // SEE-184: account reads and confirmation reads share one network-aware resolver, so a
+        // network's verification and its confirmations always reach the same proven endpoint. No
+        // other code may build a reader of its own, or keep an endpoint setting of its own: a
+        // second route would be a second place a network could be asked at the wrong endpoint.
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        fun builders(call: String) =
+            sources
+                .filter { Regex("""(?<!class )\b$call\(""").containsMatchIn(withoutComments(it)) }
+                .map { it.name }
+                .sorted()
+        assertEquals(listOf("SeekerVaultApplication.kt"), builders("HttpSolanaAccounts"))
+        assertEquals(listOf("SeekerVaultApplication.kt"), builders("HttpChainReader"))
+        assertEquals(listOf("SeekerVaultApplication.kt"), builders("SolanaRpc"))
+        // Its endpoints have one source, the trusted gateway's client configuration (SEE-185),
+        // which only the composition root builds, and a new one is applied the moment it arrives.
+        assertEquals(listOf("SeekerVaultApplication.kt"), builders("ClientConfigRepository"))
+        assertEquals(listOf("SeekerVaultApplication.kt"), builders("ClientConfigStore"))
+        val composition =
+            File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt").readText()
+        assertTrue(composition.contains("reader = { url -> HttpChainReader(httpClient, url) }"))
+        assertTrue(
+            composition.contains("accounts = { url -> HttpSolanaAccounts(httpClient, url) }")
+        )
+        assertTrue(
+            composition.contains("clientConfig.onChange { _, config -> rpc.apply(config.rpc) }")
+        )
+    }
+
+    @Test
+    fun onlyAFeedOperationIsEverHandedServiceFeeTerms() {
+        // SEE-185: the SAC service fee is the trusted gateway's, for a feed swap on the network it
+        // was configured for. A direct server's operation never carries it, and the reason is
+        // structural: the only operation core builds for a provider is a feed operation's, and the
+        // only code that sets its terms is the one that read them from the configuration.
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        assertEquals(
+            listOf("OperationViewModel.kt"),
+            sources
+                .filter {
+                    Regex("""(?<!class )\bActionOperation\(""").containsMatchIn(withoutComments(it))
+                }
+                .map { it.name },
+        )
+        assertEquals(
+            listOf("OperationViewModel.kt"),
+            sources
+                .filter { Regex("""\bserviceFee\s*=""").containsMatchIn(withoutComments(it)) }
+                .map { it.name },
+        )
+        // And the providers only read the terms they are handed; none has a fee of its own.
+        val jupiter = File(main, "java/io/github/brrenat/seekervault/jupiter")
+        assertTrue(
+            jupiter
+                .walk()
+                .filter { it.extension == "kt" }
+                .none {
+                    withoutComments(it).contains("BuildConfig")
+                }
+        )
+    }
+
+    @Test
+    fun theBuildNamesOneGatewayAndNothingElseItTalksTo() {
+        // SEE-185: the build names exactly one trusted gateway. Feeds, the catalog, the push relay
+        // and the client configuration all come from it; the Solana endpoints and the swap fee
+        // come from its client configuration and from no build field at all.
+        val sources = File(main, "java").walk().filter { it.extension == "kt" }.toList()
+        assertEquals(
+            listOf("SeekerVaultApplication.kt"),
+            sources
+                .filter { withoutComments(it).contains("BuildConfig.GATEWAY_URL") }
+                .map { it.name },
+        )
+        val retired =
+            Regex("""\bBuildConfig\.(SOLANA_RPC\w*|SWAP_FEE\w*|RELAY_URL|DISCOVERY_URL)\b""")
+        assertEquals(
+            emptyList<String>(),
+            sources.filter { retired.containsMatchIn(it.readText()) }.map { it.name },
+        )
+        // Every reader of the gateway takes it from the one property tests can replace.
+        val composition =
+            File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt").readText()
+        assertTrue(
+            composition.contains("var gatewayUrl: () -> String = { BuildConfig.GATEWAY_URL }")
+        )
+        assertTrue(composition.contains("relayUrl = gatewayUrl()"))
+        assertTrue(composition.contains("gatewayUrl = gatewayUrl()"))
+        assertTrue(composition.contains("trustedGateway = gatewayUrl()"))
     }
 
     @Test
@@ -539,12 +627,11 @@ class StageBoundaryTest {
             emptyList<String>(),
             sources.filter { acting.containsMatchIn(withoutComments(it)) }.map { it.name },
         )
-        // Its endpoints are the application's own, from the build, through the composition root.
+        // Its endpoints are the application's own, from the trusted gateway's client configuration
+        // (SEE-185), through the composition root.
         val composition = File(main, "java/io/github/brrenat/seekervault/SeekerVaultApplication.kt")
         val text = composition.readText()
-        listOf("SOLANA_RPC_MAINNET", "SOLANA_RPC_DEVNET", "SOLANA_RPC_TESTNET").forEach {
-            assertTrue(it, text.contains("BuildConfig.$it"))
-        }
+        assertTrue(text.contains("initial = clientConfig.current?.rpc.orEmpty()"))
         assertTrue(text.contains("HttpChainReader(httpClient, url)"))
         // And the one place that knows a genesis hash says only which cluster is which.
         assertEquals(
@@ -875,9 +962,8 @@ class StageBoundaryTest {
             listOf(
                 "ActivityRecord.kt",
                 "ActivityStore.kt",
-                "Connection.kt",
-                "ConnectionDetailsScreen.kt",
-                "ConnectionRepository.kt",
+                // Since SEE-185 no connection keeps an environment: preview or execution is the
+                // owner's choice for one operation, and these only put that choice into words.
                 "ConnectionText.kt",
             ),
             promise,
@@ -891,6 +977,10 @@ class StageBoundaryTest {
             listOf(
                 // The one that re-emits a proposal as the common envelope, which writes the
                 // action's legacy spelling so an older client reads what it always did (SEE-145).
+                // The trusted gateway's client configuration (SEE-185) hands an operation its
+                // service-fee terms, which is the boundary's own type for them, and bounds the rate
+                // by the boundary's own limit. It knows no registry and no provider.
+                "ClientConfig.kt",
                 "CommonEnvelope.kt",
                 "ConnectionStore.kt",
                 "ConnectionsViewModel.kt",
@@ -928,7 +1018,15 @@ class StageBoundaryTest {
                 "ProposalRepository.kt",
                 "ProposalReviewScreen.kt",
                 "ProposalStore.kt",
+                // The app's composition, which hands the owner's chosen values from the parameters
+                // sheet to the review (SEE-185).
+                "SeekerVaultApp.kt",
                 "SeekerVaultApplication.kt",
+                // The swap's owner part and the design's swap review, as the prediction's are: they
+                // read the amount, slippage and terms off the form and the parsed payload to show
+                // them — they prepare nothing and resolve no provider.
+                "SwapParametersSheet.kt",
+                "SwapReview.kt",
             ),
             importers,
         )
@@ -1125,6 +1223,9 @@ class StageBoundaryTest {
                 "capability_version",
                 "plugin_id",
                 "parameters",
+                // The Solana network a signal executes on (SEE-185): one value, compared and never
+                // inferred, and nothing about the owner.
+                "network",
                 "key",
                 "text",
                 "integer",
@@ -1189,7 +1290,6 @@ class StageBoundaryTest {
                 "io.github.brrenat.seekervault.connections.PairingCodeProblem",
                 "io.github.brrenat.seekervault.connections.PairingCodes",
                 "io.github.brrenat.seekervault.connections.isConnectionId",
-                "io.github.brrenat.seekervault.plugins.PluginEnvironment",
                 "io.github.brrenat.seekervault.plugins.PluginId",
                 "io.github.brrenat.seekervault.plugins.ProviderRegistry",
                 "io.github.brrenat.seekervault.plugins.isPluginId",
@@ -1202,7 +1302,6 @@ class StageBoundaryTest {
                 // unknown one is refused rather than read as public.
                 "io.github.brrenat.seekervault.server.v1.FeedAccessPolicy",
                 "io.github.brrenat.seekervault.server.v1.GatewayFeed",
-                "io.github.brrenat.seekervault.server.v1.ServerEnvironment",
                 "io.github.brrenat.seekervault.server.v1.ServerManifest",
                 // The Solana networks a server declares (SEE-174), and the value this build
                 // names each one by. Data again: a network is compared, never acted on here.
@@ -1246,7 +1345,6 @@ class StageBoundaryTest {
                 "settings_revision",
                 "mode",
                 "required_plugins",
-                "environments",
                 "display_name",
                 "direct",
                 "feed",
@@ -1552,7 +1650,8 @@ class StageBoundaryTest {
                 // (docs/security.md#resolving-a-lookup-table).
                 "SolanaAccounts.kt",
                 // The gateway push relay (SEE-144). It reaches exactly one host — the relay this
-                // build was configured with, in BuildConfig.RELAY_URL — and no server can change
+                // build was configured with, its one gateway (BuildConfig.GATEWAY_URL) — and no
+                // server can change
                 // that: a server may advertise a relay over its authenticated connection, and the
                 // app ignores the advertisement unless it names that same origin. What it sends
                 // there is this installation's Firebase registration and which servers the owner

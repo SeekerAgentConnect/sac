@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.proposals
 
 import com.google.protobuf.ByteString
 import com.google.protobuf.timestamp
+import io.github.brrenat.seekervault.connections.FeedSnapshot
 import io.github.brrenat.seekervault.plugins.ActionId
 import io.github.brrenat.seekervault.plugins.ExecutionProviderId
 import io.github.brrenat.seekervault.plugins.PROVIDER_CONTRACT
@@ -17,6 +18,8 @@ import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
 import io.github.brrenat.seekervault.proposal.v1.proposal as wireProposal
 import io.github.brrenat.seekervault.proposal.v1.proposalValue
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.request.v2.Request as WireRequest
+import io.github.brrenat.seekervault.requests.commonEnvelope
 import io.github.brrenat.seekervault.servers.SERVER_B
 import io.github.brrenat.seekervault.servers.SWAP_PLUGIN
 import io.github.brrenat.seekervault.servers.channelFor
@@ -104,13 +107,59 @@ fun wireProposal(
     )
 }
 
-/** The validated proposal a wire document becomes, for the tests that start from one. */
+/**
+ * The validated proposal a publisher's document becomes, for the tests that start from one.
+ *
+ * As a current publisher sends it (SEE-185): the request contract that names the network, and
+ * [network] declared — Mainnet unless a test says otherwise. Exactly what [signal] delivers, so a
+ * record read from a delivery and one built here are the same proposal. A test about a document
+ * that declares no network reads the legacy message itself ([proposalFrom]), or passes null.
+ */
 fun proposal(
     message: WireProposal = wireProposal(),
     serverId: String = message.serverId,
+    network: Network? = Network.NETWORK_MAINNET,
 ): Proposal =
     (proposalFrom(message, ProposalExpectation(serverId = serverId)) as ProposalResult.Valid)
         .proposal
+        .let {
+            if (network == null) it
+            else
+                it.copy(
+                    contractVersion = NETWORK_CONTRACT,
+                    network = SignalNetwork.Declared(network),
+                )
+        }
+
+/**
+ * [message] as a current publisher delivers it (SEE-185): the common envelope at the request
+ * contract that names the network, declaring [network]. The terms are the legacy document's, so
+ * every fixture that builds one can be delivered as a signal with a network.
+ */
+fun signal(
+    message: WireProposal = wireProposal(),
+    network: Network = Network.NETWORK_MAINNET,
+): WireRequest = proposal(message, network = network).commonEnvelope()
+
+/**
+ * A feed's answer of [messages] as a current gateway delivers them (SEE-185): each document that
+ * reads as one goes out as a [signal] declaring [network]; one that does not is delivered as
+ * itself, so a test about a refusal still gets that refusal.
+ */
+fun delivered(
+    sequence: Long,
+    messages: List<WireProposal>,
+    network: Network = Network.NETWORK_MAINNET,
+): FeedSnapshot.Read {
+    val readable = messages.filter {
+        proposalFrom(it, ProposalExpectation(serverId = it.serverId)) is ProposalResult.Valid
+    }
+    return FeedSnapshot.Read(
+        sequence,
+        proposals = messages - readable.toSet(),
+        requests = readable.map { signal(it, network) },
+    )
+}
 
 /** What one owner chose on their own phone. */
 fun choice(baseUnits: ULong): ParameterChoice =

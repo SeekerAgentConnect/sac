@@ -16,12 +16,14 @@ import io.github.brrenat.seekervault.connections.FeedSnapshot
 import io.github.brrenat.seekervault.connections.GatewayException
 import io.github.brrenat.seekervault.connections.ProposalFeed
 import io.github.brrenat.seekervault.discover.FeedCatalog
+import io.github.brrenat.seekervault.gateway.v1.ClientConfig
 import io.github.brrenat.seekervault.gateway.v1.FeedAvailability as WireAvailability
 import io.github.brrenat.seekervault.gateway.v1.FeedServiceClient
 import io.github.brrenat.seekervault.gateway.v1.GatewayErrorDetail
 import io.github.brrenat.seekervault.gateway.v1.GatewayProblem
 import io.github.brrenat.seekervault.gateway.v1.ListRecommendedFeedsResponse
 import io.github.brrenat.seekervault.gateway.v1.channelSession
+import io.github.brrenat.seekervault.gateway.v1.getClientConfigRequest
 import io.github.brrenat.seekervault.gateway.v1.getFeedStatusRequest
 import io.github.brrenat.seekervault.gateway.v1.getFeedTopicsRequest
 import io.github.brrenat.seekervault.gateway.v1.getProposalRequest
@@ -94,6 +96,20 @@ class ConnectFeedGateway(
                 }
             )
         }
+
+    /**
+     * The trusted gateway's client configuration (SEE-185): its RPC endpoints and the SAC swap fee.
+     * Unauthenticated and the same for every phone; it carries no session and says nothing about
+     * this one. Only ever asked of the gateway this build names
+     * ([io.github.brrenat.seekervault.config.ClientConfigRepository]).
+     */
+    suspend fun clientConfig(gatewayUrl: String): ClientConfig {
+        val answer = call(gatewayUrl) { it.getClientConfig(getClientConfigRequest {}) }
+        if (!answer.hasConfig()) {
+            throw GatewayException(GatewayException.Kind.BadResponse, "no client config")
+        }
+        return answer.config
+    }
 
     override suspend fun resolve(reference: FeedReference, knownRevision: Long): FeedManifest {
         val answer =

@@ -1,5 +1,6 @@
 package io.github.brrenat.seekervault.solana
 
+import io.github.brrenat.seekervault.request.v1.Network
 import java.io.IOException
 import java.util.Base64
 import kotlinx.coroutines.CoroutineDispatcher
@@ -53,6 +54,20 @@ interface SolanaAccounts {
     suspend fun accounts(addresses: List<String>): List<AccountSnapshot?>
 }
 
+/**
+ * The app's account reads, one network at a time (SEE-184).
+ *
+ * Every read names the network it is about — the one an operation was bound to, never "the current
+ * one" — and the application, not the caller, decides where that network is asked
+ * ([io.github.brrenat.seekervault.rpc.SolanaRpc]). A mainnet prediction and a devnet staking read
+ * can run at the same moment and reach two different endpoints; nothing here can send one to the
+ * other's.
+ */
+fun interface NetworkAccounts {
+    /** A reader of [network]'s accounts. Each read proves the endpoint serves [network] first. */
+    fun on(network: Network): SolanaAccounts
+}
+
 /** One account as the chain currently holds it: who owns it, and what is in it. */
 data class AccountSnapshot(
     /** The program that owns the account, which is what says what the data means. */
@@ -72,8 +87,13 @@ data class AccountSnapshot(
 
 /** Why nothing could be read from the chain. */
 enum class SolanaProblem(val code: String) {
-    /** No endpoint is configured in this build, so there is nothing to ask. */
+    /** No endpoint is configured for the network, so there is nothing to ask. */
     NoEndpoint("no_rpc_endpoint"),
+    /**
+     * The endpoint configured for the network serves another cluster, by its genesis hash. Nothing
+     * it says is about this network, so nothing is read from it (SEE-184).
+     */
+    WrongNetwork("rpc_wrong_cluster"),
     /** The endpoint could not be reached, or the answer never arrived. */
     Unreachable("rpc_unreachable"),
     /** It is asking for fewer requests. */

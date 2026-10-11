@@ -239,7 +239,16 @@ type Market struct {
 	// things to filter on.
 	Tradable  *bool
 	Lifecycle string
+	// The provider's best prices for each side, in micro-dollars per share ([OneDollar] is a
+	// share that pays out): what buying it costs and what selling it back fetches right now. Zero
+	// when the provider quoted none — nobody is offering, or nobody is bidding. They are read to
+	// judge whether a market can be left as well as entered, and are never published: a document
+	// that carried a price would move every time the price did (internal/discovery).
+	BuyYes, SellYes, BuyNo, SellNo int64
 }
+
+// OneDollar is a dollar in the provider's price unit.
+const OneDollar = 1_000_000
 
 // Tradeable is whether an order could be placed on this market at all, by the provider's own
 // account of it. It is the phone's `PredictionMarket.open` with Forecast's two fields added, and it
@@ -386,6 +395,23 @@ func (c *Client) Market(ctx context.Context, id string) (Market, error) {
 		// An answer with no identifier in it is not a market, whatever its status was.
 		return Market{}, &Fault{Problem: Unusable, Status: http.StatusOK,
 			Detail: "the answer carried no marketId"}
+	}
+	return read, nil
+}
+
+// Event reads one event, with its markets, by the provider's own identifier. It is what an operator's
+// selection by market asks next: a market's own answer names its event but not the event's title,
+// bucket or tags, and a proposal titled by its market alone reads "Yes".
+func (c *Client) Event(ctx context.Context, id string) (Event, error) {
+	var answer event
+	path := "/prediction/v1/events/" + url.PathEscape(id) + "?includeMarkets=true"
+	if err := c.call(ctx, path, &answer); err != nil {
+		return Event{}, err
+	}
+	read := answer.read()
+	if read.EventID == "" {
+		return Event{}, &Fault{Problem: Unusable, Status: http.StatusOK,
+			Detail: "the answer carried no eventId"}
 	}
 	return read, nil
 }
@@ -563,6 +589,12 @@ type market struct {
 	CloseTime json.Number `json:"closeTime"`
 	Tradable  *bool       `json:"tradable"`
 	Lifecycle string      `json:"lifecycleStatus"`
+	Pricing   *struct {
+		BuyYes  json.Number `json:"buyYesPriceUsd"`
+		SellYes json.Number `json:"sellYesPriceUsd"`
+		BuyNo   json.Number `json:"buyNoPriceUsd"`
+		SellNo  json.Number `json:"sellNoPriceUsd"`
+	} `json:"pricing"`
 }
 
 func (m market) read() Market {
@@ -579,6 +611,10 @@ func (m market) read() Market {
 	}
 	if m.Result != nil {
 		read.Result = strings.ToLower(strings.TrimSpace(*m.Result))
+	}
+	if m.Pricing != nil {
+		read.BuyYes, read.SellYes = micros(m.Pricing.BuyYes), micros(m.Pricing.SellYes)
+		read.BuyNo, read.SellNo = micros(m.Pricing.BuyNo), micros(m.Pricing.SellNo)
 	}
 	return read
 }
@@ -599,4 +635,10 @@ func seconds(value json.Number) int64 {
 		return int64(fractional)
 	}
 	return 0
+}
+
+// micros reads a price the provider writes as a number of micro-dollars. A price that cannot be read
+// is no price, which the liquidity rule treats as nobody quoting that side (internal/discovery).
+func micros(value json.Number) int64 {
+	return seconds(value)
 }

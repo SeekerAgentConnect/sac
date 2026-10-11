@@ -4,6 +4,7 @@ import io.github.brrenat.seekervault.connections.isConnectionId
 import io.github.brrenat.seekervault.plugins.ActionId
 import io.github.brrenat.seekervault.plugins.ExecutionProviderId
 import io.github.brrenat.seekervault.plugins.PluginId
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.channelFor
 import java.time.Instant
 
@@ -87,6 +88,14 @@ data class Proposal(
     val values: List<ProposalValue> = emptyList(),
     /** Shapes the source declared for values chosen locally; never the owner's answers. */
     val ownerInputs: List<OwnerInputDeclaration> = emptyList(),
+    /**
+     * The Solana network the publisher says this executes on (SEE-185): required from contract
+     * version 2, and the only source of an operation's network. It is never inferred from a wallet,
+     * the manifest's networks or the assets the terms name — a document that declares none, or one
+     * this build does not know, stays readable and is not executed
+     * ([ProposalStanding.NetworkUnusable]).
+     */
+    val network: SignalNetwork = SignalNetwork.Missing,
 ) {
     /** The term named [name], or null when the publisher gave none. */
     fun value(name: String): String? = values.firstOrNull { it.key == name }?.text
@@ -100,6 +109,25 @@ data class Proposal(
      */
     fun terms(): Map<String, String> = values.associate { it.key to it.text }
 }
+
+/** What a signal says about the network it executes on (SEE-185). */
+sealed interface SignalNetwork {
+    /** A network this build knows: mainnet, devnet or testnet. */
+    data class Declared(val network: Network) : SignalNetwork
+
+    /**
+     * None: a contract-1 or legacy document, or one that left it unspecified. Never read as
+     * Mainnet, nor as the network of whichever wallet the owner selects.
+     */
+    data object Missing : SignalNetwork
+
+    /** A value this build does not know, kept so the owner can be told so. */
+    data class Unknown(val value: Int) : SignalNetwork
+}
+
+/** The declared network, or null when the signal declares none this build can use. */
+val SignalNetwork.declared: Network?
+    get() = (this as? SignalNetwork.Declared)?.network
 
 /** This release interprets capability version 1. A higher version stays readable. */
 const val SUPPORTED_CAPABILITY_VERSION: Int = 1

@@ -84,6 +84,26 @@ func TestTheChannelIsTheGatewaysOwn(t *testing.T) {
 	}
 }
 
+// The request contract this template writes is the one the gateway accepts for a new publication
+// (SEE-185). A template a version behind would have every signal refused as another protocol; one
+// a version ahead would be refused the same way, and either would look, from here, like an outage.
+func TestTheRequestContractIsTheGatewaysOwn(t *testing.T) {
+	source, err := os.ReadFile(gatewayRequestRules)
+	if err != nil {
+		t.Skipf("the gateway's source is not here (%v)", err)
+	}
+	match := regexp.MustCompile(`RequestContract\s+uint32\s*=\s*(\d+)`).FindSubmatch(source)
+	if match == nil {
+		t.Fatalf("RequestContract is no longer declared in %s", gatewayRequestRules)
+	}
+	if theirs, err := strconv.Atoi(string(match[1])); err != nil || uint32(theirs) != ContractVersion {
+		t.Fatalf("the gateway accepts request contract %s and this template writes %d",
+			match[1], ContractVersion)
+	}
+}
+
+const gatewayRequestRules = "../../../services/gateway/internal/rules/request.go"
+
 // The phone's own copy of a kind's rules, which is the other side this module must not drift from.
 // The gateway refuses a document no phone could use; the phone refuses one that reached it anyway —
 // and a term rule that disagreed here would be a signal that publishes cleanly and is then thrown

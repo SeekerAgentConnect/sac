@@ -6,6 +6,7 @@ import io.github.brrenat.seekervault.plugins.JUPITER_SWAP
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
+import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.SWAP_ACTION
 import io.github.brrenat.seekervault.proposals.PROPOSAL_A
@@ -13,15 +14,18 @@ import io.github.brrenat.seekervault.proposals.PROPOSAL_B
 import io.github.brrenat.seekervault.proposals.ProposalDismissal
 import io.github.brrenat.seekervault.proposals.ProposalExecution
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
+import io.github.brrenat.seekervault.proposals.ProposalPreview
 import io.github.brrenat.seekervault.proposals.ProposalProblem
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalReview
 import io.github.brrenat.seekervault.proposals.SWAP
+import io.github.brrenat.seekervault.proposals.SignalNetwork
 import io.github.brrenat.seekervault.proposals.binding
 import io.github.brrenat.seekervault.proposals.choice
 import io.github.brrenat.seekervault.proposals.hash
 import io.github.brrenat.seekervault.proposals.proposal
 import io.github.brrenat.seekervault.proposals.wireProposal
+import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
 import java.time.Instant
 import org.json.JSONObject
@@ -122,6 +126,69 @@ class ProposalStoreTest {
         store.put(record)
 
         assertEquals(receipt, store.get(CONNECTION, PROPOSAL_A)?.execution?.binding?.receipt)
+    }
+
+    @Test
+    fun theSignalsNetworkItsPreviewAndTheChosenProfileSurviveARestart() {
+        // SEE-185, each additive: the network the signal declared, the latest preview beside the
+        // proposal, and the exact profile an operation was bound with.
+        val chose =
+            ParameterChoice(mapOf(ParameterKey("input_amount") to ParameterValue.Amount(5uL)))
+        val devnet = proposal(wireProposal(revision = 3), network = Network.NETWORK_DEVNET)
+        val bound =
+            binding(devnet, chose, network = Network.NETWORK_DEVNET)
+                .copy(walletProfileId = "profile-devnet")
+        val record =
+            ProposalRecord(
+                connectionId = CONNECTION,
+                proposal = devnet,
+                review = ProposalReview(revision = 3, choice = chose, at = AT),
+                preview =
+                    ProposalPreview(
+                        binding = bound.copy(environment = PluginEnvironment.Sandbox),
+                        at = AT,
+                    ),
+                execution =
+                    ProposalExecution(
+                        binding = bound,
+                        startedAt = AT.plusSeconds(60),
+                        outcome = ProposalOutcome.Submitted(hash(3)),
+                    ),
+            )
+
+        store.put(record)
+
+        val read = checkNotNull(ProposalStore(dir).get(CONNECTION, PROPOSAL_A))
+        assertEquals(record, read)
+        assertEquals(SignalNetwork.Declared(Network.NETWORK_DEVNET), read.proposal.network)
+        assertEquals("profile-devnet", read.execution?.binding?.walletProfileId)
+        assertEquals(PluginEnvironment.Sandbox, read.preview?.binding?.environment)
+    }
+
+    @Test
+    fun aSignalThatDeclaredNoNetworkOrAnUnknownOneIsReadBackAsThat() {
+        // Never as mainnet: what a row from before SEE-185 holds, and a value no build knew.
+        val missing = proposal(wireProposal(), network = null)
+        store.put(ProposalRecord(connectionId = CONNECTION, proposal = missing))
+        assertEquals(SignalNetwork.Missing, store.get(CONNECTION, PROPOSAL_A)?.proposal?.network)
+        assertNull(store.get(CONNECTION, PROPOSAL_A)?.preview)
+
+        val unknown = missing.copy(network = SignalNetwork.Unknown(77))
+        store.put(ProposalRecord(connectionId = CONNECTION, proposal = unknown))
+        assertEquals(
+            SignalNetwork.Unknown(77),
+            store.get(CONNECTION, PROPOSAL_A)?.proposal?.network,
+        )
+
+        // A value this build cannot read is unknown, not a network.
+        val file = File(dir, "$CONNECTION/$PROPOSAL_A.json")
+        val json = JSONObject(file.readText())
+        json.getJSONObject("proposal").put("network", "NETWORK_SOMEWHERE")
+        file.writeText(json.toString())
+        assertEquals(
+            SignalNetwork.Unknown(-1),
+            store.get(CONNECTION, PROPOSAL_A)?.proposal?.network,
+        )
     }
 
     @Test

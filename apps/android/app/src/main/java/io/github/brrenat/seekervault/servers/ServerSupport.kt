@@ -1,6 +1,5 @@
 package io.github.brrenat.seekervault.servers
 
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.ProviderRegistry
 import io.github.brrenat.seekervault.plugins.legacyCapabilityOf
@@ -19,7 +18,7 @@ import io.github.brrenat.seekervault.plugins.legacyCapabilityOf
  * ([executable], docs/wiki/server-manifests.md#viewing-without-executing).
  */
 sealed interface ServerSupport {
-    /** The server's contract, environment and required plugins are all ones this build has. */
+    /** The server's contract and required plugins are all ones this build has. */
     data object Supported : ServerSupport
 
     /**
@@ -40,8 +39,11 @@ sealed interface ServerSupport {
     /** The server speaks a phone–server contract this build doesn't: the app needs an update. */
     data class ProtocolUnsupported(val version: Int) : ServerSupport
 
-    /** The server doesn't serve the environment the app is running in. */
-    data class EnvironmentUnsupported(val environment: PluginEnvironment) : ServerSupport
+    /**
+     * A feed held from a gateway other than the one this build trusts (SEE-185). Readable as it
+     * stands, never executable, and never a reason to reach that gateway for anything else.
+     */
+    data object OtherGateway : ServerSupport
 
     /** This build carries no plugin with one of the required IDs. */
     data class PluginMissing(val plugins: List<PluginId>) : ServerSupport
@@ -77,32 +79,26 @@ val ServerSupport.executable: Boolean
             is ServerSupport.Unknown -> true
             is ServerSupport.ManifestRefused,
             is ServerSupport.ProtocolUnsupported,
-            is ServerSupport.EnvironmentUnsupported,
+            is ServerSupport.OtherGateway,
             is ServerSupport.PluginMissing,
             is ServerSupport.PluginIncompatible -> false
         }
 
 /**
- * What [record] means for this build, matched against the plugins compiled into it and the
- * [environment] the app is running in.
+ * What [record] means for this build, matched against the plugins compiled into it.
  *
  * The checks are ordered from the most fundamental to the most specific: a manifest that was
  * refused says nothing further, a contract this build doesn't speak makes its other claims
- * unreadable, an environment the server doesn't serve is a different promise altogether, and only
- * then are the plugins it names looked for. A plugin this build doesn't carry is reported before
- * one it carries at the wrong version, because the two are different things to be told and the
- * first is the plainer fact.
+ * unreadable, and only then are the plugins it names looked for. A plugin this build doesn't carry
+ * is reported before one it carries at the wrong version, because the two are different things to
+ * be told and the first is the plainer fact.
  *
  * Only the IDs and contract ranges are matched here. Whether a plugin serves a particular operation
- * in a particular environment is resolved for each request by the registry itself
+ * on a particular network is resolved for each request by the registry itself
  * ([ProviderRegistry.resolve]), because that is a question about one request and not about the
  * server.
  */
-fun serverSupport(
-    record: ServerRecord,
-    plugins: ProviderRegistry,
-    environment: PluginEnvironment,
-): ServerSupport {
+fun serverSupport(record: ServerRecord, plugins: ProviderRegistry): ServerSupport {
     val manifest =
         when (record) {
             is ServerRecord.Unknown -> return ServerSupport.Unknown
@@ -112,9 +108,6 @@ fun serverSupport(
         }
     if (manifest.protocolVersion !in SUPPORTED_SERVER_PROTOCOLS) {
         return ServerSupport.ProtocolUnsupported(manifest.protocolVersion)
-    }
-    if (environment !in manifest.environments) {
-        return ServerSupport.EnvironmentUnsupported(environment)
     }
     // A manifest names bundled plugins, and what answers to one of those names is the execution
     // provider that declares it ([ProviderCapabilities.legacyPlugins]) — matched, never parsed out
@@ -141,3 +134,23 @@ fun serverSupport(
     }
     return ServerSupport.Supported
 }
+
+/**
+ * What a feed on [origin] means for a build that trusts [trustedGateway] (SEE-185): the same as
+ * [serverSupport], except that a feed held from any other gateway is [ServerSupport.OtherGateway].
+ * Null [trustedGateway] skips that comparison, which only a test of something else does.
+ */
+fun feedSupport(
+    origin: String,
+    record: ServerRecord,
+    plugins: ProviderRegistry,
+    trustedGateway: String?,
+): ServerSupport =
+    if (
+        trustedGateway != null &&
+            FeedReferences.trustedGatewayProblem(origin, trustedGateway) != null
+    ) {
+        ServerSupport.OtherGateway
+    } else {
+        serverSupport(record, plugins)
+    }

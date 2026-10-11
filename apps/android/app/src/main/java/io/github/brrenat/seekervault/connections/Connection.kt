@@ -1,6 +1,5 @@
 package io.github.brrenat.seekervault.connections
 
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.manifest
@@ -54,23 +53,6 @@ data class Connection(
      */
     val server: ServerRecord = ServerRecord.Unknown,
     /**
-     * Which promise this connection keeps when the owner approves (SEE-97,
-     * docs/wiki/environments.md).
-     *
-     * It is the connection's rather than the app's, and the owner's rather than the server's. A
-     * manifest says which environments a server *serves*; this says which one is being kept, it is
-     * set when the connection is created and changed only by the owner, and a manifest that stops
-     * naming it makes the server unsupported rather than moving it
-     * ([io.github.brrenat.seekervault.servers.ServerSupport.EnvironmentUnsupported]). That is what
-     * makes a promotion to production something a person did, and never something a publisher
-     * republished.
-     *
-     * A [ConnectionMode.Direct] connection is always [PluginEnvironment.Production], and the
-     * invariant below is the whole of it: the legacy direct sidecar cannot be handed a simulated
-     * answer. A feed preserves the immutable environment promise in its manifest.
-     */
-    val environment: PluginEnvironment = PluginEnvironment.Production,
-    /**
      * The colour this connection is marked with everywhere it appears (SEE-83). Chosen by the owner
      * in the connection sheet, auto-assigned at pairing from the next unused palette entry, and
      * purely local: cosmetic, so a record whose stored colour is missing or unreadable stays
@@ -78,11 +60,20 @@ data class Connection(
      */
     val colour: ServerColour? = null,
     /**
-     * The saved wallet profile this connection signs with (SEE-174,
+     * The saved wallet profile bound to this connection (SEE-174,
      * docs/guides/wallet-setup.md#one-wallet-per-connection), or null when the owner hasn't chosen
-     * one. It is the owner's choice and nobody else's: a server's manifest can't set it, removing a
-     * profile clears it rather than picking another, and every review, preparation and signing for
-     * this connection resolves the wallet from it and from nothing global.
+     * one. It is the owner's choice and nobody else's: a server's manifest can't set it, and
+     * removing a profile clears it rather than picking another. What it is *for* depends on the
+     * mode:
+     *
+     * - **Direct**: the wallet this server's requests are reviewed and signed with, published to
+     *   the server as the connection's binding. Every review, preparation and signing for the
+     *   connection resolves the wallet from it and from nothing global.
+     * - **Gateway feed**: only the feed's *access identity* (SEE-185) — the address a restricted
+     *   feed's publisher approved — and nothing else. A public feed needs none. A feed operation's
+     *   wallet is chosen per operation, for the network its signal names
+     *   ([io.github.brrenat.seekervault.wallet.WalletRepository.feedWallet]), so changing the
+     *   execution wallet never touches access, and changing this never moves an operation.
      *
      * [LEGACY_WALLET_PROFILE] marks a record stored before profiles existed, when every connection
      * used the one wallet. It resolves to nothing until [ConnectionRepository.adoptLegacyWallet]
@@ -107,11 +98,6 @@ data class Connection(
         // which manifestFrom is what guarantees.
         require(mode == null || server.manifest?.mode?.equals(mode) != false) {
             "a $mode connection cannot hold a ${server.manifest?.mode} manifest"
-        }
-        // Stated here rather than in the four places a connection is built, so that a connection
-        // which could ask a wallet to sign something for an agent is production by construction.
-        require(mode != ConnectionMode.Direct || environment == PluginEnvironment.Production) {
-            "a direct connection is always production"
         }
     }
 
@@ -175,21 +161,4 @@ fun labelProblem(label: String): LabelProblem? {
         trimmed.codePointCount(0, trimmed.length) > MAX_LABEL_LENGTH -> LabelProblem.TooLong
         else -> null
     }
-}
-
-/**
- * Which environment a new connection starts in, given what its server says it serves (SEE-97).
- *
- * Sandbox whenever the server offers one, which is the safe direction and the deliberate one: a
- * publisher that serves both is offering a demonstration as well as the real thing, and the
- * demonstration is what a phone takes until its owner says otherwise. Production is then an act by
- * a person, which is what the ticket's "only after explicit user review" means at this end.
- *
- * A server that has published nothing, and a direct server from before manifests existed, are
- * production: they are the private workflow, which has always been real.
- */
-fun startingEnvironment(server: ServerRecord): PluginEnvironment {
-    val environments = server.manifest?.environments ?: return PluginEnvironment.Production
-    return if (PluginEnvironment.Sandbox in environments) PluginEnvironment.Sandbox
-    else PluginEnvironment.Production
 }

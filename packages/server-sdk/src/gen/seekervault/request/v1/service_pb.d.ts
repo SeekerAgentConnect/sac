@@ -568,6 +568,16 @@ export declare type SubmitResultRequest = Message<"seekervault.request.v1.Submit
      */
     value: UnknownOutcome;
     case: "unknownOutcome";
+  } | {
+    /**
+     * The phone proved the approved transaction was never sent: UNKNOWN back to PENDING, for the
+     * user to approve again. The sidecar first checks for itself that the approved version's
+     * blockhash has expired on the request's network. Transfers, swaps and staking actions.
+     *
+     * @generated from field: seekervault.request.v1.NotSent not_sent = 9;
+     */
+    value: NotSent;
+    case: "notSent";
   } | { case: undefined; value?: undefined };
 };
 
@@ -785,6 +795,28 @@ export declare type UnknownOutcome = Message<"seekervault.request.v1.UnknownOutc
  * Use `create(UnknownOutcomeSchema)` to create a new message.
  */
 export declare const UnknownOutcomeSchema: GenMessage<UnknownOutcome>;
+
+/**
+ * NotSent says the transaction the user approved was never sent and can no longer be: its
+ * blockhash expired, and the wallet's history on chain holds no transaction carrying the approved
+ * message. The phone searched for it after the wallet never answered (docs/protocol.md#reopening).
+ *
+ * @generated from message seekervault.request.v1.NotSent
+ */
+export declare type NotSent = Message<"seekervault.request.v1.NotSent"> & {
+  /**
+   * What the phone found. Display text; at most 1024 UTF-8 bytes.
+   *
+   * @generated from field: string detail = 1;
+   */
+  detail: string;
+};
+
+/**
+ * Describes the message seekervault.request.v1.NotSent.
+ * Use `create(NotSentSchema)` to create a new message.
+ */
+export declare const NotSentSchema: GenMessage<NotSent>;
 
 /**
  * PairingService connects a phone to this sidecar and disconnects it. A sidecar has one active

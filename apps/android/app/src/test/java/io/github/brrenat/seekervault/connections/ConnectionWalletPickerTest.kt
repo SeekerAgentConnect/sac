@@ -18,7 +18,6 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.SERVER_PROTOCOL
 import io.github.brrenat.seekervault.servers.ServerManifest
@@ -50,6 +49,7 @@ class ConnectionWalletPickerTest {
 
     @Test
     fun declaredNetworkShowsEveryWalletButOnlyMatchingWalletsCanBeUsed() {
+        // A direct server signs with the wallet bound here, on a network it declared.
         show(setOf(WalletNetwork.Devnet))
 
         val blocked = compose.onNodeWithTag(WalletTags.choice(MAIN.id))
@@ -82,6 +82,36 @@ class ConnectionWalletPickerTest {
 
         compose.onNodeWithTag(WalletTags.PICKER_ADD).performClick()
         assertEquals(listOf(WalletNetwork.Devnet), added)
+    }
+
+    @Test
+    fun aFeedOffersEveryWalletAsItsAccessIdentityWhateverItsNetworks() {
+        // SEE-185: a feed's wallet here only proves who reads it, so no network narrows it and no
+        // declared network is shown in place of what it is for.
+        show(setOf(WalletNetwork.Devnet), mode = ConnectionMode.GatewayFeed)
+
+        compose.onNodeWithTag(WalletTags.choice(MAIN.id)).assertExists().assertIsEnabled()
+        compose.onNodeWithTag(WalletTags.choice(DEV.id)).assertExists().assertIsEnabled()
+        compose
+            .onNodeWithText(context.getString(R.string.connection_wallet_picker_access_only))
+            .assertExists()
+        compose
+            .onNodeWithText(
+                context.getString(
+                    R.string.connection_wallet_picker_blocked,
+                    context.getString(R.string.wallet_network_mainnet),
+                )
+            )
+            .assertDoesNotExist()
+        compose
+            .onNodeWithText(context.getString(R.string.connection_wallet_picker_no_network_title))
+            .assertDoesNotExist()
+
+        compose.onNodeWithTag(WalletTags.choice(MAIN.id)).performClick()
+        compose.onNodeWithTag(WalletTags.PICKER_USE).assertIsEnabled().performClick()
+        assertEquals(listOf(MAIN.id), used)
+        compose.onNodeWithTag(WalletTags.PICKER_ADD).performClick()
+        assertEquals(listOf<WalletNetwork?>(null), added)
     }
 
     @Test
@@ -132,11 +162,12 @@ class ConnectionWalletPickerTest {
     private fun show(
         networks: Set<WalletNetwork>,
         profiles: List<WalletProfile> = listOf(MAIN, DEV),
+        mode: ConnectionMode = ConnectionMode.Direct,
     ) {
         compose.setContent {
             SeekerTheme(darkTheme = true) {
                 ConnectionWalletPicker(
-                    connection = connection(networks),
+                    connection = connection(networks, mode),
                     wallet =
                         WalletUiState(
                             profiles = profiles,
@@ -155,25 +186,26 @@ class ConnectionWalletPickerTest {
         }
     }
 
-    private fun connection(networks: Set<WalletNetwork>) =
+    private fun connection(networks: Set<WalletNetwork>, mode: ConnectionMode) =
         Connection(
             id = CONNECTION,
             label = "Polymarket",
-            serverUrl = GATEWAY,
+            serverUrl = if (mode == ConnectionMode.Direct) URL else GATEWAY,
             serverId = SERVER,
             deviceName = "",
             pairedAt = Instant.EPOCH,
-            hasCredential = false,
-            mode = ConnectionMode.GatewayFeed,
+            hasCredential = mode == ConnectionMode.Direct,
+            mode = mode,
             server =
                 ServerRecord.Known(
                     ServerManifest(
                         serverId = SERVER,
                         protocolVersion = SERVER_PROTOCOL,
                         settingsRevision = 1,
-                        mode = ConnectionMode.GatewayFeed,
-                        reference = ServerReference.Feed(GATEWAY, channelFor(SERVER)),
-                        environments = setOf(PluginEnvironment.Production),
+                        mode = mode,
+                        reference =
+                            if (mode == ConnectionMode.Direct) ServerReference.Direct(URL)
+                            else ServerReference.Feed(GATEWAY, channelFor(SERVER)),
                         supportedNetworks = networks,
                     )
                 ),
@@ -182,6 +214,7 @@ class ConnectionWalletPickerTest {
     private companion object {
         const val CONNECTION = "connection"
         const val GATEWAY = "https://gateway.example.com"
+        const val URL = "https://vault.example.com"
         const val SERVER = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
         const val ADDRESS = "G4bAtd9oPdEohgJdzDbeDuwyrWCZ4Ztmi4jxGWFg4faW"
         const val MAIN_APP = "Phantom"

@@ -17,8 +17,8 @@ import io.github.brrenat.seekervault.access.OkHttpFeedAccessApi
 import io.github.brrenat.seekervault.access.storage.FeedAccessStore
 import io.github.brrenat.seekervault.activity.ActivityLog
 import io.github.brrenat.seekervault.activity.storage.ActivityStore
-import io.github.brrenat.seekervault.confirmations.ChainEndpoint
-import io.github.brrenat.seekervault.confirmations.ChainEndpoints
+import io.github.brrenat.seekervault.config.ClientConfigRepository
+import io.github.brrenat.seekervault.config.storage.ClientConfigStore
 import io.github.brrenat.seekervault.confirmations.ConfirmationTracker
 import io.github.brrenat.seekervault.confirmations.HttpChainReader
 import io.github.brrenat.seekervault.confirmations.storage.TrackingStore
@@ -34,15 +34,16 @@ import io.github.brrenat.seekervault.connections.storage.ResultStore
 import io.github.brrenat.seekervault.discover.FeedCatalog
 import io.github.brrenat.seekervault.feeds.CentrifugoFeedStream
 import io.github.brrenat.seekervault.feeds.ConnectFeedGateway
+import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.feeds.FeedStatusManager
 import io.github.brrenat.seekervault.feeds.FeedStream
 import io.github.brrenat.seekervault.feeds.ForegroundFeedManager
 import io.github.brrenat.seekervault.feeds.RepositoryFeedHost
 import io.github.brrenat.seekervault.feeds.storage.FeedCursorStore
+import io.github.brrenat.seekervault.gateway.v1.ClientConfig as WireClientConfig
 import io.github.brrenat.seekervault.jupiter.HttpJupiterPrediction
 import io.github.brrenat.seekervault.jupiter.HttpJupiterProvider
 import io.github.brrenat.seekervault.jupiter.JupiterExecutionProvider
-import io.github.brrenat.seekervault.jupiter.SwapFeePolicy
 import io.github.brrenat.seekervault.live.ConnectLiveCommandTransport
 import io.github.brrenat.seekervault.live.LiveCommandTransportFactory
 import io.github.brrenat.seekervault.notifications.ArrivalLedger
@@ -66,9 +67,8 @@ import io.github.brrenat.seekervault.push.HttpRelayClient
 import io.github.brrenat.seekervault.push.RelayClient
 import io.github.brrenat.seekervault.push.RelayRegistrationManager
 import io.github.brrenat.seekervault.push.storage.RelayStore
-import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.rpc.SolanaRpc
 import io.github.brrenat.seekervault.solana.HttpSolanaAccounts
-import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.sync.BackgroundSyncScheduler
 import io.github.brrenat.seekervault.sync.ConfirmationScheduler
 import io.github.brrenat.seekervault.sync.ConnectUpdateTransport
@@ -82,6 +82,7 @@ import io.github.brrenat.seekervault.wallet.PackageWalletTargets
 import io.github.brrenat.seekervault.wallet.WalletAdapter
 import io.github.brrenat.seekervault.wallet.WalletIntentSender
 import io.github.brrenat.seekervault.wallet.WalletRepository
+import io.github.brrenat.seekervault.wallet.storage.FeedWalletStore
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
 import javax.crypto.SecretKey
@@ -158,16 +159,12 @@ class SeekerVaultApplication : Application() {
     var deviceKeys: () -> DeviceKeys = { KeystoreDeviceKeys() }
 
     /**
-     * The relay this build was configured to trust, or "" for a build with none. It is read here
-     * rather than by the manager so a test can point one at a local server without a rebuild.
+     * The one gateway this build trusts (SEE-185), or "" for a build with none. Feeds, the Discover
+     * catalog, the push relay and the client configuration all come from it, and from nowhere else.
+     * It is read here rather than by each user so a test can point one at a local server without a
+     * rebuild.
      */
-    var relayUrl: () -> String = { BuildConfig.RELAY_URL }
-
-    /**
-     * The gateway whose Discover catalog this build shows (SEE-176), or "" for a build with none.
-     * Replaceable for the same reason as [relayUrl].
-     */
-    var discoveryUrl: () -> String = { BuildConfig.DISCOVERY_URL }
+    var gatewayUrl: () -> String = { BuildConfig.GATEWAY_URL }
 
     /** Where the Discover tab reads the catalog: the same feed client every other read uses. */
     var feedCatalog: () -> FeedCatalog = { feedGateway() }
@@ -239,57 +236,66 @@ class SeekerVaultApplication : Application() {
             JupiterExecutionProvider(
                 swapApi = HttpJupiterProvider(httpClient),
                 predictionApi = HttpJupiterPrediction(httpClient),
-                chain = solanaAccounts(),
-                // The build's SAC service fee, off unless this APK was built with one (SEE-173,
-                // docs/development/swap-fee-config.md). Public addresses and a rate, nothing else.
-                swapFee =
-                    SwapFeePolicy.fromBuild(
-                        BuildConfig.SWAP_FEE_BPS,
-                        BuildConfig.SWAP_FEE_OWNER,
-                        BuildConfig.SWAP_FEE_ACCOUNTS,
-                    ),
+                chain = rpc,
             )
         )
     }
 
     /**
-     * Where the app reads accounts from the chain (SEE-94).
-     *
-     * It exists for one purpose — resolving the address lookup tables a prediction order's
-     * transaction names, without which the phone cannot see what it would be signing — and it is
-     * **the application's endpoint, never a publisher's**: nothing in a manifest, a proposal or a
-     * provider's answer can set it. A build with none configured prepares no order and says so
-     * (`BuildConfig.SOLANA_RPC`, docs/wiki/jupiter-prediction.md#why-the-phone-reads-the-chain).
+     * How the trusted gateway's client configuration is fetched (SEE-185). Tests replace it to
+     * answer with a configuration of their own, or to fail.
      */
-    var solanaAccounts: () -> SolanaAccounts = {
-        HttpSolanaAccounts(httpClient, BuildConfig.SOLANA_RPC)
+    var clientConfigFetch: suspend (String) -> WireClientConfig = { url ->
+        feedGateway().clientConfig(url)
     }
 
     /**
-     * Where the phone asks about its own sent transactions (SEE-165,
-     * docs/wiki/chain-confirmation.md#endpoints): the per-cluster endpoints this build was
-     * configured with, and the general one, each used for a cluster only once its genesis hash says
-     * it serves it. Like [solanaAccounts], it is the application's and never a server's. Tests
-     * replace it with a fake chain.
+     * The trusted gateway's client configuration: the Solana RPC endpoint for each network and the
+     * SAC swap service fee (SEE-185, docs/wiki/client-config.md). Cached in `filesDir`, refreshed
+     * on foreground, on a feed stream (re)connecting and before every new operation is prepared.
      */
-    var chainEndpoints: () -> ChainEndpoints = {
-        ChainEndpoints(
-            listOf(
-                ChainEndpoint(BuildConfig.SOLANA_RPC_MAINNET, Network.NETWORK_MAINNET),
-                ChainEndpoint(
-                    BuildConfig.SOLANA_RPC_DEVNET,
-                    Network.NETWORK_DEVNET,
-                    allowUnknownGenesis = BuildConfig.DEBUG,
-                ),
-                ChainEndpoint(
-                    BuildConfig.SOLANA_RPC_TESTNET,
-                    Network.NETWORK_TESTNET,
-                    allowUnknownGenesis = BuildConfig.DEBUG,
-                ),
-                ChainEndpoint(BuildConfig.SOLANA_RPC, network = null),
-            )
-        ) { url ->
-            HttpChainReader(httpClient, url)
+    val clientConfig: ClientConfigRepository by lazy {
+        ClientConfigRepository(
+            gatewayUrl = gatewayUrl(),
+            store = ClientConfigStore(File(filesDir, "config")),
+            fetch = { url -> clientConfigFetch(url) },
+            // A local test validator's plain-HTTP endpoint, in a debug build only.
+            allowCleartext = BuildConfig.DEBUG,
+            io = connectionIo,
+        )
+    }
+
+    /**
+     * Where this phone asks each Solana network (SEE-184, SEE-185, docs/wiki/solana-rpc.md): the
+     * one resolver behind every on-device chain read — the account reads that verify a transaction
+     * before it is signed, and the reads that follow it afterwards.
+     *
+     * Its endpoints are the trusted gateway's, and nothing else's: nothing in a manifest, a
+     * proposal, a server's answer or a provider's can set them, and there is no build default or
+     * owner setting. A new configuration applies at once, here and in background work, without a
+     * restart. Tests replace it.
+     */
+    var solanaRpc: () -> SolanaRpc = {
+        SolanaRpc(
+            initial = clientConfig.current?.rpc.orEmpty(),
+            // A local test validator, configured for devnet or testnet, in a debug build only.
+            allowLocalValidator = BuildConfig.DEBUG,
+            reader = { url -> HttpChainReader(httpClient, url) },
+            accounts = { url -> HttpSolanaAccounts(httpClient, url) },
+        )
+    }
+
+    /**
+     * The process's one resolver. Account reads (SEE-94) and confirmation reads (SEE-165) both go
+     * through it, so a cluster's verification and its confirmations always reach the same proven
+     * endpoint.
+     */
+    val rpc: SolanaRpc by lazy {
+        solanaRpc().also { rpc ->
+            // A repaired endpoint resumes that network's waiting checks, and only that network's.
+            rpc.onChange { network -> confirmations.endpointChanged(network) }
+            // The gateway's endpoints, applied the moment a new configuration is validated.
+            clientConfig.onChange { _, config -> rpc.apply(config.rpc) }
         }
     }
 
@@ -302,7 +308,7 @@ class SeekerVaultApplication : Application() {
         ConfirmationTracker(
                 store = TrackingStore(File(filesDir, "confirmations")),
                 history = activityLog,
-                endpoints = chainEndpoints(),
+                endpoints = rpc,
             )
             .also { tracker -> activityLog.onClear(tracker::clear) }
     }
@@ -348,6 +354,30 @@ class SeekerVaultApplication : Application() {
         }
     }
 
+    private val clientConfigScope by lazy { CoroutineScope(SupervisorJob() + connectionIo) }
+
+    @Volatile private var clientConfigReconnects: Job? = null
+
+    /**
+     * The app became visible: the trusted gateway is asked for its client configuration again, and
+     * again whenever a feed stream comes back after being away (SEE-185). Neither waits on the
+     * other, and a failure leaves the cached configuration in place under its own age limit.
+     */
+    fun onClientConfigForeground() {
+        // The resolver is built first, so a configuration that arrives now reaches it.
+        rpc
+        clientConfigScope.launch { clientConfig.refresh() }
+        if (clientConfigReconnects?.isActive == true) return
+        clientConfigReconnects = clientConfigScope.launch {
+            var live = emptySet<String>()
+            foregroundFeeds.state.collect { feeds ->
+                val now = feeds.gateways.filterValues { it is FeedListenerState.Live }.keys
+                if ((now - live).isNotEmpty()) clientConfig.refresh()
+                live = now
+            }
+        }
+    }
+
     /** The app was hidden: what is unfinished is handed to background work. */
     fun onConfirmationsBackground() {
         confirmationScheduler.onBackground()
@@ -366,10 +396,7 @@ class SeekerVaultApplication : Application() {
                 tracking = confirmations,
                 chainChecks = { confirmations.checks.value },
                 io = connectionIo,
-                chain =
-                    chainEndpoints().let { endpoints ->
-                        { network -> endpoints.readerFor(network) }
-                    },
+                chain = { network -> rpc.readerFor(network) },
             )
             .also { tracker -> activityLog.onClear(tracker::clear) }
     }
@@ -460,6 +487,12 @@ class SeekerVaultApplication : Application() {
                 tracking = confirmations,
                 arrivals = arrivals,
             )
+        // A transfer whose wallet never answered is settled, and reported, once the chain can say
+        // whether it was sent.
+        val lostSettlements = CoroutineScope(SupervisorJob() + connectionIo)
+        confirmations.onLostSettled = { key, signature ->
+            lostSettlements.launch { repository.settleLost(key, signature) }
+        }
         backgroundSync =
             BackgroundSyncScheduler.create(
                     context = this,
@@ -492,7 +525,7 @@ class SeekerVaultApplication : Application() {
                 .also(FeedTopicManager::start)
         relayRegistration =
             RelayRegistrationManager(
-                    relayUrl = relayUrl(),
+                    relayUrl = gatewayUrl(),
                     loaded = repository.loaded,
                     connections = repository.connections,
                     client = relayClient(),
@@ -601,6 +634,8 @@ class SeekerVaultApplication : Application() {
             io = connectionIo,
             tracking = confirmations,
             arrivals = arrivals,
+            // A feed held from any other gateway is readable and never executable (SEE-185).
+            trustedGateway = gatewayUrl(),
         )
     }
 
@@ -847,6 +882,8 @@ class SeekerVaultApplication : Application() {
             adapter = walletAdapter(),
             connections = connectionsBeingBuilt ?: connectionRepository,
             io = connectionIo,
+            // Which profile each feed's operations use on each network (SEE-185).
+            feedWallets = FeedWalletStore(File(filesDir, "feed-wallets")),
         )
     }
 
@@ -855,9 +892,9 @@ class SeekerVaultApplication : Application() {
         NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(host)
 
     private companion object {
-        // What the wallet shows the owner while they decide. The app has no website yet, so the
-        // wallet can't verify the identity and says so; that's honest, not a claim of trust.
-        const val IDENTITY_URI = "https://github.com/brrenat/SeekerAgentWallet"
+        // What the wallet shows the owner while they decide: the app's own site, not its source
+        // host. Nothing there proves the app's identity to the wallet, and the wallet says so.
+        const val IDENTITY_URI = "https://seekeragentconnect.github.io"
         const val ICON_URI = "favicon.ico"
 
         /**

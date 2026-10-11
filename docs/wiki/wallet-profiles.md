@@ -3,15 +3,22 @@
 Until SEE-174 the phone held one wallet. Every direct server was told the same address, every feed
 prepared for it, and changing it changed everything at once. Now the phone keeps any number of
 saved **wallet profiles** — an account in one wallet app, on one Solana network — and **every
-connection names the one it uses**. There is no global active wallet any more: a review, a
+direct connection names the one it uses**. There is no global active wallet any more: a review, a
 preparation, a restricted-feed proof and a signing all resolve the wallet from the connection they
 belong to, and from nothing else.
+
+Since SEE-185 a feed works differently. Each signal names the network it executes on, and its
+operation uses the wallet the owner chose **for that feed and that network**
+([wallet-setup.md](../guides/wallet-setup.md#feed-operations)). A feed connection's own profile, when
+it has one, is only the **access identity** a restricted feed proves its reader with; a public feed
+has none.
 
 | Connection | Profile | Network |
 | --- | --- | --- |
 | SKR staking server | Main account | Mainnet |
 | A development MCP server | The same main account | Devnet |
-| A prediction feed | Trading account | Mainnet |
+| A prediction feed's Mainnet signals | Trading account (chosen per feed and network) | Mainnet |
+| A restricted feed's access identity | Any saved profile | — (no network enters the proof) |
 
 Several connections may share a profile, and one profile never becomes another connection's by
 accident. The owner-facing steps are in [`docs/guides/wallet-setup.md`](../guides/wallet-setup.md);
@@ -127,39 +134,44 @@ stored authorization still holds.
 ## Binding a connection
 
 [`connections/Connection.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/connections/Connection.kt)
-has `walletProfileId`: the profile this connection signs with, or null when the owner hasn't chosen
-one. It is the owner's choice and nobody else's; a server's manifest can't set it. The connection
-store (format 7) persists it with the manifest's supported networks.
+has `walletProfileId`: for a direct connection the profile it signs with, for a feed only its access
+identity (SEE-185), or null when the owner hasn't chosen one. It is the owner's choice and nobody
+else's; a server's manifest can't set it. The connection store (format 7) persists it with the
+manifest's supported networks.
 
 `bind(connectionId, profileId)` sets it:
 
-- A profile on a network the server **declared** is bound. One on any other network is refused
-  (`BindOutcome.Incompatible`) and nothing changes.
-- A server that declared **no** networks may still be bound — a restricted feed proves its reader
-  with the profile — but nothing is signed for it until the server declares one.
+- For a **direct** server, a profile on a network the server **declared** is bound. One on any
+  other network is refused (`BindOutcome.Incompatible`) and nothing changes. A server that declared
+  **no** networks may still be bound, but nothing is signed for it until it declares one.
+- For a **feed**, any saved profile may be bound: it is an access identity, an address proof no
+  network enters, and it signs no operation.
 - A **direct** server is told at once, and only that server ([Publication](#publication)).
-- A **feed** is told nothing. Its binding is a local execution setting: no saved wallet is ever
-  published to a publisher or the gateway.
+- A **feed** is told nothing. No saved wallet is ever published to a publisher or the gateway.
 
 The modal picker
 ([`connections/ConnectionWallet.kt`](../../apps/android/app/src/main/java/io/github/brrenat/seekervault/connections/ConnectionWallet.kt))
-shows every saved profile. When the server declares networks, incompatible profiles remain visible
+shows every saved profile. For a feed it says the choice is for access only and disables nothing by
+network. For a direct server that declares networks, incompatible profiles remain visible
 but disabled and explain that their network must be changed on the Wallet tab. **Use this wallet**
 stays disabled until the owner selects a compatible profile. **Add a &lt;network&gt; wallet** opens the
 shared add-wallet sheet with a single declared network preselected. When the server declares no
 network, an orange notice explains the limitation, every profile is selectable for an access
 proof, and the action reads **Add a wallet**; signing remains gated by readiness.
 
-The picker contains no wallet-app choice. It opens by itself right after a connection is added —
-the pairing code is already spent and the manifest already read — and from the connection detail's
-**Wallet** row, which shows the bound profile's full address, wallet app, and network as separate
-facts.
+The picker contains no wallet-app choice. It opens by itself right after a direct connection or a
+restricted feed is added — the pairing code is already spent and the manifest already read — and
+from the connection detail's **Wallet** row (a feed's reads **Access wallet**), which shows the bound
+profile's full address, wallet app, and network as separate facts. A public feed is added with no
+wallet and the picker does not open.
 
 ### Readiness
 
 Whether a connection may sign is derived, never stored: `readiness(connectionId)` returns a
 `WalletReadiness`, from the profile the connection names, the networks its server declared and, for a
-direct server, whether the server confirmed the binding.
+direct server, whether the server confirmed the binding. For a feed it describes only the access
+identity: `Ready` while the profile is authorized, on whatever network, and `NeedsReconnect`
+otherwise. A feed operation's wallet is `feedWallet(connectionId, network)` instead, below.
 
 | State | Meaning | What the owner does |
 | --- | --- | --- |
@@ -177,12 +189,24 @@ the connection is ready and null otherwise, and every review reads null as "no w
 to approve. There is **no fallback**: a connection whose own profile isn't ready has no wallet,
 whatever else is saved.
 
+### A feed operation's wallet (SEE-185)
+
+`feedWallet(connectionId, network)` is the wallet a feed signal's operation on `network` uses: the
+owner's remembered choice for that feed and network while it still names an authorized profile on
+that network; otherwise, when nothing was chosen yet, the one authorized profile on that network if
+there is exactly one; otherwise none. A remembered choice that no longer works chooses nothing — no
+other account is put in its place, and the review asks the owner to choose or connect one.
+`chooseFeedWallet` remembers a choice in `files/feed-wallets/feed-wallets.json`
+(`wallet/storage/FeedWalletStore.kt`, keyed by connection and network) and refuses a profile on
+another network. It changes nothing about the feed's access.
+
 ### Signing
 
 `sign` and `signAndSend` take the reviewed `SelectedWallet` — with its `profileId` — and the
 connection ID. Inside the wallet lock, after any wait for another wallet interaction, they check
 that the profile still exists with the same address and network, that the connection still names
-it, and that the connection is still `Ready`. A profile that was removed, rebound or reconnected in
+it, and that the connection is still `Ready` — or, for a feed operation, that the profile is still
+authorized and still `feedWallet`'s answer for its network. A profile that was removed, rebound or reconnected in
 the meantime is reported as changed without asking the wallet anything. Two open reviews on two
 connections each carry their own profile; whichever gets the lock first is checked then, and the
 other is checked again when its turn comes.
@@ -212,12 +236,14 @@ PENDING requests that don't fit the new one — the same rule `PublishWallet` ha
 phone reports how many it cancelled. The picker says so before the owner chooses. Requests already
 approved or submitted keep the context they were approved in.
 
-**A feed.** Nothing is sent anywhere. `OperationViewModel` resolves the feed's own profile; a
-preparation carries the profile it was built for, and a rebinding drops it together with the
-approval acknowledgement and moves the review's generation on (`OperationProblem.WalletChanged`), so
-a read still in flight for the old wallet can't land on the new review. The terms are kept and
-prepared again for the new profile. Provider resolution and rule evaluation use the feed's own
-profile's network. The shared signal and other subscribers are untouched.
+**A feed.** Nothing is sent anywhere, and rebinding the access identity moves no operation. Choosing
+another wallet for a feed and network does: `OperationViewModel` resolves `feedWallet` for the
+signal's network, a preparation carries the profile it was built for, and a different choice drops
+it together with the approval acknowledgement and moves the review's generation on
+(`OperationProblem.WalletChanged`), so a read still in flight for the old wallet can't land on the
+new review. The terms are kept and prepared again for the new profile. Provider resolution and rule
+evaluation use the signal's network. The binding pins that network and the exact `walletProfileId`.
+The shared signal and other subscribers are untouched.
 
 **A restricted feed.** Access belongs to the address that proved it
 ([restricted-feeds.md#one-wallet-per-feed](restricted-feeds.md#one-wallet-per-feed)). Rebinding to
@@ -243,14 +269,15 @@ profile.
 ## History and follow-ups
 
 History records and confirmation tracking keep the address and network the operation was actually
-signed with; they never read the connection's current binding. Renaming or removing a profile, or
+signed with — for a feed operation, the binding's network, which is the signal's — and never read
+the connection's current binding or wallet choice. Renaming or removing a profile, or
 rebinding a connection, rewrites no historical fact. Confirmation polling and explorer links use
 each request's own network.
 
 A prediction position's sale (SEE-172) uses the position's **owner on its original network**:
 `ownerProfile(address, network)` returns the authorized profile that is that account, and nothing
 that merely stands in for it. When there is none, the sale is blocked until the owner reconnects
-that wallet; the feed's current wallet is never substituted.
+that wallet; the feed's current wallet choice is never substituted.
 
 ## Migration
 

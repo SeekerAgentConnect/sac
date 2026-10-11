@@ -216,28 +216,39 @@ curl -sS --fail-with-body "$PUBLISH_URL/seekervault.gateway.v1.PublisherService/
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $PUBLISHER_CREDENTIAL" \
   -d "{\"manifest\":{\"serverId\":\"$PUBLISHER_ID\",\"protocolVersion\":1,\"settingsRevision\":\"1\",
-       \"mode\":\"CONNECTION_MODE_GATEWAY_FEED\",\"environments\":[\"SERVER_ENVIRONMENT_SANDBOX\"],
+       \"mode\":\"CONNECTION_MODE_GATEWAY_FEED\",
        \"displayName\":\"Example publisher\",
-       \"feed\":{\"gatewayUrl\":\"$PUBLIC_GATEWAY\",\"channel\":\"$CHANNEL\"}}}"
+       \"feed\":{\"gatewayUrl\":\"$PUBLIC_GATEWAY\",\"channel\":\"$CHANNEL\",
+                \"supportedNetworks\":[\"SOLANA_NETWORK_MAINNET\"]}}}"
 # {"status":"PUBLISH_STATUS_STORED","settingsRevision":"1"}
 ```
 
-**Then the first feed item**, at revision 1:
+**Then the first feed item**, at revision 1. It is request contract 2, and its action names the
+Solana network it executes on (`action.network`, SEE-185) — one your manifest lists in
+`supportedNetworks`:
 
 ```sh
-curl -sS --fail-with-body "$PUBLISH_URL/seekervault.gateway.v1.PublisherService/PublishProposal" \
+curl -sS --fail-with-body "$PUBLISH_URL/seekervault.gateway.v1.PublisherService/PublishRequest" \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $PUBLISHER_CREDENTIAL" \
-  -d "{\"proposal\":{\"serverId\":\"$PUBLISHER_ID\",\"channel\":\"$CHANNEL\",
-       \"proposalId\":\"$PROPOSAL_ID\",\"revision\":\"1\",
-       \"operation\":\"swap\",\"pluginId\":\"jupiter.swap\",
-       \"status\":\"PROPOSAL_STATUS_OPEN\",
-       \"createdAt\":\"2030-01-02T09:00:00Z\",\"updatedAt\":\"2030-01-02T09:00:00Z\",
-       \"expiresAt\":\"2030-01-03T09:00:00Z\",
-       \"publisherNote\":\"First item from a plain HTTP client.\",
-       \"values\":[{\"key\":\"published_price\",\"text\":\"139420000\"}]}}"
+  -d "{\"request\":{\"contractVersion\":2,
+       \"identity\":{\"sourceId\":\"$PUBLISHER_ID\",\"scope\":\"$CHANNEL\",\"requestId\":\"$PROPOSAL_ID\"},
+       \"lifecycle\":{\"revision\":\"1\",\"status\":\"REQUEST_STATUS_OPEN\",
+         \"createdAt\":\"2030-01-02T09:00:00Z\",\"updatedAt\":\"2030-01-02T09:00:00Z\",
+         \"expiresAt\":\"2030-01-03T09:00:00Z\"},
+       \"presentation\":{\"title\":\"swap\",\"description\":\"First item from a plain HTTP client.\",
+         \"category\":\"PRESENTATION_CATEGORY_SIGNAL\"},
+       \"action\":{\"capabilityId\":\"swap\",\"capabilityVersion\":1,\"pluginId\":\"jupiter.swap\",
+         \"network\":\"SOLANA_NETWORK_MAINNET\",
+         \"parameters\":[{\"key\":\"published_price\",\"text\":\"139420000\"}]},
+       \"audience\":{\"feed\":{\"channel\":\"$CHANNEL\"}},
+       \"resultHandling\":{\"mode\":\"RESULT_MODE_DEVICE_LOCAL\"}}}"
 # {"status":"PUBLISH_STATUS_STORED","revision":"1","snapshotSequence":"2"}
 ```
+
+A missing or unknown network is `bad_network`; a network your held manifest does not list, or no
+manifest yet, is `other_network`; any contract version but 2 is `other_protocol`. The network is
+never inferred, not even when your manifest declares only one.
 
 `snapshotSequence` is the channel's own counter after your publication. It is what a subscriber uses
 to tell whether anything has changed; it is not a document version, and it is not yours to choose.
@@ -249,19 +260,20 @@ stay fixed; any other change must advance `revision`. **Withdraw it** with the n
 # … same body, "revision":"2", "updatedAt" moved, a different published_price
 # {"status":"PUBLISH_STATUS_STORED","revision":"2","snapshotSequence":"3"}
 
-curl -sS --fail-with-body "$PUBLISH_URL/seekervault.gateway.v1.PublisherService/CancelProposal" \
+curl -sS --fail-with-body "$PUBLISH_URL/seekervault.gateway.v1.PublisherService/CancelRequest" \
   -H 'Content-Type: application/json' -H "Authorization: Bearer $PUBLISHER_CREDENTIAL" \
-  -d "{\"proposalId\":\"$PROPOSAL_ID\",\"revision\":\"3\"}"
-# {"status":"PUBLISH_STATUS_STORED","proposal":{…"status":"PROPOSAL_STATUS_CANCELLED"…},"snapshotSequence":"4"}
+  -d "{\"requestId\":\"$PROPOSAL_ID\",\"revision\":\"3\"}"
+# {"status":"PUBLISH_STATUS_STORED","request":{…"status":"REQUEST_STATUS_CANCELLED"…},"snapshotSequence":"4"}
 ```
 
-Withdrawal is final for that identity. A later publication under the same `proposalId` is refused;
+Withdrawal is final for that identity. A later publication under the same `requestId` is refused;
 a new item is a new UUID.
 
-`PublishRequest` / `CancelRequest` take the newer common envelope at the same paths, and
-`ListRequests` / `GetRequest` read it back. `PublishProposal` is a compatibility adapter over the
-same row, revision gate, sequence and outbox, and is used here because its shape makes the lifecycle
-readable in one screen.
+`ListRequests` / `GetRequest` read the common envelope back. `PublishProposal` / `CancelProposal`
+remain a protocol-1 compatibility adapter over the same row, revision gate, sequence and outbox, but
+a proposal has no field for a network: what it publishes is served, and a phone keeps it readable
+and never executes it. A network-declaring document is not served through the protocol-1
+`ListProposals` / `GetProposal` views at all.
 
 ### What the gateway answers when it refuses
 
@@ -356,13 +368,12 @@ Each module builds its own template and its own copy of the one CLI:
 | `examples/demo-prediction/cmd/prediction`   | Discovers Jupiter Prediction markets through its operator's filters and publishes those (SEE-96) |
 | `cmd/publishctl`                   | The operator's CLI, built by each module against its own API. Every command is one HTTP call  |
 
-Then configure it. `cp .env.example .env` and fill it in; the file documents every setting where it sits, including why each one exists, so read it rather than this table. **Six settings have no default and nothing starts without them:**
+Then configure it. `cp .env.example .env` and fill it in; the file documents every setting where it sits, including why each one exists, so read it rather than this table. **Five settings have no default and nothing starts without them:**
 
 | Variable                | What it is                                                                                          |
 | ----------------------- | --------------------------------------------------------------------------------------------------- |
 | `PUBLISHER_SERVER_ID`   | The lowercase UUID the operator registered you with                                                  |
 | `PUBLISHER_GATEWAY_URL` | The gateway's own origin, character for character — its `BROADCAST_PUBLIC_URL`                        |
-| `PUBLISHER_ENVIRONMENT` | `production` or `sandbox`. **No default at all**: a deployment that says nothing does not start       |
 | `PUBLISHER_DATABASE_PATH` | The SQLite file this template keeps its own signals in (compose and the image set it for you)       |
 | `BROADCAST_CREDENTIAL`  | The 43-character secret from step 2 — the grant the *gateway* issued you                              |
 | `PUBLISHER_API_TOKEN`   | Who may call *this template's* API. `openssl rand -base64 32`. At least 32 characters                 |
@@ -371,7 +382,7 @@ Those last two are different things and confusing them is the first mistake to a
 
 One more is worth setting deliberately: `PUBLISHER_PUBLISH_URL`. Empty means `PUBLISHER_GATEWAY_URL`, which is right only when an operator's independent ingress serves both APIs on one origin. The canonical `compose/feed` preset in `do-deploy` keeps separate loopback listeners (feeds on 8090 and publications on 8091), so its demo presets name 8091 explicitly. Also set it when an operator keeps publishing off the internet and you reach it over a tunnel. Getting it wrong is the one mistake the gateway cannot report: a read origin has no handler that could write anything, so a publication gets a 404. The template says so at startup and names the variable.
 
-**Both `.env` examples ship as sandbox deployments**, so copying one and running it demonstrates the whole path without anybody's money. Promoting to production is a deliberate edit of one line ([step 11](#11-sandbox-and-production)).
+**There is no sandbox or production setting** (SEE-185). One deployment serves every owner, and each owner chooses on the phone whether to preview a signal or execute it ([step 11](#11-preview-or-execute)). `PUBLISHER_ENVIRONMENT` is retired: a deployment that still sets it starts and logs one warning that it is ignored.
 
 The complete settings reference, with every default and range, is [`docs/development/demos.md#configuration`](../development/demos.md#configuration). The reasoning behind the template's shape is [`docs/wiki/copytrading-template.md`](../wiki/copytrading-template.md).
 
@@ -382,7 +393,6 @@ cd ~/my-signals/demo-signals
 PUBLISHER_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
-PUBLISHER_ENVIRONMENT=sandbox \
 PUBLISHER_DISPLAY_NAME="Copy trading demo" \
 PUBLISHER_DATABASE_PATH=./copytrading.db \
 BROADCAST_CREDENTIAL=<the 43 characters from step 2> \
@@ -397,13 +407,13 @@ no Compose or ingress assets unless you copy and adapt that deployment preset to
 Three log lines and one bare line of text:
 
 ```
-{"level":"INFO","msg":"publishing as this server","server_id":"3f1b2c4d-…","channel":"server/3f1b2c4d-…","gateway":"http://127.0.0.1:8090","publishing_to":"http://127.0.0.1:8091","environment":"sandbox","operation":"swap","plugin":"jupiter.swap","settings_revision":1,"pending":0}
+{"level":"INFO","msg":"publishing as this server","server_id":"3f1b2c4d-…","channel":"server/3f1b2c4d-…","gateway":"http://127.0.0.1:8090","publishing_to":"http://127.0.0.1:8091","networks":["mainnet"],"operation":"swap","plugin":"jupiter.swap","settings_revision":1,"pending":0}
 seekervault://feed?v=1&gateway=http%3A%2F%2F127.0.0.1%3A8090&server=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
 {"level":"INFO","msg":"the manifest is published","revision":1,"status":"stored"}
 {"level":"INFO","msg":"the API is listening","address":"127.0.0.1:8092"}
 ```
 
-**The manifest** is published for you, before the API opens, and kept in step afterwards. You never write one: it is built from your configuration and from the kind of signal this template publishes. It carries your server ID, the phone–server contract version it speaks (`1`), a settings revision, the mode (always `gateway_feed`), the plugin your proposals need with the contract range it works with, the environments you serve, your display name, and one reference — the gateway's origin and your channel. There is no field in it that installs code, asks for a permission, carries a policy, or names an endpoint of yours, and there is no field that could grow into one: a test reads the contract and fails if the field set changes ([`docs/wiki/server-manifests.md#the-document`](../wiki/server-manifests.md#the-document)).
+**The manifest** is published for you, before the API opens, and kept in step afterwards. You never write one: it is built from your configuration and from the kind of signal this template publishes. It carries your server ID, the phone–server contract version it speaks (`1`), a settings revision, the mode (always `gateway_feed`), the plugin your proposals need with the contract range it works with, your display name, and one reference — the gateway's origin, your channel and the Solana networks your signals may run on. There is no field in it that installs code, asks for a permission, carries a policy, or names an endpoint of yours, and there is no field that could grow into one: a test reads the contract and fails if the field set changes ([`docs/wiki/server-manifests.md#the-document`](../wiki/server-manifests.md#the-document)).
 
 If it was refused, nobody can subscribe to you at all, and the template says so with the advice in its hand — the usual cause is `PUBLISHER_PUBLISH_URL` pointing at the read origin, or `PUBLISHER_GATEWAY_URL` not being the gateway's own `BROADCAST_PUBLIC_URL` character for character. [When something is refused](#15-when-something-is-refused) has the codes.
 
@@ -424,8 +434,9 @@ no credential. **Add feed** then resolves and validates the manifest; **Cancel**
 There is no deep link or Android intent filter in this release, so tapping the URI outside the app is
 not an onboarding path.
 
-An added feed opens with the publisher's manifest name, Sandbox or Production, and its required
-client plugins visible. A reference that is already present writes nothing. A refused manifest, a
+An added feed opens with the publisher's manifest name, its networks and its required client
+plugins visible. A public feed is added with no wallet: the wallet a signal executes with is chosen
+per operation, for the network that signal names. A reference that is already present writes nothing. A refused manifest, a
 gateway check failure and a build with no gateway adapter are distinct results, and only a transient
 gateway failure offers Retry. The exact owner flow is in
 [`docs/wiki/feed-onboarding.md`](../wiki/feed-onboarding.md).
@@ -435,7 +446,7 @@ Nothing else about the app changes to accommodate you: nothing is installed, no 
 What happens after the owner confirms, in this order:
 
 1. The phone reads your **manifest** from the gateway and validates it — that it is a feed, that the server ID matches the one it is adding, that the gateway origin is the one it is adding it from, that the channel is `server/<that ID>`, and that everything inside is within bounds. A manifest that fails is `Refused` and nothing from you is executable; the connection is not revoked by it.
-2. It resolves **support**: whether this build carries the plugin your manifest requires, at a contract inside the range you published, for the environment the connection keeps. This is never cached — it is derived from the compiled plugin registry on every read.
+2. It resolves **support**: whether this build carries the plugin your manifest requires, at a contract inside the range you published. This is never cached — it is derived from the compiled plugin registry on every read.
 3. It reads a **snapshot** of your proposals over the gateway's unary API, in pages.
 4. While the app is being looked at, it opens a **stream** for the feeds it holds, using a ticket the gateway mints. Everything that arrives on it goes through the same validators a snapshot's documents go through: a document is not trusted more for having arrived quickly.
 5. When the app is closed, a [topic hint](#9-topic-push) tells it that the feed moved, and it reads the feed authoritatively rather than believing the hint.
@@ -452,7 +463,7 @@ Two ways in, and they are the same way: the CLI is an HTTP client for the templa
 
 ```sh
 export PUBLISHER_API_TOKEN=…
-go run ./cmd/publishctl create \
+go run ./cmd/publishctl create --network mainnet \
   --term input_mint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v \
   --term input_decimals=6 --term input_symbol=USDC \
   --term output_mint=So11111111111111111111111111111111111111112 \
@@ -475,7 +486,7 @@ Flags come after the command. `--in 2h` is a convenience: the API takes nothing 
     "status": "open",
     "operation": "swap",
     "plugin_id": "jupiter.swap",
-    "environment": "sandbox",
+    "network": "mainnet",
     "created_at": "2026-09-18T04:00:36Z",
     "updated_at": "2026-09-18T04:00:36Z",
     "expires_at": "2026-09-18T06:00:36Z",
@@ -500,7 +511,7 @@ curl -sS http://127.0.0.1:8092/v1/requests \
   -H "Authorization: Bearer $PUBLISHER_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: strategy-2026-09-18-0001' \
-  -d '{"expires_at":"2026-09-18T08:00:00Z",
+  -d '{"network":"mainnet","expires_at":"2026-09-18T08:00:00Z",
        "note":"Fresh JUP leg from the strategy process.",
        "terms":{"input_mint":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
                 "input_decimals":"6","input_symbol":"USDC",
@@ -515,7 +526,9 @@ The same answer shape. The status code carries the publication's fate: **201** c
 
 A swap signal names the pair and caps the risk: `input_mint`, `output_mint`, `input_decimals`, `output_decimals` and `max_slippage_bps` are required; `least_input`, `most_input`, `input_symbol` and `output_symbol` are optional. **There is no amount**, and there is no side — a publisher may bound the amount and must cap the slippage it will have its signal acted on with, and within that the amount is chosen on each owner's own phone and stays there. That is the difference between a signal and an order.
 
-Nor can you name the operation, the plugin, the proposal ID, the channel, the revision, the status or the environment: every one of those in a request body is a 400, because they are the template's to say. An unknown field is refused by name, with the reason:
+**`network` is required** on every create and update (SEE-185): `mainnet`, `devnet` or `testnet`, and one your manifest declares. Missing or unknown is `bad_network` (400), undeclared is `other_network` (400), and an update that names another network than the signal was created with is `network_fixed` (409). A signal stored before SEE-185 has no network; it can be withdrawn, and is never published as an open document again (`no_network`).
+
+Nor can you name the operation, the plugin, the proposal ID, the channel, the revision or the status: every one of those in a request body is a 400, because they are the template's to say. An unknown field is refused by name, with the reason:
 
 ```
 there is no field "amount" in a signal. A signal says what is proposed and until when; the
@@ -534,14 +547,14 @@ It is the other module, so this one runs from the Prediction demo's own director
 cd examples/demo-prediction
 PUBLISHER_SERVER_ID=<a second server ID, registered separately> \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 PUBLISHER_PUBLISH_URL=http://127.0.0.1:8091 \
-PUBLISHER_ENVIRONMENT=sandbox PUBLISHER_DATABASE_PATH=./prediction.db \
+PUBLISHER_DATABASE_PATH=./prediction.db \
 PUBLISHER_API_ADDRESS=127.0.0.1:8094 \
 BROADCAST_CREDENTIAL=<the credential for *this* server> PUBLISHER_API_TOKEN=$(openssl rand -base64 32) \
 PREDICTION_CATEGORIES=crypto PREDICTION_MOST_OPEN=3 \
 go run ./cmd/prediction
 ```
 
-It needs its **own** server ID and its own credential: two templates sharing one identity would be two servers claiming one channel, which the gateway refuses. Note also that the database is stamped with the server ID and the environment word and refuses to open for another — pointing a sandbox deployment at a production volume is a startup error rather than a silent mixture.
+It needs its **own** server ID and its own credential: two templates sharing one identity would be two servers claiming one channel, which the gateway refuses. Note also that the database is stamped with the server ID and refuses to open for another — pointing one publisher's deployment at another's volume is a startup error rather than a silent mixture. Every signal it publishes names `mainnet`, the only network Jupiter's prediction markets settle on.
 
 The filters are all operator settings and they divide in two. `PREDICTION_SOURCE` (`polymarket`, `kalshi`, `bisonfi`), `PREDICTION_CATEGORIES` and `PREDICTION_FILTER` (`new`, `live`, `trending`, `upcoming`) are the **provider's own query parameters** and decide which events the listing returns at all. Everything else is applied here, to the records that came back: `PREDICTION_TAGS`, `PREDICTION_KEYWORDS`, `PREDICTION_STATE`, the two close-time edges, `PREDICTION_LIFETIME_HOURS`, and the ceilings `PREDICTION_MOST_OPEN` and `PREDICTION_MOST_CHECKS`. Each one's range and default is in [`docs/development/demos.md#the-prediction-templates-own-settings`](../development/demos.md#the-prediction-templates-own-settings); what each one *means* is [`docs/wiki/prediction-template.md#the-filters-and-what-they-mean`](../wiki/prediction-template.md#the-filters-and-what-they-mean).
 
@@ -643,26 +656,30 @@ The gateway's database is the authority and the broker's history is a recovery c
 What a phone reads, as it reads it — no credential, and the same answer for everybody:
 
 ```sh
-curl -sS http://127.0.0.1:8090/seekervault.gateway.v1.FeedService/ListProposals \
+curl -sS http://127.0.0.1:8090/seekervault.gateway.v1.FeedService/ListRequests \
   -H 'Content-Type: application/json' \
   -d '{"channel":"server/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d","pageSize":10}'
 ```
 
 ```json
 {
-  "proposals": [ { "serverId": "3f1b2c4d-…", "channel": "server/3f1b2c4d-…",
-                   "proposalId": "dcf362cb-647b-4e8f-9506-fb3dc72a3fba", "revision": "1",
-                   "operation": "swap", "pluginId": "jupiter.swap",
-                   "status": "PROPOSAL_STATUS_OPEN",
-                   "createdAt": "2026-09-18T04:00:36Z", "updatedAt": "2026-09-18T04:00:36Z",
-                   "expiresAt": "2026-09-18T06:00:36Z",
-                   "publisherNote": "Rotating a third of the stable leg into SOL.",
-                   "values": [ { "key": "input_mint", "text": "EPjFWdd5…" }, … ] } ],
+  "requests": [ { "contractVersion": 2,
+                  "identity": { "sourceId": "3f1b2c4d-…", "scope": "server/3f1b2c4d-…",
+                                "requestId": "dcf362cb-647b-4e8f-9506-fb3dc72a3fba" },
+                  "lifecycle": { "revision": "1", "status": "REQUEST_STATUS_OPEN",
+                                 "createdAt": "2026-09-18T04:00:36Z",
+                                 "updatedAt": "2026-09-18T04:00:36Z",
+                                 "expiresAt": "2026-09-18T06:00:36Z" },
+                  "presentation": { "description": "Rotating a third of the stable leg into SOL.", … },
+                  "action": { "capabilityId": "swap", "pluginId": "jupiter.swap",
+                              "network": "SOLANA_NETWORK_MAINNET",
+                              "parameters": [ { "key": "input_mint", "text": "EPjFWdd5…" }, … ] },
+                  … } ],
   "snapshotSequence": "2"
 }
 ```
 
-That is the same document you published, echoed back through the contract phones read. It is a useful thing to curl while developing: if your terms look wrong here, they will look wrong on the phone.
+That is the same document you published, echoed back through the contract phones read. The protocol-1 `ListProposals` view leaves it out, because a proposal has no field for its network (SEE-185). It is a useful thing to curl while developing: if your terms look wrong here, they will look wrong on the phone.
 
 ## 9. Topic push
 
@@ -678,7 +695,7 @@ curl -sS http://127.0.0.1:8090/seekervault.gateway.v1.FeedService/GetFeedTopics 
 
 ```json
 { "topics": [ { "channel": "server/3f1b2c4d-…",
-                "topic": "feed.sandbox.3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d" } ] }
+                "topic": "feed.production.3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d" } ] }
 ```
 
 The phone asks for that name rather than deriving it, because a name both sides worked out for themselves would be a mismatch that shows up as silence rather than as an error. A gateway with no relay configured answers `no_push` and phones simply rely on the stream and the periodic read.
@@ -686,7 +703,7 @@ The phone asks for that name rather than deriving it, because a name both sides 
 **What the relay sends** is exactly this, to that topic:
 
 ```json
-{ "message": { "topic": "feed.sandbox.3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+{ "message": { "topic": "feed.production.3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
                "data": { "kind": "feed_invalidation", "version": "1" },
                "android": { "collapse_key": "seeker-vault-feed-invalidation-v1",
                             "priority": "HIGH", "ttl": "300s" } } }
@@ -706,8 +723,9 @@ That is the whole payload. No proposal, no revision, no sequence, no publisher, 
 For a deployment that wants the relay on, the operator's side is
 `compose/feed/compose.push.yaml` in `do-deploy` and the walkthrough in
 [`docs/guides/firebase.md#the-broadcast-relay-and-feed-topics-see-92`](firebase.md#the-broadcast-relay-and-feed-topics-see-92).
-`BROADCAST_PUSH_ENVIRONMENT` is a topic label, not [step 11](#11-sandbox-and-production)'s
-environment, and sandbox and production publishers must not share one.
+`BROADCAST_PUSH_ENVIRONMENT` is only a topic label chosen by the gateway's operator, so one
+Firebase project can serve two gateway deployments. It has nothing to do with whether an owner
+previews or executes ([step 11](#11-preview-or-execute)).
 
 This section is about a **publisher's** feed. A server one owner pairs with directly has the same
 problem and a different answer, because there is no public topic to send to and nobody else who
@@ -723,7 +741,7 @@ Your manifest names the client plugin your proposals are written for and the con
 | `PluginMissing` — this build has no such plugin                   | No                               | "This app doesn't have a client plugin this server needs, so nothing from it can be approved."                      |
 | `PluginIncompatible` — it has the plugin, at a contract outside your range | No                      | "This app has the client plugin this server needs, but not at a version it works with."                             |
 | `ProtocolUnsupported` — you speak a newer phone–server contract   | No                               | "This server speaks a newer version of the protocol than this app. Update the app to use it."                       |
-| `EnvironmentUnsupported` — you do not serve the environment this connection keeps | No               | "This server doesn't serve the environment this app is running in."                                                 |
+| `OtherGateway` — the feed was added from a gateway this build no longer trusts | No                 | "This feed is on a gateway this app no longer trusts. It stays readable, and nothing from it can be executed."       |
 | `ManifestRefused` — your manifest broke one of the phone's rules  | No                               | "This app refused this server's own description of itself, so nothing from it can be approved."                     |
 | `Unknown` — not asked yet, or the answer has not arrived          | Yes, provisionally               | "Not checked yet." Not hearing an answer is not an answer, so nothing is assumed from it                            |
 
@@ -732,42 +750,78 @@ Your manifest names the client plugin your proposals are written for and the con
 The practical consequences for you:
 
 - **A new server that uses the plugins that already ship needs no mobile change at all.** A second copy-trading publisher, a differently-filtered prediction publisher, a hundred of them: they are manifests and proposals, and the app carries the plugin already. This is the case the whole design is for.
-- **A new execution platform needs a new bundled client plugin**, and that means a release of the app rather than anything you can deploy. A plugin is a compiled boundary: it declares a stable ID, the contract it was written against, the operations it serves and the environments it serves, and it reaches its own provider and takes everything else from what it is handed — no credential, no wallet token, no transport, no store, no approval ([`docs/wiki/client-plugins.md`](../wiki/client-plugins.md)).
+- **A new execution platform needs a new bundled client plugin**, and that means a release of the app rather than anything you can deploy. A plugin is a compiled boundary: it declares a stable ID, the contract it was written against, the operations it serves, the networks it serves them on and whether it can serve a preview, and it reaches its own provider and takes everything else from what it is handed — no credential, no wallet token, no transport, no store, no approval ([`docs/wiki/client-plugins.md`](../wiki/client-plugins.md)).
 - **Publish an honest contract range.** `jupiter.swap` and `jupiter.prediction` are contract 1, and both templates publish `1..1` for exactly that reason. A wider range would hand a document to a phone written against a contract neither side agreed on; a phone outside your range reports you as incompatible, which is the correct outcome and a legible one.
 
-## 11. Sandbox and production
+## 11. Preview or execute
 
-One setting decides which promise every subscribed phone is told to expect: `PUBLISHER_ENVIRONMENT`, `production` or `sandbox`, with no default at all.
+There is no sandbox or production setting for a publisher (SEE-185). Each owner chooses, on the
+phone and for one operation at a time, whether to **execute** a signal or **Preview without
+sending** it. One deployment serves both, because your part is the same either way: you publish a
+signal and never execute anything.
 
-|                    | Production                                                        | Sandbox                                             |
-| ------------------ | ----------------------------------------------------------------- | --------------------------------------------------- |
+|                    | Execute                                                           | Preview without sending                              |
+| ------------------ | ----------------------------------------------------------------- | ---------------------------------------------------- |
 | The market data    | Real, live, from the provider                                     | **The same.** Real, live, from the provider          |
-| The transaction    | Built by the plugin, on the phone                                 | **The same bytes**, built the same way               |
+| The transaction    | Built by the provider, on the phone                               | **The same bytes**, built the same way               |
 | The review         | Every fact, read out of the bytes                                 | **The same review**                                  |
 | The owner's rules  | Applied                                                           | **Applied**                                          |
 | The wallet         | Opened once, with exactly those bytes                             | **Never opened**                                     |
-| What is sent       | The signed transaction, to the network                            | **Nothing**                                          |
+| What is sent       | The signed transaction, to the signal's network                   | **Nothing**                                          |
 | Afterwards         | A signature, and an explorer link                                 | **No signature, and so no link**                     |
-| The record says    | `Sent`, with the signature                                        | `Simulated`, with no signature                       |
+| The signal         | Consumed on that phone                                            | **Still open**: executing it means preparing again   |
 
-The last four rows are the whole difference. Sandbox is not a smaller version of the operation and not a mock of it: it is the operation, carried out as far as an environment that performs nothing can carry it, and then stopped and labelled. On the phone that stop is structural — the sandbox branch of an approval is lexically outside the block that holds a wallet session, so there is no wallet in scope to ask, rather than a flag beside one.
+A preview is not a smaller version of the operation and not a mock of it: it is the operation,
+carried out as far as possible without a wallet, then stopped and labelled. On the phone that stop
+is structural: the preview branch of an approval is outside the block that holds a wallet session,
+so there is no wallet in scope to ask, rather than a flag beside one. The full account is
+[`docs/wiki/environments.md`](../wiki/environments.md).
 
-Three things to be clear about:
+Things to be clear about:
 
-- **An environment is not a Solana cluster.** The cluster is whatever network the owner's wallet is selected for; it is checked separately and always, and no environment changes it.
-- **The networks you run against are a separate statement, and you make it (SEE-174).** A manifest's reference carries `supported_networks` — `feed.supportedNetworks` for a feed, `direct.supportedNetworks` for a direct server, in JSON — listing the Solana networks your server's operations are actually configured for — Mainnet for both templates (`PUBLISHER_SUPPORTED_NETWORKS`), since that is where the markets are — and the phone offers only wallet profiles on those networks and signs for nothing else. `production` does not mean Mainnet and `sandbox` does not mean Devnet or Testnet. There is no default: an empty list declares no network, which the phone never reads as Mainnet or as "all", and an up-to-date phone signs nothing for such a server until it declares one. A server whose requests never reach a wallet is exactly the one that declares nothing. Changing the list is a settings change and moves your manifest's revision. Update your server and declare its networks before your owners update their phones: an older phone ignores the field, an updated one gates signing on it. A direct server built on the SDK passes `supportedNetworks` to `openDirectServer`, and reads it from configuration with `parseSupportedNetworks` so that `mainnet`, `devnet` and `testnet` are spelt the same everywhere ([`docs/integrations/server-sdk.md#declaring-networks`](../integrations/server-sdk.md#declaring-networks)); the general MCP server reads `SAC_SUPPORTED_NETWORKS`, and the SKR staking server always declares Mainnet.
-- **There is no Jupiter devnet or testnet to point sandbox at.** Neither the swap aggregator nor the prediction markets exist on another cluster, and this repository does not pretend otherwise. The app's own devnet checks, for transfers and message signing, are about something else entirely.
-- **Nothing about a simulation is fabricated.** No signature, no explorer confirmation, no fill, no profit, no position. A rehearsal has nothing to look up afterwards and the app offers nothing.
+- **Every signal names its network, and you name it (SEE-185).** A signal's action carries
+  `network` — `mainnet`, `devnet` or `testnet` — and the phone executes on that network and no
+  other, with a wallet the owner chooses for it. It is required and never inferred: not from your
+  manifest, not from a wallet, not from the mints a signal names. A signal without one is readable
+  and never executed.
+- **Your manifest declares which networks your signals may use (SEE-174).** A manifest's reference
+  carries `supported_networks` — `feed.supportedNetworks` for a feed, `direct.supportedNetworks` for
+  a direct server, in JSON — listing the Solana networks your server's operations are actually
+  configured for: Mainnet for both templates (`PUBLISHER_SUPPORTED_NETWORKS`), since that is where
+  the markets are. A signal on a network the manifest does not list is refused by the gateway
+  (`other_network`) and not executed by a phone. There is no default: an empty list declares no
+  network, which the phone never reads as Mainnet or as "all". Changing the list is a settings
+  change and moves your manifest's revision. A direct server built on the SDK passes
+  `supportedNetworks` to `openDirectServer`, and reads it from configuration with
+  `parseSupportedNetworks` so that `mainnet`, `devnet` and `testnet` are spelt the same everywhere
+  ([`docs/integrations/server-sdk.md#declaring-networks`](../integrations/server-sdk.md#declaring-networks));
+  the general MCP server reads `SAC_SUPPORTED_NETWORKS`, and the SKR staking server always declares
+  Mainnet.
+- **A preview is not a test network.** There is no Jupiter devnet or testnet, and this repository
+  does not pretend otherwise. A preview of a mainnet signal prepares mainnet bytes.
+- **Nothing about a preview is fabricated.** No signature, no explorer confirmation, no fill, no
+  profit, no position.
+- **A direct server is always executed.** An agent waiting for a signature cannot be handed a
+  preview.
 
-**Validating production is opt-in, deliberate, and small.** Nothing in this repository's default checks, CI or load runs spends anything: the templates ship as sandbox, the load harness publishes synthetic proposals, and no automated test opens a wallet. When you do want to prove a production feed end to end, the way it is done here is one real operation with a deliberately small amount, recorded with the date, the build, the publisher's server ID and environment, the pair or market, and the signature — steps 6, 7 and 10 of [`docs/testing/stage-7-1.md`](../testing/stage-7-1.md) and step 10 of [`docs/testing/see-98.md`](../testing/see-98.md#the-device-checklist-for-the-owner). That is a device run by somebody who owns the wallet, and no laptop result substitutes for it.
+**Validating real execution is opt-in, deliberate, and small.** Nothing in this repository's
+default checks, CI or load runs spends anything: the load harness publishes synthetic proposals,
+and no automated test opens a wallet. When you do want to prove a feed end to end, the way it is
+done here is one real operation with a deliberately small amount, recorded with the date, the build,
+the publisher's server ID, the network, the pair or market, and the signature — steps 6, 7 and 10 of
+[`docs/testing/stage-7-1.md`](../testing/stage-7-1.md) and step 10 of
+[`docs/testing/see-98.md`](../testing/see-98.md#the-device-checklist-for-the-owner). That is a device
+run by somebody who owns the wallet, and no laptop result substitutes for it.
 
-**One deployment serves one environment.** Run two if you want both: separate server IDs, separate credentials, separate databases (the file is stamped and will refuse the wrong one), and separate push topics. Promotion is a deliberate edit of one line and a restart, and the gateway refuses a manifest that changes the environments a server ID already published — `other_environment` — so a feed cannot quietly become real money under its subscribers. On the phone, a manifest says which environments a server *serves* while a connection records which one it *keeps*, which is what makes a promotion something a person did. The full account is [`docs/wiki/environments.md`](../wiki/environments.md).
+**One deployment is enough.** If you ran a sandbox and a production deployment before SEE-185,
+keep one: the manifest names no environment any more, `PUBLISHER_ENVIRONMENT` is ignored with a
+warning, and the database's environment stamp is dropped on upgrade.
 
 ## 12. Where a result lives, and where the owner continues
 
 Nothing comes back to you. That is not a limitation to work around, it is the design: there is no endpoint on your template that could accept a result, no field in any contract that carries one, and no call the phone makes to you.
 
-What happens instead, on the phone: the owner's own **Activity** record gets one entry per operation, with the operation and plugin, the revision reviewed, the wallet's public address, the network, the environment, the public terms, and the outcome — `Sent` with the signature for a real operation, `Simulated` with none for a rehearsal, plus `DeclinedInWallet`, `NotSigned` or `Unknown` for the ways it can fail. No URL is ever stored in it; every link the app hands to a browser is built at the moment it is shown, from code that is compiled in.
+What happens instead, on the phone: the owner's own **Activity** record gets one entry per operation, with the operation and plugin, the revision reviewed, the wallet's public address, the network, whether it was executed or previewed, the public terms, and the outcome — `Sent` with the signature for a real operation, `Simulated` with none for a preview, plus `DeclinedInWallet`, `NotSigned` or `Unknown` for the ways it can fail. No URL is ever stored in it; every link the app hands to a browser is built at the moment it is shown, from code that is compiled in.
 
 And the app stops at honest submission. Under the links it says so:
 
@@ -793,7 +847,7 @@ What a **provider** learns is separate from both and is not private: a quote car
 - **Your own logs.** The template logs what it published and why something was refused. If you add logging, keep it about documents rather than readers: your API's callers are yours to account for, and the `X-Forwarded-For` of somebody reading your feed is not something you ever see in the first place.
 - **Retention you choose.** Your database grows with the signals you publish; nothing prunes it for you. The gateway's own retention is its operator's (`BROADCAST_RETENTION_HOURS`, a week past a proposal's expiry by default), and the broker's recovery cache is 256 publications or an hour per channel.
 - **What you must not collect.** There is no supported way to learn who your subscribers are, what they chose, or what they did, and adding one would be a different product. If you want per-user state, you want a `direct` connection and a paired server, which is the other half of this repository.
-- **What you say about it.** Do not describe a published feed as private, do not describe on-chain activity as private, and do not describe an environment as a test network. The wording that is accurate is in the docs linked from this page, and it is accurate because somebody checked.
+- **What you say about it.** Do not describe a published feed as private, do not describe on-chain activity as private, and do not describe a preview as a test network. The wording that is accurate is in the docs linked from this page, and it is accurate because somebody checked.
 
 ## 14. Rate limits and bounds
 
@@ -822,7 +876,9 @@ The gateway answers with a Connect code and a lowercase problem word, and the wo
 | `other_server`          | The document names a server ID that is not the one your credential resolves to                  |
 | `foreign_channel`       | The document's channel is not `server/<your server ID>`                                          |
 | `other_gateway`         | Your manifest's `gateway_url` is not this gateway's `BROADCAST_PUBLIC_URL`, character for character |
-| `other_environment`     | You are publishing a manifest that changes the environments this server ID already published     |
+| `bad_network`           | A signal names no network, or one this gateway does not know (`action.network`)                  |
+| `other_network`         | A signal's network is not in your held manifest's `supported_networks`, or you have no manifest yet |
+| `other_protocol`        | A request document at a contract version other than 2                                            |
 | `stale_revision`        | A revision at or below the one held. What is held is in the error's detail                       |
 | `revision_conflict`     | The same revision with different content — the revision is your promise about the content        |
 | `too_many_proposals`    | The channel is at its bound. Withdraw or let some expire                                         |
@@ -955,7 +1011,7 @@ separate queries over separate columns, so there is no branch anywhere that coul
 Three environment variables on your own backend, and no Firebase anything:
 
 ```bash
-RELAY_URL=https://feeds.example.com          # the gateway's origin, as the operator gave it
+RELAY_URL=https://feeds.example.com          # the phone build's gateway origin, as the operator gave it
 RELAY_SERVER_ID=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
 RELAY_CREDENTIAL=<the credential, shown once>
 ```
@@ -987,8 +1043,8 @@ connection:
 1. Your server **advertises** the relay — `PairingService.GetConnectionCapabilities` now answers a
    `relay` with the gateway's origin and your server ID. The SDK does this for you once `relay` is
    configured.
-2. The phone **compares that origin with the relay it was built to trust**, and ignores it when they
-   differ. This is the rule that makes the advertisement worthless to anyone who is not the
+2. The phone **compares that origin with the one gateway it was built to trust**
+   (`-Pseekervault.gatewayUrl`, SEE-185), and ignores it when they differ. This is the rule that makes the advertisement worthless to anyone who is not the
    operator: naming an address of your own gets you nothing, because nothing is sent there.
 3. The phone **authorizes** a binding at the gateway — its own installation, your registered server
    identity, and the one connection it holds with you.

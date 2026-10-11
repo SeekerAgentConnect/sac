@@ -40,9 +40,14 @@ func New(options Options) (*Client, error) {
 // its registered action capability and feed audience; owner answers never cross this API.
 type CreateRequest struct {
 	IdempotencyKey string
-	ExpiresAt      time.Time
-	Description    string
-	Parameters     map[string]string
+	// The Solana network the request's action executes on: "mainnet", "devnet" or "testnet"
+	// (SEE-185). Required, and one the publisher's manifest declares; the template refuses a
+	// missing or unknown one (bad_network) and one it does not declare (other_network). Nothing
+	// here supplies a default.
+	Network     string
+	ExpiresAt   time.Time
+	Description string
+	Parameters  map[string]string
 }
 
 type CreateResponse struct {
@@ -61,10 +66,12 @@ func (e *Error) Error() string { return fmt.Sprintf("publisher API answered %d: 
 // CreateRequest publishes one request through POST /v1/requests. Retrying the same key and body is
 // idempotent; using the key for another body is refused by the template.
 func (c *Client) CreateRequest(ctx context.Context, asked CreateRequest) (*CreateResponse, error) {
-	if strings.TrimSpace(asked.IdempotencyKey) == "" || asked.ExpiresAt.IsZero() || asked.Parameters == nil {
-		return nil, errors.New("publisher sdk: idempotency key, expiry and parameters are required")
+	if strings.TrimSpace(asked.IdempotencyKey) == "" || strings.TrimSpace(asked.Network) == "" ||
+		asked.ExpiresAt.IsZero() || asked.Parameters == nil {
+		return nil, errors.New("publisher sdk: idempotency key, network, expiry and parameters are required")
 	}
 	body, err := json.Marshal(map[string]any{
+		"network":    asked.Network,
 		"expires_at": asked.ExpiresAt.UTC().Format(time.RFC3339),
 		"note":       asked.Description,
 		"terms":      asked.Parameters,

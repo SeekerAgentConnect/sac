@@ -56,10 +56,7 @@ func TestAPublicationDoesNotSucceedOrWakeWhenTheCommitFails(t *testing.T) {
 			ProtocolVersion:  rules.Protocol,
 			SettingsRevision: 1,
 			Mode:             serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_FEED,
-			Environments: []serverv1.ServerEnvironment{
-				serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-			},
-			DisplayName: "Commit failure fixture",
+			DisplayName:      "Commit failure fixture",
 			Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 				GatewayUrl: gatewayURL,
 				Channel:    rules.ChannelFor(serverID),

@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
+import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.Draw
@@ -47,6 +48,7 @@ enum class RequestTileKind {
     SwapSignal,
     SignatureRequest,
     Transfer,
+    Staking,
 }
 
 enum class RequestTileRailState {
@@ -300,15 +302,17 @@ private fun RequestTileKind.icon(): ImageVector =
         RequestTileKind.SwapSignal -> Icons.Outlined.SwapHoriz
         RequestTileKind.SignatureRequest -> Icons.Outlined.Draw
         RequestTileKind.Transfer -> Icons.Outlined.NorthEast
+        RequestTileKind.Staking -> Icons.Outlined.AccountBalance
     }
 
 private fun RequestTileKind.label(): String =
     when (this) {
         RequestTileKind.Acknowledgement -> "Acknowledge"
         RequestTileKind.PredictionSignal -> "Prediction"
-        RequestTileKind.SwapSignal -> "Swap"
+        RequestTileKind.SwapSignal -> "Signal"
         RequestTileKind.SignatureRequest -> "Signature"
         RequestTileKind.Transfer -> "Transfer"
+        RequestTileKind.Staking -> "Staking"
     }
 
 /** 214×200: seven `huge` steps plus `xl` + `xxs` across, plus `xs` down. */

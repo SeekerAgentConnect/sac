@@ -291,6 +291,7 @@ private fun statusOf(record: ActivityRecord): SpendStatus =
         ActivityOutcome.Rejected,
         ActivityOutcome.DeclinedInWallet,
         ActivityOutcome.NotSigned,
+        ActivityOutcome.NotSent,
         ActivityOutcome.Acknowledged,
         ActivityOutcome.MessageSigned -> SpendStatus.NotSpent
         // A rehearsal in a sandbox connection: nothing was signed, so nothing moved and there is

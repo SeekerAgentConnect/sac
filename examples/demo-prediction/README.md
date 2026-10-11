@@ -117,7 +117,6 @@ go test ./...
 
 PUBLISHER_SERVER_ID=7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d \
 PUBLISHER_GATEWAY_URL=http://127.0.0.1:8090 \
-PUBLISHER_ENVIRONMENT=sandbox \
 PUBLISHER_DATABASE_PATH=./prediction.db \
 BROADCAST_CREDENTIAL=<the credential the gateway printed> \
 PUBLISHER_API_TOKEN=$(openssl rand -base64 32) \
@@ -186,8 +185,7 @@ half is this demo's alone.
 | --- | --- | --- | --- |
 | `PUBLISHER_SERVER_ID` | yes | — | This source's lowercase UUID, as registered with the gateway |
 | `PUBLISHER_GATEWAY_URL` | yes | — | The gateway's own public origin, character for character |
-| `PUBLISHER_ENVIRONMENT` | yes | — | `production` or `sandbox`; stamped into the database on first open |
-| `PUBLISHER_SUPPORTED_NETWORKS` | no | `mainnet` | Solana networks the manifest declares (SEE-174). Jupiter's prediction markets run only on Mainnet, so `mainnet` or `none`; `devnet`/`testnet` are refused. Not the environment: sandbox still uses Mainnet data |
+| `PUBLISHER_SUPPORTED_NETWORKS` | no | `mainnet` | Solana networks the manifest declares (SEE-174), as capability information. Every signal names its own network, and this demo's always name `mainnet` (SEE-185). Jupiter's prediction markets run only on Mainnet, so `mainnet` or `none` (`none` publishes no market); `devnet`/`testnet` are refused |
 | `BROADCAST_CREDENTIAL` | yes | — | The credential the gateway issued this source |
 | `PUBLISHER_API_TOKEN` | yes | — | The grant to call this demo's own API; at least 32 characters |
 | `PUBLISHER_PUBLISH_URL` | no | the gateway URL | Where publications are *sent*, when that differs from where phones read |
@@ -203,11 +201,19 @@ half is this demo's alone.
 | `PREDICTION_CATEGORIES` | no | — | The provider's buckets, comma-separated; one listing walk each, and each a coverage bucket for the selection |
 | `PREDICTION_FILTER` | no | — | The provider's own named filter: `new`, `live`, `trending`, `upcoming` |
 | `PREDICTION_TAGS` | no | — | The event's own tags, whole and case-insensitive |
-| `PREDICTION_KEYWORDS` | no | — | Case-insensitive substrings of title, bucket, subcategory, tags; each a coverage bucket for the selection |
-| `PREDICTION_STATE` | no | `open` | `any` also publishes closed markets — **sandbox only**, refused in production |
+| `PREDICTION_KEYWORDS` | no | — | Case-insensitive, matched at the start of a word of title, bucket, subcategory, tags; each a coverage bucket for the selection |
+| `PREDICTION_STATE` | no | `open` | `any` also publishes closed, cancelled and settled markets — signals no phone can execute, for exercising the closure path; logs a warning at startup |
+| `PREDICTION_MOST_SPREAD_CENTS` | no | `5` | Widest buy/sell gap on YES and on NO (1–99). A side with no bid or no offer is never published, so an owner can always get out |
+| `PREDICTION_OUTCOMES` | no | `two` | `two`: only single-market yes-or-no events. `any`: also multi-outcome events |
+| `PREDICTION_CRYPTO_PRICES` | no | `exclude` | `exclude`: no crypto event about a token's price (up/down, strikes, hit price, FDV). `include`: publish them |
 | `PREDICTION_LEAST_CLOSE_IN_MINUTES` | no | `60` | How soon a market may close and still be published |
 | `PREDICTION_MOST_CLOSE_IN_MINUTES` | no | `43200` | How far ahead it may close |
 | `PREDICTION_LIFETIME_HOURS` | no | `168` | Expiry for a market with no close time, from when it was first seen |
+
+`PUBLISHER_ENVIRONMENT` is retired (SEE-185): a deployment is no longer sandbox or production, and
+whether an operation is previewed or executed is each owner's choice on the phone. A deployment that
+still sets it starts and logs one line saying it is ignored; delete it. An existing database opens
+whichever environment it was created for.
 | `PREDICTION_POLL_SECONDS` | no | `300` | How often a cycle runs (30–86400) |
 | `PREDICTION_PAGE_SIZE` / `PREDICTION_MOST_PAGES` | no | `25` / `4` | Events per call, calls per bucket |
 | `PREDICTION_MOST_OPEN` | no | `25` | Proposals held open at once, one per event; chosen to cover every configured category and keyword first ([selection](../../docs/wiki/prediction-template.md#selection-one-entry-per-event-chosen-for-coverage-see-177)) |
@@ -339,6 +345,12 @@ Jupiter's prediction markets exist only on Solana Mainnet, so this demo declares
 does that with `PUBLISHER_SUPPORTED_NETWORKS` unset; set `mainnet` to say so explicitly. `devnet`
 and `testnet` are refused at startup.
 
+The manifest's list is capability information. What a phone executes on is the network each signal
+names (`action.network`, request contract 2, SEE-185), and every signal this demo publishes names
+`mainnet` — a constant of the template's Jupiter provider, never read off the manifest. A market
+published before SEE-185 has no network; the next cycle that finds it withdraws that proposal and
+publishes the market again with one. `publishctl show <id>` prints a signal's `network`.
+
 Check what the gateway serves — the manifest every phone reads — with no credential at all:
 
 ```sh
@@ -389,7 +401,8 @@ Logs name what happened and never print the gateway credential, the API token or
 | Symptom | Usually |
 | --- | --- |
 | Refuses to start, listing variables | A missing or malformed setting; both halves are reported at once so a first start is fixed in one pass |
-| Refuses `PREDICTION_STATE=any` | It is sandbox-only; run it with `PUBLISHER_ENVIRONMENT=sandbox` |
+| Warns that `PUBLISHER_ENVIRONMENT` is retired | Delete the line: it is ignored (SEE-185) |
+| Every market `unpublishable` with `other_network` | `PUBLISHER_SUPPORTED_NETWORKS=none`; this demo's signals are on Mainnet, which the manifest must declare |
 | Cycles run, nothing is published | The filters match nothing — `ctl discovery` counts each reason |
 | `other_gateway` on the manifest | `PUBLISHER_GATEWAY_URL` is not the gateway's own `BROADCAST_PUBLIC_URL`, character for character |
 | 404 on every publication | `PUBLISHER_PUBLISH_URL` points at the *read* origin |

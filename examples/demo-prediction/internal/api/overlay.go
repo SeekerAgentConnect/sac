@@ -16,23 +16,26 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
 
-// Overlay adds this demo's operator search and select on top of the shared publisher API.
+// Overlay adds this demo's operator search, select and unpublish on top of the shared publisher API.
 //
 // Callers still cannot POST /v1/requests: those stay 403. Selecting a market asks discovery to
-// publish that market through the same store path a cycle uses (SEE-138).
+// publish that market through the same store path a cycle uses (SEE-138), and unpublishing one asks
+// discovery to withdraw it and not publish it again on its own.
 func Overlay(next http.Handler, token string, finder Finder, drain Drain) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/discovery/markets", authorize(token, search(finder)))
 	mux.HandleFunc("POST /v1/discovery/select", authorize(token, selectMarket(finder, drain)))
+	mux.HandleFunc("POST /v1/discovery/unpublish", authorize(token, unpublish(finder, drain)))
 	mux.Handle("/", next)
 	return mux
 }
 
-// Finder is the reconciler as this overlay uses it: search the listing, publish one market, and
-// the deployment's filters as form defaults.
+// Finder is the reconciler as this overlay uses it: search the listing, publish one market,
+// withdraw one proposal, and the deployment's filters as form defaults.
 type Finder interface {
 	Search(ctx context.Context, query discovery.Filters) ([]discovery.Preview, error)
 	Select(ctx context.Context, marketID string) (markets.Tracked, error)
+	Unpublish(ctx context.Context, proposalID string) (markets.Tracked, error)
 	Filters() discovery.Filters
 }
 
@@ -60,6 +63,7 @@ func search(finder Finder) http.HandlerFunc {
 				"state":       one.State,
 				"source_url":  one.SourceURL,
 				"published":   one.Published,
+				"dismissed":   one.Dismissed,
 			}
 			if one.Tags == nil {
 				row["tags"] = []string{}
@@ -124,6 +128,56 @@ func selectMarket(finder Finder, drain Drain) http.HandlerFunc {
 			"title":       tracked.Market.Title,
 			"state":       tracked.Market.State,
 			"signal":      tracked.Record.Signal.ProposalID,
+			"publication": tracked.Record.Publication.State(tracked.Record.Signal),
+		})
+	}
+}
+
+func unpublish(finder Finder, drain Drain) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(io.LimitReader(request.Body, 64<<10))
+		if err != nil {
+			writeJSON(writer, http.StatusBadRequest, problem{
+				Error: "bad_request", Detail: "the body could not be read",
+			})
+			return
+		}
+		var asked struct {
+			RequestID string `json:"request_id"`
+		}
+		if err := json.Unmarshal(body, &asked); err != nil {
+			writeJSON(writer, http.StatusBadRequest, problem{
+				Error: "bad_request", Detail: "the body is not this endpoint's JSON",
+			})
+			return
+		}
+		asked.RequestID = strings.TrimSpace(asked.RequestID)
+		if asked.RequestID == "" {
+			writeJSON(writer, http.StatusBadRequest, problem{
+				Error: "bad_request", Detail: "request_id names the proposal to withdraw",
+			})
+			return
+		}
+		tracked, err := finder.Unpublish(request.Context(), asked.RequestID)
+		if err != nil {
+			refuseFinder(writer, err)
+			return
+		}
+		if drain != nil {
+			if err := drain(request.Context()); err != nil {
+				writeJSON(writer, http.StatusBadGateway, problem{
+					Error: "publication_failed", Detail: err.Error(),
+				})
+				return
+			}
+		}
+		writeJSON(writer, http.StatusOK, map[string]any{
+			"market_id":   tracked.Market.MarketID,
+			"event_id":    tracked.Market.EventID,
+			"title":       tracked.Market.Title,
+			"signal":      tracked.Record.Signal.ProposalID,
+			"status":      string(tracked.Record.Signal.Status),
+			"dismissed":   tracked.Market.Dismissed,
 			"publication": tracked.Record.Publication.State(tracked.Record.Signal),
 		})
 	}
@@ -216,9 +270,17 @@ func refuseFinder(writer http.ResponseWriter, err error) {
 		writeJSON(writer, http.StatusConflict, problem{
 			Error: "busy", Detail: "a discovery cycle is already running; ask again when it has finished",
 		})
+	case errors.Is(err, discovery.ErrNotPublished):
+		writeJSON(writer, http.StatusNotFound, problem{
+			Error: "not_published", Detail: err.Error(),
+		})
 	case errors.Is(err, discovery.ErrNotTradeable):
 		writeJSON(writer, http.StatusConflict, problem{
 			Error: "not_tradeable", Detail: err.Error(),
+		})
+	case errors.Is(err, discovery.ErrIlliquid):
+		writeJSON(writer, http.StatusConflict, problem{
+			Error: "no_liquidity", Detail: err.Error(),
 		})
 	default:
 		var fault *jupiterFault

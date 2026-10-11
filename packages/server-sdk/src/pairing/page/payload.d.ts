@@ -3,6 +3,7 @@ export const MAX_FRAGMENT_BYTES: number;
 export const MAX_DISPLAY_CHARS: number;
 export const REPLACEMENT_WARNING: string;
 export const CONDITIONAL_REPLACEMENT_WARNING: string;
+export const COMPACT_FRAGMENT_PREFIX: string;
 
 export interface PairingFragmentPayload {
   readonly v: 1;
@@ -31,7 +32,15 @@ export type ParsedCustomUri =
   | { readonly ok: false; readonly reason: string };
 
 export function encodePairingFragment(payload: PairingFragmentPayload): string;
-export function decodePairingFragment(fragment: string): FragmentDecode;
+export function encodeCompactPairingFragment(
+  code: PairingCodeFields,
+  expiresAt: string,
+  replacing: boolean,
+): string;
+export function decodePairingFragment(
+  fragment: string,
+  origin?: string,
+): FragmentDecode;
 export function parseCustomPairingUri(text: string): ParsedCustomUri;
 export function parseLegacyPairingQuery(search: string): ParsedCustomUri;
 export function pairingUriFromCode(code: PairingCodeFields): string;

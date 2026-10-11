@@ -45,6 +45,7 @@ import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.inbox.PendingItem
 import io.github.brrenat.seekervault.inbox.RequestAssessment
 import io.github.brrenat.seekervault.inbox.key
+import io.github.brrenat.seekervault.inbox.visibleText
 import io.github.brrenat.seekervault.request.v1.ActionRequest
 import io.github.brrenat.seekervault.request.v2.Request
 import io.github.brrenat.seekervault.request.v2.Value
@@ -455,6 +456,7 @@ private fun PendingItem.toHomeCarouselItem(
             HomeCapability.Swap -> RequestTileKind.SwapSignal
             HomeCapability.Signature -> RequestTileKind.SignatureRequest
             HomeCapability.Transfer -> RequestTileKind.Transfer
+            HomeCapability.Staking -> RequestTileKind.Staking
             else -> RequestTileKind.Acknowledgement
         }
     // The question is the title; a request with no question is titled by its amount and unit
@@ -463,11 +465,21 @@ private fun PendingItem.toHomeCarouselItem(
         when (kind) {
             RequestTileKind.Acknowledgement ->
                 request.parameter("text") ?: request.presentation.title
-            RequestTileKind.PredictionSignal,
-            RequestTileKind.SwapSignal -> request.presentation.title
-            RequestTileKind.SignatureRequest -> "${request.messageByteCount()} ${HomeCopy.Bytes}"
+            RequestTileKind.PredictionSignal -> request.presentation.title
+            // A trade signal is titled by what its publisher says about it, the same words its
+            // review shows under "What the publisher says"; the operation's own name is the
+            // header's.
+            RequestTileKind.SwapSignal ->
+                (this as? PendingItem.Signal)?.record?.proposal?.note?.tileTitle()
+                    ?: request.presentation.title
+            // The text the wallet would sign, with anything invisible in it marked; a message
+            // sent as bytes has nothing readable to show, so it keeps its size.
+            RequestTileKind.SignatureRequest ->
+                request.parameter("text")?.let(::visibleText)?.tileTitle()
+                    ?: "${request.messageByteCount()} ${HomeCopy.Bytes}"
             RequestTileKind.Transfer ->
                 transferAmountAndAsset(request).toList().filterNotNull().joinToString(" ")
+            RequestTileKind.Staking -> request.presentation.title
         }
     return RequestCarouselItem(
         id = homeId(),
@@ -484,6 +496,15 @@ private fun PendingItem.toHomeCarouselItem(
     )
 }
 
+/** A publisher's note as a tile title: its first line, cut to what the tile can hold. */
+private fun String.tileTitle(): String? {
+    val line = lineSequence().map(String::trim).firstOrNull(String::isNotEmpty) ?: return null
+    return if (line.length <= TILE_NOTE_MAX_LENGTH) line
+    else line.take(TILE_NOTE_MAX_LENGTH - 1).trimEnd() + "…"
+}
+
+private const val TILE_NOTE_MAX_LENGTH = 90
+
 private fun transferAmountAndAsset(request: Request): Pair<String, String?> {
     val amount = request.parameter("amount").orEmpty()
     val native = request.parameter("asset_native_sol") == true.toString()
@@ -498,15 +519,17 @@ private fun transferAmountAndAsset(request: Request): Pair<String, String?> {
 
 /**
  * What a connected row says about its wallet (SEE-174), or null when there is nothing to say: it is
- * ready, nobody said, or the server declares no network and has no wallet to need one.
+ * ready, nobody said, or nothing needs a bound wallet. Only a direct server that declares a network
+ * signs with the connection's wallet; a feed's operations each choose theirs for the signal's
+ * network (SEE-185), and a restricted feed's missing access wallet is its access line's to say.
  */
-private fun walletLine(wallet: WalletReadiness?, declaresNetworks: Boolean): String? =
+private fun walletLine(wallet: WalletReadiness?, needsWallet: Boolean): String? =
     when (wallet) {
         null,
         is WalletReadiness.Ready,
         WalletReadiness.NoConnection -> null
         WalletReadiness.NoProfile,
-        WalletReadiness.ProfileMissing -> HomeCopy.ChooseWallet.takeIf { declaresNetworks }
+        WalletReadiness.ProfileMissing -> HomeCopy.ChooseWallet.takeIf { needsWallet }
         is WalletReadiness.NeedsReconnect -> HomeCopy.ReconnectWallet
         is WalletReadiness.NetworkUnsupported -> HomeCopy.WalletNetworkUnsupported
         is WalletReadiness.NetworksUnknown -> HomeCopy.NoNetworksDeclared
@@ -539,7 +562,8 @@ private fun Connection.toHomeServerState(
      */
     wallet: WalletReadiness? = null,
 ): HomeServerState {
-    val declaresNetworks = server.manifest?.supportedNetworks.orEmpty().isNotEmpty()
+    val needsWallet =
+        mode == ConnectionMode.Direct && server.manifest?.supportedNetworks.orEmpty().isNotEmpty()
     val liveState = directTransport(live)
     val feedState = feedTransport(feed)
     val disconnected =
@@ -639,8 +663,8 @@ private fun Connection.toHomeServerState(
                             "${HomeCopy.UpgradeForLiveUpdates} · $currentPending pending"
                         unsupported == UpdateAvailability.Incompatible ->
                             "${HomeCopy.LiveUpdatesUnusable} · $currentPending pending"
-                        walletLine(wallet, declaresNetworks) != null ->
-                            "${walletLine(wallet, declaresNetworks)} · $currentPending pending"
+                        walletLine(wallet, needsWallet) != null ->
+                            "${walletLine(wallet, needsWallet)} · $currentPending pending"
                         mode == ConnectionMode.Direct && lastCheck?.morePending == true ->
                             "Connected · more than $currentPending pending"
                         else -> "Connected · $currentPending pending"
@@ -704,6 +728,7 @@ private object HomeCapability {
     const val Swap = "swap"
     const val Signature = "sign_message"
     const val Transfer = "transfer"
+    const val Staking = "staking"
 }
 
 object HomeCopy {

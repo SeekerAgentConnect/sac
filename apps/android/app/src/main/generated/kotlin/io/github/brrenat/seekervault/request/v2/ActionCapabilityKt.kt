@@ -156,6 +156,50 @@ public object ActionCapabilityKt {
     public fun com.google.protobuf.kotlin.DslList<io.github.brrenat.seekervault.request.v2.Value, ParametersProxy>.clear() {
       _builder.clearParameters()
     }
+
+    /**
+     * ```
+     * The Solana network this action executes on (SEE-185). Required from contract version 2: the
+     * assets and markets a document names are identified by network plus address, so the same mint
+     * or market on another cluster is a different thing. One feed may publish successive documents
+     * for different networks, each within the manifest's supported_networks; a connection is never
+     * bound to one execution network. SOLANA_NETWORK_UNSPECIFIED, or a value a client does not know,
+     * leaves the document readable and not executable — never read as Mainnet or as the network of
+     * whichever wallet the owner selects.
+     * ```
+     *
+     * `.seekervault.server.v1.SolanaNetwork network = 5 [json_name = "network"];`
+     */
+    public var network: io.github.brrenat.seekervault.server.v1.SolanaNetwork
+      @kotlin.jvm.JvmName("getNetwork")
+        get() = _builder.network
+      @kotlin.jvm.JvmName("setNetwork")
+        set(value) {
+        _builder.network = value
+      }
+    public var networkValue: kotlin.Int
+      @kotlin.jvm.JvmName("getNetworkValue")
+        get() = _builder.networkValue
+      @kotlin.jvm.JvmName("setNetworkValue")
+        set(value) {
+        _builder.networkValue = value
+      }
+    /**
+     * ```
+     * The Solana network this action executes on (SEE-185). Required from contract version 2: the
+     * assets and markets a document names are identified by network plus address, so the same mint
+     * or market on another cluster is a different thing. One feed may publish successive documents
+     * for different networks, each within the manifest's supported_networks; a connection is never
+     * bound to one execution network. SOLANA_NETWORK_UNSPECIFIED, or a value a client does not know,
+     * leaves the document readable and not executable — never read as Mainnet or as the network of
+     * whichever wallet the owner selects.
+     * ```
+     *
+     * `.seekervault.server.v1.SolanaNetwork network = 5 [json_name = "network"];`
+     */
+    public fun clearNetwork() {
+      _builder.clearNetwork()
+    }
   }
 }
 public inline fun io.github.brrenat.seekervault.request.v2.ActionCapability.copy(block: `io.github.brrenat.seekervault.request.v2`.ActionCapabilityKt.Dsl.() -> kotlin.Unit): io.github.brrenat.seekervault.request.v2.ActionCapability =

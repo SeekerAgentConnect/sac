@@ -239,6 +239,11 @@ func TestAMarketIsReadDirectly(t *testing.T) {
 	if !open.Tradeable() || open.State() != "open" || open.Title == "" {
 		t.Fatalf("the open market read as %+v", open)
 	}
+	if open.BuyYes != 500000 || open.SellYes != 490000 || open.BuyNo != 510000 ||
+		open.SellNo != 500000 {
+		t.Fatalf("quoted prices read as %d/%d and %d/%d", open.BuyYes, open.SellYes, open.BuyNo,
+			open.SellNo)
+	}
 
 	closed, err := held.Market(context.Background(), "POLY-4052423")
 	if err != nil {
@@ -254,6 +259,26 @@ func TestAMarketIsReadDirectly(t *testing.T) {
 	case closed.State() != "resolved":
 		t.Fatalf("state %q: a settled market is resolved, whatever its status says",
 			closed.State())
+	}
+}
+
+// An event read on its own carries what a market answer does not: its title, bucket and tags.
+func TestAnEventIsReadDirectly(t *testing.T) {
+	answers := served(t)
+	held := client(t, answers.url)
+	event, err := held.Event(context.Background(), "POLY-403296")
+	if err != nil {
+		t.Fatal(err)
+	}
+	switch {
+	case event.Title != "NBA: Stephen Curry to leave Warriors?":
+		t.Fatalf("title %q", event.Title)
+	case event.Category != "sports":
+		t.Fatalf("category %q", event.Category)
+	case len(event.Markets) != 1 || event.Markets[0].MarketID != "POLY-2044124":
+		t.Fatalf("markets %+v", event.Markets)
+	case event.Markets[0].EventID != "POLY-403296":
+		t.Fatalf("market event %q", event.Markets[0].EventID)
 	}
 }
 

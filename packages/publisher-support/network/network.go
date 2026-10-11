@@ -9,16 +9,18 @@
 // list — so a network named here that the template does not run is an owner signing a transaction
 // that cannot land, and a network missing from here is one no owner can use.
 //
-// It is a different question from the environment (packages/publisher-support/environment).
-// Production is not Mainnet and sandbox is not Devnet: a sandbox deployment simulates against
-// Mainnet data, and a production one could execute on Devnet. The two are configured, published
-// and validated separately so that neither can be read as the other.
+// It is capability information, never an active-network selection (SEE-185). Each signal names
+// its own network ([signals.Signal.Network], request.v2 ActionCapability.network), which must be
+// one listed here; a feed that declares several may publish successive signals for each of them,
+// and nothing ever reads a signal's network off this list, even when it has only one entry. A
+// deployment that declares none therefore publishes no signal at all: there is no network-less
+// signal to publish any more.
 //
-// Like the environment it is one type in one package, because the configuration that reads it,
-// the manifest that publishes it and the API that answers it must spell each network the same way,
-// and like the environment a value that did not come from [Parse] has no [Network.Wire] value: it
-// is published as unspecified, which the gateway refuses (GATEWAY_PROBLEM_BAD_NETWORK), rather
-// than as Mainnet.
+// It is one type in one package, because the configuration that reads it, the manifest that
+// publishes it, the signals that declare one and the API that answers it must spell each network
+// the same way, and a value that did not come from [Parse] has no [Network.Wire] value: it is
+// published as unspecified, which the gateway refuses (GATEWAY_PROBLEM_BAD_NETWORK), rather than
+// as Mainnet.
 package network
 
 import (

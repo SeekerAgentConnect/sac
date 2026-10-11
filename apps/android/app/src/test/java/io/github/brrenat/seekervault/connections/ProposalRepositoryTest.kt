@@ -25,6 +25,7 @@ import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
 import io.github.brrenat.seekervault.proposals.AMOUNT
 import io.github.brrenat.seekervault.proposals.BindingProblem
+import io.github.brrenat.seekervault.proposals.NetworkReason
 import io.github.brrenat.seekervault.proposals.PROPOSAL_A
 import io.github.brrenat.seekervault.proposals.PROPOSAL_B
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
@@ -34,7 +35,9 @@ import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.WALLET
 import io.github.brrenat.seekervault.proposals.binding
 import io.github.brrenat.seekervault.proposals.choice
+import io.github.brrenat.seekervault.proposals.delivered
 import io.github.brrenat.seekervault.proposals.hash
+import io.github.brrenat.seekervault.proposals.signal
 import io.github.brrenat.seekervault.proposals.wireProposal
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -128,7 +131,7 @@ class ProposalRepositoryTest {
             if (knownSequence != 0L && knownSequence == sequence) {
                 return FeedSnapshot.Unchanged(sequence)
             }
-            return FeedSnapshot.Read(sequence, answers)
+            return delivered(sequence, answers)
         }
     }
 
@@ -192,13 +195,13 @@ class ProposalRepositoryTest {
         val arrivals = ArrivalLedger().apply { onForeground() }
         val repository = repository(arrivals = arrivals)
 
-        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, signal(wireProposal()))
         assertEquals(setOf(ReviewIdentity.Signal(FEED, PROPOSAL_A)), arrivals.live.value)
 
         arrivals.onBackground()
         arrivals.onForeground()
-        repository.apply(FEED, wireProposal())
-        repository.apply(FEED, wireProposal(revision = 2))
+        repository.apply(FEED, signal(wireProposal()))
+        repository.apply(FEED, signal(wireProposal(revision = 2)))
         assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
     }
 
@@ -207,13 +210,13 @@ class ProposalRepositoryTest {
         val arrivals = ArrivalLedger().apply { onForeground() }
         val repository = repository(arrivals = arrivals)
 
-        repository.apply(FEED, wireProposal(), FeedDelivery.Replayed)
+        repository.apply(FEED, signal(wireProposal()), FeedDelivery.Replayed)
         assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
 
         feed.answers = listOf(wireProposal())
         repository.refresh(FEED)
         // Replayed across a reconnect later in the same session: what was missed is news.
-        repository.apply(FEED, wireProposal(proposalId = PROPOSAL_B), FeedDelivery.Replayed)
+        repository.apply(FEED, signal(wireProposal(proposalId = PROPOSAL_B)), FeedDelivery.Replayed)
         assertEquals(setOf(ReviewIdentity.Signal(FEED, PROPOSAL_B)), arrivals.live.value)
 
         // And after the app has been away, the first read is catching up again.
@@ -236,12 +239,12 @@ class ProposalRepositoryTest {
         assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
 
         // A replay of backlog is still catching up.
-        repository.apply(FEED, wireProposal(), FeedDelivery.Replayed)
+        repository.apply(FEED, signal(wireProposal()), FeedDelivery.Replayed)
         assertEquals(emptySet<ReviewIdentity>(), arrivals.late.value)
 
         // The live event for the one published during the read.
         assertTrue(
-            repository.apply(FEED, wireProposal(proposalId = PROPOSAL_B))
+            repository.apply(FEED, signal(wireProposal(proposalId = PROPOSAL_B)))
                 is ProposalApplied.Unchanged
         )
         assertEquals(setOf(ReviewIdentity.Signal(FEED, PROPOSAL_B)), arrivals.late.value)
@@ -252,7 +255,7 @@ class ProposalRepositoryTest {
         // only a duplicate.
         arrivals.onBackground()
         arrivals.onForeground()
-        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, signal(wireProposal()))
         assertEquals(emptySet<ReviewIdentity>(), arrivals.late.value)
         assertEquals(emptySet<ReviewIdentity>(), arrivals.live.value)
     }
@@ -325,7 +328,7 @@ class ProposalRepositoryTest {
 
     @Test
     fun aGatewayThatCouldNotBeReachedLeavesEverythingAsItWas() = runBlocking {
-        repository.apply(FEED, wireProposal(revision = 2))
+        repository.apply(FEED, signal(wireProposal(revision = 2)))
         feed.failure = GatewayException.Kind.Unreachable
 
         assertEquals(
@@ -351,23 +354,26 @@ class ProposalRepositoryTest {
 
     @Test
     fun aRevisionBelowTheOneHeldIsRefusedAndTheHeldTermsStand() = runBlocking {
-        repository.apply(FEED, wireProposal(revision = 5, values = listOf("price" to "5")))
+        repository.apply(FEED, signal(wireProposal(revision = 5, values = listOf("price" to "5"))))
 
         assertEquals(
             ProposalApplied.Refused(ProposalProblem.StaleRevision),
-            repository.apply(FEED, wireProposal(revision = 4, values = listOf("price" to "4"))),
+            repository.apply(
+                FEED,
+                signal(wireProposal(revision = 4, values = listOf("price" to "4"))),
+            ),
         )
         assertEquals("5", held().proposal.value("price"))
     }
 
     @Test
     fun aHigherRevisionMovesTheTermsAndLeavesTheOwnersReviewBehind() = runBlocking {
-        repository.apply(FEED, wireProposal(revision = 1, values = listOf("price" to "1")))
+        repository.apply(FEED, signal(wireProposal(revision = 1, values = listOf("price" to "1"))))
         val chose = choice(1_000_000u)
         repository.review(FEED, PROPOSAL_A, chose)
         assertEquals(1L, held().review?.revision)
 
-        repository.apply(FEED, wireProposal(revision = 2, values = listOf("price" to "2")))
+        repository.apply(FEED, signal(wireProposal(revision = 2, values = listOf("price" to "2"))))
 
         // The publisher's half moved; this device's half stayed exactly where it was, which is what
         // makes the older review detectably stale rather than silently applied to the new terms.
@@ -386,12 +392,15 @@ class ProposalRepositoryTest {
 
     @Test
     fun termsThatChangedWithoutTheRevisionAreActedOnNoFurther() = runBlocking {
-        repository.apply(FEED, wireProposal(revision = 2, values = listOf("price" to "1")))
+        repository.apply(FEED, signal(wireProposal(revision = 2, values = listOf("price" to "1"))))
         repository.review(FEED, PROPOSAL_A, choice(1_000_000u))
 
         assertEquals(
             ProposalApplied.Refused(ProposalProblem.ChangedWithoutRevision),
-            repository.apply(FEED, wireProposal(revision = 2, values = listOf("price" to "2"))),
+            repository.apply(
+                FEED,
+                signal(wireProposal(revision = 2, values = listOf("price" to "2"))),
+            ),
         )
 
         // The terms the phone validated are kept — this device's own record must not be thrown
@@ -412,7 +421,7 @@ class ProposalRepositoryTest {
         )
 
         // And a higher revision is the publisher saying something new, judged on its own.
-        repository.apply(FEED, wireProposal(revision = 3, values = listOf("price" to "3")))
+        repository.apply(FEED, signal(wireProposal(revision = 3, values = listOf("price" to "3"))))
         assertNull(held().refused)
         assertEquals(ProposalStanding.Open, repository.standing(held()))
     }
@@ -423,7 +432,7 @@ class ProposalRepositoryTest {
             ProposalApplied.Refused(ProposalProblem.OtherServer),
             repository.apply(
                 FEED,
-                wireProposal(serverId = SERVER_A, channel = channelFor(SERVER_A)),
+                signal(wireProposal(serverId = SERVER_A, channel = channelFor(SERVER_A))),
             ),
         )
         assertEquals(emptyList<ProposalRecord>(), repository.proposalsFor(FEED))
@@ -431,14 +440,14 @@ class ProposalRepositoryTest {
 
     @Test
     fun aDismissalIsFinalForTheProposalAndNotJustForItsRevision() = runBlocking {
-        repository.apply(FEED, wireProposal(revision = 1))
+        repository.apply(FEED, signal(wireProposal(revision = 1)))
         repository.dismiss(FEED, PROPOSAL_A)
         val dismissedAt = clock
         clock = clock.plusSeconds(60)
 
         // A publisher that could re-open a dismissal by changing a number would have a way to keep
         // putting the same proposal in front of someone who said no.
-        repository.apply(FEED, wireProposal(revision = 9))
+        repository.apply(FEED, signal(wireProposal(revision = 9)))
         repository.dismiss(FEED, PROPOSAL_A)
 
         assertEquals(1L, held().dismissed?.revision)
@@ -448,7 +457,7 @@ class ProposalRepositoryTest {
 
     @Test
     fun oneExecutionPerProposalHoweverManyTapsThereAre() = runBlocking {
-        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, signal(wireProposal()))
         val chose = choice(1_000_000u)
         repository.review(FEED, PROPOSAL_A, chose)
         val bound = binding(held().proposal, chose)
@@ -466,7 +475,7 @@ class ProposalRepositoryTest {
 
     @Test
     fun aReviewAfterAnExecutionCannotContradictWhatWasBound() = runBlocking {
-        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, signal(wireProposal()))
         val chose = choice(1_000_000u)
         repository.review(FEED, PROPOSAL_A, chose)
         repository.beginExecution(FEED, PROPOSAL_A, binding(held().proposal, chose), wallet)
@@ -478,7 +487,7 @@ class ProposalRepositoryTest {
 
     @Test
     fun theWalletsAnswerIsRecordedOnceAndTheFirstWordStands() = runBlocking {
-        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, signal(wireProposal()))
         val chose = choice(1_000_000u)
         repository.review(FEED, PROPOSAL_A, chose)
         repository.beginExecution(FEED, PROPOSAL_A, binding(held().proposal, chose), wallet)
@@ -492,7 +501,7 @@ class ProposalRepositoryTest {
 
     @Test
     fun aSentOperationsSignatureIsHandedToTheTrackerAgainAtStartup() = runBlocking {
-        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, signal(wireProposal()))
         val chose = choice(1_000_000u)
         repository.review(FEED, PROPOSAL_A, chose)
         repository.beginExecution(FEED, PROPOSAL_A, binding(held().proposal, chose), wallet)
@@ -509,6 +518,10 @@ class ProposalRepositoryTest {
 
                 override fun abandoned(key: RequestKey) = Unit
 
+                override fun lost(key: RequestKey) = Unit
+
+                override fun forget(key: RequestKey) = Unit
+
                 override fun recovered(key: RequestKey, signature: ByteArray, at: Instant) {
                     told += key to signature.toList()
                 }
@@ -520,7 +533,7 @@ class ProposalRepositoryTest {
 
     @Test
     fun anOperationTheAppClosedOnIsUnresolvedAndNeverAFailure() = runBlocking {
-        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, signal(wireProposal()))
         val chose = choice(1_000_000u)
         repository.review(FEED, PROPOSAL_A, chose)
         repository.beginExecution(FEED, PROPOSAL_A, binding(held().proposal, chose), wallet)
@@ -540,21 +553,35 @@ class ProposalRepositoryTest {
     }
 
     @Test
-    fun aRehearsalTheAppClosedOnIsNeverCountedAsSpending() = runBlocking {
-        // A sandbox feed: the binding is begun, and the process dies before the rehearsal is
-        // recorded as Simulated (SEE-181). The restart turns the Pending execution Unknown.
-        connections =
-            listOf(
-                publisher.copy(
-                    environment = PluginEnvironment.Sandbox,
-                    server =
-                        ServerRecord.Known(
-                            manifest.copy(environments = setOf(PluginEnvironment.Sandbox))
-                        ),
-                ),
-                sidecar,
-            )
+    fun aSignalThatDeclaresNoNetworkOrOneItsFeedDoesNotIsHeldAndNeverExecuted() = runBlocking {
+        // SEE-185: a legacy document is read and kept as one that declares no network.
         repository.apply(FEED, wireProposal())
+        assertEquals(
+            ProposalStanding.NetworkUnusable(NetworkReason.Missing),
+            repository.standing(held()),
+        )
+        val chose = choice(1_000_000u)
+        repository.review(FEED, PROPOSAL_A, chose)
+        assertEquals(
+            ExecutionOutcome.Refused(BindingProblem.NetworkUnusable),
+            repository.beginExecution(FEED, PROPOSAL_A, binding(held().proposal, chose), wallet),
+        )
+
+        // A devnet signal on a feed that declares only mainnet: readable, not executable.
+        repository.apply(FEED, signal(wireProposal(revision = 2), Network.NETWORK_DEVNET))
+        assertEquals(
+            ProposalStanding.NetworkUnusable(NetworkReason.NotDeclared),
+            repository.standing(held()),
+        )
+        assertNull(held().execution)
+    }
+
+    @Test
+    fun aPreviewConsumesNothingIsNeverSpendingAndCannotBeginAnExecution() = runBlocking {
+        // SEE-185: a preview is recorded beside the proposal, never as its execution. Nothing was
+        // signed or sent, so the proposal still stands, nothing is counted against a limit, and a
+        // restart finds no execution to turn Unknown.
+        repository.apply(FEED, signal())
         val chose = choice(1_000_000u)
         repository.review(FEED, PROPOSAL_A, chose)
         val usdc = PolicyAsset(Network.NETWORK_MAINNET, USDC_MINT)
@@ -569,12 +596,33 @@ class ProposalRepositoryTest {
                             1_000_000u,
                         )
                 )
-        assertTrue(
-            repository.beginExecution(FEED, PROPOSAL_A, bound, wallet) is ExecutionOutcome.Begun
+        // A preview binding is never a beginning, and an execution binding is never a preview.
+        assertEquals(
+            ExecutionOutcome.Refused(BindingProblem.NothingPrepared),
+            repository.beginExecution(FEED, PROPOSAL_A, bound, wallet),
         )
+        assertEquals(
+            ExecutionOutcome.Refused(BindingProblem.NothingPrepared),
+            repository.recordPreview(
+                FEED,
+                PROPOSAL_A,
+                bound.copy(environment = PluginEnvironment.Production),
+                wallet,
+            ),
+        )
+        assertTrue(
+            repository.recordPreview(FEED, PROPOSAL_A, bound, wallet) is ExecutionOutcome.Begun
+        )
+        assertNull(held().execution)
+        assertEquals(bound, held().preview?.binding)
+        assertEquals(ProposalStanding.Open, repository.standing(held()))
+
         val restarted = repository()
         restarted.load()
-        assertEquals(ActivityOutcome.Unknown, history.records.value.single().outcome)
+        val again = checkNotNull(restarted.proposal(FEED, PROPOSAL_A))
+        assertNull(again.execution)
+        assertEquals(bound, again.preview?.binding)
+        assertEquals(ProposalStanding.Open, restarted.standing(again))
 
         // The next launch counts from disk. No wallet was asked, so there is no exposure.
         val evaluator =
@@ -589,11 +637,21 @@ class ProposalRepositoryTest {
             DailyTotal.none(GlobalSpendScope(WALLET, usdc), day),
             evaluator.spentToday(GlobalSpendScope(WALLET, usdc)),
         )
+
+        // And the real execution is still the owner's to begin, from a production binding.
+        assertTrue(
+            repository.beginExecution(
+                FEED,
+                PROPOSAL_A,
+                bound.copy(environment = PluginEnvironment.Production),
+                wallet,
+            ) is ExecutionOutcome.Begun
+        )
     }
 
     @Test
     fun anExecutionIsWrittenToTheOwnersOwnHistory() = runBlocking {
-        repository.apply(FEED, wireProposal(revision = 6))
+        repository.apply(FEED, signal(wireProposal(revision = 6)))
         val chose = choice(1_000_000u)
         repository.review(FEED, PROPOSAL_A, chose)
         repository.beginExecution(FEED, PROPOSAL_A, binding(held().proposal, chose), wallet)
@@ -616,7 +674,7 @@ class ProposalRepositoryTest {
 
     @Test
     fun aDismissalOrAReviewIsNotSomethingThisPhoneDid() = runBlocking {
-        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, signal(wireProposal()))
         repository.review(FEED, PROPOSAL_A, choice(1_000_000u))
         repository.dismiss(FEED, PROPOSAL_A)
 
@@ -627,7 +685,7 @@ class ProposalRepositoryTest {
     @Test
     fun nothingIsExecutedForAServerThisBuildDoesNotSupport() = runBlocking {
         val bare = repository(plugins = ProviderRegistry.of())
-        bare.apply(FEED, wireProposal())
+        bare.apply(FEED, signal(wireProposal()))
         val chose = choice(1_000_000u)
         bare.review(FEED, PROPOSAL_A, chose)
 
@@ -644,14 +702,14 @@ class ProposalRepositoryTest {
 
     @Test
     fun aWithdrawnProposalIsStillReadAndNoLongerActedOn() = runBlocking {
-        repository.apply(FEED, wireProposal(revision = 1))
+        repository.apply(FEED, signal(wireProposal(revision = 1)))
         val chose = choice(1_000_000u)
         repository.review(FEED, PROPOSAL_A, chose)
         val terms = held().proposal
 
         repository.apply(
             FEED,
-            wireProposal(revision = 2, status = WireStatus.PROPOSAL_STATUS_CANCELLED),
+            signal(wireProposal(revision = 2, status = WireStatus.PROPOSAL_STATUS_CANCELLED)),
         )
 
         assertEquals(ProposalStanding.Cancelled, repository.standing(held()))
@@ -663,7 +721,7 @@ class ProposalRepositoryTest {
 
     @Test
     fun aProposalWhoseFeedIsGoneIsForgottenAndItsActivityIsNot() = runBlocking {
-        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, signal(wireProposal()))
         val chose = choice(1_000_000u)
         repository.review(FEED, PROPOSAL_A, chose)
         repository.beginExecution(FEED, PROPOSAL_A, binding(held().proposal, chose), wallet)
@@ -696,10 +754,10 @@ class ProposalRepositoryTest {
                     ),
             )
         connections = listOf(publisher, other, sidecar)
-        repository.apply(FEED, wireProposal())
+        repository.apply(FEED, signal(wireProposal()))
         repository.apply(
             OTHER_FEED,
-            wireProposal(serverId = SERVER_A, channel = channelFor(SERVER_A)),
+            signal(wireProposal(serverId = SERVER_A, channel = channelFor(SERVER_A))),
         )
 
         assertEquals(1, repository.proposalsFor(FEED).size)
@@ -727,7 +785,8 @@ class ProposalRepositoryTest {
                 mode = ConnectionMode.GatewayFeed,
                 reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_B)),
                 required = listOf(PluginRequirement(PluginId(SWAP_PLUGIN), 1..1)),
-                environments = setOf(PluginEnvironment.Production),
+                // Mainnet, the network every signal here declares (SEE-185).
+                supportedNetworks = setOf(WalletNetwork.Mainnet),
             )
 
         val publisher =

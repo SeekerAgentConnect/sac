@@ -102,7 +102,7 @@ Plugins declare parameters, obtain execution data and inspect bytes as typed fac
 
 Acknowledgement, message signing and direct transfers retain their core execution paths. A plugin being present does not mean every connection mode supports every action.
 
-Sandbox and Production are execution environments, separate from the Solana network. Sandbox uses review and simulation without signing or submitting. The shipped feed demos use sandbox; this is not a Jupiter devnet deployment. Direct requests expecting actual signatures must not receive simulated success.
+Execute and preview are a per-operation choice on the phone, separate from the Solana network (SEE-185). **Preview without sending** prepares, inspects and checks the real transaction and stops before the wallet; nothing is signed or submitted, and the signal stays open. No publisher, manifest or deployment declares sandbox or production, and a preview is not a Jupiter devnet deployment. Each feed signal names its own network. Direct requests expecting actual signatures are always executed and never receive a preview.
 
 See [client plugins](wiki/client-plugins.md), [policy](policy.md) and [environments](wiki/environments.md) for the detailed boundaries.
 

@@ -30,6 +30,13 @@ func TestOperatorsLogInAndSeeTheFeedReference(t *testing.T) {
 	if !strings.Contains(home.body, "POLY-2589813") {
 		t.Fatalf("missing published market: %s", home.body)
 	}
+	// The networks the manifest declares, and no environment: a deployment is neither sandbox
+	// nor production any more (SEE-185).
+	if !strings.Contains(home.body, "<code>mainnet</code>") ||
+		strings.Contains(strings.ToLower(home.body), "sandbox") {
+		t.Fatalf("the sidebar does not show the declared networks, or still says sandbox: %s",
+			home.body)
+	}
 	if strings.Contains(home.body, token) || strings.Contains(home.body, "Authorization") {
 		t.Fatalf("API token leaked into HTML: %s", home.body)
 	}
@@ -175,6 +182,10 @@ func TestSearchAndSelectGoThroughDiscovery(t *testing.T) {
 	if !strings.Contains(searched.body, "Showing up to 10 matching markets") {
 		t.Fatalf("missing list cap: %s", searched.body)
 	}
+	if !strings.Contains(searched.body, `<script type="application/json" id="market-results">[{"MarketID":"POLY-999"`) ||
+		!strings.Contains(searched.body, "data-clear-markets") {
+		t.Fatalf("missing the saved search: %s", searched.body)
+	}
 	if !strings.Contains(searched.body, `data-busy="Searching…"`) ||
 		!strings.Contains(searched.body, "busy-mask") {
 		t.Fatalf("missing loading state: %s", searched.body)
@@ -277,6 +288,33 @@ func TestTheStylesheetScriptAndFontsComeOutOfTheBinary(t *testing.T) {
 	}
 }
 
+func TestUnpublishGoesThroughDiscovery(t *testing.T) {
+	ui, stub := startUI(t, nil)
+	logged := login(t, ui, "judge1", "secret")
+	home := get(t, ui, logged, "/trader")
+	if !strings.Contains(home.body, `action="/trader/unpublish"`) ||
+		!strings.Contains(home.body, `data-open-market="POLY-2589813"`) {
+		t.Fatalf("missing unpublish: %s", home.body)
+	}
+	if !strings.Contains(home.body,
+		`href="/trader?category=sports&amp;keywords=nba&amp;search=1&amp;source=polymarket&amp;state=open#market-search"`) {
+		t.Fatalf("missing the NBA preset: %s", home.body)
+	}
+	unpublished := post(t, ui, logged, "/trader/unpublish", url.Values{
+		"request_id": {"8c9d0e1f-2a3b-4c5d-8e6f-7a8b9c0d1e2f"},
+	})
+	if unpublished.status != http.StatusSeeOther ||
+		unpublished.header.Get("Location") != "/trader?ok=unpublished" {
+		t.Fatalf("unpublish %d %s", unpublished.status, unpublished.header.Get("Location"))
+	}
+	if stub.lastMethod != http.MethodPost || stub.lastPath != "/v1/discovery/unpublish" {
+		t.Fatalf("unpublish called %s %s", stub.lastMethod, stub.lastPath)
+	}
+	if !strings.Contains(string(stub.lastBody), `"request_id":"8c9d0e1f-2a3b-4c5d-8e6f-7a8b9c0d1e2f"`) {
+		t.Fatalf("unpublish body %s", stub.lastBody)
+	}
+}
+
 type stubAPI struct {
 	mu         sync.Mutex
 	lastAuth   string
@@ -321,7 +359,7 @@ func (s *stubAPI) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	case request.URL.Path == "/v1/manifest":
 		_ = json.NewEncoder(writer).Encode(map[string]any{
 			"reference": "seekervault://feed?v=1&gateway=https%3A%2F%2Ffeeds.example.com&server=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-			"manifest":  map[string]any{"environments": []string{"sandbox"}},
+			"manifest":  map[string]any{"supported_networks": []string{"mainnet"}},
 		})
 	case request.URL.Path == "/v1/discovery":
 		_ = json.NewEncoder(writer).Encode(map[string]any{

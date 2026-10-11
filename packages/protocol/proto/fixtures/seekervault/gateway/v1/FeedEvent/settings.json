@@ -22,10 +22,6 @@
         "maxContract": 2
       }
     ],
-    "environments": [
-      "SERVER_ENVIRONMENT_PRODUCTION",
-      "SERVER_ENVIRONMENT_SANDBOX"
-    ],
     "displayName": "Копи-трейдинг 📈"
   }
 }

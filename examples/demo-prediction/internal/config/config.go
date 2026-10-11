@@ -1,7 +1,7 @@
 // Package config is the Prediction demo's own half of a deployment: the provider it reads, the
 // filters its operator chose, and the deposit terms every signal it publishes carries.
 //
-// Everything both demos need — the publisher's identity, the gateway, the environment, the
+// Everything both demos need — the publisher's identity, the gateway, its networks, the
 // database, the API and its token — is the support library's Config, read by the same code in both
 // demos so that a secret or a bad number is reported identically wherever it is set
 // (packages/publisher-support/config). This package adds the settings only a publisher that discovers its
@@ -16,7 +16,6 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/demo-prediction/internal/discovery"
 	"github.com/BrRenat/SeekerAgentWallet/demo-prediction/internal/jupiter"
 	support "github.com/BrRenat/SeekerAgentWallet/publisher-support/config"
-	"github.com/BrRenat/SeekerAgentWallet/publisher-support/environment"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/network"
 	"github.com/BrRenat/SeekerAgentWallet/publisher-support/signals"
 )
@@ -28,7 +27,7 @@ import (
 // It is beside [Config] rather than inside it because the two templates are two deployments. A
 // CopyTrading publisher has no provider and no filters; a Prediction publisher has both, and no
 // caller of its API may write a signal. Everything both need — the publisher's identity, the
-// gateway, the environment, the database, the API and its token — is [Config]'s, and is read the
+// gateway, its networks, the database, the API and its token — is [Config]'s, and is read the
 // same way by the same code.
 type Prediction struct {
 	// The provider's origin, and the key for it when a deployment has one. The key goes in one
@@ -61,6 +60,10 @@ const (
 	DefaultMostCloseIn     = 30 * 24 * 60 // minutes: a month
 	DefaultLifetimeHours   = 7 * 24
 	DefaultProviderTimeout = 15 * time.Second
+	// DefaultMostSpread is the widest buy/sell gap, in cents, that still counts as a market an
+	// owner can leave: the median listed side is quoted a cent apart, and one in ten wider than
+	// twelve.
+	DefaultMostSpread = 5
 	// MostNoteBytes is how much prose an operator may put above the generated line in every note.
 	// The rest of the note is the provider's wording and the boundary, and all of it together has
 	// to fit in what a proposal carries.
@@ -72,6 +75,12 @@ const (
 // none, and cannot declare a network the provider does not trade on
 // (PUBLISHER_SUPPORTED_NETWORKS, docs/wiki/prediction-template.md).
 var Runs = support.Template{Networks: []network.Network{network.Mainnet}}
+
+// ClosedWarning is the line a deployment with PREDICTION_STATE=any logs at startup.
+const ClosedWarning = "PREDICTION_STATE=any publishes closed, cancelled and settled markets too: " +
+	"every phone sees them as Mainnet signals the provider will not take an order for, so none " +
+	"of them can be executed. Use it only to exercise the closure path, and set " +
+	"PREDICTION_STATE=open for a feed people act on"
 
 // LoadPrediction reads the environment and returns both halves of a Prediction deployment, or every
 // problem it found in either of them.
@@ -147,7 +156,7 @@ func LoadPrediction(lookup support.Lookup) (*support.Config, *Prediction, []stri
 		if len([]rune(keyword)) < 2 || !signals.Printable(keyword, 64, false) {
 			read.Note("PREDICTION_KEYWORDS must each be 2 to 64 characters of printable text on "+
 				"one line; %q is not. They are matched against the title, the bucket, the tags "+
-				"and the market's own title, case-insensitively, as substrings", keyword)
+				"and the market's own title, case-insensitively, at the start of a word", keyword)
 		}
 	}
 
@@ -182,22 +191,48 @@ func LoadPrediction(lookup support.Lookup) (*support.Config, *Prediction, []stri
 	held.Filters.MostChecks = read.Whole("PREDICTION_MOST_CHECKS", DefaultMostChecks, 0, 200,
 		"it is how many tracked markets one cycle asks the provider about directly")
 
-	// The one filter with a rule about the environment attached to it. Publishing a market the
-	// provider will not take an order for is a sandbox exercise — the order is refused on the
-	// phone — and the way it reaches production is a copied `.env`.
+	// The one filter with a rule attached to it. Until SEE-185 `any` was refused in production
+	// and allowed in sandbox, because publishing a market the provider will not take an order for
+	// is an exercise of the closure path rather than a proposal, and the way it reached real money
+	// was a copied `.env`. There is no production or sandbox deployment any more — whether an
+	// operation is previewed or executed is each owner's choice on the phone — so there is nothing
+	// left for the rule to be about, and refusing `any` everywhere would remove the exercise.
+	//
+	// What remains true is what `any` publishes: Mainnet signals for markets the provider refuses
+	// an order for, which no phone can execute. That costs nobody money — the order is refused,
+	// and nothing is signed for it — so it is allowed, and said at startup, in the same one-line
+	// warning a retired setting gets, where an operator who copied the line by accident will see it.
 	switch state := strings.ToLower(read.Text("PREDICTION_STATE", "open")); state {
 	case "open":
 	case "any":
 		held.Filters.Closed = true
-		if config != nil && config.Environment == environment.Production {
-			read.Note("PREDICTION_STATE=any is refused in production: it publishes markets the " +
-				"provider will not take an order for, which every phone then refuses. Run it " +
-				"with PUBLISHER_ENVIRONMENT=sandbox, as a deliberate exercise of the closure " +
-				"path")
+		if config != nil {
+			config.Warnings = append(config.Warnings, ClosedWarning)
 		}
 	default:
 		read.Note("PREDICTION_STATE must be open (only markets the provider would take an order " +
-			"for) or any (also closed, cancelled and settled markets, in sandbox only)")
+			"for) or any (also closed, cancelled and settled markets, to exercise the closure " +
+			"path)")
+	}
+
+	held.Filters.MostSpread = int64(read.Whole("PREDICTION_MOST_SPREAD_CENTS", DefaultMostSpread,
+		1, 99, "it is the widest gap between buying a side and selling it back that still counts "+
+			"as a market an owner could get out of")) * jupiter.OneDollar / 100
+	switch outcomes := strings.ToLower(read.Text("PREDICTION_OUTCOMES", "two")); outcomes {
+	case "two":
+		held.Filters.TwoOutcomes = true
+	case "any":
+	default:
+		read.Note("PREDICTION_OUTCOMES must be two (only events that are one yes-or-no " +
+			"question) or any (also events of several outcome markets)")
+	}
+	switch prices := strings.ToLower(read.Text("PREDICTION_CRYPTO_PRICES", "exclude")); prices {
+	case "exclude":
+		held.Filters.NoCryptoPrices = true
+	case "include":
+	default:
+		read.Note("PREDICTION_CRYPTO_PRICES must be exclude (no crypto event about a token's " +
+			"price) or include")
 	}
 
 	held.Deposit = discovery.Deposit{

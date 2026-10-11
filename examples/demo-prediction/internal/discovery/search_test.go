@@ -3,6 +3,7 @@ package discovery_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,12 +107,60 @@ func TestSelectRefusesAMarketThatCannotBeTraded(t *testing.T) {
 	}
 }
 
-func TestSelectIsBusyWhileACycleRuns(t *testing.T) {
+// A selected market is titled by its event, read from the provider: a yes-or-no market's own title is
+// just "Yes", and a proposal named by it alone said nothing (the Curry report, 2026-10-11).
+func TestSelectTitlesTheProposalByItsEvent(t *testing.T) {
+	chosen := market("POLY-2044124", noon.Add(72*time.Hour))
+	chosen.EventID, chosen.Title = "POLY-403296", "Yes"
+	provider := &source{
+		market: func(string) (jupiter.Market, error) { return chosen, nil },
+		event: func(id string) (jupiter.Event, error) {
+			if id != chosen.EventID {
+				return jupiter.Event{}, &jupiter.Fault{Problem: jupiter.NoSuchMarket}
+			}
+			return jupiter.Event{EventID: id, Title: "NBA: Stephen Curry to leave Warriors?",
+				Category: "sports", Markets: []jupiter.Market{chosen}}, nil
+		},
+	}
+	held := start(t, provider)
+	if _, err := held.reconciler.Select(context.Background(), chosen.MarketID); err != nil {
+		t.Fatal(err)
+	}
+	records := held.signals()
+	if len(records) != 1 {
+		t.Fatalf("%d signals", len(records))
+	}
+	signal := records[0].Signal
+	if !strings.Contains(signal.Title, "Stephen Curry") ||
+		!strings.Contains(signal.Note, "NBA: Stephen Curry to leave Warriors? — Yes") {
+		t.Fatalf("titled %q, noted %q", signal.Title, signal.Note)
+	}
+}
+
+// An operator's name chooses which market, never whether an owner could get out of it again.
+func TestSelectRefusesAMarketNobodyBidsFor(t *testing.T) {
+	stuck := market("POLY-m4", noon.Add(72*time.Hour))
+	stuck.BuyYes, stuck.BuyNo, stuck.SellNo = 1_000, jupiter.OneDollar-1, 999_000
+	provider := &source{
+		market: func(string) (jupiter.Market, error) { return stuck, nil },
+	}
+	held := start(t, provider, func(h *harness) { h.filters.MostSpread = 50_000 })
+	_, err := held.reconciler.Select(context.Background(), stuck.MarketID)
+	if err != discovery.ErrIlliquid {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestSelectWaitsForARunningCycle(t *testing.T) {
 	started := make(chan struct{})
 	block := make(chan struct{})
 	provider := &source{
 		events: func(jupiter.Query) (jupiter.Page, error) {
-			close(started)
+			select {
+			case <-started:
+			default:
+				close(started)
+			}
 			<-block
 			return jupiter.Page{}, nil
 		},
@@ -126,10 +175,24 @@ func TestSelectIsBusyWhileACycleRuns(t *testing.T) {
 		_, _ = held.reconciler.Pass(context.Background())
 	}()
 	<-started
-	_, err := held.reconciler.Select(context.Background(), "POLY-m1")
+
+	// A caller that gives up while the cycle runs is answered busy.
+	gaveUp, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := held.reconciler.Select(gaveUp, "POLY-m1"); err != markets.ErrBusy {
+		t.Fatalf("a caller that gave up: %v", err)
+	}
+
+	// One that waits gets its market once the cycle is done.
+	selected := make(chan error, 1)
+	go func() {
+		_, err := held.reconciler.Select(context.Background(), "POLY-m1")
+		selected <- err
+	}()
+	time.Sleep(20 * time.Millisecond)
 	close(block)
 	<-done
-	if err != markets.ErrBusy {
-		t.Fatalf("err %v", err)
+	if err := <-selected; err != nil {
+		t.Fatalf("a waiting select: %v", err)
 	}
 }

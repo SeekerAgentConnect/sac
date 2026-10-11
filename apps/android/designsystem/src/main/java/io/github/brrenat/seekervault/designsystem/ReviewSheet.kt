@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.RssFeed
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -183,11 +184,23 @@ data class ReviewSheetState(
     val dailySpend: ReviewSheetDailySpend? = null,
     val infoBlocks: List<ReviewSheetInfoBlock> = emptyList(),
     val factRows: List<ReviewSheetFactRow> = emptyList(),
+    /**
+     * An optional neutral action under the fact rows: a feed signal's "Choose wallet" (SEE-185),
+     * which opens the picker for the wallet that signs on the signal's network, whether or not one
+     * is already chosen. Null draws nothing, so every other variant is unchanged.
+     */
+    val walletAction: ReviewSheetAction? = null,
     val note: ReviewSheetNote? = null,
     val expiry: String,
     val confirmationCheckbox: String? = null,
     val primaryAction: ReviewSheetAction,
     val secondaryAction: ReviewSheetAction,
+    /**
+     * An optional neutral action under the primary row: a feed signal's "Preview without sending"
+     * (SEE-185), which prepares and checks the real transaction and sends nothing. Null draws
+     * nothing, so every other variant is unchanged.
+     */
+    val previewAction: ReviewSheetAction? = null,
     val footerCaption: String,
     val sublineStyle: ReviewSheetSublineStyle = ReviewSheetSublineStyle.Plain,
     /** What went differently from the ordinary review: an outcome, a failure, a refusal. */
@@ -198,6 +211,11 @@ data class ReviewSheetState(
     val confirmationChecked: Boolean? = null,
     /** False hides the decision footer entirely, for a request that can no longer be acted on. */
     val actionsShown: Boolean = true,
+    /**
+     * Work in progress the decision waits on, e.g. a quote being fetched. While set, the footer
+     * says this under a progress bar in place of its actions; null shows the actions.
+     */
+    val footerStatus: String? = null,
     val preparationError: ReviewSheetPreparationError? = null,
     /** Collapsed detail rows, after everything above and before the expiry line. */
     val sections: List<ReviewSheetSection> = emptyList(),
@@ -222,6 +240,8 @@ fun ReviewSheet(
     onOpenLink: (String) -> Unit = {},
     onConfirmedChange: (Boolean) -> Unit = {},
     onRefreshQuote: () -> Unit = {},
+    onPreview: () -> Unit = {},
+    onChooseWallet: () -> Unit = {},
 ) {
     // A warning does not always come with a tick to go past it: one that blocks approval, or one
     // shown before there is anything to approve, is read and not consented to (SEE-180).
@@ -322,6 +342,17 @@ fun ReviewSheet(
                 state.dailySpend?.let { ReviewSheetDailySpend(it) }
                 state.infoBlocks.forEach { ReviewSheetInfoBlock(it) }
                 state.factRows.forEach { ReviewSheetFactRow(it, onCopy, onOpenLink) }
+                state.walletAction?.let { action ->
+                    SeekerButton(
+                        label = action.label,
+                        onClick = onChooseWallet,
+                        variant =
+                            if (action.enabled) SeekerButtonVariant.Neutral
+                            else SeekerButtonVariant.Disabled,
+                        size = SeekerButtonSize.Md,
+                        modifier = Modifier.fillMaxWidth().testTag(ReviewSheetTags.WALLET_ACTION),
+                    )
+                }
                 state.note?.let { ReviewSheetNote(it) }
                 state.sections.forEach { section ->
                     key(section.key) { ReviewSheetSection(section, onCopy, onOpenLink) }
@@ -345,6 +376,11 @@ fun ReviewSheet(
                             ),
                     verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.mdPlus),
                 ) {
+                    val status = state.footerStatus
+                    if (status != null) {
+                        ReviewSheetFooterStatus(status)
+                        return@Column
+                    }
                     state.confirmationCheckbox?.let { label ->
                         CheckRow(
                             label = label,
@@ -380,6 +416,20 @@ fun ReviewSheet(
                             size = SeekerButtonSize.Lg,
                         )
                     }
+                    state.previewAction?.let { action ->
+                        SeekerButton(
+                            label = action.label,
+                            onClick = onPreview,
+                            variant =
+                                if (action.enabled && (!requiresConfirmation || confirmed)) {
+                                    SeekerButtonVariant.Neutral
+                                } else {
+                                    SeekerButtonVariant.Disabled
+                                },
+                            size = SeekerButtonSize.Lg,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     Text(
                         text = state.footerCaption,
                         modifier =
@@ -389,6 +439,27 @@ fun ReviewSheet(
                     )
                 }
         }
+    }
+}
+
+/** What the decision is waiting on, said where its actions will appear once it is done. */
+@Composable
+private fun ReviewSheetFooterStatus(status: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag(ReviewSheetTags.FOOTER_STATUS),
+        verticalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+    ) {
+        LinearProgressIndicator(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        )
+        Text(
+            text = status,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = SeekerTheme.spacing.xs),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
 
@@ -446,13 +517,10 @@ private fun ReviewSheetHeader(state: ReviewSheetState) {
     val contextChips = state.headerChips - originChips.toSet()
     Column(modifier = Modifier.fillMaxWidth()) {
         if (originChips.isNotEmpty()) {
-            Row(
+            ReviewSheetOriginChips(
+                originChips,
                 modifier = Modifier.padding(bottom = SeekerTheme.spacing.mdPlus),
-                horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                originChips.forEach { ReviewSheetHeaderChip(it) }
-            }
+            )
         }
         Text(
             text = state.headline,
@@ -488,6 +556,21 @@ private fun ReviewSheetHeader(state: ReviewSheetState) {
                 contextChips.forEach { ReviewSheetHeaderChip(it) }
             }
         }
+    }
+}
+
+/**
+ * Where a signal came from — the Signal chip and the feed's — as the review sheet's header shows
+ * them, for a review laid out outside [ReviewSheet] that keeps the same header.
+ */
+@Composable
+fun ReviewSheetOriginChips(chips: List<ReviewSheetHeaderChip>, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(SeekerTheme.spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        chips.forEach { ReviewSheetHeaderChip(it) }
     }
 }
 
@@ -682,6 +765,9 @@ private fun ReviewSheetSection(
 
 /** Test tags the review sheet sets on its own parts. */
 object ReviewSheetTags {
+    const val WALLET_ACTION = "review-sheet.wallet-action"
+    const val FOOTER_STATUS = "review-sheet.footer-status"
+
     fun section(key: String): String = "review-sheet.section.$key"
 }
 

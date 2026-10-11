@@ -486,9 +486,14 @@ private fun FeedSummary(connection: Connection) {
         value = connection.label,
         valueStyle = FactRowValueStyle.Plain,
     )
+    // What the feed's signals may run on — capability, not a choice: each signal names its own
+    // network, and preview or execution is chosen per operation (SEE-185).
+    val networks = connection.server.manifest?.supportedNetworks.orEmpty()
     FactRow(
-        label = stringResource(R.string.field_environment),
-        value = stringResource(environmentText(connection.environment)),
+        label = stringResource(R.string.feed_networks),
+        value =
+            if (networks.isEmpty()) stringResource(R.string.network_none)
+            else networksText(networks),
         valueStyle = FactRowValueStyle.Plain,
     )
     FactRow(

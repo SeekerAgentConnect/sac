@@ -370,6 +370,7 @@ class ActivityLog(
                 when (outcome) {
                     is SigningOutcome.Failed -> outcome.detail
                     is SigningOutcome.Unresolved -> outcome.detail
+                    SigningOutcome.NotSent -> SigningOutcome.NotSent.DETAIL
                     else -> null
                 }
             // What the server said about how it ended comes second: the phone's own account of a
@@ -400,6 +401,7 @@ class ActivityLog(
                         is SigningOutcome.Sent -> sentOutcome(result)
                         SigningOutcome.Declined -> ActivityOutcome.DeclinedInWallet
                         is SigningOutcome.Failed -> ActivityOutcome.NotSigned
+                        SigningOutcome.NotSent -> ActivityOutcome.NotSent
                         // For a message nothing was signed; for a transfer or a staking action
                         // nobody knows, and this record says so rather than picking the
                         // comfortable answer (a staking transaction is sent like a transfer's,

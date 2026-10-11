@@ -12,10 +12,7 @@ import {
   RequestError,
   RequestErrorDetailSchema,
 } from "@seekeragentconnect/server-sdk/protocol";
-import {
-  ConnectionMode,
-  ServerEnvironment,
-} from "@seekeragentconnect/server-sdk/protocol";
+import { ConnectionMode } from "@seekeragentconnect/server-sdk/protocol";
 import { SERVER_PROTOCOL_VERSION } from "../../../../packages/server-sdk/src/manifest.ts";
 import { startSidecar, type Sidecar } from "../server.ts";
 import { openDatabase } from "../../../../packages/server-sdk/src/storage/database.ts";
@@ -419,7 +416,6 @@ describe("roles", () => {
       sidecar.url,
     );
     assert.deepEqual(manifest?.requiredPlugins, []);
-    assert.deepEqual(manifest?.environments, [ServerEnvironment.PRODUCTION]);
     // A name the server picked for itself is not this app's word for it: the phone labels a
     // direct connection by the host the owner paired with.
     assert.equal(manifest?.displayName, "");

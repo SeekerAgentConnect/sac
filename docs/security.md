@@ -276,14 +276,14 @@ deployment of its own — so each claim below is made about each of them separat
   fails if either appears in one.
 - **Its own API token is the whole grant, and that is stated rather than implied.** One token,
   checked in constant time, on every route but the health probe — which says `{"status":"ok"}` and
-  nothing else, so a publisher's settings, its pending count and its environment all stay behind
+  nothing else, so a publisher's settings, its pending count and its networks all stay behind
   the token. The API binds loopback by default, and the internet-facing overlay carries a warning:
   TLS keeps a token off the wire, and nothing makes holding one safer.
-- **Sandbox and production cannot be mixed by accident.** The environment has no default, it is the
-  single value in the published manifest, and it is stamped into the database: opening a production
-  file with a sandbox configuration is refused at startup, as is opening another publisher's file.
-  The way this gets confused is a copied compose file pointed at a volume that already exists, which
-  is why the check is in the file rather than in the argument.
+- **One deployment, and a network on every signal.** Since SEE-185 a publisher is no longer a
+  sandbox or a production deployment: whether an operation is previewed or executed is each owner's
+  choice on the phone. What a publisher must state instead is the Solana network each signal executes
+  on (`network`, required on every create and update). A pre-SEE-185 row has none, and is refused
+  locally (`no_network`) rather than published with one guessed for it.
 
 ### A template that discovers its own signals reads nothing about anybody (SEE-96)
 
@@ -323,38 +323,34 @@ saying exactly how small it is.
   and no term a side could be published in: a term the kind does not know is refused, so `side`,
   `is_yes`, `confidence` and `recommendation` cannot be published at all.
 
-### Nothing can quietly promote a demonstration to real money (SEE-97)
+### A preview can never become an execution, or the other way round (SEE-97, SEE-185)
 
-Sandbox exists so that the whole path can be watched without anybody's funds, and that is only
-worth having if getting *out* of it is an act somebody performed on purpose
-([`wiki/environments.md`](wiki/environments.md)).
+A preview exists so that the whole path can be watched without anybody's funds, and that is only
+worth having if it cannot turn into a signature by accident
+([`wiki/environments.md`](wiki/environments.md)). Since SEE-185 it is the owner's choice for one
+operation — **Preview without sending** beside the approval — and no server, manifest or connection
+setting decides it.
 
-- **The promise is not the document's to change.** A manifest says which environments a server
-  serves; the phone records which one the connection keeps, and only the owner changes that. The
-  gateway refuses a manifest that changes the environments a server ID already published
-  (`other_environment`), and a manifest that stops naming the one a connection keeps makes that
-  server unsupported — readable, executing nothing — rather than moving the connection to the other
-  one.
-- **It is checked where every other execution rule is checked.** The environment is pinned in the
-  `ExecutionBinding` before the wallet is opened and compared with the connection's own inside the
-  wallet's single lock, beside the preparation's expiry and the connection's wallet profile. A mode switch that
-  lands while an approval is in flight is refused there; it cannot land between the check and the
-  signature, because there is no gap.
-- **A rehearsal cannot reach a wallet, structurally.** The sandbox branch of an approval is
-  lexically outside `withWallet`, so there is no session in scope to sign with — not a flag beside
-  one. Two tests assert it from opposite directions: the wallet's fake adapter records nothing in
-  sandbox, and a source-level check keeps `signAndSendTransactions` in the one file that has always
-  held it.
-- **Nothing about a simulation is fabricated.** No signature, so no explorer link; no fill, no
-  position, no profit. A simulated record is labelled as one in Activity, keeps the promise it was
-  bound under beside the cluster, and counts nothing against a daily threshold the owner set on real
-  money — for the same reason devnet play money never does.
-- **A rehearsal spends the proposal.** One execution per proposal per device, whatever came of it,
-  exactly as a decline in the wallet does. The alternative is a record that can hold two executions,
-  and a phone deciding which of them counted.
-- **The private workflow is untouched.** A direct connection is production by construction, and the
-  invariant is stated where a connection is built rather than checked where one is used: an agent
-  waiting for a signature can be told no, but it cannot be handed a simulation, and this app will not
+- **Nothing a server sends can choose it.** A manifest no longer names environments, and the gateway
+  no longer reads or serves the field. The owner chooses, per operation, on the phone.
+- **It is checked where every other execution rule is checked.** The choice is pinned in the
+  `ExecutionBinding` (`environment`), and a preview passes the same gate an execution does — the
+  preparation, the inspection, the owner's rules, the binding — before it is recorded
+  (`ProposalRepository.recordPreview`). An execution binding is refused by the preview path and a
+  preview binding by the execution path, so one can never be carried out as the other.
+- **A preview cannot reach a wallet, structurally.** The preview branch of an approval is lexically
+  outside `withWallet`, so there is no session in scope to sign with — not a flag beside one. A
+  source-level check keeps `signAndSendTransactions` in the one file that has always held it.
+- **Nothing about a preview is fabricated.** No signature, so no explorer link; no fill, no
+  position, no profit. History says "Previewed on this phone · nothing sent", and a preview is
+  recorded beside the proposal (`ProposalRecord.preview`), never as its execution.
+- **A preview does not spend the proposal, and nothing it prepared is reused.** The signal stays
+  open, and the preparation is dropped, so executing it starts from a fresh preparation and a fresh
+  review. Duplicate protection is unchanged: one execution per proposal per device, and a preview
+  and an execution share the review's lock and the repository's lock, so they are never in flight
+  together.
+- **The private workflow is untouched.** A direct connection always executes for real: an agent
+  waiting for a signature can be told no, but it cannot be handed a preview, and this app will not
   invent one for it.
 
 ### A restricted feed is read only by devices its publisher approved (SEE-156)
@@ -443,6 +439,33 @@ shape: deciding needs an identity, enforcing needs none, and the two parties are
 - **It is not an account system.** No password, no OAuth, no social login, no Seeker ID and no
   subscriber record beyond the device rows the publisher keeps. The only identity in the flow is a
   wallet that signed one message and a key that lives in one Keystore.
+
+### The client configuration comes from one gateway, and holds nothing secret (SEE-185)
+
+The Solana RPC endpoint each network is read through and the SAC swap fee a feed swap carries are
+the trusted gateway's client configuration ([`wiki/client-config.md`](wiki/client-config.md)).
+
+- **One gateway, compiled in.** The build names one gateway origin (`BuildConfig.GATEWAY_URL`). A
+  feed link, Discover card or manifest naming another gateway is refused, and a feed held from
+  another is readable and never executable. Nothing can point the app at a second source for its
+  endpoints or its fee.
+- **One writer.** Only the gateway's operator sets it, through the admin page or `feed-gatewayctl`.
+  No publisher API, manifest, signal, link or direct server answer has a field that reaches it.
+- **It is public by construction.** It is served anonymously to any caller, the same answer for
+  everyone, and asking records nothing. The gateway refuses an endpoint URL with user info or a
+  fragment; a path or query is as public as the rest. A provider that needs a secret key belongs
+  behind the operator's own proxy.
+- **Refused whole, on both sides.** The gateway validates a configuration before storing it and the
+  app validates it again on arrival. Neither uses part of an invalid configuration, clamps a rate or
+  drops a bad account, and an invalid nonzero fee is never read as a zero one.
+- **No answer is not a zero fee.** When the gateway can't be reached the app prepares new operations
+  with its cached configuration for at most 24 hours after it was fetched, then prepares nothing and
+  says why. Reads about transactions already sent keep using the cached endpoints, each still proven
+  by genesis hash.
+- **The fee the owner reviewed is the fee that is signed.** The terms are pinned with the preparation
+  and compared with the held configuration before the wallet and again inside the wallet lock; terms
+  that moved stop the approval (`FeeTermsChanged`). A direct connection's operations never carry a
+  fee.
 
 ## One active phone per sidecar
 
@@ -601,6 +624,8 @@ What the phone keeps for each connection (SAW-012), and what happens when it's l
 | A restricted feed's access record (SEE-156): the wallet the access was proven with, the device-key fingerprint that wallet bound, the publisher's request ID, the state, and the grant expiry | `noBackupFilesDir/feed-access/<connection ID>.json`, one atomic document per feed connection | App-private storage, out of backups. It holds no secret: the key is in the Keystore and the session is in its own vault |
 | The feed session (SEE-156): the one value that reads a restricted feed | `noBackupFilesDir/feed-sessions`, one vault | AES-256-GCM under the same Android Keystore key as a phone credential, in the same format |
 | The per-feed device key (SEE-156) | The Android Keystore, alias `seekervault.feed-access.v1.<connection ID>` | Generated in the Keystore, usable only for signing, and never readable by this app or any other. One key per feed connection, so two publishers cannot compare notes about the same device; a restored backup is a different device and asks again |
+| The trusted gateway's client configuration (SEE-185): the Solana RPC endpoint per network, the SAC swap fee, its revision and when it was fetched | `filesDir/config/client.json`, written atomically | App-private storage. Public values only: everything in it is what the gateway serves to any client. A file this build cannot read is no cache |
+| Which saved wallet profile the owner chose for each feed and network (SEE-185) | `filesDir/feed-wallets/feed-wallets.json`, written whole and atomically | App-private storage. Profile IDs only; never sent anywhere, and never the feed's access identity |
 | The owner's own record of what this phone did (SAW-023): who asked, the terms they reviewed, the network, the outcome, and the signature | `filesDir/activity/<connection ID>/<request ID>.json`, one file per request, written atomically. Nothing prunes it. | App-private storage; it holds public addresses, amounts, and outcomes, and no credential, key, or transaction bytes |
 
 - **The credential key lives in the Android Keystore** (`seekervault.credentials.v1`), created on first use. Its material never leaves the Keystore, so it can't be exported, backed up, or moved to another device. It protects credentials; it isn't a wallet key.
@@ -636,8 +661,9 @@ The owner's wallets belong to the wallet apps, not to Seeker Agent Connect (SAW-
 - **A token is scoped to its wallet app and its network.** It is offered only to the app that issued it and used only for the network it was issued on; adding a profile always asks for a fresh authorization, and removing one deauthorizes in the wallet only when no other profile still uses that authorization.
 - **The address is not a secret.** It's a public key, and the phone publishes it, with the network, to the direct sidecar whose connection uses that profile, so that its agents can read it (`vault_get_address`). No sidecar learns another connection's wallet, and no feed publisher or gateway is sent any saved wallet: a restricted feed learns only the address that proves its reader. The sidecar logs it, the same way it logs connection IDs.
 - **A sidecar with no binding says so.** `vault_get_address` fails with `WALLET_NOT_CONNECTED`; no address is generated, and no wallet is created anywhere.
-- **Changing the wallet invalidates what no longer fits.** Publishing another wallet or network cancels that connection's PENDING wallet requests, so nothing queued for the old wallet can still be approved; no other connection is told anything. Removing a profile publishes "no wallet" to the direct sidecars whose connections used it and cancels them the same way, and chooses no replacement. A feed rebound to another profile drops what was prepared for the old one.
+- **Changing the wallet invalidates what no longer fits.** Publishing another wallet or network cancels that connection's PENDING wallet requests, so nothing queued for the old wallet can still be approved; no other connection is told anything. Removing a profile publishes "no wallet" to the direct sidecars whose connections used it and cancels them the same way, and chooses no replacement. For a feed (SEE-185), choosing another wallet for a network drops what was prepared for the old one.
 - **Nothing signs without its own connection's ready wallet.** Every signing carries the profile the owner reviewed and the connection it was reviewed for, and is checked again inside the wallet lock: the connection must still name that profile, on a network its server declares, with the sidecar holding that binding. There is no fallback to another saved profile, and a server that declares no Solana network is never signed for ([supported networks](wiki/server-manifests.md#supported-networks)).
+- **A feed signs on the signal's network with the wallet chosen for it (SEE-185).** A feed operation's network is the one its signal declares, never one inferred from a wallet, the manifest or the assets. Its wallet is the one the owner chose for that feed and network on this phone (remembered in `filesDir/feed-wallets/feed-wallets.json`), or the only authorized profile on that network; with neither, nothing is prepared and the review offers **Choose wallet** or **Connect a wallet on <network>**. A remembered choice that is gone, unauthorized or on another network chooses nothing — no substitute is put in its place. The binding pins the network and the exact profile, and both are checked again inside the wallet lock. A restricted feed's access identity is separate: it proves who may read the feed and never signs an operation, and changing the execution wallet never touches it ([wallet-setup.md](guides/wallet-setup.md#feed-operations)).
 - **The wallet still decides.** The app asks; the wallet prompts the owner and can refuse. A refusal changes nothing on the phone.
 
 ### Approving a transfer (SAW-021)
@@ -847,8 +873,13 @@ served the table. This app does not call that trustless and does not call it off
 - the endpoint is **the application's or its host's**, never a publisher's — nothing in a manifest,
   a proposal, or a provider's answer can set it, because an endpoint chosen by the thing being
   reviewed is not a second opinion;
-- it is **empty by default**, so a checkout reaches no cluster and a build that wants prediction
-  orders configures one deliberately (`-Pseekervault.solanaRpc=…`);
+- it is **the trusted gateway operator's**, from that gateway's client configuration (SEE-185,
+  [client-config.md](wiki/client-config.md), [solana-rpc.md](wiki/solana-rpc.md)): the build names
+  one gateway, a gateway that configures no endpoint leaves the phone with none, and nothing a
+  publisher, a link or a direct server sends can name another;
+- it is **proven before it is believed**: its genesis hash must name the network the operation was
+  bound to, an endpoint for another cluster is refused, and no read ever falls back to another
+  network's endpoint;
 - the component has **one method** and it is a read: no send, no simulate, no subscribe, no
   signature lookup, no balance query — not because those are unreachable over the same wire, but
   because a component with one method cannot grow a second use by accident, and a boundary test

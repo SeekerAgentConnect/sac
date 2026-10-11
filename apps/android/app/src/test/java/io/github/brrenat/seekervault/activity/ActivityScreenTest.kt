@@ -24,6 +24,7 @@ class ActivityScreenTest {
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val opened = mutableListOf<RequestKey>()
+    private var cleared = 0
 
     private fun show(state: ActivityUiState) = compose.setContent {
         SeekerTheme {
@@ -33,7 +34,7 @@ class ActivityScreenTest {
                     ActivityScreenCallbacks(
                         onOpen = { opened += it },
                         onRefresh = {},
-                        onClear = {},
+                        onClear = { cleared++ },
                         onBack = {},
                         navigation = NAVIGATION,
                     ),
@@ -54,6 +55,22 @@ class ActivityScreenTest {
             )
         compose.onNodeWithTag(ActivityTags.item(confirmed)).performClick()
         assertEquals(listOf(confirmed.key), opened)
+    }
+
+    @Test
+    fun clearsTheHistoryOnlyOnceTheOwnerConfirms() {
+        show(ActivityUiState(listOf(record()), loaded = true))
+        compose.onNodeWithTag(ActivityTags.CLEAR).performClick()
+        assertEquals(0, cleared)
+        compose.onNodeWithTag(ActivityTags.CONFIRM_CLEAR).performClick()
+        assertEquals(1, cleared)
+        compose.onNodeWithTag(ActivityTags.CONFIRM_CLEAR).assertDoesNotExist()
+    }
+
+    @Test
+    fun offersNoClearWhenThereIsNothingToClear() {
+        show(ActivityUiState(emptyList(), loaded = true))
+        compose.onNodeWithTag(ActivityTags.CLEAR).assertDoesNotExist()
     }
 
     @Test

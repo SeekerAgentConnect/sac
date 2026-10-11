@@ -9,7 +9,6 @@ import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.connections.storage.ConnectionStore
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
 import io.github.brrenat.seekervault.connections.storage.ResultStore
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.ALL_NETWORKS
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -19,6 +18,7 @@ import io.github.brrenat.seekervault.servers.ServerRecord
 import io.github.brrenat.seekervault.servers.ServerReference
 import io.github.brrenat.seekervault.servers.channelFor
 import io.github.brrenat.seekervault.servers.directManifest
+import io.github.brrenat.seekervault.wallet.storage.FeedWalletStore
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
 import java.io.File
 import java.security.GeneralSecurityException
@@ -76,6 +76,7 @@ class WalletRepositoryTest {
             connections,
             io = Dispatchers.Unconfined,
             newId = { "id-${++ids}" },
+            feedWallets = FeedWalletStore(File(folder.root, "feed-wallets")),
         )
 
     private val repository by lazy { repository() }
@@ -239,7 +240,38 @@ class WalletRepositoryTest {
     // --- Readiness ------------------------------------------------------------------------------
 
     @Test
-    fun aConnectionIsReadyOnlyWithItsOwnProfileOnADeclaredNetwork() = runBlocking {
+    fun aDirectServerIsReadyOnlyWithItsOwnProfileOnADeclaredNetwork() = runBlocking {
+        repository.load()
+        val main = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val dev = repository.add(WALLET_A, WalletNetwork.Devnet)
+        bindings.flow.value =
+            listOf(
+                direct("direct-1", null),
+                direct("direct-2", main.id, networks = emptySet()),
+                direct("direct-3", dev.id, networks = setOf(WalletNetwork.Mainnet)),
+                direct("direct-4", "gone"),
+                direct("direct-5", main.id, networks = setOf(WalletNetwork.Mainnet)),
+            )
+        repository.publish()
+
+        assertEquals(WalletReadiness.NoProfile, repository.readiness("direct-1"))
+        // A server that declared no networks is never read as Mainnet.
+        assertEquals(WalletReadiness.NetworksUnknown(main), repository.readiness("direct-2"))
+        assertEquals(
+            WalletReadiness.NetworkUnsupported(dev, setOf(WalletNetwork.Mainnet)),
+            repository.readiness("direct-3"),
+        )
+        assertEquals(WalletReadiness.ProfileMissing, repository.readiness("direct-4"))
+        assertEquals(WalletReadiness.Ready(main), repository.readiness("direct-5"))
+        assertNull(repository.walletFor("direct-2"))
+        assertNull(repository.walletFor("direct-3"))
+        assertEquals(main.id, repository.walletFor("direct-5")?.profileId)
+    }
+
+    @Test
+    fun aFeedsProfileIsOnlyItsAccessIdentityAndReadyOnWhateverNetwork() = runBlocking {
+        // SEE-185: a feed's bound profile proves who reads it, an address proof no network enters,
+        // so its readiness is only whether that profile is there and authorized.
         repository.load()
         val main = repository.add(WALLET_A, WalletNetwork.Mainnet)
         val dev = repository.add(WALLET_A, WalletNetwork.Devnet)
@@ -249,39 +281,148 @@ class WalletRepositoryTest {
                 feed(FEED_2, main.id, networks = emptySet()),
                 feed(FEED_3, dev.id, networks = setOf(WalletNetwork.Mainnet)),
                 feed(FEED_4, "gone"),
-                feed(FEED_5, main.id, networks = setOf(WalletNetwork.Mainnet)),
             )
 
+        // A public feed needs no wallet: nothing is bound, and nothing is missing.
         assertEquals(WalletReadiness.NoProfile, repository.readiness(FEED_1))
-        // A server that declared no networks is never read as Mainnet.
-        assertEquals(WalletReadiness.NetworksUnknown(main), repository.readiness(FEED_2))
-        assertEquals(
-            WalletReadiness.NetworkUnsupported(dev, setOf(WalletNetwork.Mainnet)),
-            repository.readiness(FEED_3),
-        )
-        assertEquals(WalletReadiness.ProfileMissing, repository.readiness(FEED_4))
-        assertEquals(WalletReadiness.Ready(main), repository.readiness(FEED_5))
-        assertNull(repository.walletFor(FEED_2))
-        assertNull(repository.walletFor(FEED_3))
-        assertEquals(main.id, repository.walletFor(FEED_5)?.profileId)
-        // The access proof is address-only, so a feed that declared nothing can still prove its
-        // reader with its own wallet — and never with another's.
-        assertEquals(WALLET_A, repository.accessWalletFor(FEED_2)?.address)
         assertNull(repository.accessWalletFor(FEED_1))
+        assertEquals(WalletReadiness.Ready(main), repository.readiness(FEED_2))
+        assertEquals(WalletReadiness.Ready(dev), repository.readiness(FEED_3))
+        assertEquals(WalletReadiness.ProfileMissing, repository.readiness(FEED_4))
+        assertEquals(WALLET_A, repository.accessWalletFor(FEED_2)?.address)
+        assertEquals(dev.id, repository.accessWalletFor(FEED_3)?.profileId)
+        // And its operations still choose their own wallet, by network, whatever is bound.
+        assertEquals(main.id, repository.feedWallet(FEED_1, Network.NETWORK_MAINNET)?.profileId)
+        assertEquals(main.id, repository.feedWallet(FEED_3, Network.NETWORK_MAINNET)?.profileId)
     }
 
     @Test
-    fun onlyProfilesOnADeclaredNetworkCanBeBound() = runBlocking {
+    fun onlyProfilesOnADeclaredNetworkCanBeBoundToADirectServerAndAnyToAFeed() = runBlocking {
         repository.load()
         val main = repository.add(WALLET_A, WalletNetwork.Mainnet)
         val dev = repository.add(WALLET_A, WalletNetwork.Devnet)
-        bindings.flow.value = listOf(feed(FEED_1, null, networks = setOf(WalletNetwork.Mainnet)))
+        bindings.flow.value =
+            listOf(
+                direct(DIRECT_X, null, networks = setOf(WalletNetwork.Mainnet)),
+                feed(FEED_1, null, networks = setOf(WalletNetwork.Mainnet)),
+            )
 
-        assertEquals(BindOutcome.Incompatible, repository.bind(FEED_1, dev.id))
-        assertNull(bindings.connection(FEED_1)?.walletProfileId)
-        assertEquals(BindOutcome.Bound, repository.bind(FEED_1, main.id))
-        assertEquals(main.id, bindings.connection(FEED_1)?.walletProfileId)
+        assertEquals(BindOutcome.Incompatible, repository.bind(DIRECT_X, dev.id))
+        assertNull(bindings.connection(DIRECT_X)?.walletProfileId)
+        assertEquals(BindOutcome.Published(0), repository.bind(DIRECT_X, main.id))
+        assertEquals(main.id, bindings.connection(DIRECT_X)?.walletProfileId)
+        assertEquals(BindOutcome.Gone, repository.bind(DIRECT_X, "no-such-profile"))
+
+        // A feed's access identity may be any profile: its networks never narrow it (SEE-185).
+        assertEquals(BindOutcome.Bound, repository.bind(FEED_1, dev.id))
+        assertEquals(dev.id, bindings.connection(FEED_1)?.walletProfileId)
         assertEquals(BindOutcome.Gone, repository.bind(FEED_1, "no-such-profile"))
+    }
+
+    // --- A feed operation's wallet (SEE-185) --------------------------------------------------
+
+    @Test
+    fun aFeedOperationsWalletIsTheRememberedChoiceOrTheOnlyOneOnItsNetwork() = runBlocking {
+        repository.load()
+        val aMain = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val bMain = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        val aDev = repository.add(WALLET_A, WalletNetwork.Devnet)
+        // A public feed: no wallet bound to it at all.
+        bindings.flow.value = listOf(feed(FEED_1, null))
+
+        // The one authorized profile on devnet needs no choosing; two on mainnet do.
+        assertEquals(aDev.id, repository.feedWallet(FEED_1, Network.NETWORK_DEVNET)?.profileId)
+        assertNull(repository.feedWallet(FEED_1, Network.NETWORK_MAINNET))
+        assertNull(repository.feedWallet(FEED_1, Network.NETWORK_TESTNET))
+        assertEquals(listOf(aMain, bMain), repository.feedWalletChoices(Network.NETWORK_MAINNET))
+
+        assertTrue(repository.chooseFeedWallet(FEED_1, Network.NETWORK_MAINNET, bMain.id))
+        assertEquals(bMain.id, repository.feedWallet(FEED_1, Network.NETWORK_MAINNET)?.profileId)
+        // Remembered for this feed and network only, and across a restart.
+        assertEquals(aDev.id, repository.feedWallet(FEED_1, Network.NETWORK_DEVNET)?.profileId)
+        val restarted = repository()
+        restarted.load()
+        assertEquals(bMain.id, restarted.feedWallet(FEED_1, Network.NETWORK_MAINNET)?.profileId)
+    }
+
+    @Test
+    fun aRememberedChoiceThatNoLongerWorksChoosesNothingRatherThanAnotherAccount() = runBlocking {
+        repository.load()
+        val aMain = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val bMain = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(feed(FEED_1, null))
+        assertTrue(repository.chooseFeedWallet(FEED_1, Network.NETWORK_MAINNET, bMain.id))
+
+        repository.remove(bMain.id)
+
+        // A is now the only mainnet profile, and it is still not put in B's place.
+        assertEquals(listOf(aMain), repository.feedWalletChoices(Network.NETWORK_MAINNET))
+        assertNull(repository.feedWallet(FEED_1, Network.NETWORK_MAINNET))
+        // Choosing it is the owner's act, and then it is the wallet.
+        assertTrue(repository.chooseFeedWallet(FEED_1, Network.NETWORK_MAINNET, aMain.id))
+        assertEquals(aMain.id, repository.feedWallet(FEED_1, Network.NETWORK_MAINNET)?.profileId)
+    }
+
+    @Test
+    fun aProfileOnAnotherNetworkCannotBeChosenForAFeedOperation() = runBlocking {
+        repository.load()
+        val aMain = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val aDev = repository.add(WALLET_A, WalletNetwork.Devnet)
+        bindings.flow.value = listOf(feed(FEED_1, null), direct(DIRECT_X, null))
+
+        assertFalse(repository.chooseFeedWallet(FEED_1, Network.NETWORK_MAINNET, aDev.id))
+        assertFalse(repository.chooseFeedWallet(FEED_1, Network.NETWORK_MAINNET, "no-such-profile"))
+        // Only a feed's operations choose a wallet this way: a direct server signs with its own.
+        assertFalse(repository.chooseFeedWallet(DIRECT_X, Network.NETWORK_MAINNET, aMain.id))
+        assertNull(repository.feedWallet(DIRECT_X, Network.NETWORK_MAINNET))
+        assertTrue(repository.feedChoices.value.isEmpty())
+        // The only mainnet profile is still the one an operation uses.
+        assertEquals(aMain.id, repository.feedWallet(FEED_1, Network.NETWORK_MAINNET)?.profileId)
+    }
+
+    @Test
+    fun changingARestrictedFeedsOperationWalletLeavesItsAccessIdentityAlone() = runBlocking {
+        repository.load()
+        val access = repository.add(WALLET_A, WalletNetwork.Devnet)
+        val aMain = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val bMain = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        // A restricted feed on mainnet whose reader proves themselves with a devnet profile: the
+        // proof is an address, and no network enters it.
+        bindings.flow.value = listOf(feed(FEED_1, null, networks = setOf(WalletNetwork.Mainnet)))
+        assertEquals(BindOutcome.Bound, repository.bind(FEED_1, access.id))
+        assertEquals(WalletReadiness.Ready(access), repository.readiness(FEED_1))
+
+        assertTrue(repository.chooseFeedWallet(FEED_1, Network.NETWORK_MAINNET, aMain.id))
+        assertTrue(repository.chooseFeedWallet(FEED_1, Network.NETWORK_MAINNET, bMain.id))
+
+        assertEquals(bMain.id, repository.feedWallet(FEED_1, Network.NETWORK_MAINNET)?.profileId)
+        // Access is exactly what it was: the same profile, still ready, still the one that signs
+        // the proof.
+        assertEquals(access.id, bindings.connection(FEED_1)?.walletProfileId)
+        assertEquals(access.id, repository.accessWalletFor(FEED_1)?.profileId)
+        assertEquals(WalletReadiness.Ready(access), repository.readiness(FEED_1))
+        adapter.signWith(SIGNATURE)
+        val proof = checkNotNull(repository.accessWalletFor(FEED_1))
+        assertTrue(repository.signAccessProof(MESSAGE, proof, FEED_1) is SignResult.Signed)
+
+        // And rebinding access changes no operation's wallet.
+        assertEquals(BindOutcome.Bound, repository.bind(FEED_1, aMain.id))
+        assertEquals(bMain.id, repository.feedWallet(FEED_1, Network.NETWORK_MAINNET)?.profileId)
+    }
+
+    @Test
+    fun aFeedOperationSignsOnlyWithTheWalletChosenForItsNetwork() = runBlocking {
+        repository.load()
+        val aMain = repository.add(WALLET_A, WalletNetwork.Mainnet)
+        val bMain = repository.add(WALLET_B, WalletNetwork.Mainnet)
+        bindings.flow.value = listOf(feed(FEED_1, aMain.id))
+        assertTrue(repository.chooseFeedWallet(FEED_1, Network.NETWORK_MAINNET, bMain.id))
+        adapter.signWith(SIGNATURE)
+
+        // The feed's access identity is not its operations' wallet.
+        assertEquals(SignResult.Changed, repository.sign(MESSAGE, aMain.selected(), FEED_1))
+        assertTrue(repository.sign(MESSAGE, bMain.selected(), FEED_1) is SignResult.Signed)
+        assertEquals(listOf(WALLET_B), adapter.signings.map { it.second.address })
     }
 
     // --- Direct publication ---------------------------------------------------------------------
@@ -368,6 +509,32 @@ class WalletRepositoryTest {
         assertEquals(b.id, repository.walletFor(DIRECT_X)?.profileId)
     }
 
+    @Test
+    fun aServerThatStopsDeclaringTheWalletsNetworkIsToldThereIsNoWallet() = runBlocking {
+        // The server would otherwise keep the binding and prepare transactions the phone refuses
+        // as "no wallet ready" — the agent has to hear the same state the owner sees.
+        repository.load()
+        val dev = repository.add(WALLET_A, WalletNetwork.Devnet)
+        bindings.flow.value = listOf(direct(DIRECT_X, dev.id))
+        repository.publish()
+        assertEquals(WALLET_A, bindings.published.getValue(DIRECT_X).single()?.wallet)
+
+        bindings.flow.value = listOf(direct(DIRECT_X, dev.id, setOf(WalletNetwork.Mainnet)))
+        assertEquals(emptyList<String>(), repository.publish())
+
+        assertEquals(null, bindings.published.getValue(DIRECT_X).last())
+        assertEquals(
+            WalletReadiness.NetworkUnsupported(dev, setOf(WalletNetwork.Mainnet)),
+            repository.readiness(DIRECT_X),
+        )
+
+        // Declared again, the same wallet is published again and is ready.
+        bindings.flow.value = listOf(direct(DIRECT_X, dev.id))
+        repository.publish()
+        assertEquals(WALLET_A, bindings.published.getValue(DIRECT_X).last()?.wallet)
+        assertEquals(dev.id, repository.walletFor(DIRECT_X)?.profileId)
+    }
+
     // --- Signing --------------------------------------------------------------------------------
 
     @Test
@@ -375,7 +542,10 @@ class WalletRepositoryTest {
         repository.load()
         val a = repository.add(WALLET_A, WalletNetwork.Mainnet, app = SEED_VAULT, token = "token-a")
         val b = repository.add(WALLET_B, WalletNetwork.Mainnet, app = OTHER_APP, token = "token-b")
-        bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+        // Direct servers: each signs with the profile bound to it (SEE-174). A feed's operations
+        // choose theirs per network instead (SEE-185, aFeedOperationSignsOnlyWith…).
+        bindings.flow.value = listOf(direct(FEED_1, a.id), direct(FEED_2, b.id))
+        repository.publish()
         adapter.installed =
             listOf(InstalledWallet(SEED_VAULT, "S"), InstalledWallet(OTHER_APP, "O"))
         adapter.sendWith(SIGNATURE)
@@ -436,7 +606,10 @@ class WalletRepositoryTest {
         repository.load()
         val a = repository.add(WALLET_A, WalletNetwork.Mainnet)
         val b = repository.add(WALLET_B, WalletNetwork.Mainnet)
-        bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+        // Direct servers: each signs with the profile bound to it (SEE-174). A feed's operations
+        // choose theirs per network instead (SEE-185, aFeedOperationSignsOnlyWith…).
+        bindings.flow.value = listOf(direct(FEED_1, a.id), direct(FEED_2, b.id))
+        repository.publish()
         val reviewedOne = checkNotNull(repository.walletFor(FEED_1))
         val reviewedTwo = checkNotNull(repository.walletFor(FEED_2))
         adapter.sendWith(SIGNATURE)
@@ -509,7 +682,10 @@ class WalletRepositoryTest {
         repository.load()
         adapter.answerAccounts(WALLET_A, WALLET_B, authToken = SECRET)
         val (a, b) = repository.connectProfiles(WalletNetwork.Mainnet).profiles
-        bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+        // Direct servers: each signs with the profile bound to it (SEE-174). A feed's operations
+        // choose theirs per network instead (SEE-185, aFeedOperationSignsOnlyWith…).
+        bindings.flow.value = listOf(direct(FEED_1, a.id), direct(FEED_2, b.id))
+        repository.publish()
         adapter.refreshedAuthorization = REFRESHED
         adapter.answerSigning(SignResult.Declined)
 
@@ -525,7 +701,10 @@ class WalletRepositoryTest {
         repository.load()
         val a = repository.add(WALLET_A, WalletNetwork.Mainnet)
         val b = repository.add(WALLET_B, WalletNetwork.Mainnet)
-        bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+        // Direct servers: each signs with the profile bound to it (SEE-174). A feed's operations
+        // choose theirs per network instead (SEE-185, aFeedOperationSignsOnlyWith…).
+        bindings.flow.value = listOf(direct(FEED_1, a.id), direct(FEED_2, b.id))
+        repository.publish()
         adapter.answerSigning(SignResult.AuthorizationExpired)
 
         assertEquals(
@@ -600,7 +779,10 @@ class WalletRepositoryTest {
         repository.load()
         adapter.answerAccounts(WALLET_A, WALLET_B, authToken = SECRET)
         val (a, b) = repository.connectProfiles(WalletNetwork.Mainnet).profiles
-        bindings.flow.value = listOf(feed(FEED_1, a.id), feed(FEED_2, b.id))
+        // Direct servers: each signs with the profile bound to it (SEE-174). A feed's operations
+        // choose theirs per network instead (SEE-185, aFeedOperationSignsOnlyWith…).
+        bindings.flow.value = listOf(direct(FEED_1, a.id), direct(FEED_2, b.id))
+        repository.publish()
 
         adapter.answerAccounts(WALLET_A, WALLET_B, authToken = REFRESHED)
         repository.reconnect(a.id)
@@ -803,7 +985,6 @@ class WalletRepositoryTest {
                         settingsRevision = 1,
                         mode = ConnectionMode.Direct,
                         reference = ServerReference.Direct("https://$id.example"),
-                        environments = setOf(PluginEnvironment.Production),
                         supportedNetworks = networks,
                     )
                 ),
@@ -832,7 +1013,6 @@ class WalletRepositoryTest {
                         settingsRevision = 1,
                         mode = ConnectionMode.GatewayFeed,
                         reference = ServerReference.Feed(GATEWAY, channelFor(SERVER)),
-                        environments = setOf(PluginEnvironment.Production),
                         supportedNetworks = networks,
                     )
                 ),

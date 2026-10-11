@@ -15,7 +15,7 @@ import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import io.github.brrenat.seekervault.plugins.actions.message
 import io.github.brrenat.seekervault.plugins.actions.swapChoiceFrom
 import io.github.brrenat.seekervault.plugins.actions.swapInputs
-import io.github.brrenat.seekervault.solana.SolanaAccounts
+import io.github.brrenat.seekervault.solana.NetworkAccounts
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
@@ -61,10 +61,11 @@ internal class JupiterSwapAction(
     private val api: JupiterProvider,
     private val capability: ActionCapability,
     private val now: () -> Instant,
-    /** The build's SAC service fee (SEE-173). Off unless the APK was built with one. */
-    private val fee: SwapFeePolicy = SwapFeePolicy.Off,
-    /** Where a configured fee account is verified before it is used. The app's own endpoint. */
-    private val chain: SolanaAccounts? = null,
+    /**
+     * Where a configured fee account is verified before it is used: the application's own endpoint
+     * for the swap's network, the same one every other mainnet read uses (SEE-184).
+     */
+    private val chain: NetworkAccounts? = null,
 ) {
 
     // What was offered for the bytes that were built, keyed by those exact bytes. It is the only
@@ -93,11 +94,16 @@ internal class JupiterSwapAction(
                 is SwapChoiceResult.Invalid ->
                     throw PluginFailure(read.problem.code, read.problem.message)
             }
-        // The fee is decided before anything is quoted, from the build's policy and the chain,
-        // and then bound to the bytes with the quote: nothing later can change it (SEE-173).
+        // The fee is decided before anything is quoted, from the terms core handed this operation
+        // (the gateway's for a feed swap, none for a direct one) and the chain, and then bound to
+        // the bytes with the quote: nothing later can change it (SEE-173, SEE-185).
+        val fee = SwapFeePolicy.of(operation.serviceFee)
         val decided =
-            if (fee.enabled && chain != null) decideSwapFee(fee, payload.outputMint, chain)
-            else SwapFee.Disabled
+            if (fee.enabled && chain != null) {
+                decideSwapFee(fee, payload.outputMint, chain.on(wallet.network.network))
+            } else {
+                SwapFee.Disabled
+            }
         val charged = decided as? SwapFee.Charged
         val quote =
             try {
@@ -171,11 +177,16 @@ internal class JupiterSwapAction(
  *
  * Two things expire underneath it and this is the shorter honest bound on both: the quote is a
  * price from a moment ago, and the transaction carries a recent blockhash, which a validator will
- * accept for about 150 slots — roughly a minute. So the owner has a minute from preparing to the
- * wallet opening, and after that the app prepares again rather than sending something that would
- * either be refused by the chain or filled at a price nobody looked at.
+ * accept for 150 blocks after it was produced. Jupiter's blockhash is already some of those blocks
+ * old when the build arrives, and on mainnet the rest passed in about 28 seconds (measured
+ * 2026-10-11), not the minute this used to assume: a wallet opened at 35 seconds answered
+ * "blockhash expired". So the owner has 20 seconds from preparing to the wallet opening, which
+ * leaves the wallet a few seconds of its own, and after that approving stops with
+ * [io.github.brrenat.seekervault.proposals.BindingProblem.PreparationExpired] and the app prepares
+ * again rather than sending something that would either be refused by the chain or filled at a
+ * price nobody looked at.
  */
-val SWAP_PREPARATION_LIFETIME: Duration = Duration.ofSeconds(60)
+val SWAP_PREPARATION_LIFETIME: Duration = Duration.ofSeconds(20)
 
 // Jupiter's failures become the boundary's, with Jupiter's own words carried through for display
 // when it gave any. Nothing is parsed out of them.

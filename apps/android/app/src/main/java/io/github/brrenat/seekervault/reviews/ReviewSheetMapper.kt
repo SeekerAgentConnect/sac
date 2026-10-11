@@ -254,6 +254,14 @@ private fun Value.displayValue(): String? =
     }
 
 private fun Request.network(wallet: SelectedWallet?): ReviewNetwork? {
+    // A feed signal's own declaration comes first, and is never replaced by a wallet's (SEE-185).
+    when (Network.forNumber(action.networkValue)) {
+        Network.NETWORK_MAINNET ->
+            return ReviewNetwork("Solana mainnet", NetworkChipNetwork.Mainnet)
+        Network.NETWORK_DEVNET -> return ReviewNetwork("Solana devnet", NetworkChipNetwork.Devnet)
+        Network.NETWORK_TESTNET -> return ReviewNetwork("Solana testnet", null)
+        else -> Unit
+    }
     wallet?.network?.let {
         return when (it) {
             WalletNetwork.Devnet -> ReviewNetwork("Solana devnet", NetworkChipNetwork.Devnet)

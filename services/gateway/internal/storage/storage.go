@@ -13,6 +13,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/proposal/v1"
 	requestv2 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
@@ -30,6 +31,11 @@ type StoredProposal struct {
 	Sequence  uint64
 	UpdatedAt time.Time
 	Legacy    bool
+	// Network is the Solana network the row's common document declares (SEE-185), which the
+	// protocol-1 projection in Document cannot carry. It is unspecified for a protocol-1 row and for
+	// a common document from before SEE-185, and it is what keeps a network-declaring document out
+	// of the protocol-1 views (rules.ProtocolOneMayShow).
+	Network serverv1.SolanaNetwork
 }
 
 // StoredRequest is the common-contract view of a publication. Legacy identifies a row originally
@@ -113,12 +119,30 @@ type FeedStore interface {
 	// publisher's host, so a registration that has never checked in and one whose process stopped
 	// are the same answer.
 	PublisherLastSeen(context.Context, string) (time.Time, error)
+	// ClientConfig is the operator's current client configuration (SEE-185). A gateway that was
+	// never configured answers revision 0 with no endpoints and no fee, which is a configuration
+	// rather than an absence: every client reads the same answer, and asking records nothing.
+	ClientConfig(context.Context) (*StoredClientConfig, error)
 	// Listed is every registration the operator put in the Discover catalog that could be shown
 	// there (SEE-176): listed, enabled for publishing, with a public description and a manifest.
 	// It is bounded by MostListed, read fresh on every call, and ordered by server ID; the caller
 	// decides what a usable manifest is and orders the catalog itself.
 	Listed(context.Context) ([]ListedFeed, error)
 }
+
+// --- the client configuration (SEE-185) -----------------------------------------
+
+// StoredClientConfig is the client configuration the gateway holds and when it last changed. Its
+// Document carries the revision; UpdatedAt is the zero time when it was never configured.
+type StoredClientConfig struct {
+	Document  *gatewayv1.ClientConfig
+	UpdatedAt time.Time
+}
+
+// ErrInvalidClientConfig is a configuration the rules refuse (rules.ClientConfig). The store is
+// where the whole configuration is checked, after a change is applied to what is held, so no path
+// can save one; it wraps the rules.ConfigProblem the operator's surfaces show, and saves nothing.
+var ErrInvalidClientConfig = errors.New("not a valid client configuration")
 
 // --- the Discover catalog (SEE-176) --------------------------------------------
 
@@ -346,6 +370,23 @@ type PublisherAdminStore interface {
 	// Grants lists one publisher's grants, newest first, for the operator's view: opaque
 	// references and instants, never a session and never a push target.
 	Grants(context.Context, string) ([]Grant, error)
+	// SaveClientConfig is the operator replacing the whole client configuration (SEE-185). It is
+	// validated and canonicalized by rules.ClientConfig inside the store, so the CLI and the admin
+	// page cannot save different things for the same input, and an invalid one is
+	// ErrInvalidClientConfig with nothing written. The revision given is ignored. In one
+	// transaction, a configuration equal to the one held is answered as it stands with false and
+	// writes nothing — the revision does not move for a retry or an unchanged form — and any other
+	// is stored at the held revision plus exactly one, answered with true.
+	SaveClientConfig(context.Context, *gatewayv1.ClientConfig, time.Time) (*StoredClientConfig, bool, error)
+	// UpdateClientConfig is the operator changing part of the client configuration — the
+	// endpoints, one network's endpoint, or the fee — which is what the admin page and
+	// feed-gatewayctl do. The change is applied to what is held inside the same transaction that
+	// checks and writes the result, so two changes to different halves saved at once each keep the
+	// other's, instead of the later one writing back a stale copy of the half it did not touch. It
+	// answers like SaveClientConfig, and an invalid result is ErrInvalidClientConfig wrapping the
+	// rules.ConfigProblem it broke, with nothing written. The change may be called with a fresh
+	// copy more than once, so it must only set fields.
+	UpdateClientConfig(context.Context, func(*gatewayv1.ClientConfig), time.Time) (*StoredClientConfig, bool, error)
 	Forget(context.Context, string, string) error
 	Publishers(context.Context) ([]Publisher, error)
 	Publisher(context.Context, string) (*Publisher, error)

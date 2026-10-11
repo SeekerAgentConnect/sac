@@ -113,6 +113,8 @@ If the server refuses the approval because a newer version exists or the blockha
 
 `UNKNOWN` is not a failure and not a licence to retry. A signed transaction can land after your phone has stopped listening, so the honest answer is that nobody here knows yet. Your wallet is never asked a second time.
 
+It doesn't stay unknown. A few minutes later, once the transaction's blockhash has expired, your phone looks for it in your wallet's history on chain. Found, it reads as sent and is followed like any other, and the agent reads `SUBMITTED`. Not there, it was never sent: the request goes back to **Waiting**, you can review and approve it again with a fresh transaction, and the agent reads `PENDING` again. (A server that hasn't been updated for this marks it `FAILED` instead, and the agent asks again.)
+
 `SUBMITTED` means your wallet sent it, not that it succeeded on chain. That is the next question.
 
 ## Following it to the network
@@ -132,7 +134,7 @@ Three things are worth knowing about that answer:
 - **The server checks that what it found is what you approved.** It fetches the transaction the chain holds under that ID and compares it, byte for byte, with the one you read. If they differ, it says so and settles nothing, rather than reporting a stranger's transaction as yours.
 - **Nothing is ever retried for you.** A failure on chain, an expired blockhash, and an ID the server can't account for are all reported as what they are. If you still want the transfer, the agent asks again and you review a fresh request.
 
-An `UNKNOWN` transfer is the one case nothing here can settle: no ID ever reached this phone, so there is nothing to look up. [`troubleshooting.md`](troubleshooting.md#a-transfer-whose-outcome-is-unknown) says how to find out from your wallet's own history.
+An `UNKNOWN` transfer has no ID to look up. Your phone settles it from your wallet's history once it can no longer land (above); [`troubleshooting.md`](troubleshooting.md#a-transfer-whose-outcome-is-unknown) says what to do if it can't.
 
 A script can read the same answer with its own exit code:
 
@@ -334,10 +336,10 @@ None of these is a failure of the transfer you asked for; each is a place it sto
 | The transfer confirms as **failed**, with the network's own reason, usually about lamports. | Not enough SOL. **Nothing reads your balance before you approve**: the sidecar has no `getBalance` call at all, so a SOL amount larger than you hold, and a fee or rent you can't cover, are all found out by the network when the transaction runs. | Fund the account — at least the amount, plus the fee, plus the rent when a token account is created — and have the agent ask again. The failed attempt still cost its fee. Nothing here builds a replacement. |
 | The review shows **"Network fee about … SOL, and … SOL for the new token account"**. | The recipient has no account for that mint, so the transaction creates one, and Solana charges rent for it — about 0.002 SOL, paid by you, once per recipient per mint. | Nothing is wrong. Either approve it, or send to someone who already holds that token. The second transfer to the same recipient has no rent in it. |
 | **"You declined in the wallet. Nothing was signed."** The agent reads `REJECTED`. | You said no inside the wallet — or **Reject** in the app, which never opens the wallet at all. | Nothing to undo: nothing was signed and nothing reached the network. If it was a mistake, have the agent ask again; the same request can't be revived. |
-| **"This phone never learned what the wallet did."** The agent reads `UNKNOWN`. | The app was killed, or the wallet never came back, while the transaction was with it. It may have been sent, or not. | **Don't send it again yet.** There is no signature here to look up, so check your wallet's own history, or your address on the explorer for that cluster, and see whether a matching transfer is there. Then decide. The app and the server never retry this for you, and the wallet is never asked a second time. |
+| **"This phone never learned what the wallet did."** The agent reads `UNKNOWN`. | The app was killed, or the wallet never came back, while the transaction was with it — for example you closed a wallet error such as "Network mismatch". It may have been sent, or not. | **Don't send it again yet.** A few minutes later, once its blockhash has expired, the phone searches your wallet's history: never sent, the request is back in **Waiting** to approve again; otherwise it reads as sent. If it stays unknown — the network endpoint's history doesn't reach back, or your address has too much activity to search — check your wallet's own history or the explorer for that cluster. The wallet is never asked a second time. |
 
-`UNKNOWN` is the only one of these that can't be settled from the phone. Everything else ends in a
-state you can read, and none of them leaves a transaction half-sent.
+`UNKNOWN` is the only one of these that can stay unsettled. Everything else ends in a state you can
+read, and none of them leaves a transaction half-sent.
 
 ## Where this stops for now
 

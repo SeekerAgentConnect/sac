@@ -87,20 +87,21 @@ func run(log *slog.Logger) error {
 	description := manifest.Settings{
 		ServerID:    settings.ServerID,
 		GatewayURL:  settings.GatewayURL,
-		Environment: settings.Environment,
 		Networks:    settings.Networks,
 		Requirement: kind.Requirement(),
 		DisplayName: settings.DisplayName,
 		AuthOrigin:  restricted.AuthOrigin,
 	}
 
+	// A retired setting a deployment still has is one line each, and never a reason not to start
+	// (PUBLISHER_ENVIRONMENT, SEE-185).
+	for _, warning := range settings.Warnings {
+		log.Warn(warning)
+	}
+
 	documents, err := store.Open(settings.DatabasePath, store.Stamp{
-		ServerID: settings.ServerID,
-		// The word itself: what the file is stamped with is text, and the store compares it
-		// without knowing the vocabulary, so a file that holds anything else is refused and named
-		// rather than interpreted.
-		Environment: settings.Environment.String(),
-		GatewayURL:  settings.GatewayURL,
+		ServerID:   settings.ServerID,
+		GatewayURL: settings.GatewayURL,
 	})
 	if err != nil {
 		return fmt.Errorf("open %s: %w", settings.DatabasePath, err)
@@ -180,7 +181,8 @@ func run(log *slog.Logger) error {
 		"channel", signals.ChannelFor(settings.ServerID),
 		"gateway", settings.GatewayURL,
 		"publishing_to", settings.PublishURL,
-		"environment", settings.Environment,
+		// Capability information: every signal names its own network, one of these (SEE-185).
+		"networks", settings.Networks,
 		"operation", kind.Operation(),
 		"plugin", kind.Requirement().PluginID,
 		"settings_revision", revision,

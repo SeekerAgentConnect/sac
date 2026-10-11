@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A swap signal, reviewed in the design's review sheet as a prediction is. The shared
+         lines — stages, verdict, checks, footer — are the prediction sheet's own. -->
+    <string name="swap_review_title">Swap</string>
+    <string name="swap_review_pair">%1$s → %2$s</string>
+    <string name="swap_review_subline">%1$s · price may move up to %2$s</string>
+    <string name="swap_review_percent">%1$s%%</string>
+    <string name="swap_previewed_notice">Previewed. Nothing was signed and nothing was sent, and this signal is still open. To swap, refresh the quote and approve it.</string>
+    <string name="swap_review_check">The route, the quote and the exact transaction were read on this phone. Nothing here was taken from the publisher on trust, and the amount does not come from the signal.</string>
+    <string name="swap_review_check_pending">When you get a quote, this phone reads the route and the exact transaction itself. Nothing is taken from the publisher on trust, and the amount does not come from the signal.</string>
+    <string name="swap_review_insufficient_funds_body">Could not prepare a swap of %1$s. The provider reported insufficient funds.</string>
+    <string name="swap_daily_after_quote">Checked once the swap is prepared</string>
+    <string name="swap_section_about">About this swap and risks</string>
+    <string name="swap_section_about_summary">How it is routed, and what cannot be undone</string>
+    <string name="swap_section_technical_summary">Token, route and account identifiers</string>
+    <string name="swap_fact_pay">You pay</string>
+    <string name="swap_fact_pay_mint">Pay mint</string>
+    <string name="swap_fact_pay_decimals">Pay decimals</string>
+    <string name="swap_fact_receive">You receive</string>
+    <string name="swap_fact_receive_mint">Receive mint</string>
+    <string name="swap_fact_receive_decimals">Receive decimals</string>
+    <string name="swap_fact_slippage">Price movement you allow</string>
+    <string name="swap_fact_max_slippage">Most the signal allows</string>
+    <string name="swap_fact_least_input">Least amount</string>
+    <string name="swap_fact_most_input">Most amount</string>
+</resources>

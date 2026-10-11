@@ -1,10 +1,11 @@
 {{template "head" .}}
 <div class="page-heading">
-  <div><p class="eyebrow">CopyTrading trader · {{.Environment}}</p><h1>Signals</h1></div>
+  <div><p class="eyebrow">CopyTrading trader · Demo</p><h1>Signals</h1></div>
   <a class="button primary" href="#new-swap"><span aria-hidden="true">＋</span> New swap</a>
 </div>
 {{template "flash" .}}
-<p class="section-copy">Create a sandbox swap; each owner chooses their own amount in SAC.</p>
+<p class="section-copy">Publish a swap signal; each owner chooses their own amount in SAC, and
+whether to preview or execute it.</p>
 
 <section class="card reference-card" aria-labelledby="reference-title">
   <div>
@@ -21,9 +22,21 @@
 </section>
 
 <section id="new-swap" class="section-block" aria-labelledby="new-swap-title">
-  <h2 id="new-swap-title">Publish a sandbox swap</h2>
+  <h2 id="new-swap-title">Publish a swap</h2>
+  {{if not .Networks}}
+  <p class="hint">This publisher's manifest declares no Solana network
+  (PUBLISHER_SUPPORTED_NETWORKS), and every signal names the network it executes on, so no
+  signal can be published from here.</p>
+  {{else}}
   <form method="post" action="{{.Path}}/create" class="card">
     <div class="form-grid">
+      <div class="field">
+        <label for="network">Network</label>
+        <select id="network" name="network">
+          {{range .Networks}}<option value="{{.}}"{{if eq . "mainnet"}} selected{{end}}>{{.}}</option>
+          {{end}}
+        </select>
+      </div>
       <div class="field">
         <label for="pair">Pair</label>
         <select id="pair" name="pair">
@@ -50,9 +63,10 @@
       <input id="note" name="note" maxlength="1024" placeholder="shown as the trader's words">
     </div>
     <div class="form-actions">
-      <button type="submit" class="button primary" data-busy="Publishing…">Publish sandbox swap</button>
+      <button type="submit" class="button primary" data-busy="Publishing…">Publish swap</button>
     </div>
   </form>
+  {{end}}
 </section>
 
 <section class="section-block" aria-labelledby="signals-title">
@@ -60,7 +74,7 @@
   {{if not .Signals}}
   <div class="empty-state">
     <span class="empty-glyph" aria-hidden="true">▤</span>
-    <p>None yet. Publish a sandbox swap above.</p>
+    <p>None yet. Publish a swap above.</p>
   </div>
   {{else}}
   <div class="table-card">
