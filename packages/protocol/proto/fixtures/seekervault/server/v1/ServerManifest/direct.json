@@ -6,6 +6,5 @@
   "direct": {
     "url": "https://vault.example.com",
     "supportedNetworks": ["SOLANA_NETWORK_MAINNET"]
-  },
-  "environments": ["SERVER_ENVIRONMENT_PRODUCTION"]
+  }
 }

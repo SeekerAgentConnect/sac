@@ -208,55 +208,6 @@ public interface RecommendedFeedOrBuilder extends
 
   /**
    * <pre>
-   * The environments the feed serves.
-   * </pre>
-   *
-   * <code>repeated .seekervault.server.v1.ServerEnvironment environments = 9 [json_name = "environments"];</code>
-   * @return A list containing the environments.
-   */
-  java.util.List<io.github.brrenat.seekervault.server.v1.ServerEnvironment> getEnvironmentsList();
-  /**
-   * <pre>
-   * The environments the feed serves.
-   * </pre>
-   *
-   * <code>repeated .seekervault.server.v1.ServerEnvironment environments = 9 [json_name = "environments"];</code>
-   * @return The count of environments.
-   */
-  int getEnvironmentsCount();
-  /**
-   * <pre>
-   * The environments the feed serves.
-   * </pre>
-   *
-   * <code>repeated .seekervault.server.v1.ServerEnvironment environments = 9 [json_name = "environments"];</code>
-   * @param index The index of the element to return.
-   * @return The environments at the given index.
-   */
-  io.github.brrenat.seekervault.server.v1.ServerEnvironment getEnvironments(int index);
-  /**
-   * <pre>
-   * The environments the feed serves.
-   * </pre>
-   *
-   * <code>repeated .seekervault.server.v1.ServerEnvironment environments = 9 [json_name = "environments"];</code>
-   * @return A list containing the enum numeric values on the wire for environments.
-   */
-  java.util.List<java.lang.Integer>
-  getEnvironmentsValueList();
-  /**
-   * <pre>
-   * The environments the feed serves.
-   * </pre>
-   *
-   * <code>repeated .seekervault.server.v1.ServerEnvironment environments = 9 [json_name = "environments"];</code>
-   * @param index The index of the value to return.
-   * @return The enum numeric value on the wire of environments at the given index.
-   */
-  int getEnvironmentsValue(int index);
-
-  /**
-   * <pre>
    * The manifest's protocol version and settings revision, so a phone can say a feed needs a newer
    * app before it asks for the manifest.
    * </pre>

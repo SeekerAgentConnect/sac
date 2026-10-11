@@ -41,7 +41,7 @@ import "seekervault/server/v1/manifest.proto";
 // anonymous fallback for an old client, and no method here that skips the check.
 service FeedService {
   // The manifest the publisher registered: what contract it speaks, which client plugins its
-  // operations need, which environments it serves, and the channel it publishes on. The phone
+  // operations need, which networks they run on, and the channel it publishes on. The phone
   // validates all of it against the reference it added the feed from before storing any of it
   // (SEE-88), so this method is asked, never believed.
   rpc GetServerManifest(GetServerManifestRequest) returns (GetServerManifestResponse);
@@ -119,6 +119,16 @@ service FeedService {
   // manifest as it would for a pasted reference, so a card that went stale between the two is
   // caught there rather than believed.
   rpc ListRecommendedFeeds(ListRecommendedFeedsRequest) returns (ListRecommendedFeedsResponse);
+  // The client configuration this gateway's operator set for every app that trusts it (SEE-185):
+  // which Solana RPC endpoint the app reads each network through, and the SAC swap service fee.
+  //
+  // The app's build names exactly one gateway, and this is the only place those settings come
+  // from: no publisher, manifest, signal, link or direct server can set or override them. The
+  // answer is the same for everyone and asking records nothing, so it is about the deployment and
+  // never about the caller. Everything in it is readable by any client: an endpoint that needs a
+  // secret credential is never configured here (an operator puts a proxy of their own in front of
+  // such a provider instead).
+  rpc GetClientConfig(GetClientConfigRequest) returns (GetClientConfigResponse);
 }
 
 message GetServerManifestRequest {
@@ -390,10 +400,63 @@ message RecommendedFeed {
   repeated seekervault.server.v1.SolanaNetwork supported_networks = 7;
   // The client plugins and contract ranges the feed's operations need.
   repeated seekervault.server.v1.PluginRequirement required_plugins = 8;
-  // The environments the feed serves.
-  repeated seekervault.server.v1.ServerEnvironment environments = 9;
+  // Retired with server-declared environments (SEE-185). Never reuse.
+  reserved 9;
+  reserved "environments";
   // The manifest's protocol version and settings revision, so a phone can say a feed needs a newer
   // app before it asks for the manifest.
   uint32 protocol_version = 10;
   uint64 settings_revision = 11;
+}
+
+message GetClientConfigRequest {}
+
+message GetClientConfigResponse {
+  ClientConfig config = 1;
+}
+
+// ClientConfig is the operator's current, complete client configuration (SEE-185,
+// docs/wiki/client-config.md). A gateway that was never configured answers revision 0, with no
+// endpoints and a zero fee: that is a configuration, and a client keeps it apart from having no
+// answer at all, which is never read as a zero fee.
+message ClientConfig {
+  // Increases with every change the operator saves, and never goes backwards. A client binds a
+  // prepared operation to the terms it was prepared under, and compares terms rather than this
+  // number before it signs.
+  uint64 revision = 1;
+  // At most one per network, in ascending network order. A network with none has no endpoint:
+  // the client reads nothing on it and says so, and never reads it through another network's.
+  repeated RpcEndpoint rpc_endpoints = 2;
+  // The SAC swap service fee (SEE-173). Absent, or a bps of 0, is no fee.
+  SwapFee swap_fee = 3;
+}
+
+// One network's Solana JSON-RPC endpoint. The client proves it with getGenesisHash before
+// anything read through it counts, and refuses one that serves another cluster.
+message RpcEndpoint {
+  seekervault.server.v1.SolanaNetwork network = 1;
+  // An absolute HTTPS URL with no user info or fragment. A path or query is kept as given, and is
+  // as public as the rest of this message.
+  string url = 2;
+}
+
+// The fee the app adds to a feed swap's output, credited by the swap program to token accounts the
+// operator created beforehand. It applies to swaps on `network` only, and only to output mints
+// listed in `accounts`; a direct server's operations never carry it.
+message SwapFee {
+  // Whole basis points, 0 to 100. Zero is no fee.
+  uint32 bps = 1;
+  // The network the owner and accounts below exist on. Required when bps is not zero.
+  seekervault.server.v1.SolanaNetwork network = 2;
+  // The base58 address that owns every receiving token account.
+  string owner = 3;
+  // One receiving token account per output mint, in ascending mint order, each mint once.
+  repeated SwapFeeAccount accounts = 4;
+}
+
+message SwapFeeAccount {
+  // The base58 mint the fee is taken in: the swap's output mint.
+  string mint = 1;
+  // The base58 SPL token account that receives the fee in that mint.
+  string token_account = 2;
 }

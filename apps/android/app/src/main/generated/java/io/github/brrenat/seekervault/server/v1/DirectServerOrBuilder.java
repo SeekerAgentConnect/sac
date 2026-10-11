@@ -42,9 +42,9 @@ public interface DirectServerOrBuilder extends
    * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
    * nothing at all rather than claiming a network it doesn't use.
    *
-   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
-   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
-   * simulate against Mainnet data, and a production server may execute on Devnet.
+   * It is capability information, never an active-network selection (SEE-185): a feed's signals
+   * each name their own network (request.v2.ActionCapability.network), which must be one listed
+   * here, and a direct server's operations carry the network of their explicit wallet binding.
    *
    * The phone offers only wallet profiles on one of these networks when a connection is set up,
    * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
@@ -70,9 +70,9 @@ public interface DirectServerOrBuilder extends
    * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
    * nothing at all rather than claiming a network it doesn't use.
    *
-   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
-   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
-   * simulate against Mainnet data, and a production server may execute on Devnet.
+   * It is capability information, never an active-network selection (SEE-185): a feed's signals
+   * each name their own network (request.v2.ActionCapability.network), which must be one listed
+   * here, and a direct server's operations carry the network of their explicit wallet binding.
    *
    * The phone offers only wallet profiles on one of these networks when a connection is set up,
    * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
@@ -98,9 +98,9 @@ public interface DirectServerOrBuilder extends
    * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
    * nothing at all rather than claiming a network it doesn't use.
    *
-   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
-   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
-   * simulate against Mainnet data, and a production server may execute on Devnet.
+   * It is capability information, never an active-network selection (SEE-185): a feed's signals
+   * each name their own network (request.v2.ActionCapability.network), which must be one listed
+   * here, and a direct server's operations carry the network of their explicit wallet binding.
    *
    * The phone offers only wallet profiles on one of these networks when a connection is set up,
    * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
@@ -127,9 +127,9 @@ public interface DirectServerOrBuilder extends
    * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
    * nothing at all rather than claiming a network it doesn't use.
    *
-   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
-   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
-   * simulate against Mainnet data, and a production server may execute on Devnet.
+   * It is capability information, never an active-network selection (SEE-185): a feed's signals
+   * each name their own network (request.v2.ActionCapability.network), which must be one listed
+   * here, and a direct server's operations carry the network of their explicit wallet binding.
    *
    * The phone offers only wallet profiles on one of these networks when a connection is set up,
    * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
@@ -156,9 +156,9 @@ public interface DirectServerOrBuilder extends
    * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
    * nothing at all rather than claiming a network it doesn't use.
    *
-   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
-   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
-   * simulate against Mainnet data, and a production server may execute on Devnet.
+   * It is capability information, never an active-network selection (SEE-185): a feed's signals
+   * each name their own network (request.v2.ActionCapability.network), which must be one listed
+   * here, and a direct server's operations carry the network of their explicit wallet binding.
    *
    * The phone offers only wallet profiles on one of these networks when a connection is set up,
    * and refuses to sign for a connection whose bound network is not listed. Empty — which is also

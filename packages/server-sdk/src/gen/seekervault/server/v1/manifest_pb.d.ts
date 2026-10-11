@@ -86,15 +86,6 @@ export declare type ServerManifest = Message<"seekervault.server.v1.ServerManife
   requiredPlugins: PluginRequirement[];
 
   /**
-   * The environments this server serves (SEE-97). The phone refuses to treat a server as
-   * supported in an environment the server doesn't name, because sandbox and production are
-   * different promises about what happens when the owner approves. At most one of each.
-   *
-   * @generated from field: repeated seekervault.server.v1.ServerEnvironment environments = 6;
-   */
-  environments: ServerEnvironment[];
-
-  /**
    * The name the server calls itself, for the connection's default label. Optional; at most 64
    * UTF-8 bytes of printable text. It is the server's own claim and is never verified: the owner
    * can rename any connection, and their name is the one the app shows.
@@ -160,9 +151,9 @@ export declare type DirectServer = Message<"seekervault.server.v1.DirectServer">
    * Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
    * nothing at all rather than claiming a network it doesn't use.
    *
-   * It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
-   * not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
-   * simulate against Mainnet data, and a production server may execute on Devnet.
+   * It is capability information, never an active-network selection (SEE-185): a feed's signals
+   * each name their own network (request.v2.ActionCapability.network), which must be one listed
+   * here, and a direct server's operations carry the network of their explicit wallet binding.
    *
    * The phone offers only wallet profiles on one of these networks when a connection is set up,
    * and refuses to sign for a connection whose bound network is not listed. Empty — which is also
@@ -195,7 +186,9 @@ export declare const DirectServerSchema: GenMessage<DirectServer>;
  */
 export declare type GatewayFeed = Message<"seekervault.server.v1.GatewayFeed"> & {
   /**
-   * The shared gateway's absolute HTTPS origin, with no path, query, user info, or fragment.
+   * The shared gateway's absolute HTTPS origin, with no path, query, user info, or fragment. A
+   * phone trusts exactly one gateway, the one its build names (SEE-185), and refuses a manifest
+   * that names any other: this field confirms an origin and can never redirect one.
    *
    * @generated from field: string gateway_url = 1;
    */
@@ -386,37 +379,6 @@ export enum ConnectionMode {
  * Describes the enum seekervault.server.v1.ConnectionMode.
  */
 export declare const ConnectionModeSchema: GenEnum<ConnectionMode>;
-
-/**
- * Which promise a server keeps when the owner approves (SEE-97).
- *
- * @generated from enum seekervault.server.v1.ServerEnvironment
- */
-export enum ServerEnvironment {
-  /**
-   * @generated from enum value: SERVER_ENVIRONMENT_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * Real operations on the network the owner's wallet is selected for.
-   *
-   * @generated from enum value: SERVER_ENVIRONMENT_PRODUCTION = 1;
-   */
-  PRODUCTION = 1,
-
-  /**
-   * Live public market data where it exists, and execution that is clearly simulated.
-   *
-   * @generated from enum value: SERVER_ENVIRONMENT_SANDBOX = 2;
-   */
-  SANDBOX = 2,
-}
-
-/**
- * Describes the enum seekervault.server.v1.ServerEnvironment.
- */
-export declare const ServerEnvironmentSchema: GenEnum<ServerEnvironment>;
 
 /**
  * Who may read a feed.

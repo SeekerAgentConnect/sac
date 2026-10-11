@@ -10,12 +10,16 @@
       "supportedNetworks": ["SOLANA_NETWORK_MAINNET", "SOLANA_NETWORK_DEVNET"]
     },
     "requiredPlugins": [
-      { "pluginId": "jupiter.swap", "minContract": 1, "maxContract": 1 },
-      { "pluginId": "jupiter.prediction", "minContract": 1, "maxContract": 2 }
-    ],
-    "environments": [
-      "SERVER_ENVIRONMENT_PRODUCTION",
-      "SERVER_ENVIRONMENT_SANDBOX"
+      {
+        "pluginId": "jupiter.swap",
+        "minContract": 1,
+        "maxContract": 1
+      },
+      {
+        "pluginId": "jupiter.prediction",
+        "minContract": 1,
+        "maxContract": 2
+      }
     ],
     "displayName": "Копи-трейдинг 📈"
   },

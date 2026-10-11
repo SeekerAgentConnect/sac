@@ -19,6 +19,7 @@
 package requestv2
 
 import (
+	v1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -265,6 +266,12 @@ func (ResultMode) EnumDescriptor() ([]byte, []int) {
 
 // Version 1 is the first common envelope contract. It is explicit on every document so a client
 // can keep an unknown request readable and dismissible without trying to execute it.
+//
+// Version 2 (SEE-185) is the current one: the action names the Solana network it executes on
+// (ActionCapability.network), and that declaration is required. A version-1 document says nothing
+// about a network, so a client keeps it readable and never executes it: the network is never
+// inferred from a wallet, a manifest, or the assets a document names. The gateway accepts only
+// version 2 for new publications.
 type Request struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	ContractVersion uint32                 `protobuf:"varint,1,opt,name=contract_version,json=contractVersion,proto3" json:"contract_version,omitempty"`
@@ -573,8 +580,16 @@ type ActionCapability struct {
 	CapabilityVersion uint32                 `protobuf:"varint,2,opt,name=capability_version,json=capabilityVersion,proto3" json:"capability_version,omitempty"`
 	PluginId          string                 `protobuf:"bytes,3,opt,name=plugin_id,json=pluginId,proto3" json:"plugin_id,omitempty"`
 	Parameters        []*Value               `protobuf:"bytes,4,rep,name=parameters,proto3" json:"parameters,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// The Solana network this action executes on (SEE-185). Required from contract version 2: the
+	// assets and markets a document names are identified by network plus address, so the same mint
+	// or market on another cluster is a different thing. One feed may publish successive documents
+	// for different networks, each within the manifest's supported_networks; a connection is never
+	// bound to one execution network. SOLANA_NETWORK_UNSPECIFIED, or a value a client does not know,
+	// leaves the document readable and not executable — never read as Mainnet or as the network of
+	// whichever wallet the owner selects.
+	Network       v1.SolanaNetwork `protobuf:"varint,5,opt,name=network,proto3,enum=seekervault.server.v1.SolanaNetwork" json:"network,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ActionCapability) Reset() {
@@ -633,6 +648,13 @@ func (x *ActionCapability) GetParameters() []*Value {
 		return x.Parameters
 	}
 	return nil
+}
+
+func (x *ActionCapability) GetNetwork() v1.SolanaNetwork {
+	if x != nil {
+		return x.Network
+	}
+	return v1.SolanaNetwork(0)
 }
 
 // A bounded typed value. Integer quantities are decimal strings so the full unsigned 64-bit range
@@ -1133,7 +1155,7 @@ var File_seekervault_request_v2_request_proto protoreflect.FileDescriptor
 
 const file_seekervault_request_v2_request_proto_rawDesc = "" +
 	"\n" +
-	"$seekervault/request/v2/request.proto\x12\x16seekervault.request.v2\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa3\x04\n" +
+	"$seekervault/request/v2/request.proto\x12\x16seekervault.request.v2\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$seekervault/server/v1/manifest.proto\"\xa3\x04\n" +
 	"\aRequest\x12)\n" +
 	"\x10contract_version\x18\x01 \x01(\rR\x0fcontractVersion\x12C\n" +
 	"\bidentity\x18\x02 \x01(\v2'.seekervault.request.v2.RequestIdentityR\bidentity\x12F\n" +
@@ -1160,14 +1182,15 @@ const file_seekervault_request_v2_request_proto_rawDesc = "" +
 	"\fPresentation\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12H\n" +
-	"\bcategory\x18\x03 \x01(\x0e2,.seekervault.request.v2.PresentationCategoryR\bcategory\"\xc2\x01\n" +
+	"\bcategory\x18\x03 \x01(\x0e2,.seekervault.request.v2.PresentationCategoryR\bcategory\"\x82\x02\n" +
 	"\x10ActionCapability\x12#\n" +
 	"\rcapability_id\x18\x01 \x01(\tR\fcapabilityId\x12-\n" +
 	"\x12capability_version\x18\x02 \x01(\rR\x11capabilityVersion\x12\x1b\n" +
 	"\tplugin_id\x18\x03 \x01(\tR\bpluginId\x12=\n" +
 	"\n" +
 	"parameters\x18\x04 \x03(\v2\x1d.seekervault.request.v2.ValueR\n" +
-	"parameters\"\x84\x01\n" +
+	"parameters\x12>\n" +
+	"\anetwork\x18\x05 \x01(\x0e2$.seekervault.server.v1.SolanaNetworkR\anetwork\"\x84\x01\n" +
 	"\x05Value\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x04text\x18\x02 \x01(\tH\x00R\x04text\x12\x1a\n" +
@@ -1260,6 +1283,7 @@ var file_seekervault_request_v2_request_proto_goTypes = []any{
 	(*FeedAudience)(nil),          // 14: seekervault.request.v2.FeedAudience
 	(*ResultHandling)(nil),        // 15: seekervault.request.v2.ResultHandling
 	(*timestamppb.Timestamp)(nil), // 16: google.protobuf.Timestamp
+	(v1.SolanaNetwork)(0),         // 17: seekervault.server.v1.SolanaNetwork
 }
 var file_seekervault_request_v2_request_proto_depIdxs = []int32{
 	5,  // 0: seekervault.request.v2.Request.identity:type_name -> seekervault.request.v2.RequestIdentity
@@ -1275,16 +1299,17 @@ var file_seekervault_request_v2_request_proto_depIdxs = []int32{
 	16, // 10: seekervault.request.v2.RequestLifecycle.expires_at:type_name -> google.protobuf.Timestamp
 	1,  // 11: seekervault.request.v2.Presentation.category:type_name -> seekervault.request.v2.PresentationCategory
 	9,  // 12: seekervault.request.v2.ActionCapability.parameters:type_name -> seekervault.request.v2.Value
-	2,  // 13: seekervault.request.v2.OwnerInput.kind:type_name -> seekervault.request.v2.OwnerInputKind
-	11, // 14: seekervault.request.v2.OwnerInput.options:type_name -> seekervault.request.v2.InputOption
-	13, // 15: seekervault.request.v2.Audience.private:type_name -> seekervault.request.v2.PrivateAudience
-	14, // 16: seekervault.request.v2.Audience.feed:type_name -> seekervault.request.v2.FeedAudience
-	3,  // 17: seekervault.request.v2.ResultHandling.mode:type_name -> seekervault.request.v2.ResultMode
-	18, // [18:18] is the sub-list for method output_type
-	18, // [18:18] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	17, // 13: seekervault.request.v2.ActionCapability.network:type_name -> seekervault.server.v1.SolanaNetwork
+	2,  // 14: seekervault.request.v2.OwnerInput.kind:type_name -> seekervault.request.v2.OwnerInputKind
+	11, // 15: seekervault.request.v2.OwnerInput.options:type_name -> seekervault.request.v2.InputOption
+	13, // 16: seekervault.request.v2.Audience.private:type_name -> seekervault.request.v2.PrivateAudience
+	14, // 17: seekervault.request.v2.Audience.feed:type_name -> seekervault.request.v2.FeedAudience
+	3,  // 18: seekervault.request.v2.ResultHandling.mode:type_name -> seekervault.request.v2.ResultMode
+	19, // [19:19] is the sub-list for method output_type
+	19, // [19:19] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_request_v2_request_proto_init() }

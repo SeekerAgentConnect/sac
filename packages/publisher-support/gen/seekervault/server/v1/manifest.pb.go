@@ -156,58 +156,6 @@ func (ConnectionMode) EnumDescriptor() ([]byte, []int) {
 	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{1}
 }
 
-// Which promise a server keeps when the owner approves (SEE-97).
-type ServerEnvironment int32
-
-const (
-	ServerEnvironment_SERVER_ENVIRONMENT_UNSPECIFIED ServerEnvironment = 0
-	// Real operations on the network the owner's wallet is selected for.
-	ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION ServerEnvironment = 1
-	// Live public market data where it exists, and execution that is clearly simulated.
-	ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX ServerEnvironment = 2
-)
-
-// Enum value maps for ServerEnvironment.
-var (
-	ServerEnvironment_name = map[int32]string{
-		0: "SERVER_ENVIRONMENT_UNSPECIFIED",
-		1: "SERVER_ENVIRONMENT_PRODUCTION",
-		2: "SERVER_ENVIRONMENT_SANDBOX",
-	}
-	ServerEnvironment_value = map[string]int32{
-		"SERVER_ENVIRONMENT_UNSPECIFIED": 0,
-		"SERVER_ENVIRONMENT_PRODUCTION":  1,
-		"SERVER_ENVIRONMENT_SANDBOX":     2,
-	}
-)
-
-func (x ServerEnvironment) Enum() *ServerEnvironment {
-	p := new(ServerEnvironment)
-	*p = x
-	return p
-}
-
-func (x ServerEnvironment) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (ServerEnvironment) Descriptor() protoreflect.EnumDescriptor {
-	return file_seekervault_server_v1_manifest_proto_enumTypes[2].Descriptor()
-}
-
-func (ServerEnvironment) Type() protoreflect.EnumType {
-	return &file_seekervault_server_v1_manifest_proto_enumTypes[2]
-}
-
-func (x ServerEnvironment) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use ServerEnvironment.Descriptor instead.
-func (ServerEnvironment) EnumDescriptor() ([]byte, []int) {
-	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{2}
-}
-
 // Who may read a feed.
 type FeedAccessPolicy int32
 
@@ -248,11 +196,11 @@ func (x FeedAccessPolicy) String() string {
 }
 
 func (FeedAccessPolicy) Descriptor() protoreflect.EnumDescriptor {
-	return file_seekervault_server_v1_manifest_proto_enumTypes[3].Descriptor()
+	return file_seekervault_server_v1_manifest_proto_enumTypes[2].Descriptor()
 }
 
 func (FeedAccessPolicy) Type() protoreflect.EnumType {
-	return &file_seekervault_server_v1_manifest_proto_enumTypes[3]
+	return &file_seekervault_server_v1_manifest_proto_enumTypes[2]
 }
 
 func (x FeedAccessPolicy) Number() protoreflect.EnumNumber {
@@ -261,7 +209,7 @@ func (x FeedAccessPolicy) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use FeedAccessPolicy.Descriptor instead.
 func (FeedAccessPolicy) EnumDescriptor() ([]byte, []int) {
-	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{3}
+	return file_seekervault_server_v1_manifest_proto_rawDescGZIP(), []int{2}
 }
 
 // ServerManifest is one server's current, complete statement about itself. Everything the phone
@@ -294,10 +242,6 @@ type ServerManifest struct {
 	// incompatible. Neither is ever downloaded, and neither is a reason to sign anything blind.
 	// Empty means the server needs none, which is what the sidecar's own actions are.
 	RequiredPlugins []*PluginRequirement `protobuf:"bytes,5,rep,name=required_plugins,json=requiredPlugins,proto3" json:"required_plugins,omitempty"`
-	// The environments this server serves (SEE-97). The phone refuses to treat a server as
-	// supported in an environment the server doesn't name, because sandbox and production are
-	// different promises about what happens when the owner approves. At most one of each.
-	Environments []ServerEnvironment `protobuf:"varint,6,rep,packed,name=environments,proto3,enum=seekervault.server.v1.ServerEnvironment" json:"environments,omitempty"`
 	// The name the server calls itself, for the connection's default label. Optional; at most 64
 	// UTF-8 bytes of printable text. It is the server's own claim and is never verified: the owner
 	// can rename any connection, and their name is the one the app shows.
@@ -382,13 +326,6 @@ func (x *ServerManifest) GetRequiredPlugins() []*PluginRequirement {
 	return nil
 }
 
-func (x *ServerManifest) GetEnvironments() []ServerEnvironment {
-	if x != nil {
-		return x.Environments
-	}
-	return nil
-}
-
 func (x *ServerManifest) GetDisplayName() string {
 	if x != nil {
 		return x.DisplayName
@@ -453,9 +390,9 @@ type DirectServer struct {
 	// Mainnet, and one whose requests never reach a wallet — informational or acknowledge-only — says
 	// nothing at all rather than claiming a network it doesn't use.
 	//
-	// It is a different question from ServerManifest.environments: SERVER_ENVIRONMENT_PRODUCTION is
-	// not Mainnet and SERVER_ENVIRONMENT_SANDBOX is not Devnet or Testnet. A sandbox server may
-	// simulate against Mainnet data, and a production server may execute on Devnet.
+	// It is capability information, never an active-network selection (SEE-185): a feed's signals
+	// each name their own network (request.v2.ActionCapability.network), which must be one listed
+	// here, and a direct server's operations carry the network of their explicit wallet binding.
 	//
 	// The phone offers only wallet profiles on one of these networks when a connection is set up,
 	// and refuses to sign for a connection whose bound network is not listed. Empty — which is also
@@ -521,7 +458,9 @@ func (x *DirectServer) GetSupportedNetworks() []SolanaNetwork {
 // developer's server, so there is nothing here for it to contact.
 type GatewayFeed struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The shared gateway's absolute HTTPS origin, with no path, query, user info, or fragment.
+	// The shared gateway's absolute HTTPS origin, with no path, query, user info, or fragment. A
+	// phone trusts exactly one gateway, the one its build names (SEE-185), and refuses a manifest
+	// that names any other: this field confirms an origin and can never redirect one.
 	GatewayUrl string `protobuf:"bytes,1,opt,name=gateway_url,json=gatewayUrl,proto3" json:"gateway_url,omitempty"`
 	// The channel this server publishes on. A publisher may name only its own: the channel is
 	// "server/<server_id>" for the server_id above, so a manifest cannot claim another publisher's
@@ -732,19 +671,18 @@ var File_seekervault_server_v1_manifest_proto protoreflect.FileDescriptor
 
 const file_seekervault_server_v1_manifest_proto_rawDesc = "" +
 	"\n" +
-	"$seekervault/server/v1/manifest.proto\x12\x15seekervault.server.v1\"\xa3\x04\n" +
+	"$seekervault/server/v1/manifest.proto\x12\x15seekervault.server.v1\"\xe9\x03\n" +
 	"\x0eServerManifest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12)\n" +
 	"\x10protocol_version\x18\x02 \x01(\rR\x0fprotocolVersion\x12+\n" +
 	"\x11settings_revision\x18\x03 \x01(\x04R\x10settingsRevision\x129\n" +
 	"\x04mode\x18\x04 \x01(\x0e2%.seekervault.server.v1.ConnectionModeR\x04mode\x12S\n" +
-	"\x10required_plugins\x18\x05 \x03(\v2(.seekervault.server.v1.PluginRequirementR\x0frequiredPlugins\x12L\n" +
-	"\fenvironments\x18\x06 \x03(\x0e2(.seekervault.server.v1.ServerEnvironmentR\fenvironments\x12!\n" +
+	"\x10required_plugins\x18\x05 \x03(\v2(.seekervault.server.v1.PluginRequirementR\x0frequiredPlugins\x12!\n" +
 	"\fdisplay_name\x18\a \x01(\tR\vdisplayName\x12=\n" +
 	"\x06direct\x18\b \x01(\v2#.seekervault.server.v1.DirectServerH\x00R\x06direct\x128\n" +
 	"\x04feed\x18\t \x01(\v2\".seekervault.server.v1.GatewayFeedH\x00R\x04feedB\v\n" +
 	"\treferenceJ\x04\b\n" +
-	"\x10\vR\x0fgateway_private\"u\n" +
+	"\x10\vJ\x04\b\x06\x10\aR\x0fgateway_privateR\fenvironments\"u\n" +
 	"\fDirectServer\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\x12S\n" +
 	"\x12supported_networks\x18\x02 \x03(\x0e2$.seekervault.server.v1.SolanaNetworkR\x11supportedNetworks\"\xd8\x01\n" +
@@ -771,11 +709,7 @@ const file_seekervault_server_v1_manifest_proto_rawDesc = "" +
 	"\x0eConnectionMode\x12\x1f\n" +
 	"\x1bCONNECTION_MODE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CONNECTION_MODE_DIRECT\x10\x01\x12 \n" +
-	"\x1cCONNECTION_MODE_GATEWAY_FEED\x10\x02\"\x04\b\x03\x10\x03*\x1fCONNECTION_MODE_GATEWAY_PRIVATE*z\n" +
-	"\x11ServerEnvironment\x12\"\n" +
-	"\x1eSERVER_ENVIRONMENT_UNSPECIFIED\x10\x00\x12!\n" +
-	"\x1dSERVER_ENVIRONMENT_PRODUCTION\x10\x01\x12\x1e\n" +
-	"\x1aSERVER_ENVIRONMENT_SANDBOX\x10\x02*x\n" +
+	"\x1cCONNECTION_MODE_GATEWAY_FEED\x10\x02\"\x04\b\x03\x10\x03*\x1fCONNECTION_MODE_GATEWAY_PRIVATE*x\n" +
 	"\x10FeedAccessPolicy\x12\"\n" +
 	"\x1eFEED_ACCESS_POLICY_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19FEED_ACCESS_POLICY_PUBLIC\x10\x01\x12!\n" +
@@ -794,34 +728,32 @@ func file_seekervault_server_v1_manifest_proto_rawDescGZIP() []byte {
 	return file_seekervault_server_v1_manifest_proto_rawDescData
 }
 
-var file_seekervault_server_v1_manifest_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_seekervault_server_v1_manifest_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_seekervault_server_v1_manifest_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_seekervault_server_v1_manifest_proto_goTypes = []any{
 	(SolanaNetwork)(0),        // 0: seekervault.server.v1.SolanaNetwork
 	(ConnectionMode)(0),       // 1: seekervault.server.v1.ConnectionMode
-	(ServerEnvironment)(0),    // 2: seekervault.server.v1.ServerEnvironment
-	(FeedAccessPolicy)(0),     // 3: seekervault.server.v1.FeedAccessPolicy
-	(*ServerManifest)(nil),    // 4: seekervault.server.v1.ServerManifest
-	(*DirectServer)(nil),      // 5: seekervault.server.v1.DirectServer
-	(*GatewayFeed)(nil),       // 6: seekervault.server.v1.GatewayFeed
-	(*FeedAccess)(nil),        // 7: seekervault.server.v1.FeedAccess
-	(*PluginRequirement)(nil), // 8: seekervault.server.v1.PluginRequirement
+	(FeedAccessPolicy)(0),     // 2: seekervault.server.v1.FeedAccessPolicy
+	(*ServerManifest)(nil),    // 3: seekervault.server.v1.ServerManifest
+	(*DirectServer)(nil),      // 4: seekervault.server.v1.DirectServer
+	(*GatewayFeed)(nil),       // 5: seekervault.server.v1.GatewayFeed
+	(*FeedAccess)(nil),        // 6: seekervault.server.v1.FeedAccess
+	(*PluginRequirement)(nil), // 7: seekervault.server.v1.PluginRequirement
 }
 var file_seekervault_server_v1_manifest_proto_depIdxs = []int32{
 	1, // 0: seekervault.server.v1.ServerManifest.mode:type_name -> seekervault.server.v1.ConnectionMode
-	8, // 1: seekervault.server.v1.ServerManifest.required_plugins:type_name -> seekervault.server.v1.PluginRequirement
-	2, // 2: seekervault.server.v1.ServerManifest.environments:type_name -> seekervault.server.v1.ServerEnvironment
-	5, // 3: seekervault.server.v1.ServerManifest.direct:type_name -> seekervault.server.v1.DirectServer
-	6, // 4: seekervault.server.v1.ServerManifest.feed:type_name -> seekervault.server.v1.GatewayFeed
-	0, // 5: seekervault.server.v1.DirectServer.supported_networks:type_name -> seekervault.server.v1.SolanaNetwork
-	7, // 6: seekervault.server.v1.GatewayFeed.access:type_name -> seekervault.server.v1.FeedAccess
-	0, // 7: seekervault.server.v1.GatewayFeed.supported_networks:type_name -> seekervault.server.v1.SolanaNetwork
-	3, // 8: seekervault.server.v1.FeedAccess.policy:type_name -> seekervault.server.v1.FeedAccessPolicy
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	7, // 1: seekervault.server.v1.ServerManifest.required_plugins:type_name -> seekervault.server.v1.PluginRequirement
+	4, // 2: seekervault.server.v1.ServerManifest.direct:type_name -> seekervault.server.v1.DirectServer
+	5, // 3: seekervault.server.v1.ServerManifest.feed:type_name -> seekervault.server.v1.GatewayFeed
+	0, // 4: seekervault.server.v1.DirectServer.supported_networks:type_name -> seekervault.server.v1.SolanaNetwork
+	6, // 5: seekervault.server.v1.GatewayFeed.access:type_name -> seekervault.server.v1.FeedAccess
+	0, // 6: seekervault.server.v1.GatewayFeed.supported_networks:type_name -> seekervault.server.v1.SolanaNetwork
+	2, // 7: seekervault.server.v1.FeedAccess.policy:type_name -> seekervault.server.v1.FeedAccessPolicy
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_server_v1_manifest_proto_init() }
@@ -838,7 +770,7 @@ func file_seekervault_server_v1_manifest_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_server_v1_manifest_proto_rawDesc), len(file_seekervault_server_v1_manifest_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      3,
 			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,

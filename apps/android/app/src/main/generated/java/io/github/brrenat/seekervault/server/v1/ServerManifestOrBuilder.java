@@ -125,65 +125,6 @@ public interface ServerManifestOrBuilder extends
 
   /**
    * <pre>
-   * The environments this server serves (SEE-97). The phone refuses to treat a server as
-   * supported in an environment the server doesn't name, because sandbox and production are
-   * different promises about what happens when the owner approves. At most one of each.
-   * </pre>
-   *
-   * <code>repeated .seekervault.server.v1.ServerEnvironment environments = 6 [json_name = "environments"];</code>
-   * @return A list containing the environments.
-   */
-  java.util.List<io.github.brrenat.seekervault.server.v1.ServerEnvironment> getEnvironmentsList();
-  /**
-   * <pre>
-   * The environments this server serves (SEE-97). The phone refuses to treat a server as
-   * supported in an environment the server doesn't name, because sandbox and production are
-   * different promises about what happens when the owner approves. At most one of each.
-   * </pre>
-   *
-   * <code>repeated .seekervault.server.v1.ServerEnvironment environments = 6 [json_name = "environments"];</code>
-   * @return The count of environments.
-   */
-  int getEnvironmentsCount();
-  /**
-   * <pre>
-   * The environments this server serves (SEE-97). The phone refuses to treat a server as
-   * supported in an environment the server doesn't name, because sandbox and production are
-   * different promises about what happens when the owner approves. At most one of each.
-   * </pre>
-   *
-   * <code>repeated .seekervault.server.v1.ServerEnvironment environments = 6 [json_name = "environments"];</code>
-   * @param index The index of the element to return.
-   * @return The environments at the given index.
-   */
-  io.github.brrenat.seekervault.server.v1.ServerEnvironment getEnvironments(int index);
-  /**
-   * <pre>
-   * The environments this server serves (SEE-97). The phone refuses to treat a server as
-   * supported in an environment the server doesn't name, because sandbox and production are
-   * different promises about what happens when the owner approves. At most one of each.
-   * </pre>
-   *
-   * <code>repeated .seekervault.server.v1.ServerEnvironment environments = 6 [json_name = "environments"];</code>
-   * @return A list containing the enum numeric values on the wire for environments.
-   */
-  java.util.List<java.lang.Integer>
-  getEnvironmentsValueList();
-  /**
-   * <pre>
-   * The environments this server serves (SEE-97). The phone refuses to treat a server as
-   * supported in an environment the server doesn't name, because sandbox and production are
-   * different promises about what happens when the owner approves. At most one of each.
-   * </pre>
-   *
-   * <code>repeated .seekervault.server.v1.ServerEnvironment environments = 6 [json_name = "environments"];</code>
-   * @param index The index of the value to return.
-   * @return The enum numeric value on the wire of environments at the given index.
-   */
-  int getEnvironmentsValue(int index);
-
-  /**
-   * <pre>
    * The name the server calls itself, for the connection's default label. Optional; at most 64
    * UTF-8 bytes of printable text. It is the server's own claim and is never verified: the owner
    * can rename any connection, and their name is the one the app shows.

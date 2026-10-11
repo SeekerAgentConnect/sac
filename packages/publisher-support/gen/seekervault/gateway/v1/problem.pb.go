@@ -72,9 +72,6 @@ const (
 	GatewayProblem_GATEWAY_PROBLEM_DUPLICATE_PLUGIN GatewayProblem = 10
 	// More required plugins than one manifest may name.
 	GatewayProblem_GATEWAY_PROBLEM_TOO_MANY_PLUGINS GatewayProblem = 11
-	// No environment, a repeated one, or an unspecified one. A server that names no environment
-	// says nothing a phone can act on (SEE-97).
-	GatewayProblem_GATEWAY_PROBLEM_BAD_ENVIRONMENT GatewayProblem = 12
 	// A display name that is too long, or not printable text.
 	GatewayProblem_GATEWAY_PROBLEM_BAD_NAME GatewayProblem = 13
 	// An operation that isn't an operation name at the protocol's own level.
@@ -136,17 +133,6 @@ const (
 	// of its own. A client gets this once and keeps to the foreground stream and its own recovery,
 	// which is again the whole feature working at a smaller size rather than a failure.
 	GatewayProblem_GATEWAY_PROBLEM_NO_PUSH GatewayProblem = 33
-	// --- What is already here, continued (SEE-97) -----------------------------
-	// A manifest whose environments are not the ones this server published before. It belongs with
-	// the "what is already here" codes above and is numbered here instead because a number is the
-	// wire and only the last one is free.
-	//
-	// An environment is what a server promises when the owner approves, and a promise that can be
-	// raised by publishing a higher revision is not one: every subscribed phone would be moved from
-	// a demonstration to real money by a document. A second environment is a second deployment,
-	// with its own server ID, credential and database — which is what the publisher's own database
-	// stamp already enforces at its end.
-	GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT GatewayProblem = 34
 	// --- Restricted feeds (SEE-156) -------------------------------------------
 	// Numbered after the retired range above, which stays retired: none of these reuses a number or
 	// a meaning that range carried (docs/wiki/restricted-feeds.md).
@@ -182,7 +168,13 @@ const (
 	// A manifest's supported_networks names SOLANA_NETWORK_UNSPECIFIED, a value this gateway does
 	// not know, or the same network twice. An empty list is not this: it is a feed whose proposals
 	// never reach a wallet, which is allowed (docs/wiki/server-manifests.md#supported-networks).
+	// Since SEE-185 it is also a signal whose action names no network, or one this gateway does not
+	// know: a network is required, and never inferred.
 	GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK GatewayProblem = 55
+	// A signal's network is one its publisher's manifest does not declare in supported_networks, or
+	// the publisher has no manifest here yet (SEE-185). A feed may publish for several networks, but
+	// only for ones it says it supports.
+	GatewayProblem_GATEWAY_PROBLEM_OTHER_NETWORK GatewayProblem = 56
 )
 
 // Enum value maps for GatewayProblem.
@@ -200,7 +192,6 @@ var (
 		9:  "GATEWAY_PROBLEM_BAD_PLUGIN",
 		10: "GATEWAY_PROBLEM_DUPLICATE_PLUGIN",
 		11: "GATEWAY_PROBLEM_TOO_MANY_PLUGINS",
-		12: "GATEWAY_PROBLEM_BAD_ENVIRONMENT",
 		13: "GATEWAY_PROBLEM_BAD_NAME",
 		14: "GATEWAY_PROBLEM_BAD_OPERATION",
 		15: "GATEWAY_PROBLEM_NO_STATUS",
@@ -222,7 +213,6 @@ var (
 		31: "GATEWAY_PROBLEM_NO_STREAM",
 		32: "GATEWAY_PROBLEM_TOO_MANY_CHANNELS",
 		33: "GATEWAY_PROBLEM_NO_PUSH",
-		34: "GATEWAY_PROBLEM_OTHER_ENVIRONMENT",
 		47: "GATEWAY_PROBLEM_ACCESS_REQUIRED",
 		48: "GATEWAY_PROBLEM_ACCESS_REVOKED",
 		49: "GATEWAY_PROBLEM_ACCESS_EXPIRED",
@@ -232,6 +222,7 @@ var (
 		53: "GATEWAY_PROBLEM_GRANT_REVOKED",
 		54: "GATEWAY_PROBLEM_BAD_GRANT",
 		55: "GATEWAY_PROBLEM_BAD_NETWORK",
+		56: "GATEWAY_PROBLEM_OTHER_NETWORK",
 	}
 	GatewayProblem_value = map[string]int32{
 		"GATEWAY_PROBLEM_UNSPECIFIED":        0,
@@ -246,7 +237,6 @@ var (
 		"GATEWAY_PROBLEM_BAD_PLUGIN":         9,
 		"GATEWAY_PROBLEM_DUPLICATE_PLUGIN":   10,
 		"GATEWAY_PROBLEM_TOO_MANY_PLUGINS":   11,
-		"GATEWAY_PROBLEM_BAD_ENVIRONMENT":    12,
 		"GATEWAY_PROBLEM_BAD_NAME":           13,
 		"GATEWAY_PROBLEM_BAD_OPERATION":      14,
 		"GATEWAY_PROBLEM_NO_STATUS":          15,
@@ -268,7 +258,6 @@ var (
 		"GATEWAY_PROBLEM_NO_STREAM":          31,
 		"GATEWAY_PROBLEM_TOO_MANY_CHANNELS":  32,
 		"GATEWAY_PROBLEM_NO_PUSH":            33,
-		"GATEWAY_PROBLEM_OTHER_ENVIRONMENT":  34,
 		"GATEWAY_PROBLEM_ACCESS_REQUIRED":    47,
 		"GATEWAY_PROBLEM_ACCESS_REVOKED":     48,
 		"GATEWAY_PROBLEM_ACCESS_EXPIRED":     49,
@@ -278,6 +267,7 @@ var (
 		"GATEWAY_PROBLEM_GRANT_REVOKED":      53,
 		"GATEWAY_PROBLEM_BAD_GRANT":          54,
 		"GATEWAY_PROBLEM_BAD_NETWORK":        55,
+		"GATEWAY_PROBLEM_OTHER_NETWORK":      56,
 	}
 )
 
@@ -382,7 +372,7 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x12GatewayErrorDetail\x12@\n" +
 	"\aproblem\x18\x01 \x01(\x0e2&.seekervault.gateway.v1.GatewayProblemR\aproblem\x12\x14\n" +
 	"\x05field\x18\x02 \x01(\tR\x05field\x12#\n" +
-	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\x94\x0f\n" +
+	"\rheld_revision\x18\x03 \x01(\x04R\fheldRevision*\xbb\x0f\n" +
 	"\x0eGatewayProblem\x12\x1f\n" +
 	"\x1bGATEWAY_PROBLEM_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fGATEWAY_PROBLEM_UNAUTHENTICATED\x10\x01\x12 \n" +
@@ -396,8 +386,7 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x1aGATEWAY_PROBLEM_BAD_PLUGIN\x10\t\x12$\n" +
 	" GATEWAY_PROBLEM_DUPLICATE_PLUGIN\x10\n" +
 	"\x12$\n" +
-	" GATEWAY_PROBLEM_TOO_MANY_PLUGINS\x10\v\x12#\n" +
-	"\x1fGATEWAY_PROBLEM_BAD_ENVIRONMENT\x10\f\x12\x1c\n" +
+	" GATEWAY_PROBLEM_TOO_MANY_PLUGINS\x10\v\x12\x1c\n" +
 	"\x18GATEWAY_PROBLEM_BAD_NAME\x10\r\x12!\n" +
 	"\x1dGATEWAY_PROBLEM_BAD_OPERATION\x10\x0e\x12\x1d\n" +
 	"\x19GATEWAY_PROBLEM_NO_STATUS\x10\x0f\x12\x1d\n" +
@@ -418,8 +407,7 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"!GATEWAY_PROBLEM_TOO_MANY_REQUESTS\x10\x1e\x12\x1d\n" +
 	"\x19GATEWAY_PROBLEM_NO_STREAM\x10\x1f\x12%\n" +
 	"!GATEWAY_PROBLEM_TOO_MANY_CHANNELS\x10 \x12\x1b\n" +
-	"\x17GATEWAY_PROBLEM_NO_PUSH\x10!\x12%\n" +
-	"!GATEWAY_PROBLEM_OTHER_ENVIRONMENT\x10\"\x12#\n" +
+	"\x17GATEWAY_PROBLEM_NO_PUSH\x10!\x12#\n" +
 	"\x1fGATEWAY_PROBLEM_ACCESS_REQUIRED\x10/\x12\"\n" +
 	"\x1eGATEWAY_PROBLEM_ACCESS_REVOKED\x100\x12\"\n" +
 	"\x1eGATEWAY_PROBLEM_ACCESS_EXPIRED\x101\x12#\n" +
@@ -428,7 +416,8 @@ const file_seekervault_gateway_v1_problem_proto_rawDesc = "" +
 	"\x1dGATEWAY_PROBLEM_NO_SUCH_GRANT\x104\x12!\n" +
 	"\x1dGATEWAY_PROBLEM_GRANT_REVOKED\x105\x12\x1d\n" +
 	"\x19GATEWAY_PROBLEM_BAD_GRANT\x106\x12\x1f\n" +
-	"\x1bGATEWAY_PROBLEM_BAD_NETWORK\x107\"\x04\b#\x10.*\x1cGATEWAY_PROBLEM_BAD_USER_REF*\x1cGATEWAY_PROBLEM_BAD_LIFETIME*\"GATEWAY_PROBLEM_INVALID_INVITATION*\"GATEWAY_PROBLEM_INVITATION_EXPIRED*\x1fGATEWAY_PROBLEM_INVITATION_USED*\x1aGATEWAY_PROBLEM_NO_BINDING*\x1eGATEWAY_PROBLEM_BINDING_EXISTS*\x1fGATEWAY_PROBLEM_WRONG_RECIPIENT*\x1fGATEWAY_PROBLEM_NO_SUCH_REQUEST*\x1fGATEWAY_PROBLEM_RESULT_CONFLICT*\x1fGATEWAY_PROBLEM_REQUEST_SETTLED*\x1bGATEWAY_PROBLEM_NOT_PRIVATEB\x81\x02\n" +
+	"\x1bGATEWAY_PROBLEM_BAD_NETWORK\x107\x12!\n" +
+	"\x1dGATEWAY_PROBLEM_OTHER_NETWORK\x108\"\x04\b\f\x10\f\"\x04\b\"\x10\"\"\x04\b#\x10.*\x1fGATEWAY_PROBLEM_BAD_ENVIRONMENT*!GATEWAY_PROBLEM_OTHER_ENVIRONMENT*\x1cGATEWAY_PROBLEM_BAD_USER_REF*\x1cGATEWAY_PROBLEM_BAD_LIFETIME*\"GATEWAY_PROBLEM_INVALID_INVITATION*\"GATEWAY_PROBLEM_INVITATION_EXPIRED*\x1fGATEWAY_PROBLEM_INVITATION_USED*\x1aGATEWAY_PROBLEM_NO_BINDING*\x1eGATEWAY_PROBLEM_BINDING_EXISTS*\x1fGATEWAY_PROBLEM_WRONG_RECIPIENT*\x1fGATEWAY_PROBLEM_NO_SUCH_REQUEST*\x1fGATEWAY_PROBLEM_RESULT_CONFLICT*\x1fGATEWAY_PROBLEM_REQUEST_SETTLED*\x1bGATEWAY_PROBLEM_NOT_PRIVATEB\x81\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\fProblemProtoP\x01Z[github.com/BrRenat/SeekerAgentWallet/publisher-support/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (

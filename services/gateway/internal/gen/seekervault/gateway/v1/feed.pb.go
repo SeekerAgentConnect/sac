@@ -1546,8 +1546,6 @@ type RecommendedFeed struct {
 	SupportedNetworks []v1.SolanaNetwork `protobuf:"varint,7,rep,packed,name=supported_networks,json=supportedNetworks,proto3,enum=seekervault.server.v1.SolanaNetwork" json:"supported_networks,omitempty"`
 	// The client plugins and contract ranges the feed's operations need.
 	RequiredPlugins []*v1.PluginRequirement `protobuf:"bytes,8,rep,name=required_plugins,json=requiredPlugins,proto3" json:"required_plugins,omitempty"`
-	// The environments the feed serves.
-	Environments []v1.ServerEnvironment `protobuf:"varint,9,rep,packed,name=environments,proto3,enum=seekervault.server.v1.ServerEnvironment" json:"environments,omitempty"`
 	// The manifest's protocol version and settings revision, so a phone can say a feed needs a newer
 	// app before it asks for the manifest.
 	ProtocolVersion  uint32 `protobuf:"varint,10,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"`
@@ -1642,13 +1640,6 @@ func (x *RecommendedFeed) GetRequiredPlugins() []*v1.PluginRequirement {
 	return nil
 }
 
-func (x *RecommendedFeed) GetEnvironments() []v1.ServerEnvironment {
-	if x != nil {
-		return x.Environments
-	}
-	return nil
-}
-
 func (x *RecommendedFeed) GetProtocolVersion() uint32 {
 	if x != nil {
 		return x.ProtocolVersion
@@ -1661,6 +1652,341 @@ func (x *RecommendedFeed) GetSettingsRevision() uint64 {
 		return x.SettingsRevision
 	}
 	return 0
+}
+
+type GetClientConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetClientConfigRequest) Reset() {
+	*x = GetClientConfigRequest{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetClientConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetClientConfigRequest) ProtoMessage() {}
+
+func (x *GetClientConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetClientConfigRequest.ProtoReflect.Descriptor instead.
+func (*GetClientConfigRequest) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{25}
+}
+
+type GetClientConfigResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Config        *ClientConfig          `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetClientConfigResponse) Reset() {
+	*x = GetClientConfigResponse{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetClientConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetClientConfigResponse) ProtoMessage() {}
+
+func (x *GetClientConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetClientConfigResponse.ProtoReflect.Descriptor instead.
+func (*GetClientConfigResponse) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *GetClientConfigResponse) GetConfig() *ClientConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+// ClientConfig is the operator's current, complete client configuration (SEE-185,
+// docs/wiki/client-config.md). A gateway that was never configured answers revision 0, with no
+// endpoints and a zero fee: that is a configuration, and a client keeps it apart from having no
+// answer at all, which is never read as a zero fee.
+type ClientConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Increases with every change the operator saves, and never goes backwards. A client binds a
+	// prepared operation to the terms it was prepared under, and compares terms rather than this
+	// number before it signs.
+	Revision uint64 `protobuf:"varint,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	// At most one per network, in ascending network order. A network with none has no endpoint:
+	// the client reads nothing on it and says so, and never reads it through another network's.
+	RpcEndpoints []*RpcEndpoint `protobuf:"bytes,2,rep,name=rpc_endpoints,json=rpcEndpoints,proto3" json:"rpc_endpoints,omitempty"`
+	// The SAC swap service fee (SEE-173). Absent, or a bps of 0, is no fee.
+	SwapFee       *SwapFee `protobuf:"bytes,3,opt,name=swap_fee,json=swapFee,proto3" json:"swap_fee,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClientConfig) Reset() {
+	*x = ClientConfig{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClientConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClientConfig) ProtoMessage() {}
+
+func (x *ClientConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClientConfig.ProtoReflect.Descriptor instead.
+func (*ClientConfig) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *ClientConfig) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *ClientConfig) GetRpcEndpoints() []*RpcEndpoint {
+	if x != nil {
+		return x.RpcEndpoints
+	}
+	return nil
+}
+
+func (x *ClientConfig) GetSwapFee() *SwapFee {
+	if x != nil {
+		return x.SwapFee
+	}
+	return nil
+}
+
+// One network's Solana JSON-RPC endpoint. The client proves it with getGenesisHash before
+// anything read through it counts, and refuses one that serves another cluster.
+type RpcEndpoint struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Network v1.SolanaNetwork       `protobuf:"varint,1,opt,name=network,proto3,enum=seekervault.server.v1.SolanaNetwork" json:"network,omitempty"`
+	// An absolute HTTPS URL with no user info or fragment. A path or query is kept as given, and is
+	// as public as the rest of this message.
+	Url           string `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RpcEndpoint) Reset() {
+	*x = RpcEndpoint{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RpcEndpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RpcEndpoint) ProtoMessage() {}
+
+func (x *RpcEndpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RpcEndpoint.ProtoReflect.Descriptor instead.
+func (*RpcEndpoint) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *RpcEndpoint) GetNetwork() v1.SolanaNetwork {
+	if x != nil {
+		return x.Network
+	}
+	return v1.SolanaNetwork(0)
+}
+
+func (x *RpcEndpoint) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+// The fee the app adds to a feed swap's output, credited by the swap program to token accounts the
+// operator created beforehand. It applies to swaps on `network` only, and only to output mints
+// listed in `accounts`; a direct server's operations never carry it.
+type SwapFee struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whole basis points, 0 to 100. Zero is no fee.
+	Bps uint32 `protobuf:"varint,1,opt,name=bps,proto3" json:"bps,omitempty"`
+	// The network the owner and accounts below exist on. Required when bps is not zero.
+	Network v1.SolanaNetwork `protobuf:"varint,2,opt,name=network,proto3,enum=seekervault.server.v1.SolanaNetwork" json:"network,omitempty"`
+	// The base58 address that owns every receiving token account.
+	Owner string `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
+	// One receiving token account per output mint, in ascending mint order, each mint once.
+	Accounts      []*SwapFeeAccount `protobuf:"bytes,4,rep,name=accounts,proto3" json:"accounts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SwapFee) Reset() {
+	*x = SwapFee{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SwapFee) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SwapFee) ProtoMessage() {}
+
+func (x *SwapFee) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SwapFee.ProtoReflect.Descriptor instead.
+func (*SwapFee) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *SwapFee) GetBps() uint32 {
+	if x != nil {
+		return x.Bps
+	}
+	return 0
+}
+
+func (x *SwapFee) GetNetwork() v1.SolanaNetwork {
+	if x != nil {
+		return x.Network
+	}
+	return v1.SolanaNetwork(0)
+}
+
+func (x *SwapFee) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *SwapFee) GetAccounts() []*SwapFeeAccount {
+	if x != nil {
+		return x.Accounts
+	}
+	return nil
+}
+
+type SwapFeeAccount struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The base58 mint the fee is taken in: the swap's output mint.
+	Mint string `protobuf:"bytes,1,opt,name=mint,proto3" json:"mint,omitempty"`
+	// The base58 SPL token account that receives the fee in that mint.
+	TokenAccount  string `protobuf:"bytes,2,opt,name=token_account,json=tokenAccount,proto3" json:"token_account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SwapFeeAccount) Reset() {
+	*x = SwapFeeAccount{}
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SwapFeeAccount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SwapFeeAccount) ProtoMessage() {}
+
+func (x *SwapFeeAccount) ProtoReflect() protoreflect.Message {
+	mi := &file_seekervault_gateway_v1_feed_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SwapFeeAccount.ProtoReflect.Descriptor instead.
+func (*SwapFeeAccount) Descriptor() ([]byte, []int) {
+	return file_seekervault_gateway_v1_feed_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *SwapFeeAccount) GetMint() string {
+	if x != nil {
+		return x.Mint
+	}
+	return ""
+}
+
+func (x *SwapFeeAccount) GetTokenAccount() string {
+	if x != nil {
+		return x.TokenAccount
+	}
+	return ""
 }
 
 var File_seekervault_gateway_v1_feed_proto protoreflect.FileDescriptor
@@ -1754,7 +2080,7 @@ const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
 	"page_token\x18\x02 \x01(\tR\tpageToken\"\x85\x01\n" +
 	"\x1cListRecommendedFeedsResponse\x12=\n" +
 	"\x05feeds\x18\x01 \x03(\v2'.seekervault.gateway.v1.RecommendedFeedR\x05feeds\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb9\x04\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xff\x03\n" +
 	"\x0fRecommendedFeed\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1f\n" +
 	"\vgateway_url\x18\x02 \x01(\tR\n" +
@@ -1764,15 +2090,33 @@ const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
 	"\vdescription\x18\x05 \x01(\tR\vdescription\x129\n" +
 	"\x06access\x18\x06 \x01(\v2!.seekervault.server.v1.FeedAccessR\x06access\x12S\n" +
 	"\x12supported_networks\x18\a \x03(\x0e2$.seekervault.server.v1.SolanaNetworkR\x11supportedNetworks\x12S\n" +
-	"\x10required_plugins\x18\b \x03(\v2(.seekervault.server.v1.PluginRequirementR\x0frequiredPlugins\x12L\n" +
-	"\fenvironments\x18\t \x03(\x0e2(.seekervault.server.v1.ServerEnvironmentR\fenvironments\x12)\n" +
+	"\x10required_plugins\x18\b \x03(\v2(.seekervault.server.v1.PluginRequirementR\x0frequiredPlugins\x12)\n" +
 	"\x10protocol_version\x18\n" +
 	" \x01(\rR\x0fprotocolVersion\x12+\n" +
-	"\x11settings_revision\x18\v \x01(\x04R\x10settingsRevision*r\n" +
+	"\x11settings_revision\x18\v \x01(\x04R\x10settingsRevisionJ\x04\b\t\x10\n" +
+	"R\fenvironments\"\x18\n" +
+	"\x16GetClientConfigRequest\"W\n" +
+	"\x17GetClientConfigResponse\x12<\n" +
+	"\x06config\x18\x01 \x01(\v2$.seekervault.gateway.v1.ClientConfigR\x06config\"\xb0\x01\n" +
+	"\fClientConfig\x12\x1a\n" +
+	"\brevision\x18\x01 \x01(\x04R\brevision\x12H\n" +
+	"\rrpc_endpoints\x18\x02 \x03(\v2#.seekervault.gateway.v1.RpcEndpointR\frpcEndpoints\x12:\n" +
+	"\bswap_fee\x18\x03 \x01(\v2\x1f.seekervault.gateway.v1.SwapFeeR\aswapFee\"_\n" +
+	"\vRpcEndpoint\x12>\n" +
+	"\anetwork\x18\x01 \x01(\x0e2$.seekervault.server.v1.SolanaNetworkR\anetwork\x12\x10\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"\xb5\x01\n" +
+	"\aSwapFee\x12\x10\n" +
+	"\x03bps\x18\x01 \x01(\rR\x03bps\x12>\n" +
+	"\anetwork\x18\x02 \x01(\x0e2$.seekervault.server.v1.SolanaNetworkR\anetwork\x12\x14\n" +
+	"\x05owner\x18\x03 \x01(\tR\x05owner\x12B\n" +
+	"\baccounts\x18\x04 \x03(\v2&.seekervault.gateway.v1.SwapFeeAccountR\baccounts\"I\n" +
+	"\x0eSwapFeeAccount\x12\x12\n" +
+	"\x04mint\x18\x01 \x01(\tR\x04mint\x12#\n" +
+	"\rtoken_account\x18\x02 \x01(\tR\ftokenAccount*r\n" +
 	"\x10FeedAvailability\x12!\n" +
 	"\x1dFEED_AVAILABILITY_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18FEED_AVAILABILITY_ONLINE\x10\x01\x12\x1d\n" +
-	"\x19FEED_AVAILABILITY_OFFLINE\x10\x022\xfb\b\n" +
+	"\x19FEED_AVAILABILITY_OFFLINE\x10\x022\xef\t\n" +
 	"\vFeedService\x12x\n" +
 	"\x11GetServerManifest\x120.seekervault.gateway.v1.GetServerManifestRequest\x1a1.seekervault.gateway.v1.GetServerManifestResponse\x12i\n" +
 	"\fListRequests\x12+.seekervault.gateway.v1.ListRequestsRequest\x1a,.seekervault.gateway.v1.ListRequestsResponse\x12c\n" +
@@ -1784,7 +2128,8 @@ const file_seekervault_gateway_v1_feed_proto_rawDesc = "" +
 	"\rGetFeedTopics\x12,.seekervault.gateway.v1.GetFeedTopicsRequest\x1a-.seekervault.gateway.v1.GetFeedTopicsResponse\x12l\n" +
 	"\rGetFeedStatus\x12,.seekervault.gateway.v1.GetFeedStatusRequest\x1a-.seekervault.gateway.v1.GetFeedStatusResponse\x12x\n" +
 	"\x11SetFeedPushTarget\x120.seekervault.gateway.v1.SetFeedPushTargetRequest\x1a1.seekervault.gateway.v1.SetFeedPushTargetResponse\x12\x81\x01\n" +
-	"\x14ListRecommendedFeeds\x123.seekervault.gateway.v1.ListRecommendedFeedsRequest\x1a4.seekervault.gateway.v1.ListRecommendedFeedsResponseB\x82\x02\n" +
+	"\x14ListRecommendedFeeds\x123.seekervault.gateway.v1.ListRecommendedFeedsRequest\x1a4.seekervault.gateway.v1.ListRecommendedFeedsResponse\x12r\n" +
+	"\x0fGetClientConfig\x12..seekervault.gateway.v1.GetClientConfigRequest\x1a/.seekervault.gateway.v1.GetClientConfigResponseB\x82\x02\n" +
 	"\x1acom.seekervault.gateway.v1B\tFeedProtoP\x01Z_github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1;gatewayv1\xa2\x02\x03SGX\xaa\x02\x16Seekervault.Gateway.V1\xca\x02\x16Seekervault\\Gateway\\V1\xe2\x02\"Seekervault\\Gateway\\V1\\GPBMetadata\xea\x02\x18Seekervault::Gateway::V1b\x06proto3"
 
 var (
@@ -1800,7 +2145,7 @@ func file_seekervault_gateway_v1_feed_proto_rawDescGZIP() []byte {
 }
 
 var file_seekervault_gateway_v1_feed_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_seekervault_gateway_v1_feed_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_seekervault_gateway_v1_feed_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_seekervault_gateway_v1_feed_proto_goTypes = []any{
 	(FeedAvailability)(0),                // 0: seekervault.gateway.v1.FeedAvailability
 	(*GetServerManifestRequest)(nil),     // 1: seekervault.gateway.v1.GetServerManifestRequest
@@ -1828,20 +2173,25 @@ var file_seekervault_gateway_v1_feed_proto_goTypes = []any{
 	(*ListRecommendedFeedsRequest)(nil),  // 23: seekervault.gateway.v1.ListRecommendedFeedsRequest
 	(*ListRecommendedFeedsResponse)(nil), // 24: seekervault.gateway.v1.ListRecommendedFeedsResponse
 	(*RecommendedFeed)(nil),              // 25: seekervault.gateway.v1.RecommendedFeed
-	(*v1.ServerManifest)(nil),            // 26: seekervault.server.v1.ServerManifest
-	(*v2.Request)(nil),                   // 27: seekervault.request.v2.Request
-	(*v11.Proposal)(nil),                 // 28: seekervault.proposal.v1.Proposal
-	(*v1.FeedAccess)(nil),                // 29: seekervault.server.v1.FeedAccess
-	(v1.SolanaNetwork)(0),                // 30: seekervault.server.v1.SolanaNetwork
-	(*v1.PluginRequirement)(nil),         // 31: seekervault.server.v1.PluginRequirement
-	(v1.ServerEnvironment)(0),            // 32: seekervault.server.v1.ServerEnvironment
+	(*GetClientConfigRequest)(nil),       // 26: seekervault.gateway.v1.GetClientConfigRequest
+	(*GetClientConfigResponse)(nil),      // 27: seekervault.gateway.v1.GetClientConfigResponse
+	(*ClientConfig)(nil),                 // 28: seekervault.gateway.v1.ClientConfig
+	(*RpcEndpoint)(nil),                  // 29: seekervault.gateway.v1.RpcEndpoint
+	(*SwapFee)(nil),                      // 30: seekervault.gateway.v1.SwapFee
+	(*SwapFeeAccount)(nil),               // 31: seekervault.gateway.v1.SwapFeeAccount
+	(*v1.ServerManifest)(nil),            // 32: seekervault.server.v1.ServerManifest
+	(*v2.Request)(nil),                   // 33: seekervault.request.v2.Request
+	(*v11.Proposal)(nil),                 // 34: seekervault.proposal.v1.Proposal
+	(*v1.FeedAccess)(nil),                // 35: seekervault.server.v1.FeedAccess
+	(v1.SolanaNetwork)(0),                // 36: seekervault.server.v1.SolanaNetwork
+	(*v1.PluginRequirement)(nil),         // 37: seekervault.server.v1.PluginRequirement
 }
 var file_seekervault_gateway_v1_feed_proto_depIdxs = []int32{
-	26, // 0: seekervault.gateway.v1.GetServerManifestResponse.manifest:type_name -> seekervault.server.v1.ServerManifest
-	27, // 1: seekervault.gateway.v1.ListRequestsResponse.requests:type_name -> seekervault.request.v2.Request
-	27, // 2: seekervault.gateway.v1.GetRequestResponse.request:type_name -> seekervault.request.v2.Request
-	28, // 3: seekervault.gateway.v1.ListProposalsResponse.proposals:type_name -> seekervault.proposal.v1.Proposal
-	28, // 4: seekervault.gateway.v1.GetProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
+	32, // 0: seekervault.gateway.v1.GetServerManifestResponse.manifest:type_name -> seekervault.server.v1.ServerManifest
+	33, // 1: seekervault.gateway.v1.ListRequestsResponse.requests:type_name -> seekervault.request.v2.Request
+	33, // 2: seekervault.gateway.v1.GetRequestResponse.request:type_name -> seekervault.request.v2.Request
+	34, // 3: seekervault.gateway.v1.ListProposalsResponse.proposals:type_name -> seekervault.proposal.v1.Proposal
+	34, // 4: seekervault.gateway.v1.GetProposalResponse.proposal:type_name -> seekervault.proposal.v1.Proposal
 	12, // 5: seekervault.gateway.v1.GetStreamTicketRequest.sessions:type_name -> seekervault.gateway.v1.ChannelSession
 	14, // 6: seekervault.gateway.v1.GetStreamTicketResponse.channels:type_name -> seekervault.gateway.v1.StreamChannel
 	17, // 7: seekervault.gateway.v1.GetFeedTopicsResponse.topics:type_name -> seekervault.gateway.v1.FeedTopic
@@ -1849,35 +2199,42 @@ var file_seekervault_gateway_v1_feed_proto_depIdxs = []int32{
 	20, // 9: seekervault.gateway.v1.GetFeedStatusResponse.statuses:type_name -> seekervault.gateway.v1.FeedStatus
 	0,  // 10: seekervault.gateway.v1.FeedStatus.availability:type_name -> seekervault.gateway.v1.FeedAvailability
 	25, // 11: seekervault.gateway.v1.ListRecommendedFeedsResponse.feeds:type_name -> seekervault.gateway.v1.RecommendedFeed
-	29, // 12: seekervault.gateway.v1.RecommendedFeed.access:type_name -> seekervault.server.v1.FeedAccess
-	30, // 13: seekervault.gateway.v1.RecommendedFeed.supported_networks:type_name -> seekervault.server.v1.SolanaNetwork
-	31, // 14: seekervault.gateway.v1.RecommendedFeed.required_plugins:type_name -> seekervault.server.v1.PluginRequirement
-	32, // 15: seekervault.gateway.v1.RecommendedFeed.environments:type_name -> seekervault.server.v1.ServerEnvironment
-	1,  // 16: seekervault.gateway.v1.FeedService.GetServerManifest:input_type -> seekervault.gateway.v1.GetServerManifestRequest
-	3,  // 17: seekervault.gateway.v1.FeedService.ListRequests:input_type -> seekervault.gateway.v1.ListRequestsRequest
-	5,  // 18: seekervault.gateway.v1.FeedService.GetRequest:input_type -> seekervault.gateway.v1.GetRequestRequest
-	7,  // 19: seekervault.gateway.v1.FeedService.ListProposals:input_type -> seekervault.gateway.v1.ListProposalsRequest
-	9,  // 20: seekervault.gateway.v1.FeedService.GetProposal:input_type -> seekervault.gateway.v1.GetProposalRequest
-	11, // 21: seekervault.gateway.v1.FeedService.GetStreamTicket:input_type -> seekervault.gateway.v1.GetStreamTicketRequest
-	15, // 22: seekervault.gateway.v1.FeedService.GetFeedTopics:input_type -> seekervault.gateway.v1.GetFeedTopicsRequest
-	18, // 23: seekervault.gateway.v1.FeedService.GetFeedStatus:input_type -> seekervault.gateway.v1.GetFeedStatusRequest
-	21, // 24: seekervault.gateway.v1.FeedService.SetFeedPushTarget:input_type -> seekervault.gateway.v1.SetFeedPushTargetRequest
-	23, // 25: seekervault.gateway.v1.FeedService.ListRecommendedFeeds:input_type -> seekervault.gateway.v1.ListRecommendedFeedsRequest
-	2,  // 26: seekervault.gateway.v1.FeedService.GetServerManifest:output_type -> seekervault.gateway.v1.GetServerManifestResponse
-	4,  // 27: seekervault.gateway.v1.FeedService.ListRequests:output_type -> seekervault.gateway.v1.ListRequestsResponse
-	6,  // 28: seekervault.gateway.v1.FeedService.GetRequest:output_type -> seekervault.gateway.v1.GetRequestResponse
-	8,  // 29: seekervault.gateway.v1.FeedService.ListProposals:output_type -> seekervault.gateway.v1.ListProposalsResponse
-	10, // 30: seekervault.gateway.v1.FeedService.GetProposal:output_type -> seekervault.gateway.v1.GetProposalResponse
-	13, // 31: seekervault.gateway.v1.FeedService.GetStreamTicket:output_type -> seekervault.gateway.v1.GetStreamTicketResponse
-	16, // 32: seekervault.gateway.v1.FeedService.GetFeedTopics:output_type -> seekervault.gateway.v1.GetFeedTopicsResponse
-	19, // 33: seekervault.gateway.v1.FeedService.GetFeedStatus:output_type -> seekervault.gateway.v1.GetFeedStatusResponse
-	22, // 34: seekervault.gateway.v1.FeedService.SetFeedPushTarget:output_type -> seekervault.gateway.v1.SetFeedPushTargetResponse
-	24, // 35: seekervault.gateway.v1.FeedService.ListRecommendedFeeds:output_type -> seekervault.gateway.v1.ListRecommendedFeedsResponse
-	26, // [26:36] is the sub-list for method output_type
-	16, // [16:26] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	35, // 12: seekervault.gateway.v1.RecommendedFeed.access:type_name -> seekervault.server.v1.FeedAccess
+	36, // 13: seekervault.gateway.v1.RecommendedFeed.supported_networks:type_name -> seekervault.server.v1.SolanaNetwork
+	37, // 14: seekervault.gateway.v1.RecommendedFeed.required_plugins:type_name -> seekervault.server.v1.PluginRequirement
+	28, // 15: seekervault.gateway.v1.GetClientConfigResponse.config:type_name -> seekervault.gateway.v1.ClientConfig
+	29, // 16: seekervault.gateway.v1.ClientConfig.rpc_endpoints:type_name -> seekervault.gateway.v1.RpcEndpoint
+	30, // 17: seekervault.gateway.v1.ClientConfig.swap_fee:type_name -> seekervault.gateway.v1.SwapFee
+	36, // 18: seekervault.gateway.v1.RpcEndpoint.network:type_name -> seekervault.server.v1.SolanaNetwork
+	36, // 19: seekervault.gateway.v1.SwapFee.network:type_name -> seekervault.server.v1.SolanaNetwork
+	31, // 20: seekervault.gateway.v1.SwapFee.accounts:type_name -> seekervault.gateway.v1.SwapFeeAccount
+	1,  // 21: seekervault.gateway.v1.FeedService.GetServerManifest:input_type -> seekervault.gateway.v1.GetServerManifestRequest
+	3,  // 22: seekervault.gateway.v1.FeedService.ListRequests:input_type -> seekervault.gateway.v1.ListRequestsRequest
+	5,  // 23: seekervault.gateway.v1.FeedService.GetRequest:input_type -> seekervault.gateway.v1.GetRequestRequest
+	7,  // 24: seekervault.gateway.v1.FeedService.ListProposals:input_type -> seekervault.gateway.v1.ListProposalsRequest
+	9,  // 25: seekervault.gateway.v1.FeedService.GetProposal:input_type -> seekervault.gateway.v1.GetProposalRequest
+	11, // 26: seekervault.gateway.v1.FeedService.GetStreamTicket:input_type -> seekervault.gateway.v1.GetStreamTicketRequest
+	15, // 27: seekervault.gateway.v1.FeedService.GetFeedTopics:input_type -> seekervault.gateway.v1.GetFeedTopicsRequest
+	18, // 28: seekervault.gateway.v1.FeedService.GetFeedStatus:input_type -> seekervault.gateway.v1.GetFeedStatusRequest
+	21, // 29: seekervault.gateway.v1.FeedService.SetFeedPushTarget:input_type -> seekervault.gateway.v1.SetFeedPushTargetRequest
+	23, // 30: seekervault.gateway.v1.FeedService.ListRecommendedFeeds:input_type -> seekervault.gateway.v1.ListRecommendedFeedsRequest
+	26, // 31: seekervault.gateway.v1.FeedService.GetClientConfig:input_type -> seekervault.gateway.v1.GetClientConfigRequest
+	2,  // 32: seekervault.gateway.v1.FeedService.GetServerManifest:output_type -> seekervault.gateway.v1.GetServerManifestResponse
+	4,  // 33: seekervault.gateway.v1.FeedService.ListRequests:output_type -> seekervault.gateway.v1.ListRequestsResponse
+	6,  // 34: seekervault.gateway.v1.FeedService.GetRequest:output_type -> seekervault.gateway.v1.GetRequestResponse
+	8,  // 35: seekervault.gateway.v1.FeedService.ListProposals:output_type -> seekervault.gateway.v1.ListProposalsResponse
+	10, // 36: seekervault.gateway.v1.FeedService.GetProposal:output_type -> seekervault.gateway.v1.GetProposalResponse
+	13, // 37: seekervault.gateway.v1.FeedService.GetStreamTicket:output_type -> seekervault.gateway.v1.GetStreamTicketResponse
+	16, // 38: seekervault.gateway.v1.FeedService.GetFeedTopics:output_type -> seekervault.gateway.v1.GetFeedTopicsResponse
+	19, // 39: seekervault.gateway.v1.FeedService.GetFeedStatus:output_type -> seekervault.gateway.v1.GetFeedStatusResponse
+	22, // 40: seekervault.gateway.v1.FeedService.SetFeedPushTarget:output_type -> seekervault.gateway.v1.SetFeedPushTargetResponse
+	24, // 41: seekervault.gateway.v1.FeedService.ListRecommendedFeeds:output_type -> seekervault.gateway.v1.ListRecommendedFeedsResponse
+	27, // 42: seekervault.gateway.v1.FeedService.GetClientConfig:output_type -> seekervault.gateway.v1.GetClientConfigResponse
+	32, // [32:43] is the sub-list for method output_type
+	21, // [21:32] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_seekervault_gateway_v1_feed_proto_init() }
@@ -1891,7 +2248,7 @@ func file_seekervault_gateway_v1_feed_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_seekervault_gateway_v1_feed_proto_rawDesc), len(file_seekervault_gateway_v1_feed_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   25,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
