@@ -344,7 +344,7 @@ and the answer says what happened.
 The shape that stays correct under every failure this API has:
 
 ```python
-import requests, uuid
+import os, requests, uuid
 
 API, TOKEN = "https://signals.example.com", os.environ["PUBLISHER_API_TOKEN"]
 headers = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
@@ -353,7 +353,10 @@ def publish(decision) -> str:
     # A key your own system can reproduce: the same decision retried must carry the same key.
     key = f"{decision.desk}-{decision.pair}-{decision.at.isoformat()}"
     answer = requests.post(f"{API}/v1/requests", headers={**headers, "Idempotency-Key": key},
-                           json={"expires_at": decision.expires.isoformat(),
+                           # The network is required and explicit: it is the signal's own, never
+                           # inferred from a wallet or the manifest. Omitting it is 400 bad_network.
+                           json={"network": decision.network,   # e.g. "mainnet"
+                                 "expires_at": decision.expires.isoformat(),
                                  "note": decision.reasoning,
                                  "terms": decision.terms})
     if answer.status_code in (200, 201, 202):
