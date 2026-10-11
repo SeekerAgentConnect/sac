@@ -110,3 +110,49 @@ func TestSelectNeedsAMarketID(t *testing.T) {
 		t.Fatalf("%d %s", answered.Status, answered.Raw)
 	}
 }
+
+func TestUnpublishWithdrawsAndKeepsTheMarketOff(t *testing.T) {
+	fake := &fakeGateway{}
+	held := predicting(t, fake, &provider{events: oneMarket()})
+	if polled := held.Call(http.MethodPost, "/v1/discovery/poll", nil); polled.Status != http.StatusOK {
+		t.Fatalf("poll %d %s", polled.Status, polled.Raw)
+	}
+	listed := held.Call(http.MethodGet, "/v1/requests", nil)
+	requests, _ := listed.Body["requests"].([]any)
+	if len(requests) != 1 {
+		t.Fatalf("published list %s", listed.Raw)
+	}
+	envelope, _ := requests[0].(map[string]any)
+	document, _ := envelope["request"].(map[string]any)
+	identity, _ := document["identity"].(map[string]any)
+	id, _ := identity["request_id"].(string)
+
+	answered := held.Call(http.MethodPost, "/v1/discovery/unpublish", map[string]any{"request_id": id})
+	if answered.Status != http.StatusOK || answered.Body["dismissed"] != true ||
+		answered.Body["status"] != string(signals.Cancelled) {
+		t.Fatalf("unpublish %d %s", answered.Status, answered.Raw)
+	}
+	again := held.Call(http.MethodPost, "/v1/discovery/unpublish", map[string]any{"request_id": id})
+	if again.Status != http.StatusNotFound || again.Problem() != "not_published" {
+		t.Fatalf("second unpublish %d %s", again.Status, again.Raw)
+	}
+
+	held.NowValue = held.NowValue.Add(10 * time.Minute)
+	if polled := held.Call(http.MethodPost, "/v1/discovery/poll", nil); polled.Status != http.StatusOK {
+		t.Fatalf("poll %d %s", polled.Status, polled.Raw)
+	}
+	searched := held.Call(http.MethodGet, "/v1/discovery/markets?category=economics&keywords=fed", nil)
+	rows, _ := searched.Body["markets"].([]any)
+	row, _ := rows[0].(map[string]any)
+	if row["published"] != false || row["dismissed"] != true {
+		t.Fatalf("after a cycle the market reads %v", row)
+	}
+}
+
+func TestUnpublishNeedsARequestID(t *testing.T) {
+	held := predicting(t, &fakeGateway{}, &provider{events: oneMarket()})
+	answered := held.Call(http.MethodPost, "/v1/discovery/unpublish", map[string]any{})
+	if answered.Status != http.StatusBadRequest {
+		t.Fatalf("%d %s", answered.Status, answered.Raw)
+	}
+}

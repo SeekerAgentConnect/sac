@@ -106,7 +106,7 @@ func (b bucket) covers(event jupiter.Event, market jupiter.Market) bool {
 		// "all" is the provider's word for every bucket.
 		return b.name == "all" || Normalize(event.Category) == b.name
 	}
-	return strings.Contains(haystack(event, market), b.name)
+	return mentions(haystack(event, market), b.name)
 }
 
 // identity is the event a market belongs to, as the selection groups it: the venue and the

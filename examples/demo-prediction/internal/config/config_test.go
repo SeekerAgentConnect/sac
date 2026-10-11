@@ -69,6 +69,12 @@ func TestAPredictionDeploymentStartsWithItsDefaults(t *testing.T) {
 		t.Fatalf("filter %q", held.Filters.Filter)
 	case held.Filters.Closed:
 		t.Fatal("closed markets are published by default")
+	case held.Filters.MostSpread != DefaultMostSpread*jupiter.OneDollar/100:
+		t.Fatalf("spread %d", held.Filters.MostSpread)
+	case !held.Filters.TwoOutcomes:
+		t.Fatal("events of many outcomes are published by default")
+	case !held.Filters.NoCryptoPrices:
+		t.Fatal("crypto price events are published by default")
 	case held.Filters.Every != DefaultPollSeconds*time.Second:
 		t.Fatalf("cadence %s", held.Filters.Every)
 	case held.Filters.PageSize != DefaultPageSize:

@@ -4,6 +4,7 @@ package discovery_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -321,5 +322,57 @@ func TestLiveSelectionWithTheReportedConfiguration(t *testing.T) {
 		again.Cancelled)
 	if again.Created != 0 || again.Cancelled != 0 {
 		t.Fatalf("the next cycle created %d and withdrew %d", again.Created, again.Cancelled)
+	}
+}
+
+// An operator's unpublish withdraws the proposal, and no later cycle publishes the market again on
+// its own; selecting it by name publishes it again as a new proposal.
+func TestAnUnpublishedMarketStaysOffUntilSelectedAgain(t *testing.T) {
+	chosen := valuation("POLY-3350399").Markets[0]
+	provider := &source{
+		events: func(query jupiter.Query) (jupiter.Page, error) {
+			if query.Start > 0 {
+				return jupiter.Page{}, nil
+			}
+			return jupiter.Page{Events: []jupiter.Event{valuation("POLY-3350399")}}, nil
+		},
+		market: func(id string) (jupiter.Market, error) { return chosen, nil },
+	}
+	held := start(t, provider, demoFilters)
+	held.pass()
+	published := open(held.signals())
+	if len(published) != 1 {
+		t.Fatalf("open after the first cycle: %+v", published)
+	}
+
+	held.clock = noon.Add(time.Minute)
+	tracked, err := held.reconciler.Unpublish(context.Background(), published[0].Signal.ProposalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tracked.Market.Dismissed || tracked.Record.Signal.Status == signals.Open {
+		t.Fatalf("unpublished row: %+v", tracked.Market)
+	}
+	if _, err := held.reconciler.Unpublish(context.Background(),
+		published[0].Signal.ProposalID); !errors.Is(err, discovery.ErrNotPublished) {
+		t.Fatalf("a second unpublish answered %v", err)
+	}
+
+	held.clock = noon.Add(10 * time.Minute)
+	cycle := held.pass()
+	if cycle.Created != 0 || len(open(held.signals())) != 0 {
+		t.Fatalf("a cycle published an unpublished market again: %+v", cycle)
+	}
+	if cycle.Reasons[discovery.Dismissed] != 1 {
+		t.Fatalf("reasons %v", cycle.Reasons)
+	}
+
+	again, err := held.reconciler.Select(context.Background(), chosen.MarketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Market.Dismissed || again.Record.Signal.Status != signals.Open ||
+		again.Market.ProposalID == published[0].Signal.ProposalID {
+		t.Fatalf("selected again: %+v", again.Market)
 	}
 }

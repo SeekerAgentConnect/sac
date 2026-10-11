@@ -62,6 +62,10 @@ type Market struct {
 	// retires a pinned market to make room or to rebalance coverage: an operator who named a market
 	// asked for that one. Only the source ending it, or a later operator choice, takes it back.
 	Pinned bool
+	// Whether an operator unpublished this market by name. A cycle never publishes a dismissed
+	// market again on its own; only the operator selecting it again does, and that new proposal
+	// clears the flag.
+	Dismissed bool
 }
 
 // Key is the idempotency key a market's signal is created with: the venue, the identifier and the

@@ -23,6 +23,10 @@ const (
 // would be a proposal that fails on every phone.
 var ErrNotTradeable = errors.New("that market is not open for orders")
 
+// ErrIlliquid is a selected market one side of which nobody quotes both ways, or quotes too far
+// apart: an owner who entered it might not be able to leave it (see [Liquid]).
+var ErrIlliquid = errors.New("that market has no liquidity to get out at")
+
 // Preview is one market as an operator search shows it. It is not persisted: searching the listing
 // does not create a proposal.
 type Preview struct {
@@ -36,6 +40,8 @@ type Preview struct {
 	CloseAt    time.Time
 	SourceURL  string
 	Published  bool
+	// An operator unpublished it, so no cycle publishes it again on its own.
+	Dismissed bool
 }
 
 // Search walks the provider listing with [query] and returns at most [searchMostResults] markets
@@ -58,7 +64,8 @@ func (r *Reconciler) Search(ctx context.Context, query Filters) ([]Preview, erro
 	}
 	previews := make([]Preview, 0, len(found))
 	for _, one := range found {
-		previews = append(previews, previewOf(one, held[one.market.Provider+"/"+one.market.MarketID]))
+		state := held[one.market.Provider+"/"+one.market.MarketID]
+		previews = append(previews, previewOf(one, state.Status == signals.Open, state.Dismissed))
 	}
 	return previews, nil
 }
@@ -75,10 +82,10 @@ func (r *Reconciler) Select(ctx context.Context, marketID string) (markets.Track
 	if !signals.IsMarketID(marketID) {
 		return markets.Tracked{}, fmt.Errorf("that is not a market ID")
 	}
-	if !r.running.TryLock() {
-		return markets.Tracked{}, markets.ErrBusy
+	if err := r.wait(ctx); err != nil {
+		return markets.Tracked{}, err
 	}
-	defer r.running.Unlock()
+	defer r.unlock()
 
 	now := r.now().UTC().Truncate(time.Second)
 	market, err := r.source.Market(ctx, marketID)
@@ -89,12 +96,13 @@ func (r *Reconciler) Select(ctx context.Context, marketID string) (markets.Track
 	if !market.Tradeable() && !r.filters.Closed {
 		return markets.Tracked{}, ErrNotTradeable
 	}
-	event := jupiter.Event{
-		EventID:   market.EventID,
-		Title:     market.Title,
-		Active:    true,
-		SourceURL: "",
-		Markets:   []jupiter.Market{market},
+	// The operator's name overrides what the filters look for, never whether an owner can leave.
+	if r.filters.MostSpread > 0 && !r.filters.Closed && !Liquid(market, r.filters.MostSpread) {
+		return markets.Tracked{}, ErrIlliquid
+	}
+	event, err := r.selectedEvent(ctx, market)
+	if err != nil {
+		return markets.Tracked{}, err
 	}
 	one := candidate{event: event, market: market, pinned: true}
 
@@ -147,6 +155,98 @@ func (r *Reconciler) Select(ctx context.Context, marketID string) (markets.Track
 	return r.lookup(ctx, market.Provider, market.MarketID)
 }
 
+// selectedEvent is the event a selected market belongs to, read from the provider so the proposal
+// carries the event's own title, bucket and tags. A market answer names its event and nothing else
+// about it: titled by the market alone, a yes-or-no question would be published as "Yes — Yes".
+// When the event cannot be read the market stands in for it, as it always used to.
+func (r *Reconciler) selectedEvent(ctx context.Context, market jupiter.Market) (jupiter.Event, error) {
+	fallback := jupiter.Event{
+		EventID: market.EventID,
+		Title:   market.Title,
+		Active:  true,
+		Markets: []jupiter.Market{market},
+	}
+	if market.EventID == "" {
+		return fallback, nil
+	}
+	event, err := r.source.Event(ctx, market.EventID)
+	if err != nil {
+		if ctx.Err() != nil {
+			return jupiter.Event{}, ctx.Err()
+		}
+		r.log.Warn("a selected market's event could not be read; the market names the proposal",
+			"market", market.MarketID, "event", market.EventID, "error", err)
+		return fallback, nil
+	}
+	event.Active = true
+	if len(event.Markets) == 0 {
+		event.Markets = []jupiter.Market{market}
+	}
+	return event, nil
+}
+
+// ErrNotPublished is an unpublish asked for a proposal this template is not publishing: one it
+// never tracked, or one already withdrawn, expired or replaced by a newer proposal.
+var ErrNotPublished = errors.New("that proposal is not on the feed")
+
+// Unpublish withdraws one proposal by its identifier because an operator asked for it, and marks
+// its market dismissed so a later cycle does not publish it again on its own. Selecting the market
+// by name publishes it again as a new proposal.
+//
+// It is the operator's counterpart of [Reconciler.Select], and like it waits for a running cycle:
+// a withdrawal decided in the middle of a cycle could be undone by that cycle's own conclusions.
+func (r *Reconciler) Unpublish(ctx context.Context, proposalID string) (markets.Tracked, error) {
+	if err := r.wait(ctx); err != nil {
+		return markets.Tracked{}, err
+	}
+	defer r.unlock()
+
+	tracked, err := r.documents.Markets(ctx)
+	if err != nil {
+		return markets.Tracked{}, err
+	}
+	for _, one := range tracked {
+		if one.Market.ProposalID != proposalID {
+			continue
+		}
+		if one.Record.Signal.Status != signals.Open {
+			break
+		}
+		now := r.now().UTC().Truncate(time.Second)
+		_, withdrawn, err := r.documents.Dismiss(ctx, one.Market.Provider, one.Market.MarketID,
+			one.Market.State, now)
+		if err != nil {
+			return markets.Tracked{}, err
+		}
+		if withdrawn {
+			r.log.Info("a market's proposal is withdrawn by the operator",
+				"market", one.Market.MarketID, "event", one.Market.EventID, "signal", proposalID)
+			r.wake()
+		}
+		return r.lookup(ctx, one.Market.Provider, one.Market.MarketID)
+	}
+	return markets.Tracked{}, ErrNotPublished
+}
+
+// undismissed drops the candidates an operator unpublished, counting each under [Dismissed]. A
+// dismissed market still has its withdrawn proposal, so nothing else of the cycle asks about it.
+func (r *Reconciler) undismissed(
+	cycle *markets.Cycle,
+	found []candidate,
+	held map[string]markets.Tracked,
+) []candidate {
+	kept := found[:0]
+	for _, one := range found {
+		row, tracking := held[one.market.Provider+"/"+one.market.MarketID]
+		if tracking && row.Market.Dismissed && row.Record.Signal.Status != signals.Open {
+			cycle.Reasons[Dismissed]++
+			continue
+		}
+		kept = append(kept, one)
+	}
+	return kept
+}
+
 func (r *Reconciler) lookup(ctx context.Context, provider, marketID string) (markets.Tracked, error) {
 	tracked, err := r.documents.Markets(ctx)
 	if err != nil {
@@ -160,15 +260,22 @@ func (r *Reconciler) lookup(ctx context.Context, provider, marketID string) (mar
 	return markets.Tracked{}, fmt.Errorf("the selected market was not stored")
 }
 
-func (r *Reconciler) published(ctx context.Context) (map[string]bool, error) {
+// standing is what an operator search says about a market this template has tracked.
+type standing struct {
+	Status    signals.Status
+	Dismissed bool
+}
+
+func (r *Reconciler) published(ctx context.Context) (map[string]standing, error) {
 	tracked, err := r.documents.Markets(ctx)
 	if err != nil {
 		return nil, err
 	}
-	held := make(map[string]bool, len(tracked))
+	held := make(map[string]standing, len(tracked))
 	for _, one := range tracked {
-		if one.Record.Signal.Status == signals.Open {
-			held[one.Market.Provider+"/"+one.Market.MarketID] = true
+		held[one.Market.Provider+"/"+one.Market.MarketID] = standing{
+			Status:    one.Record.Signal.Status,
+			Dismissed: one.Market.Dismissed,
 		}
 	}
 	return held, nil
@@ -187,7 +294,7 @@ func boundSearch(query Filters) Filters {
 	return query
 }
 
-func previewOf(one candidate, published bool) Preview {
+func previewOf(one candidate, published, dismissed bool) Preview {
 	shown := Preview{
 		MarketID:   one.market.MarketID,
 		EventID:    one.market.EventID,
@@ -198,6 +305,7 @@ func previewOf(one candidate, published bool) Preview {
 		State:      one.market.State(),
 		SourceURL:  one.event.SourceURL,
 		Published:  published,
+		Dismissed:  dismissed,
 	}
 	if one.market.CloseTime > 0 {
 		shown.CloseAt = time.Unix(one.market.CloseTime, 0).UTC()

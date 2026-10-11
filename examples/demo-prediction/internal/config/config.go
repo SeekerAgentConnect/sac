@@ -60,6 +60,10 @@ const (
 	DefaultMostCloseIn     = 30 * 24 * 60 // minutes: a month
 	DefaultLifetimeHours   = 7 * 24
 	DefaultProviderTimeout = 15 * time.Second
+	// DefaultMostSpread is the widest buy/sell gap, in cents, that still counts as a market an
+	// owner can leave: the median listed side is quoted a cent apart, and one in ten wider than
+	// twelve.
+	DefaultMostSpread = 5
 	// MostNoteBytes is how much prose an operator may put above the generated line in every note.
 	// The rest of the note is the provider's wording and the boundary, and all of it together has
 	// to fit in what a proposal carries.
@@ -152,7 +156,7 @@ func LoadPrediction(lookup support.Lookup) (*support.Config, *Prediction, []stri
 		if len([]rune(keyword)) < 2 || !signals.Printable(keyword, 64, false) {
 			read.Note("PREDICTION_KEYWORDS must each be 2 to 64 characters of printable text on "+
 				"one line; %q is not. They are matched against the title, the bucket, the tags "+
-				"and the market's own title, case-insensitively, as substrings", keyword)
+				"and the market's own title, case-insensitively, at the start of a word", keyword)
 		}
 	}
 
@@ -209,6 +213,26 @@ func LoadPrediction(lookup support.Lookup) (*support.Config, *Prediction, []stri
 		read.Note("PREDICTION_STATE must be open (only markets the provider would take an order " +
 			"for) or any (also closed, cancelled and settled markets, to exercise the closure " +
 			"path)")
+	}
+
+	held.Filters.MostSpread = int64(read.Whole("PREDICTION_MOST_SPREAD_CENTS", DefaultMostSpread,
+		1, 99, "it is the widest gap between buying a side and selling it back that still counts "+
+			"as a market an owner could get out of")) * jupiter.OneDollar / 100
+	switch outcomes := strings.ToLower(read.Text("PREDICTION_OUTCOMES", "two")); outcomes {
+	case "two":
+		held.Filters.TwoOutcomes = true
+	case "any":
+	default:
+		read.Note("PREDICTION_OUTCOMES must be two (only events that are one yes-or-no " +
+			"question) or any (also events of several outcome markets)")
+	}
+	switch prices := strings.ToLower(read.Text("PREDICTION_CRYPTO_PRICES", "exclude")); prices {
+	case "exclude":
+		held.Filters.NoCryptoPrices = true
+	case "include":
+	default:
+		read.Note("PREDICTION_CRYPTO_PRICES must be exclude (no crypto event about a token's " +
+			"price) or include")
 	}
 
 	held.Deposit = discovery.Deposit{

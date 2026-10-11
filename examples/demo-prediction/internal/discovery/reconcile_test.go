@@ -41,11 +41,12 @@ const server = "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
 
 var noon = time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
 
-// source is a provider a test scripts: one function for the listing, one for a direct read, and a
-// record of what was asked.
+// source is a provider a test scripts: one function for the listing, one for a direct read, one for
+// an event read, and a record of what was asked.
 type source struct {
 	events func(jupiter.Query) (jupiter.Page, error)
 	market func(string) (jupiter.Market, error)
+	event  func(string) (jupiter.Event, error)
 	mutex  sync.Mutex
 	listed []jupiter.Query
 	asked  []string
@@ -66,6 +67,13 @@ func (s *source) Market(_ context.Context, id string) (jupiter.Market, error) {
 		return jupiter.Market{}, &jupiter.Fault{Problem: jupiter.NoSuchMarket}
 	}
 	return s.market(id)
+}
+
+func (s *source) Event(_ context.Context, id string) (jupiter.Event, error) {
+	if s.event == nil {
+		return jupiter.Event{}, &jupiter.Fault{Problem: jupiter.NoSuchMarket}
+	}
+	return s.event(id)
 }
 
 // listing answers one page of whatever events it is given, with no second page.

@@ -201,8 +201,11 @@ half is this demo's alone.
 | `PREDICTION_CATEGORIES` | no | — | The provider's buckets, comma-separated; one listing walk each, and each a coverage bucket for the selection |
 | `PREDICTION_FILTER` | no | — | The provider's own named filter: `new`, `live`, `trending`, `upcoming` |
 | `PREDICTION_TAGS` | no | — | The event's own tags, whole and case-insensitive |
-| `PREDICTION_KEYWORDS` | no | — | Case-insensitive substrings of title, bucket, subcategory, tags; each a coverage bucket for the selection |
+| `PREDICTION_KEYWORDS` | no | — | Case-insensitive, matched at the start of a word of title, bucket, subcategory, tags; each a coverage bucket for the selection |
 | `PREDICTION_STATE` | no | `open` | `any` also publishes closed, cancelled and settled markets — signals no phone can execute, for exercising the closure path; logs a warning at startup |
+| `PREDICTION_MOST_SPREAD_CENTS` | no | `5` | Widest buy/sell gap on YES and on NO (1–99). A side with no bid or no offer is never published, so an owner can always get out |
+| `PREDICTION_OUTCOMES` | no | `two` | `two`: only single-market yes-or-no events. `any`: also multi-outcome events |
+| `PREDICTION_CRYPTO_PRICES` | no | `exclude` | `exclude`: no crypto event about a token's price (up/down, strikes, hit price, FDV). `include`: publish them |
 | `PREDICTION_LEAST_CLOSE_IN_MINUTES` | no | `60` | How soon a market may close and still be published |
 | `PREDICTION_MOST_CLOSE_IN_MINUTES` | no | `43200` | How far ahead it may close |
 | `PREDICTION_LIFETIME_HOURS` | no | `168` | Expiry for a market with no close time, from when it was first seen |

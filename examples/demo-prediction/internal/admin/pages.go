@@ -3,6 +3,7 @@ package admin
 import (
 	"embed"
 	"html/template"
+	"net/url"
 	"strings"
 )
 
@@ -61,10 +62,46 @@ type homeView struct {
 	Reference string
 	Networks  string
 	Query     Query
-	Signals   []Item
-	Coverage  *Coverage
-	Markets   []Market
-	Searched  bool
+	// The proposals on the feed now, and the ones withdrawn or expired.
+	Signals  []Item
+	Past     []Item
+	Coverage *Coverage
+	Markets  []Market
+	Searched bool
+	Presets  []Preset
+}
+
+// Preset is a named search the form offers as one click: a link that runs it.
+type Preset struct {
+	Label string
+	Query Query
+}
+
+// presets are the searches an operator reaches for often enough to name.
+var presets = []Preset{
+	{Label: "Sports — NBA", Query: Query{Source: "polymarket", Category: "sports", Keywords: "nba",
+		State: "open"}},
+}
+
+// Href is the preset as a search link on this page.
+func (p Preset) Href(path string) template.URL {
+	values := url.Values{"search": {"1"}}
+	set := func(key, value string) {
+		if value != "" {
+			values.Set(key, value)
+		}
+	}
+	set("source", p.Query.Source)
+	set("category", p.Query.Category)
+	set("filter", p.Query.Filter)
+	set("keywords", p.Query.Keywords)
+	set("tags", p.Query.Tags)
+	set("least_close_minutes", p.Query.LeastCloseMinutes)
+	set("most_close_minutes", p.Query.MostCloseMinutes)
+	set("state", p.Query.State)
+	// The path is the deployment's own configured prefix and the values are encoded here, so the
+	// link is safe to mark as a URL.
+	return template.URL(path + "?" + values.Encode() + "#market-search")
 }
 
 // LoggedIn decides whether the frame draws the sidebar.

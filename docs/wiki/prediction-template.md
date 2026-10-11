@@ -21,13 +21,20 @@ at the moment they look.
 | --- | --- | --- |
 | Kind | `signals.Swap` → `jupiter.swap` | **`signals.Prediction` → `jupiter.prediction`** |
 | Who writes the signals | a trader, a script, a strategy engine | **the template itself, from a provider's listing** |
-| Its API | create, update, cancel, read | **read only for callers; the three writing endpoints answer 403. Operators may `GET /v1/discovery/markets` and `POST /v1/discovery/select` (SEE-138)** |
+| Its API | create, update, cancel, read | **read only for callers; the three writing endpoints answer 403. Operators may `GET /v1/discovery/markets`, `POST /v1/discovery/select` (SEE-138) and `POST /v1/discovery/unpublish`** |
 | Reads anything outside | no | **yes: the provider's public listing** |
 | Holds | signals, and what the gateway confirmed | **the same, plus the markets it is tracking** |
 
 `cmd/prediction-admin` (SEE-138) is a password-gated HTML client of that API: it lists the signals
 already on the feed, searches the provider listing with typed filters, and asks discovery to publish
-a named market. Callers still cannot `POST /v1/requests`. Side and stake stay on the phone. Beside
+a named market. Callers still cannot `POST /v1/requests`. Side and stake stay on the phone.
+**Published on this feed** lists the open proposals, each with **Unpublish**
+([An operator's unpublish](#selection-one-entry-per-event-chosen-for-coverage-see-177)), and folds
+the withdrawn and expired ones into a collapsed list. The search form offers presets (**Sports —
+NBA**: Polymarket, category `sports`, keyword `nba`) as one-click search links. The page's script
+keeps the last search's filters and the markets it found in the browser's `localStorage`, so
+publishing a market returns to the same list; **Clear markets** drops the saved list and keeps the
+filters. Nothing secret is stored: both are public listing data. Beside
 the reference the panel also draws it as a QR code (SEE-163), so a phone pairs by pointing SAC's
 camera at the screen instead of typing; the code is an inline SVG that carries exactly what the
 input beside it carries, and the page still loads no images. The panel uses the feed gateway's
@@ -127,8 +134,11 @@ records carry.
 | `PREDICTION_CATEGORIES` | the provider (`category=`) | one listing walk per bucket; empty means one walk with no bucket. `all` matches every bucket. Each bucket is also a **coverage bucket** for the selection; repeats are dropped |
 | `PREDICTION_FILTER` | the provider (`filter=`) | its own named filters: `new` (created in the last 24 hours), `live` (begun), `trending` (recent trade activity), `upcoming` (not begun) |
 | `PREDICTION_TAGS` | here | the event's own tags, compared **whole** and case-insensitively. A tag is a token the provider assigns (`nfl`, `fed-rates`), so half of one is not a match. Any one matching is enough |
-| `PREDICTION_KEYWORDS` | here | a **case-insensitive substring** of the event's title, bucket, subcategory and tags together with the market's own title, compared after Unicode (NFKC), case and whitespace normalization. Any one matching is enough. A substring deliberately: `eth` finds "Ethereum", and it also finds "Bethesda". Each keyword is also a **coverage bucket**; one that normalizes to an earlier one is dropped |
+| `PREDICTION_KEYWORDS` | here | case-insensitive text **at the start of a word** of the event's title, bucket, subcategory and tags together with the market's own title, compared after Unicode (NFKC), case and whitespace normalization. Any one matching is enough. The start of a word deliberately: `eth` finds "Ethereum", while `nba` does not find "unban" and `epl` does not find "replace". Each keyword is also a **coverage bucket**; one that normalizes to an earlier one is dropped |
 | `PREDICTION_STATE` | here | `open` (default): only markets the provider would take an order for. `any`: also closed, cancelled and settled ones, which no phone can execute; logs a warning at startup |
+| `PREDICTION_MOST_SPREAD_CENTS` | here | **liquidity**: both YES and NO must have an offer under $1 and a bid above 0 in the listing's quoted `pricing`, each at most this many cents apart (1–99, default 5), so an owner who enters can also get out before the close. Prices are read only to decide and never published. Skipped as `no_liquidity`. Also checked on a publish by name (`409 no_liquidity`) |
+| `PREDICTION_OUTCOMES` | here | `two` (default): only events that are one yes-or-no question, a single market. Events of several outcome markets (strike ladders, ranges, deadline ladders) are skipped as `more_than_two_outcomes`. `any`: every event |
+| `PREDICTION_CRYPTO_PRICES` | here | `exclude` (default): no crypto event about a token's price, skipped as `crypto_price`. The test is a provider tag (`crypto-prices`, `hit-price`, `price-milestone`, `price-comparison`, `fdv`) or, because many are untagged, a title phrase (`price`, `up or down`, ` above `, ` below `, `fdv`, `market cap`, `all time high`, `outperform`). It applies to a `crypto` bucket or a `crypto` tag only. `include`: publish them |
 | `PREDICTION_LEAST_CLOSE_IN_MINUTES` / `PREDICTION_MOST_CLOSE_IN_MINUTES` | here | the market's own close time has to be that far away, inclusive at both edges. A market with **no** close time cannot be judged against a window, so it is skipped whenever one is set |
 | `PREDICTION_MOST_OPEN` | here | how many proposals to hold open at once — **one per event**, so this is how many events the feed shows. When more events match, the ones published are chosen for coverage first, then variety, then the soonest to close ([Selection](#selection-one-entry-per-event-chosen-for-coverage-see-177)) |
 
@@ -205,6 +215,14 @@ a phone shows it as withdrawn, in its history, with any approval, transaction li
 holds untouched — and counted by reason: `duplicate_event` (a second proposal for one event, such as
 a feed published before SEE-177 holding one per market), `rebalanced`, `replaced` and
 `over_ceiling` (a lowered ceiling). Each is logged with the market, the event and the reason.
+
+**An operator's unpublish.** `POST /v1/discovery/unpublish` with `{"request_id": "<proposal>"}`
+(the admin page's **Unpublish** on a row of **Published on this feed**) withdraws that open
+proposal and marks its market `dismissed` in the store (schema version 7). No later cycle publishes
+a dismissed market on its own: the walk drops it and counts it under the `dismissed` reason. A
+search still lists it, with `"dismissed": true` (the admin page shows **unpublished**), and
+selecting it by name publishes it again as a new proposal and clears the mark. An unknown or
+already-withdrawn proposal answers `404 not_published`; a running cycle answers `409 busy`.
 
 **Diagnostics.** Every cycle records its selection, which `GET /v1/discovery`, `publishctl discovery`
 and the admin page's **Feed coverage** table read back:

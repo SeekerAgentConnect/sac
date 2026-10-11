@@ -982,6 +982,35 @@ body.busy button {
   margin-bottom: 16px;
 }
 
+/* The search presets, the head of the found markets with its clear action, and the collapsed list
+   of proposals no longer on the feed. */
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.results-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+}
+.results-head .hint.after {
+  margin: 0;
+}
+.past-signals {
+  margin-top: 14px;
+}
+.past-signals summary {
+  margin-bottom: 12px;
+  color: var(--secondary);
+  cursor: pointer;
+}
+
 @media (max-width: 639px) {
   .reference-card {
     grid-template-columns: minmax(0, 1fr);

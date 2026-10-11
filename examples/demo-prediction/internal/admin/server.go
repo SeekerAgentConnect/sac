@@ -100,6 +100,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST "+s.path+"/login", s.login)
 	mux.HandleFunc("POST "+s.path+"/logout", s.logout)
 	mux.HandleFunc("POST "+s.path+"/select", s.selectMarket)
+	mux.HandleFunc("POST "+s.path+"/unpublish", s.unpublish)
 	mux.HandleFunc("GET "+s.path+"/assets/{file}", s.asset)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		request.Body = http.MaxBytesReader(writer, request.Body, MostBodyBytes)
@@ -224,6 +225,28 @@ func (s *Server) selectMarket(writer http.ResponseWriter, request *http.Request)
 	s.redirectOK(writer, request, "published")
 }
 
+func (s *Server) unpublish(writer http.ResponseWriter, request *http.Request) {
+	name, ok := s.guard(writer, request)
+	if !ok {
+		return
+	}
+	if !s.mutates.Allow("unpublish:" + name) {
+		s.redirectErr(writer, request, "too many changes; try later")
+		return
+	}
+	if err := request.ParseForm(); err != nil {
+		s.redirectErr(writer, request, "the form could not be read")
+		return
+	}
+	id := strings.TrimSpace(request.FormValue("request_id"))
+	if err := s.api.unpublish(id); err != nil {
+		s.mutates.Undo("unpublish:" + name)
+		s.redirectErr(writer, request, err.Error())
+		return
+	}
+	s.redirectOK(writer, request, "unpublished")
+}
+
 func (s *Server) guard(writer http.ResponseWriter, request *http.Request) (string, bool) {
 	if !s.sameOrigin(request) {
 		s.refuse(writer, http.StatusForbidden, "that request did not come from this page")
@@ -261,6 +284,14 @@ func (s *Server) renderHome(writer http.ResponseWriter, request *http.Request, n
 	if listErr != nil && fail == "" {
 		fail = listErr.Error()
 	}
+	var live, past []Item
+	for _, item := range items {
+		if item.Status == "open" {
+			live = append(live, item)
+		} else {
+			past = append(past, item)
+		}
+	}
 	query := queryFrom(request)
 	if query.Source == "" && query.Category == "" && query.Keywords == "" {
 		query = s.api.defaults()
@@ -284,10 +315,12 @@ func (s *Server) renderHome(writer http.ResponseWriter, request *http.Request, n
 		Reference: feed.Reference,
 		Networks:  feed.Networks,
 		Query:     query,
-		Signals:   items,
+		Signals:   live,
+		Past:      past,
 		Coverage:  coverage,
 		Markets:   markets,
 		Searched:  searched,
+		Presets:   presets,
 	})
 }
 

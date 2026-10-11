@@ -44,6 +44,10 @@ func (p *provider) Market(_ context.Context, id string) (jupiter.Market, error) 
 	return p.market(id)
 }
 
+func (p *provider) Event(context.Context, string) (jupiter.Event, error) {
+	return jupiter.Event{}, &jupiter.Fault{Problem: jupiter.NoSuchMarket}
+}
+
 // oneMarket is a listing with a single open market in it.
 func oneMarket() func(jupiter.Query) (jupiter.Page, error) {
 	return func(query jupiter.Query) (jupiter.Page, error) {

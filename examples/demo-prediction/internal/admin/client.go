@@ -60,6 +60,7 @@ type Market struct {
 	State      string
 	CloseAt    string
 	Published  bool
+	Dismissed  bool
 }
 
 // Query is the operator's listing filters, as the search form posts them.
@@ -282,6 +283,7 @@ func (a *API) search(query Query) ([]Market, error) {
 			State      string   `json:"state"`
 			CloseAt    string   `json:"close_at"`
 			Published  bool     `json:"published"`
+			Dismissed  bool     `json:"dismissed"`
 		} `json:"markets"`
 	}
 	if err := json.Unmarshal(body, &read); err != nil {
@@ -299,6 +301,7 @@ func (a *API) search(query Query) ([]Market, error) {
 			State:      one.State,
 			CloseAt:    one.CloseAt,
 			Published:  one.Published,
+			Dismissed:  one.Dismissed,
 		})
 	}
 	return markets, nil
@@ -325,6 +328,23 @@ func (a *API) selectMarket(id string) (Market, error) {
 		return Market{}, err
 	}
 	return Market{MarketID: read.MarketID, Title: read.Title, State: read.State}, nil
+}
+
+// unpublish asks discovery to withdraw one proposal and keep its market off the feed until an
+// operator selects it again.
+func (a *API) unpublish(id string) error {
+	payload, err := json.Marshal(map[string]string{"request_id": id})
+	if err != nil {
+		return err
+	}
+	status, body, err := a.call(http.MethodPost, "/v1/discovery/unpublish", "", payload)
+	if err != nil {
+		return err
+	}
+	if status < 200 || status > 299 {
+		return decodeError(status, body)
+	}
+	return nil
 }
 
 func (a *API) call(method, path, key string, body []byte) (int, []byte, error) {

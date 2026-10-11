@@ -261,6 +261,10 @@ func (l *feedListing) Events(_ context.Context, query jupiter.Query) (jupiter.Pa
 	}}}, nil
 }
 
+func (l *feedListing) Event(context.Context, string) (jupiter.Event, error) {
+	return jupiter.Event{}, &jupiter.Fault{Problem: jupiter.NoSuchMarket}
+}
+
 func (l *feedListing) Market(_ context.Context, id string) (jupiter.Market, error) {
 	status := jupiter.Open
 	if l.closed {

@@ -182,6 +182,10 @@ func TestSearchAndSelectGoThroughDiscovery(t *testing.T) {
 	if !strings.Contains(searched.body, "Showing up to 10 matching markets") {
 		t.Fatalf("missing list cap: %s", searched.body)
 	}
+	if !strings.Contains(searched.body, `<script type="application/json" id="market-results">[{"MarketID":"POLY-999"`) ||
+		!strings.Contains(searched.body, "data-clear-markets") {
+		t.Fatalf("missing the saved search: %s", searched.body)
+	}
 	if !strings.Contains(searched.body, `data-busy="Searching…"`) ||
 		!strings.Contains(searched.body, "busy-mask") {
 		t.Fatalf("missing loading state: %s", searched.body)
@@ -281,6 +285,33 @@ func TestTheStylesheetScriptAndFontsComeOutOfTheBinary(t *testing.T) {
 		if answered := get(t, ui, "", "/trader/assets/"+name); answered.status != http.StatusNotFound {
 			t.Fatalf("%s answered %d", name, answered.status)
 		}
+	}
+}
+
+func TestUnpublishGoesThroughDiscovery(t *testing.T) {
+	ui, stub := startUI(t, nil)
+	logged := login(t, ui, "judge1", "secret")
+	home := get(t, ui, logged, "/trader")
+	if !strings.Contains(home.body, `action="/trader/unpublish"`) ||
+		!strings.Contains(home.body, `data-open-market="POLY-2589813"`) {
+		t.Fatalf("missing unpublish: %s", home.body)
+	}
+	if !strings.Contains(home.body,
+		`href="/trader?category=sports&amp;keywords=nba&amp;search=1&amp;source=polymarket&amp;state=open#market-search"`) {
+		t.Fatalf("missing the NBA preset: %s", home.body)
+	}
+	unpublished := post(t, ui, logged, "/trader/unpublish", url.Values{
+		"request_id": {"8c9d0e1f-2a3b-4c5d-8e6f-7a8b9c0d1e2f"},
+	})
+	if unpublished.status != http.StatusSeeOther ||
+		unpublished.header.Get("Location") != "/trader?ok=unpublished" {
+		t.Fatalf("unpublish %d %s", unpublished.status, unpublished.header.Get("Location"))
+	}
+	if stub.lastMethod != http.MethodPost || stub.lastPath != "/v1/discovery/unpublish" {
+		t.Fatalf("unpublish called %s %s", stub.lastMethod, stub.lastPath)
+	}
+	if !strings.Contains(string(stub.lastBody), `"request_id":"8c9d0e1f-2a3b-4c5d-8e6f-7a8b9c0d1e2f"`) {
+		t.Fatalf("unpublish body %s", stub.lastBody)
 	}
 }
 

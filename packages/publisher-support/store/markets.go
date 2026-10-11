@@ -31,6 +31,13 @@ ALTER TABLE market ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE discovery ADD COLUMN selection TEXT NOT NULL DEFAULT '{}';
 `
 
+// Version 7 is an operator's unpublish: a market whose proposal an operator withdrew by name, so
+// that a later cycle that finds it eligible again does not publish it again. Only the operator
+// naming it once more — a new proposal minted by [Store.Discover] — clears it.
+const schemaV7 = `
+ALTER TABLE market ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0;
+`
+
 // ErrNoMarket is returned when nothing is tracked under that venue and identifier.
 var ErrNoMarket = errors.New("no market of that identifier")
 
@@ -168,6 +175,26 @@ func (s *Store) Withdraw(
 	provider, marketID, state string,
 	now time.Time,
 ) (signals.Record, bool, error) {
+	return s.withdraw(ctx, provider, marketID, state, false, now)
+}
+
+// Dismiss withdraws a market's proposal because an operator asked for it by name, and marks the
+// row so that no later cycle publishes the market again on its own. It also unpins it: the
+// operator's earlier choice of this market is the one being taken back.
+func (s *Store) Dismiss(
+	ctx context.Context,
+	provider, marketID, state string,
+	now time.Time,
+) (signals.Record, bool, error) {
+	return s.withdraw(ctx, provider, marketID, state, true, now)
+}
+
+func (s *Store) withdraw(
+	ctx context.Context,
+	provider, marketID, state string,
+	dismissed bool,
+	now time.Time,
+) (signals.Record, bool, error) {
 	transaction, err := s.writer.BeginTx(ctx, nil)
 	if err != nil {
 		return signals.Record{}, false, err
@@ -193,6 +220,14 @@ func (s *Store) Withdraw(
 		state, milliseconds(now), provider, marketID,
 	); err != nil {
 		return signals.Record{}, false, err
+	}
+	if dismissed {
+		if _, err := transaction.ExecContext(ctx,
+			`UPDATE market SET dismissed = 1, pinned = 0 WHERE provider = ? AND market_id = ?`,
+			provider, marketID,
+		); err != nil {
+			return signals.Record{}, false, err
+		}
 	}
 	return record, withdrawn, transaction.Commit()
 }
@@ -292,19 +327,20 @@ func trackIn(ctx context.Context, transaction *sql.Tx, market markets.Market) er
 	_, err := transaction.ExecContext(ctx,
 		`INSERT INTO market (provider, market_id, event_id, title, state, close_at_ms, source_url,
 		                     proposal_id, generation, first_seen_at_ms, last_seen_at_ms,
-		                     last_checked_at_ms, pinned)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                     last_checked_at_ms, pinned, dismissed)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(provider, market_id) DO UPDATE SET
 		   event_id = excluded.event_id, title = excluded.title, state = excluded.state,
 		   close_at_ms = excluded.close_at_ms, source_url = excluded.source_url,
 		   proposal_id = excluded.proposal_id, generation = excluded.generation,
 		   first_seen_at_ms = excluded.first_seen_at_ms,
 		   last_seen_at_ms = excluded.last_seen_at_ms,
-		   last_checked_at_ms = excluded.last_checked_at_ms, pinned = excluded.pinned`,
+		   last_checked_at_ms = excluded.last_checked_at_ms, pinned = excluded.pinned,
+		   dismissed = excluded.dismissed`,
 		market.Provider, market.MarketID, market.EventID, market.Title, market.State,
 		optional(market.CloseAt), market.SourceURL, market.ProposalID, market.Generation,
 		optional(market.FirstSeenAt), optional(market.LastSeenAt),
-		optional(market.LastCheckedAt), flag(market.Pinned))
+		optional(market.LastCheckedAt), flag(market.Pinned), flag(market.Dismissed))
 	return err
 }
 
@@ -312,6 +348,7 @@ const selectTracked = `
 SELECT market.provider, market.market_id, market.event_id, market.title, market.state,
        market.close_at_ms, market.source_url, market.proposal_id, market.generation,
        market.first_seen_at_ms, market.last_seen_at_ms, market.last_checked_at_ms, market.pinned,
+       market.dismissed,
        signal.revision, signal.status, signal.operation, signal.plugin_id, signal.network,
        signal.created_at_ms,
        signal.updated_at_ms, signal.expires_at_ms, signal.title, signal.note, signal.terms, signal.fingerprint,
@@ -325,13 +362,13 @@ func trackedFrom(row scanner) (markets.Tracked, error) {
 		closeAt, firstSeen, lastSeen, checked int64
 		status, named, terms                  string
 		created, updated, expires, due        int64
-		pinned                                int
+		pinned, dismissed                     int
 	)
 	if err := row.Scan(
 		&tracked.Market.Provider, &tracked.Market.MarketID, &tracked.Market.EventID,
 		&tracked.Market.Title, &tracked.Market.State, &closeAt, &tracked.Market.SourceURL,
 		&tracked.Market.ProposalID, &tracked.Market.Generation, &firstSeen, &lastSeen, &checked,
-		&pinned, &tracked.Record.Signal.Revision, &status, &tracked.Record.Signal.Operation,
+		&pinned, &dismissed, &tracked.Record.Signal.Revision, &status, &tracked.Record.Signal.Operation,
 		&tracked.Record.Signal.PluginID, &named, &created, &updated, &expires,
 		&tracked.Record.Signal.Title, &tracked.Record.Signal.Note, &terms,
 		&tracked.Record.Signal.Fingerprint,
@@ -345,6 +382,7 @@ func trackedFrom(row scanner) (markets.Tracked, error) {
 	tracked.Market.LastSeenAt = maybe(lastSeen)
 	tracked.Market.LastCheckedAt = maybe(checked)
 	tracked.Market.Pinned = pinned != 0
+	tracked.Market.Dismissed = dismissed != 0
 	// The signal is the market's, so it is read under the row's own proposal ID: the join is on it.
 	tracked.Record.Signal.ProposalID = tracked.Market.ProposalID
 	tracked.Record.Signal.Status = signals.Status(status)
