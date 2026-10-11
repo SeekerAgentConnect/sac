@@ -25,6 +25,7 @@ import io.github.brrenat.seekervault.proposals.ProposalDismissal
 import io.github.brrenat.seekervault.proposals.ProposalExecution
 import io.github.brrenat.seekervault.proposals.ProposalExpectation
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
+import io.github.brrenat.seekervault.proposals.ProposalPreview
 import io.github.brrenat.seekervault.proposals.ProposalProblem
 import io.github.brrenat.seekervault.proposals.ProposalProvider
 import io.github.brrenat.seekervault.proposals.ProposalRecord
@@ -32,6 +33,7 @@ import io.github.brrenat.seekervault.proposals.ProposalResult
 import io.github.brrenat.seekervault.proposals.ProposalReview
 import io.github.brrenat.seekervault.proposals.ProposalStanding
 import io.github.brrenat.seekervault.proposals.bindingProblem
+import io.github.brrenat.seekervault.proposals.declared
 import io.github.brrenat.seekervault.proposals.proposalFrom
 import io.github.brrenat.seekervault.proposals.proposalProvider
 import io.github.brrenat.seekervault.proposals.proposalStanding
@@ -41,7 +43,8 @@ import io.github.brrenat.seekervault.request.v2.Request as WireRequest
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.ServerSupport
-import io.github.brrenat.seekervault.servers.serverSupport
+import io.github.brrenat.seekervault.servers.feedSupport
+import io.github.brrenat.seekervault.servers.manifest
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.encodeBase58
 import java.time.Instant
@@ -184,6 +187,12 @@ class ProposalRepository(
      * session already; a live stream event always is.
      */
     private val arrivals: ArrivalLedger? = null,
+    /**
+     * The one gateway this build trusts (SEE-185). A feed held from another is readable and never
+     * executable ([ServerSupport.OtherGateway]). Null skips the comparison, which only a test of
+     * something else does.
+     */
+    private val trustedGateway: String? = null,
 ) {
     private val lock = Mutex()
     private val _proposals = MutableStateFlow<List<ProposalRecord>>(emptyList())
@@ -470,34 +479,19 @@ class ProposalRepository(
     ): ExecutionOutcome = locked {
         val connection = operationConnection(connectionId) ?: return@locked ExecutionOutcome.Gone
         val record = stored(connection, proposalId) ?: return@locked ExecutionOutcome.Gone
-        bindingProblem(
-                record,
-                binding,
-                wallet,
-                support(connection),
-                connection.environment,
-                // What this build resolves for the document, asked at the moment of acting rather
-                // than taken from the binding: a build that has stopped carrying the provider
-                // refuses, exactly as one that never had it does (SEE-145).
-                (proposalProvider(
-                        record.proposal,
-                        plugins,
-                        wallet?.network?.network ?: Network.NETWORK_UNSPECIFIED,
-                        connection.environment,
-                    )
-                        as? ProposalProvider.Serving)
-                    ?.id,
-                now(),
-            )
-            ?.let {
-                return@locked ExecutionOutcome.Refused(it)
-            }
+        // A preview is never a beginning: it is [recordPreview], and it consumes nothing.
+        if (binding.environment != PluginEnvironment.Production) {
+            return@locked ExecutionOutcome.Refused(BindingProblem.NothingPrepared)
+        }
+        problemOf(connection, record, binding, wallet)?.let {
+            return@locked ExecutionOutcome.Refused(it)
+        }
         record
             .copy(execution = ProposalExecution(binding = binding, startedAt = now()))
             .also {
                 write(it, connection)
                 publish()
-                if (transaction != null && binding.environment == PluginEnvironment.Production) {
+                if (transaction != null) {
                     tracking?.expect(
                         Submission(
                             key = RequestKey(connectionId, proposalId),
@@ -511,6 +505,65 @@ class ProposalRepository(
             }
             .let(ExecutionOutcome::Begun)
     }
+
+    /**
+     * Records a preview (SEE-185, docs/wiki/environments.md): [binding] — bound with
+     * [PluginEnvironment.Sandbox] — passes every rule an execution would, and is then written as
+     * the proposal's latest [ProposalPreview] rather than as its execution. Nothing is signed and
+     * nothing is sent, so the proposal's standing is untouched and the owner may still execute it
+     * for real, from a fresh preparation, while it stands. Under the same lock as [beginExecution],
+     * so a preview racing an execution sees it and is refused.
+     */
+    suspend fun recordPreview(
+        connectionId: String,
+        proposalId: String,
+        binding: ExecutionBinding,
+        wallet: SelectedWallet?,
+    ): ExecutionOutcome = locked {
+        val connection = operationConnection(connectionId) ?: return@locked ExecutionOutcome.Gone
+        val record = stored(connection, proposalId) ?: return@locked ExecutionOutcome.Gone
+        if (binding.environment != PluginEnvironment.Sandbox) {
+            return@locked ExecutionOutcome.Refused(BindingProblem.NothingPrepared)
+        }
+        problemOf(connection, record, binding, wallet)?.let {
+            return@locked ExecutionOutcome.Refused(it)
+        }
+        record
+            .copy(preview = ProposalPreview(binding = binding, at = now()))
+            .also {
+                write(it, connection)
+                publish()
+            }
+            .let(ExecutionOutcome::Begun)
+    }
+
+    // Every rule between a review and its binding, asked of what is held now. Under the lock.
+    private fun problemOf(
+        connection: Connection,
+        record: ProposalRecord,
+        binding: ExecutionBinding,
+        wallet: SelectedWallet?,
+    ): BindingProblem? =
+        bindingProblem(
+            record,
+            binding,
+            wallet,
+            support(connection),
+            networksOf(connection),
+            // What this build resolves for the document, asked at the moment of acting rather than
+            // taken from the binding: a build that has stopped carrying the provider refuses,
+            // exactly as one that never had it does (SEE-145). On the network the signal declares,
+            // and never on a wallet's (SEE-185).
+            (proposalProvider(
+                    record.proposal,
+                    plugins,
+                    record.proposal.network.declared ?: Network.NETWORK_UNSPECIFIED,
+                    binding.environment,
+                )
+                    as? ProposalProvider.Serving)
+                ?.id,
+            now(),
+        )
 
     /**
      * Records what the wallet did, once. The first word stands: an outcome already settled is not
@@ -534,7 +587,12 @@ class ProposalRepository(
 
     /** Where a proposal stands for this owner, derived afresh ([proposalStanding]). */
     fun standing(record: ProposalRecord): ProposalStanding =
-        proposalStanding(record, supportOf(record.connectionId), now())
+        proposalStanding(
+            record,
+            supportOf(record.connectionId),
+            operationConnection(record.connectionId)?.let(::networksOf).orEmpty(),
+            now(),
+        )
 
     /** Everything held for one feed, oldest first. */
     fun proposalsFor(connectionId: String): List<ProposalRecord> =
@@ -571,7 +629,11 @@ class ProposalRepository(
      */
     private fun write(record: ProposalRecord, connection: Connection?) {
         store.put(record)
-        if (record.execution != null) history?.record(operationRecord(record, connection, now()))
+        // The execution when there is one — it is the thing that happened — and otherwise the
+        // latest preview, which History shows as one (SEE-185).
+        if (record.execution != null || record.preview != null) {
+            history?.record(operationRecord(record, connection, now()))
+        }
     }
 
     private fun publish() {
@@ -597,20 +659,13 @@ class ProposalRepository(
         store.get(connection.id, proposalId)?.takeIf { it.key.serverId == connection.serverId }
 
     private fun support(connection: Connection): ServerSupport =
-        serverSupport(connection.server, plugins, connection.environment)
+        feedSupport(connection.serverUrl, connection.server, plugins, trustedGateway)
 
-    /**
-     * Which promise the feed this proposal arrived on keeps (SEE-97). It is the connection's, read
-     * fresh every time, because the owner can change it and a copy of it here would be the stale
-     * one.
-     *
-     * A connection that is gone answers sandbox, which is the direction a missing answer has to
-     * fall: nothing about a feed the phone no longer holds is executable anyway (the standing is
-     * [io.github.brrenat.seekervault.proposals.ProposalStanding.Executed] or the record is gone),
-     * and the value is then only read to describe something.
-     */
-    private fun environmentOf(connectionId: String): PluginEnvironment =
-        operationConnection(connectionId)?.environment ?: PluginEnvironment.Sandbox
+    /** The networks the feed's manifest declares now: capability, never a selection (SEE-185). */
+    private fun networksOf(connection: Connection): Set<Network> =
+        connection.server.manifest?.supportedNetworks.orEmpty().mapTo(mutableSetOf()) {
+            it.network
+        }
 
     private fun supportOf(connectionId: String): ServerSupport =
         operationConnection(connectionId)?.let(::support) ?: ServerSupport.Unknown
@@ -679,7 +734,18 @@ class ProposalRepository(
             connection: Connection?,
             at: Instant,
         ): ActivityRecord {
-            val execution = checkNotNull(record.execution)
+            // The execution, or — when there is none — the latest preview, as the settled
+            // rehearsal it was: nothing signed, nothing sent (SEE-185).
+            val execution =
+                record.execution
+                    ?: checkNotNull(record.preview).let {
+                        ProposalExecution(
+                            binding = it.binding,
+                            startedAt = it.at,
+                            outcome = ProposalOutcome.Simulated,
+                            settledAt = it.at,
+                        )
+                    }
             val binding = execution.binding
             return ActivityRecord(
                 connectionId = record.connectionId,

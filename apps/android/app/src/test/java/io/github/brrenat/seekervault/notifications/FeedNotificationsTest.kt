@@ -11,7 +11,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.brrenat.seekervault.R
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.plugins.ExecutionProviderId
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.actionOf
 import io.github.brrenat.seekervault.proposals.Proposal
@@ -366,7 +365,6 @@ class FeedNotificationsTest {
                                     gatewayUrl = GATEWAY,
                                     channel = channelFor(serverId),
                                 ),
-                            environments = setOf(PluginEnvironment.Production),
                         )
                     ),
             )

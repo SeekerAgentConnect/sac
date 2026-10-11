@@ -43,7 +43,6 @@ import io.github.brrenat.seekervault.plugins.ActionInspection
 import io.github.brrenat.seekervault.plugins.InspectedAction
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterValue
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PreparedOperation
 import io.github.brrenat.seekervault.plugins.actions.ActionPayload
 import io.github.brrenat.seekervault.plugins.actions.PredictionOutcomes
@@ -149,7 +148,6 @@ class AttributionScreensTest {
             standing =
                 if (executed) ProposalStanding.Executed(execution.outcome)
                 else ProposalStanding.Open,
-            environment = PluginEnvironment.Production,
             form = swapInputs(terms, SWAP_CAPABILITY),
             choice = choice,
             served = true,
@@ -282,7 +280,6 @@ class AttributionScreensTest {
                 generation = 1,
                 record = prediction,
                 standing = ProposalStanding.Open,
-                environment = PluginEnvironment.Production,
                 payload = ActionPayload.PredictionBuy(payload),
                 form = predictionBuyInputs(payload, PREDICTION_BUY_CAPABILITY),
                 choice =

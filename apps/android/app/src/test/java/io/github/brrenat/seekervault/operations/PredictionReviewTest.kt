@@ -36,7 +36,6 @@ import io.github.brrenat.seekervault.plugins.InspectedAction
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterValue
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginFailureCodes
 import io.github.brrenat.seekervault.plugins.PluginFinding
@@ -134,7 +133,10 @@ class PredictionReviewTest {
         choice: ParameterChoice = ParameterChoice(emptyMap()),
         prepared: Boolean = false,
         expiresAtEpochSeconds: Long? = null,
-        environment: PluginEnvironment = PluginEnvironment.Production,
+        /** The network the signal declares (SEE-185); mainnet, as the fixture's market is. */
+        network: Network? = Network.NETWORK_MAINNET,
+        previewable: Boolean = false,
+        previewed: Boolean = false,
         assessment: RequestAssessment? = noRules(),
         acknowledged: Boolean = false,
         failure: OperationFailure? = null,
@@ -147,7 +149,9 @@ class PredictionReviewTest {
             generation = 1,
             record = record,
             standing = ProposalStanding.Open,
-            environment = environment,
+            network = network,
+            previewable = previewable,
+            previewed = previewed,
             payload = ActionPayload.PredictionBuy(terms),
             form = predictionBuyInputs(terms, PREDICTION_BUY_CAPABILITY),
             choice = choice,
@@ -237,7 +241,7 @@ class PredictionReviewTest {
         assertEquals("Prediction", state.title)
         assertEquals(ReviewSheetHeaderChip.Signal, state.headerChips[0])
         assertEquals(ReviewSheetHeaderChip.Feed("CopyTrading"), state.headerChips[1])
-        // Live mainnet: no environment chip, and the network is the neutral mainnet chip.
+        // A mainnet signal: no environment chip, and the network is the signal's own (SEE-185).
         assertEquals(
             listOf(ReviewSheetHeaderChip.Network(NetworkChipNetwork.Mainnet)),
             state.headerChips.drop(2),
@@ -386,9 +390,13 @@ class PredictionReviewTest {
             "Dismissing keeps the decision on this phone. CopyTrading is never told either way.",
             live.footerCaption,
         )
+        // No preview offered unless the provider can serve one.
+        assertNull(live.previewAction)
         val sandbox =
-            sheet(review(choice = chosen, prepared = true, environment = PluginEnvironment.Sandbox))
-        assertEquals("Simulate the trade", sandbox.primaryAction.label)
+            sheet(review(choice = chosen, prepared = true, previewable = true, previewed = true))
+        // The real action stays the real action; the preview sits beside it (SEE-185).
+        assertEquals("Approve and trade", sandbox.primaryAction.label)
+        assertEquals("Preview without sending", sandbox.previewAction?.label)
         assertTrue(sandbox.sandboxNotice != null)
         val everything =
             listOf(live, sandbox).flatMap { state ->
@@ -912,5 +920,30 @@ class PredictionReviewTest {
         const val PAYER = "D3QxmK1oUkzJ8vsoWgxzuotSFNLLRe1T"
         const val ORDER = "Hut593VASqP7mq6w62JaXk2YjTx7wx3n"
         const val POSITION = "8G4K2rceeiTRV6V97zLvnYfMGstuRaR9"
+    }
+
+    @Test
+    fun theNetworkChipIsTheSignalsAndNeverTheWallets() {
+        // SEE-185: a devnet signal says devnet, whatever wallet is on screen; one that declares no
+        // network this build can use shows no network chip at all, never a guessed one.
+        val devnet = sheet(review(network = Network.NETWORK_DEVNET))
+        assertEquals(
+            // A test network is flagged, as it always is here.
+            listOf(ReviewSheetHeaderChip.Network(NetworkChipNetwork.Devnet, flagged = true)),
+            devnet.headerChips.drop(2),
+        )
+        val none = sheet(review(network = null))
+        assertEquals(emptyList<ReviewSheetHeaderChip>(), none.headerChips.drop(2))
+    }
+
+    @Test
+    fun aPreviewIsOfferedBesideTheRealActionAndSaidOnceItHappened() {
+        val offered = sheet(review(choice = chosen, prepared = true, previewable = true))
+        assertEquals("Preview without sending", offered.previewAction?.label)
+        assertEquals(offered.primaryAction.enabled, offered.previewAction?.enabled)
+        assertNull(offered.sandboxNotice)
+        // After a preview nothing is prepared, and the sheet says what happened.
+        val previewed = sheet(review(choice = chosen, previewable = true, previewed = true))
+        assertTrue(previewed.sandboxNotice.orEmpty().startsWith("Previewed."))
     }
 }

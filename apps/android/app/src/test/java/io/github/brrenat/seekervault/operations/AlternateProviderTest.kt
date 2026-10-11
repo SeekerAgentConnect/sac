@@ -100,7 +100,6 @@ class AlternateProviderTest {
                                                 PROVIDER_CONTRACT..PROVIDER_CONTRACT,
                                             )
                                         ),
-                                    environments = setOf(PluginEnvironment.Production),
                                     supportedNetworks = WalletNetwork.entries.toSet(),
                                 )
                             )
@@ -143,7 +142,7 @@ class AlternateProviderTest {
         assertEquals(listOf("inputs", "resolve", "prepare", "inspect"), provider.calls)
         val prepared = checkNotNull(checkNotNull(model.review.value).prepared)
 
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
 
         // One wallet interaction, with exactly the bytes that were reviewed.
         assertEquals(1, phone.adapter.sendings.size)
@@ -182,27 +181,25 @@ class AlternateProviderTest {
     }
 
     @Test
-    fun aSandboxFeedOnTheAlternateProviderOpensNoWalletEither() = runBlocking {
+    fun aPreviewOnTheAlternateProviderOpensNoWalletEither() = runBlocking {
         val provider = alternate()
         val phone = phone(provider)
-        phone.keeps(
-            PluginEnvironment.Sandbox,
-            served = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
-        )
 
         val model = opened(phone)
+        assertTrue(checkNotNull(model.review.value).previewable)
         model.choose(ParameterKey("input_amount"), ParameterValue.Amount(2_000_000uL))
         model.prepare()
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.preview(phone.operationWallet())
 
-        // The same rehearsal the bundled provider gets, from the same place: core holds the wallet,
-        // so core is what stops (SEE-97). The provider still did all of its own work.
+        // The same preview the bundled provider gets, from the same place: core holds the wallet,
+        // so core is what stops (SEE-97, SEE-185). The provider still did all of its own work.
         assertEquals(listOf("inputs", "resolve", "prepare", "inspect"), provider.calls)
         assertEquals(emptyList<ByteString>(), phone.adapter.sendings.map { it.first })
         assertEquals(emptyList<ByteString>(), phone.adapter.signings.map { it.first })
-        val execution = checkNotNull(phone.proposals.proposal(CONNECTION, PROPOSAL)?.execution)
-        assertEquals(ProposalOutcome.Simulated, execution.outcome)
-        assertEquals(PluginEnvironment.Sandbox, execution.binding.environment)
+        val record = checkNotNull(phone.proposals.proposal(CONNECTION, PROPOSAL))
+        assertNull(record.execution)
+        assertEquals(PluginEnvironment.Sandbox, record.preview?.binding?.environment)
+        assertEquals(ProposalStanding.Open, phone.proposals.standing(record))
         assertNotNull(phone.history.records.value.singleOrNull())
     }
 

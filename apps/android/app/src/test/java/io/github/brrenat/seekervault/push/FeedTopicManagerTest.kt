@@ -4,7 +4,6 @@ import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.GatewayException
 import io.github.brrenat.seekervault.feeds.FeedChannelTopic
 import io.github.brrenat.seekervault.feeds.FeedTopics
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
@@ -383,7 +382,6 @@ class FeedTopicManagerTest {
                                     gatewayUrl = gateway,
                                     channel = channelFor(serverId),
                                 ),
-                            environments = setOf(PluginEnvironment.Production),
                         )
                     ),
             )

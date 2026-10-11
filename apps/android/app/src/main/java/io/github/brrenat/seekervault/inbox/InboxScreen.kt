@@ -31,7 +31,6 @@ import io.github.brrenat.seekervault.connections.Delivery
 import io.github.brrenat.seekervault.connections.LocalResult
 import io.github.brrenat.seekervault.connections.RequestKey
 import io.github.brrenat.seekervault.connections.SigningOutcome
-import io.github.brrenat.seekervault.connections.isSandboxEnvironment
 import io.github.brrenat.seekervault.designsystem.EmptyState
 import io.github.brrenat.seekervault.designsystem.EmptyStateScreen
 import io.github.brrenat.seekervault.designsystem.FilterBar
@@ -379,7 +378,7 @@ fun inboxInitialTab(
         privateItems.toSend.isNotEmpty() ||
             privateItems.answered.isNotEmpty() ||
             retained.isNotEmpty() ||
-            feedRecords.any { feedStanding(it) !is ProposalStanding.Open }
+            feedRecords.any { feedStanding(it) !is ProposalStanding.Open || it.preview != null }
     return if (!hasPending && hasHistory) InboxTab.History else InboxTab.Pending
 }
 
@@ -428,7 +427,10 @@ fun inboxScreenState(
                     connection = connections[item.connectionId],
                     assessment =
                         (item as? PendingItem.Private)?.request?.key?.let(state.assessments::get),
-                    walletNetwork = state.walletFor(item.connectionId)?.network,
+                    // A signal's network is its own, never its feed's wallet's (SEE-185).
+                    walletNetwork =
+                        if (item is PendingItem.Signal) null
+                        else state.walletFor(item.connectionId)?.network,
                     now = now,
                     formatTime = formatTime,
                 )
@@ -443,7 +445,9 @@ fun inboxScreenState(
         }
     val signalHistory = shownRecords.mapNotNull { record ->
         val standing = feedStanding(record)
-        if (standing is ProposalStanding.Open) {
+        // A signal still open is history only once it was previewed: the preview is something this
+        // phone did, and it stays waiting beside it (SEE-185).
+        if (standing is ProposalStanding.Open && record.preview == null) {
             null
         } else {
             record.toInboxHistoryRow(
@@ -497,7 +501,6 @@ private fun PendingItem.toInboxPendingRow(
     val warningCount =
         assessment?.decision?.takeIf { it.warns }?.reasons?.size?.coerceAtLeast(1)
             ?: if (this is PendingItem.Signal) 1 else 0
-    val sandbox = connection?.isSandboxEnvironment() == true
     return InboxPendingRowState(
         id =
             when (this) {
@@ -511,12 +514,9 @@ private fun PendingItem.toInboxPendingRow(
                 sourceName = sourceName,
                 timestampAndExpiryText =
                     "${formatTime(at)} · ${expiryText(request.lifecycle.expiresAt.instant(), now)}",
-                environmentText =
-                    if (sandbox) {
-                        InboxCopy.Sandbox
-                    } else {
-                        InboxCopy.Production
-                    },
+                // A waiting item is never a rehearsal by where it came from: whether a feed
+                // operation is previewed or executed is chosen when the owner acts (SEE-185).
+                environmentText = InboxCopy.Production,
                 networkText = request.inboxNetwork(capability, walletNetwork),
                 warningCount = warningCount,
             ),
@@ -626,9 +626,11 @@ private fun ProposalRecord.toInboxHistoryRow(
             is ProposalStanding.Dismissed -> HistoryRowStatus.Dismissed
             ProposalStanding.Cancelled -> HistoryRowStatus.Cancelled
             ProposalStanding.Expired -> HistoryRowStatus.Expired
+            // Still open, and previewed: nothing was signed or sent (SEE-185).
+            ProposalStanding.Open -> HistoryRowStatus.Simulated
             is ProposalStanding.Refused,
             is ProposalStanding.Unsupported,
-            ProposalStanding.Open -> HistoryRowStatus.Unknown
+            is ProposalStanding.NetworkUnusable -> HistoryRowStatus.Unknown
         }
     val (rowState, outcome) =
         when (standing) {
@@ -649,7 +651,10 @@ private fun ProposalRecord.toInboxHistoryRow(
             is ProposalStanding.Refused -> HistoryRowState.Unknown to "Refused on this phone"
             is ProposalStanding.Unsupported ->
                 HistoryRowState.Unknown to "Unsupported by this build"
-            ProposalStanding.Open -> error("Open proposals are not history")
+            is ProposalStanding.NetworkUnusable ->
+                HistoryRowState.Unknown to "Not executable · no usable network"
+            ProposalStanding.Open ->
+                HistoryRowState.Simulated to "Previewed on this phone · nothing sent"
         }
     val at =
         when (standing) {
@@ -657,6 +662,7 @@ private fun ProposalRecord.toInboxHistoryRow(
                 execution?.settledAt ?: execution?.startedAt ?: proposal.updatedAt
             is ProposalStanding.Dismissed -> standing.at
             ProposalStanding.Expired -> proposal.expiresAt
+            ProposalStanding.Open -> preview?.at ?: proposal.updatedAt
             else -> proposal.updatedAt
         }
     val request = proposal.commonEnvelope()
@@ -735,7 +741,10 @@ private fun Request.inboxNetwork(
     walletNetwork: WalletNetwork?,
 ): String? {
     if (capability == InboxCapability.Acknowledgement) return null
-    val requestNetwork = parameter("network")
+    // A feed signal names its own network (SEE-185); a direct request's is a parameter.
+    val requestNetwork =
+        Network.forNumber(action.networkValue)?.takeIf { it != Network.NETWORK_UNSPECIFIED }?.name
+            ?: parameter("network")
     return when (requestNetwork) {
         Network.NETWORK_MAINNET.name -> "Solana mainnet"
         Network.NETWORK_DEVNET.name -> "Solana devnet"

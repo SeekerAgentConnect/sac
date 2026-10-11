@@ -1,6 +1,5 @@
 package io.github.brrenat.seekervault.servers
 
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.wallet.WalletNetwork
 
@@ -54,12 +53,6 @@ data class ServerManifest(
      */
     val required: List<PluginRequirement> = emptyList(),
     /**
-     * The environments the server serves. A server is not supported in an environment it doesn't
-     * name: sandbox and production are different promises about what happens when the owner
-     * approves (SEE-97).
-     */
-    val environments: Set<PluginEnvironment> = emptySet(),
-    /**
      * The name the server calls itself, or empty. It is the server's own claim and is never
      * verified: it is a default the owner can rename, and their name is the one the app shows.
      */
@@ -69,8 +62,8 @@ data class ServerManifest(
      * docs/wiki/server-manifests.md#supported-networks). Empty is a server that declared none —
      * every manifest from before SEE-174, and a server whose requests never reach a wallet — and it
      * never means Mainnet or "every network": wallet profiles are offered, and signing is allowed,
-     * only for a network named here. It is a different question from [environments]: production is
-     * not Mainnet, and sandbox is not Devnet.
+     * only for a network named here. It is capability information, never an active-network
+     * selection (SEE-185): each feed signal names its own network, which must be one of these.
      */
     val supportedNetworks: Set<WalletNetwork> = emptySet(),
 ) {

@@ -5,7 +5,6 @@ import io.github.brrenat.seekervault.connections.CheckOutcome
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionRetirement
 import io.github.brrenat.seekervault.connections.ServerColour
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ManifestProblem
@@ -177,7 +176,6 @@ class ConnectionStoreTest {
         val known = upgraded.server as ServerRecord.Known
 
         assertEquals(ConnectionMode.GatewayFeed, upgraded.mode)
-        assertEquals(PluginEnvironment.Production, upgraded.environment)
         assertEquals(ServerReference.Feed(GATEWAY, channelFor(SERVER_B)), known.manifest.reference)
         assertFalse(upgraded.hasCredential)
         store.put(upgraded)
@@ -195,7 +193,6 @@ class ConnectionStoreTest {
                 mode = ConnectionMode.Direct,
                 reference = ServerReference.Direct(a.serverUrl),
                 required = listOf(PluginRequirement(PluginId("jupiter.swap"), 1..2)),
-                environments = setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
                 name = "Home server",
             )
         val third = "7c6b5a49-3827-4615-a0b9-c8d7e6f5a4b3"
@@ -276,62 +273,31 @@ class ConnectionStoreTest {
     }
 
     @Test
-    fun keepsWhichPromiseAFeedIsKeepingAndNeverResolvesOneItCannotRead() {
-        // SEE-97. The environment is the owner's choice, so it is stored — and an older file, or
-        // one whose word this build does not know, must not become the promise with the money
-        // attached to it.
-        val sandbox =
+    fun anEnvironmentARecordFromBeforeSee185HoldsIsIgnoredRatherThanRead() {
+        // SEE-185 retired the environment a connection kept, and the ones a manifest served. A
+        // record written before then still holds both: they are ignored, and the record is read
+        // exactly as the same feed without them — never refused, never moved toward either.
+        val feed =
             a.copy(
                 serverUrl = GATEWAY,
                 deviceName = "",
                 hasCredential = false,
                 mode = ConnectionMode.GatewayFeed,
-                server =
-                    ServerRecord.Known(
-                        feedManifest()
-                            .copy(
-                                environments =
-                                    setOf(
-                                        PluginEnvironment.Production,
-                                        PluginEnvironment.Sandbox,
-                                    )
-                            )
-                    ),
-                environment = PluginEnvironment.Sandbox,
+                server = ServerRecord.Known(feedManifest()),
             )
-        store.put(sandbox)
-        assertEquals(sandbox, ConnectionStore(dir).get(a.id))
-
-        // A file from before the field existed is read as production, which is exactly what every
-        // connection was then: nothing a phone already holds changes meaning on an update.
+        store.put(feed)
         val file = File(dir, "${a.id}.json")
-        file.writeText(
-            file
-                .readText()
-                .replace("\"version\":7", "\"version\":2")
-                .replace(
-                    ",\"environment\":\"sandbox\"",
-                    "",
-                )
-        )
-        assertEquals(PluginEnvironment.Production, store.get(a.id)?.environment)
-
-        // A word this build does not know is the whole record gone, as an unreadable manifest is.
-        store.put(sandbox)
+        val old = JSONObject(file.readText())
+        assertFalse(old.has("environment"))
+        old.put("environment", "sandbox")
+        old.getJSONObject("server")
+            .getJSONObject("manifest")
+            .put("environments", JSONArray().put("production").put("sandbox"))
+        file.writeText(old.toString())
+        assertEquals(feed, ConnectionStore(dir).get(a.id))
+        // Even a word no build ever knew: it is not read at all.
         file.writeText(file.readText().replace("\"sandbox\"", "\"staging\""))
-        assertNull(store.get(a.id))
-    }
-
-    @Test
-    fun aDirectConnectionIsProductionWhateverTheFileSays() {
-        // The invariant `Connection` states, applied to what came off the disk: a paired sidecar's
-        // requests are answered with a signature or with a refusal, never with a rehearsal, so an
-        // edited file cannot put one in an environment that signs nothing (SEE-97).
-        store.put(a)
-        val file = File(dir, "${a.id}.json")
-        file.writeText(file.readText().replace("\"production\"", "\"sandbox\""))
-
-        assertEquals(PluginEnvironment.Production, store.get(a.id)?.environment)
+        assertEquals(feed, ConnectionStore(dir).get(a.id))
     }
 
     @Test
@@ -452,7 +418,6 @@ class ConnectionStoreTest {
                 mode = ConnectionMode.GatewayFeed,
                 reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_B)),
                 required = listOf(PluginRequirement(PluginId("jupiter.prediction"), 1..1)),
-                environments = setOf(PluginEnvironment.Production),
             )
 
         const val GATEWAY = "https://gateway.example.com"

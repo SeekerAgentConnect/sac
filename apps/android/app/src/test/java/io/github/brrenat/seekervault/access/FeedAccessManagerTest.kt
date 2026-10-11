@@ -7,7 +7,6 @@ import io.github.brrenat.seekervault.access.storage.FeedAccessStore.State
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.softwareKey
 import io.github.brrenat.seekervault.connections.storage.CredentialVault
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedAccess
 import io.github.brrenat.seekervault.servers.ServerManifest
@@ -727,7 +726,6 @@ class FeedAccessManagerTest {
                                 channel = channelFor(server),
                                 access = access,
                             ),
-                        environments = setOf(PluginEnvironment.Production),
                     )
                 ),
         )

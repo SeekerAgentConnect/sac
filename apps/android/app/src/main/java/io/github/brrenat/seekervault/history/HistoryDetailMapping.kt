@@ -27,6 +27,7 @@ import io.github.brrenat.seekervault.inbox.inboxTitle
 import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.receiptRows
 import io.github.brrenat.seekervault.proposals.ExecutionBinding
+import io.github.brrenat.seekervault.proposals.ProposalExecution
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalStanding
@@ -523,17 +524,32 @@ fun signalHistoryDetail(
 ): HistoryDetailModel {
     val proposal = record.proposal
     val feed = connection?.label ?: proposal.key.serverId
-    val execution = record.execution
+    // A preview stands in for the execution until there is one: it is what this phone did, and it
+    // is shown as the rehearsal it was — nothing signed, nothing sent (SEE-185).
+    val previewOnly = record.execution == null && record.preview != null
+    val execution =
+        record.execution
+            ?: record.preview?.let {
+                ProposalExecution(
+                    binding = it.binding,
+                    startedAt = it.at,
+                    outcome = ProposalOutcome.Simulated,
+                    settledAt = it.at,
+                )
+            }
     val binding = execution?.binding
-    // The promise the operation was bound under; with nothing bound, the one the feed keeps.
+    // What the operation was bound to do: execute, or preview. A record with nothing bound was
+    // never anything else than a signal that waited.
     val environment =
-        when (binding?.environment ?: connection?.environment ?: PluginEnvironment.Production) {
+        when (binding?.environment ?: PluginEnvironment.Production) {
             PluginEnvironment.Sandbox -> HistoryDetailEnvironment.Sandbox
             PluginEnvironment.Production -> HistoryDetailEnvironment.Production
         }
     val sandbox = environment == HistoryDetailEnvironment.Sandbox
     val network = binding?.network?.takeIf { it != Network.NETWORK_UNSPECIFIED }
-    val outcome = (standing as? ProposalStanding.Executed)?.outcome
+    val outcome =
+        (standing as? ProposalStanding.Executed)?.outcome
+            ?: ProposalOutcome.Simulated.takeIf { previewOnly }
     val submitted = outcome as? ProposalOutcome.Submitted
     val envelope = proposal.commonEnvelope()
     val executedAt = execution?.let { it.settledAt ?: it.startedAt }
@@ -602,11 +618,27 @@ fun signalHistoryDetail(
                     status = HistoryDetailStatus.Unsupported,
                     explanation = "$feed needs something this version of the app doesn't have.",
                 )
-            ProposalStanding.Open ->
+            is ProposalStanding.NetworkUnusable ->
                 HistoryDetailStatusModel(
                     status = HistoryDetailStatus.Unsupported,
-                    explanation = "It is still waiting for you under Pending.",
+                    explanation =
+                        "$feed's signal names no Solana network it supports, so it can't be " +
+                            "executed.",
                 )
+            ProposalStanding.Open ->
+                if (previewOnly) {
+                    HistoryDetailStatusModel(
+                        status = HistoryDetailStatus.Approved,
+                        explanation =
+                            "You previewed it on this phone. Nothing was signed or sent, and it " +
+                                "is still waiting for you under Pending.",
+                    )
+                } else {
+                    HistoryDetailStatusModel(
+                        status = HistoryDetailStatus.Unsupported,
+                        explanation = "It is still waiting for you under Pending.",
+                    )
+                }
         }
 
     val response =
@@ -618,7 +650,11 @@ fun signalHistoryDetail(
                         listOf(
                             HistoryDetailRow(
                                 "Decision",
-                                if (sandbox) "Approved (simulation)" else "Approved",
+                                when {
+                                    previewOnly -> "Previewed"
+                                    sandbox -> "Approved (simulation)"
+                                    else -> "Approved"
+                                },
                             )
                         ) + choice + receiptRows(execution.binding),
                 )
@@ -682,7 +718,11 @@ fun signalHistoryDetail(
 
     val timeline = buildList {
         add(entry(HistoryDetailEvent.Received, "Received", proposal.createdAt, clock))
-        if (execution != null) {
+        // A preview is its own event, before or instead of the real one (SEE-185).
+        record.preview?.let {
+            add(entry(HistoryDetailEvent.Simulated, "You previewed", it.at, clock))
+        }
+        if (record.execution != null && execution != null) {
             add(entry(HistoryDetailEvent.Approved, "You approved", execution.startedAt, clock))
             val settled = executedAt ?: execution.startedAt
             when (outcome) {

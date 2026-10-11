@@ -1,9 +1,7 @@
 package io.github.brrenat.seekervault.servers
 
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.server.v1.ConnectionMode as WireMode
-import io.github.brrenat.seekervault.server.v1.ServerEnvironment
 import io.github.brrenat.seekervault.server.v1.ServerManifest as WireManifest
 import io.github.brrenat.seekervault.server.v1.SolanaNetwork
 import io.github.brrenat.seekervault.server.v1.copy
@@ -51,7 +49,6 @@ class ServerManifestTest {
         assertEquals(ConnectionMode.Direct, manifest.mode)
         assertEquals(ServerReference.Direct(URL_A), manifest.reference)
         assertEquals(emptyList<PluginRequirement>(), manifest.required)
-        assertEquals(setOf(PluginEnvironment.Production), manifest.environments)
         assertEquals("Home server", manifest.name)
     }
 
@@ -205,44 +202,11 @@ class ServerManifestTest {
     }
 
     @Test
-    fun anEnvironmentHasToBeNamedExplicitly() {
-        assertEquals(
-            ManifestProblem.BadEnvironment,
-            refused(directManifest(environments = emptyList())),
-        )
-        assertEquals(
-            ManifestProblem.BadEnvironment,
-            refused(
-                directManifest(
-                    environments = listOf(ServerEnvironment.SERVER_ENVIRONMENT_UNSPECIFIED)
-                )
-            ),
-        )
-        assertEquals(
-            ManifestProblem.BadEnvironment,
-            refused(
-                directManifest(
-                    environments =
-                        listOf(
-                            ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION,
-                            ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION,
-                        )
-                )
-            ),
-        )
-        assertEquals(
-            setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
-            valid(
-                    directManifest(
-                        environments =
-                            listOf(
-                                ServerEnvironment.SERVER_ENVIRONMENT_PRODUCTION,
-                                ServerEnvironment.SERVER_ENVIRONMENT_SANDBOX,
-                            )
-                    )
-                )
-                .environments,
-        )
+    fun aManifestDeclaresNoEnvironmentAndIsValidWithoutOne() {
+        // SEE-185: preview or execution is chosen per operation, so a server declares none, and a
+        // manifest without one is a whole manifest rather than a refused one.
+        assertEquals(SERVER_A, valid(directManifest()).serverId)
+        assertEquals(SERVER_B, valid(feedManifest(), feed).serverId)
     }
 
     /** [message] with [values] appended to its direct reference's networks, as raw wire values. */

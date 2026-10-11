@@ -9,7 +9,7 @@
     <string name="prediction_review_stake_on">%1$s on %2$s</string>
     <string name="prediction_review_amount">%1$s %2$s</string>
 
-    <string name="prediction_sandbox_notice">Sandbox. Everything above is real — the live market, the exact transaction and this phone’s reading of it. The last step is not: no funds will move, nothing is signed and nothing is sent.</string>
+    <string name="prediction_previewed_notice">Previewed. Nothing was signed and nothing was sent, and this signal is still open. To place the order, refresh the quote and approve it.</string>
     <string name="prediction_review_check">The market, its prices and the exact transaction were read on this phone. Nothing here was taken from the publisher on trust, and neither the side nor the amount comes from the signal.</string>
     <!-- Said before anything is prepared: nothing has been read yet, so nothing claims it was. -->
     <string name="prediction_review_check_pending">When you get a quote, this phone reads the market and the exact transaction itself. Nothing is taken from the publisher on trust, and neither the side nor the amount comes from the signal.</string>
@@ -98,11 +98,10 @@
     <string name="prediction_rule_check">Transaction check</string>
     <string name="prediction_acknowledge_one">I have read the warning and want to approve anyway</string>
     <string name="prediction_acknowledge_many">I have read the warnings and want to approve anyway</string>
-    <string name="prediction_daily_title_sandbox">Daily spend if this ran in production</string>
 
     <!-- The footer. -->
     <string name="prediction_approve">Approve and trade</string>
-    <string name="prediction_simulate">Simulate the trade</string>
+    <string name="prediction_simulate">Preview without sending</string>
     <string name="prediction_dismiss">Dismiss</string>
     <string name="prediction_dismiss_note">Dismissing keeps the decision on this phone. %1$s is never told either way.</string>
 

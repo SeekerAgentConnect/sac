@@ -27,7 +27,7 @@
     <string name="operation_outcome_pending">The wallet is being asked.</string>
     <string name="operation_outcome_submitted">The wallet signed and sent it. Whether it succeeded on chain is a separate question, and this app does not follow it.</string>
     <string name="operation_outcome_declined">You declined in the wallet. Nothing was signed.</string>
-    <string name="operation_outcome_simulated">Simulated. This feed is a sandbox, so nothing was signed and nothing was sent.</string>
+    <string name="operation_outcome_simulated">Simulated. Nothing was signed and nothing was sent.</string>
     <string name="operation_outcome_failed">Nothing was signed.</string>
     <string name="operation_outcome_unresolved">This phone never learned what the wallet did, so it may or may not have been sent. Nothing is asked of the wallet again.</string>
 
@@ -48,7 +48,7 @@
     <string name="operation_unserved_action">That execution provider does not do what this signal asks for.</string>
     <string name="operation_unserved_schema">This signal states a version of its action that this build does not read.</string>
     <string name="operation_unserved_network">That execution provider does not serve the network this feed\'s wallet is on.</string>
-    <string name="operation_unserved_environment">That execution provider does not serve this connection\'s environment.</string>
+    <string name="operation_unserved_environment">That execution provider can\'t preview this action, only execute it.</string>
     <string name="operation_unserved_asset">That execution provider does not take the asset this signal names.</string>
     <string name="operation_unsupported">This build has no plugin for what this server proposes, so it is shown in full and nothing here can carry it out.</string>
 
@@ -67,9 +67,8 @@
     <string name="operation_prepare_again">Get a fresh quote and prepare again</string>
     <string name="operation_approve">Approve and swap</string>
     <string name="operation_approve_note">This opens your wallet with exactly the transaction above. Nothing is signed or sent until you approve it there.</string>
-    <string name="operation_sandbox">This feed is a sandbox. Everything above is real — the live market, the exact transaction, and this phone\'s own reading of it — and the last step is not: your wallet is not opened, nothing is signed, and nothing is sent.</string>
-    <string name="operation_simulate">Simulate</string>
-    <string name="operation_simulate_note">This records what would have happened and stops there. No wallet is opened, no transaction exists, and there is no signature to look up afterwards.</string>
+    <string name="operation_simulate">Preview without sending</string>
+    <string name="operation_simulate_note">A preview prepares and checks the real transaction and stops there. Your wallet is not opened, nothing is signed or sent, and the signal stays open: to execute it, prepare it again.</string>
     <string name="operation_dismiss">Hide this signal</string>
     <string name="operation_acknowledge">I have read the warnings above and mean to go ahead</string>
     <string name="operation_proposal_id">Proposal</string>
@@ -114,5 +113,20 @@
     <string name="operation_binding_no_wallet">This feed has no wallet ready to sign.</string>
     <string name="operation_binding_other_wallet">This feed\'s wallet is not the one this was prepared for.</string>
     <string name="operation_binding_other_network">This feed\'s wallet is on another network than this was prepared for.</string>
-    <string name="operation_binding_other_environment">This feed changed between sandbox and production while you were reading. Prepare it again and review it as it is now.</string>
+    <string name="operation_binding_network_unusable">This signal names no Solana network its feed supports, so nothing can be executed from it.</string>
+    <string name="operation_standing_network_missing">This signal doesn\'t say which Solana network it is for, so nothing can be executed from it</string>
+    <string name="operation_standing_network_unknown">This signal names a Solana network this app doesn\'t know, so nothing can be executed from it</string>
+    <string name="operation_standing_network_not_declared">This signal is for a Solana network its feed doesn\'t declare, so nothing can be executed from it</string>
+    <string name="operation_problem_fee_terms_changed">The service fee configured for this app changed after this was prepared. Prepare it again and review the new terms.</string>
+    <string name="operation_config_no_gateway">This build of the app has no gateway, so it has no network settings and nothing can be prepared.</string>
+    <string name="operation_config_unreachable">This app\'s gateway couldn\'t be reached for its network and fee settings, and none it gave earlier are recent enough to use. Nothing was prepared; try again when you\'re online.</string>
+    <string name="operation_config_invalid">This app\'s gateway sent network and fee settings this app can\'t use, so nothing was prepared.</string>
+    <string name="operation_previewed">Previewed. Nothing was signed and nothing was sent, and this signal is still open. To execute it, prepare it again.</string>
+    <string name="operation_fact_wallet">Wallet</string>
+    <string name="operation_network_value">%1$s · from this signal</string>
+    <string name="operation_wallet_none">No wallet on %1$s is chosen for this feed. Choose or connect one to prepare this signal.</string>
+    <string name="operation_choose_wallet">Choose wallet</string>
+    <string name="operation_connect_wallet">Connect a wallet on %1$s</string>
+    <string name="operation_wallet_sheet_title">Wallet for %1$s</string>
+    <string name="operation_wallet_sheet_note">Used for this feed\'s signals on this network, and remembered for the next one. It doesn\'t change who has access to the feed.</string>
 </resources>

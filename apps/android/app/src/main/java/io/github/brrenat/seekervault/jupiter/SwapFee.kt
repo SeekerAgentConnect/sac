@@ -1,5 +1,7 @@
 package io.github.brrenat.seekervault.jupiter
 
+import io.github.brrenat.seekervault.plugins.MOST_SERVICE_FEE_BPS
+import io.github.brrenat.seekervault.plugins.ServiceFeeTerms
 import io.github.brrenat.seekervault.solana.AccountSnapshot
 import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.solana.SolanaException
@@ -9,12 +11,16 @@ import io.github.brrenat.seekervault.wallet.encodeBase58
 import io.github.brrenat.seekervault.wallet.isSolanaAddress
 
 /**
- * The SAC service fee on swaps: an optional integrator fee this build's owner configured (SEE-173).
+ * The SAC service fee on swaps: an optional integrator fee the trusted gateway's operator
+ * configured (SEE-173, SEE-185).
  *
- * It is the **build's** policy and nothing else's. The rate and the accounts come from
- * `BuildConfig` (docs/development/swap-fee-config.md); a publisher's signal, a server's request, a
- * QR payload or the provider's answer has no field that can raise it, lower it or redirect it. The
- * default build charges nothing.
+ * It is the **trusted gateway's** policy and nothing else's (SEE-185). The operator sets the rate
+ * and the accounts there; core reads them from the gateway's client configuration and hands one
+ * operation's terms to the provider
+ * ([io.github.brrenat.seekervault.plugins.ActionOperation.serviceFee]). A publisher's signal, a
+ * server's request, a QR payload or the provider's answer has no field that can raise it, lower it
+ * or redirect it, and a direct server's operation never carries it. The default configuration
+ * charges nothing.
  *
  * ## What it can take, and where it goes
  *
@@ -23,7 +29,7 @@ import io.github.brrenat.seekervault.wallet.isSolanaAddress
  * the output mint, and the quote's `outAmount` is already net of it — which is the only shape this
  * app reads. So a fee is charged on a swap only when:
  *
- * 1. this build has a nonzero rate and a receiving token account configured for the swap's
+ * 1. the terms have a nonzero rate and a receiving token account configured for the swap's
  *    **output** mint (the policy: one account per mint, never one address for every pair);
  * 2. that account was read from the chain just before quoting, through the app's own endpoint, and
  *    it is a classic SPL Token account for that mint, owned by the configured recipient,
@@ -42,59 +48,58 @@ data class SwapFeePolicy(
     /** Output mint → the public token account that receives the fee in that mint. */
     val accounts: Map<String, String>,
 ) {
-    /** Whether this build charges anything at all. */
+    /** Whether these terms charge anything at all. */
     val enabled: Boolean
         get() = bps > 0 && owner != null && accounts.isNotEmpty()
 
     companion object {
-        /** The default build: no fee, on any pair. */
+        /** No fee, on any pair: a direct operation, and the default configuration. */
         val Off: SwapFeePolicy = SwapFeePolicy(0, null, emptyMap())
 
         /**
-         * Reads the build's fields. The Gradle build already refused a malformed configuration, so
-         * this only fails for a build that bypassed it — and then it fails closed, to no fee.
+         * The policy for one operation's terms. They were validated whole when the gateway's
+         * configuration was read, so anything that still does not hold here fails closed, to no fee
+         * — which the review then says, rather than charging something nobody configured.
          */
-        fun fromBuild(bps: Int, owner: String, accounts: String): SwapFeePolicy {
-            if (bps <= 0) return Off
-            if (bps > MOST_SWAP_FEE_BPS || !isSolanaAddress(owner)) return Off
-            val pairs =
-                accounts.split(',').map(String::trim).filter(String::isNotEmpty).map { entry ->
-                    val parts = entry.split('=', limit = 2).map(String::trim)
-                    if (
-                        parts.size != 2 || !isSolanaAddress(parts[0]) || !isSolanaAddress(parts[1])
-                    ) {
-                        return Off
-                    }
-                    parts[0] to parts[1]
+        fun of(terms: ServiceFeeTerms): SwapFeePolicy {
+            val owner = terms.owner
+            if (!terms.charges || owner == null) return Off
+            if (terms.bps > MOST_SWAP_FEE_BPS || !isSolanaAddress(owner)) return Off
+            if (
+                terms.accounts.any { (mint, account) ->
+                    !isSolanaAddress(mint) ||
+                        !isSolanaAddress(account) ||
+                        account == owner ||
+                        account == mint
                 }
-            if (pairs.isEmpty() || pairs.map { it.first }.toSet().size != pairs.size) return Off
-            if (pairs.any { (mint, account) -> account == owner || account == mint }) return Off
-            return SwapFeePolicy(bps, owner, pairs.toMap())
+            ) {
+                return Off
+            }
+            return SwapFeePolicy(terms.bps, owner, terms.accounts)
         }
     }
 }
 
 /**
- * The most a build may charge: 100 basis points, one percent of the output.
- *
- * The program's own field is a single byte (at most 255); this is the app's tighter bound, so a
- * typo in a release build cannot become a two-and-a-half percent cut. The Gradle build enforces the
- * same number.
+ * The most a swap may be charged: 100 basis points, one percent of the output
+ * ([MOST_SERVICE_FEE_BPS], which the gateway enforces too).
  */
-const val MOST_SWAP_FEE_BPS: Int = 100
+const val MOST_SWAP_FEE_BPS: Int = MOST_SERVICE_FEE_BPS
 
 /**
  * What one swap will carry, decided before it is quoted and bound to the bytes it was built into.
  */
 sealed interface SwapFee {
-    /** This build charges nothing on any swap. */
+    /** No fee is configured for this swap. */
     data object Disabled : SwapFee
 
-    /** This build charges, but has no account for this swap's output mint: nothing is charged. */
+    /**
+     * A fee is configured, but there is no account for this swap's output mint: nothing is charged.
+     */
     data class NotForPair(val bps: Int, val outputMint: String) : SwapFee
 
     /**
-     * This build charges, and has an account for the output mint, but it could not be verified on
+     * A fee is configured, with an account for the output mint, but it could not be verified on
      * chain: nothing is charged, and the review says why. [reason] is a stable code.
      */
     data class Unverified(
@@ -119,7 +124,7 @@ sealed interface SwapFee {
 
 /** Why a configured fee account was not used. Each is a stable code the History keeps. */
 object FeeAccountProblem {
-    /** This build has no Solana endpoint to read the account from. */
+    /** The gateway configured no Solana endpoint to read the account from. */
     const val NO_RPC = "fee_account_no_rpc"
     /** The endpoint could not answer. */
     const val UNREADABLE = "fee_account_unreadable"

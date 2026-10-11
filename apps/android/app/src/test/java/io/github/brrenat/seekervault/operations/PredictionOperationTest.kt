@@ -189,7 +189,7 @@ class PredictionOperationTest {
         model.prepare()
         val reviewed = checkNotNull(checkNotNull(model.review.value).prepared)
 
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
 
         assertEquals(1, phone.adapter.sendings.size)
         assertEquals(reviewed.transaction, phone.adapter.sendings.single().first)
@@ -239,7 +239,7 @@ class PredictionOperationTest {
         phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 5 }))
         choose(model, yes = true, stake = 5_000_000UL)
         model.prepare()
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
 
         // The order was placed, so now there is somewhere to open it, beside the market.
         assertEquals(
@@ -346,7 +346,7 @@ class PredictionOperationTest {
         assertEquals(SolanaProblem.NoEndpoint.code, review.failure?.code)
         assertNull(review.prepared)
         assertNull(review.inspection)
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
         assertEquals(
             emptyList<Triple<ByteString, SelectedWallet, String>>(),
             phone.adapter.sendings,
@@ -379,7 +379,7 @@ class PredictionOperationTest {
         assertEquals(Verdict.Invalid, review.inspection?.verdict)
         assertTrue("outcome_mismatch" in review.inspection?.findings.orEmpty().map { it.code })
         assertFalse(review.inspection?.approvable == true)
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
         assertEquals(
             emptyList<Triple<ByteString, SelectedWallet, String>>(),
             phone.adapter.sendings,
@@ -402,7 +402,7 @@ class PredictionOperationTest {
         assertEquals(PluginFailureCodes.INSUFFICIENT_FUNDS, failed.failure?.code)
         assertNull(failed.prepared)
         assertNull(failed.inspection)
-        val wallet = phone.wallet.walletFor(CONNECTION)
+        val wallet = phone.operationWallet()
         val sheet = failed.sheet(wallet)
         // One error, the owner's inputs kept, a way to try again, and nothing to approve or tick.
         assertEquals("Insufficient funds", sheet.preparationError?.title)
@@ -465,12 +465,12 @@ class PredictionOperationTest {
         model.acknowledge(true)
 
         val review = checkNotNull(model.review.value)
-        val sheet = review.sheet(phone.wallet.walletFor(CONNECTION))
+        val sheet = review.sheet(phone.operationWallet())
         assertEquals("This transaction can’t be approved", sheet.preparationError?.title)
         assertEquals("Get a new quote", sheet.preparationError?.actionLabel)
         assertNull(sheet.confirmationCheckbox)
         assertFalse(sheet.primaryAction.enabled)
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
         assertEquals(
             emptyList<Triple<ByteString, SelectedWallet, String>>(),
             phone.adapter.sendings,
@@ -482,7 +482,7 @@ class PredictionOperationTest {
         val phone = phone()
         val model = opened(phone)
         val builds = phone.markets.answersOrder
-        val wallet = phone.wallet.walletFor(CONNECTION)
+        val wallet = phone.operationWallet()
         choose(model, yes = true, stake = 5_000_000UL)
         // First a quote that is ready, which a refresh replaces as it would an expired one; then
         // bytes this phone refused, which "Get a new quote" replaces.
@@ -572,7 +572,7 @@ class PredictionOperationTest {
         choose(model, yes = true, stake = 5_000_000UL)
         model.prepare()
 
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
 
         // A possibly dispatched order is never repeated, which is the rule that matters most here:
         // an order placed twice is a position twice the size.
@@ -580,7 +580,7 @@ class PredictionOperationTest {
         assertTrue(outcome is ProposalOutcome.Unresolved)
         assertEquals(ActivityOutcome.Unknown, phone.history.records.value.single().outcome)
         model.prepare()
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
         assertEquals(1, phone.adapter.sendings.size)
     }
 
@@ -591,7 +591,7 @@ class PredictionOperationTest {
         phone.adapter.sendWith(ByteString.copyFrom(ByteArray(64) { 2 }))
         choose(model, yes = false, stake = 7_000_000UL)
         model.prepare()
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
 
         // One read of the feed, by its channel. The gateway is not told the side, the stake, the
         // wallet or the order — and there is nowhere for it to be told, which is the point.
@@ -626,7 +626,7 @@ class PredictionOperationTest {
         val chain = phone.chain.asked.size
         val feed = phone.feed.asked.size
 
-        model.approve(phone.wallet.walletFor(CONNECTION))
+        model.approve(phone.operationWallet())
         assertEquals(provider, phone.markets.asked)
         assertEquals(chain, phone.chain.asked.size)
         assertEquals(feed, phone.feed.asked.size)

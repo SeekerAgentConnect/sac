@@ -17,11 +17,11 @@ import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.feeds.FeedListenerState
 import io.github.brrenat.seekervault.feeds.ForegroundFeedsState
 import io.github.brrenat.seekervault.inbox.PendingItem
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.proposals.PROPOSAL_A
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.proposal
 import io.github.brrenat.seekervault.servers.ConnectionMode
+import io.github.brrenat.seekervault.servers.GATEWAY
 import io.github.brrenat.seekervault.servers.SERVER_PROTOCOL
 import io.github.brrenat.seekervault.servers.ServerManifest
 import io.github.brrenat.seekervault.servers.ServerRecord
@@ -122,6 +122,7 @@ class ConnectionFeedStatusTest {
                 foregroundUpdates = manager.state,
                 foregroundFeeds = feeds,
                 cleartextPermitted = { false },
+                trustedGateway = GATEWAY,
             )
 
         assertEquals(
@@ -395,7 +396,6 @@ class ConnectionFeedStatusTest {
                                 channelFor(HOME.serverId),
                             ),
                         required = emptyList(),
-                        environments = setOf(PluginEnvironment.Production),
                     )
                 ),
         )

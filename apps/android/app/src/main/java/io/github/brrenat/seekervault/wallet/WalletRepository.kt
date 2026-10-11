@@ -3,10 +3,12 @@ package io.github.brrenat.seekervault.wallet
 import com.google.protobuf.ByteString
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionWallets
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.request.v1.WalletBinding
 import io.github.brrenat.seekervault.request.v1.walletBinding
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.manifest
+import io.github.brrenat.seekervault.wallet.storage.FeedWalletStore
 import io.github.brrenat.seekervault.wallet.storage.StoredAuthorization
 import io.github.brrenat.seekervault.wallet.storage.WalletProfiles
 import io.github.brrenat.seekervault.wallet.storage.WalletStore
@@ -170,6 +172,11 @@ class WalletRepository(
     private val now: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    /**
+     * Where the owner's per-feed, per-network wallet preferences are kept (SEE-185). Null keeps
+     * them in memory only, which is what a test of something else wants.
+     */
+    private val feedWallets: FeedWalletStore? = null,
 ) {
     private val lock = Mutex()
 
@@ -179,6 +186,14 @@ class WalletRepository(
     private val _profiles = MutableStateFlow<List<WalletProfile>>(emptyList())
     /** Every saved profile, in the order they were added. */
     val profiles: StateFlow<List<WalletProfile>> = _profiles.asStateFlow()
+
+    private val _feedChoices = MutableStateFlow<Map<FeedWalletStore.Key, String>>(emptyMap())
+
+    /**
+     * The profile the owner last chose for each feed's operations on each network (SEE-185). A
+     * preference, never the feed's access identity, and never an account put in place of one.
+     */
+    val feedChoices: StateFlow<Map<FeedWalletStore.Key, String>> = _feedChoices.asStateFlow()
 
     private val _publications = MutableStateFlow<Map<String, Publication>>(emptyMap())
     /** What each direct server was last told, by connection. */
@@ -195,6 +210,7 @@ class WalletRepository(
             val stored = withContext(io) { store.profiles() }
             held = stored
             _profiles.value = stored.profiles
+            _feedChoices.value = withContext(io) { feedWallets?.read().orEmpty() }
         }
         connections.load()
         connections.adoptLegacyWallet(held.legacyProfileId?.takeIf { held.profile(it) != null })
@@ -477,8 +493,16 @@ class WalletRepository(
             connections.connection(connectionId)?.takeIf { it.retirement == null }
                 ?: return@withLock BindOutcome.Gone
         val profile = profileId?.let { held.profile(it) ?: return@withLock BindOutcome.Gone }
+        // A feed's profile is its access identity alone (SEE-185): an address proof no network
+        // enters, so any saved profile may be it. A direct server's is the wallet it signs with, on
+        // a network it declared.
         val supported = connection.server.manifest?.supportedNetworks.orEmpty()
-        if (profile != null && supported.isNotEmpty() && profile.network !in supported) {
+        if (
+            connection.mode == ConnectionMode.Direct &&
+                profile != null &&
+                supported.isNotEmpty() &&
+                profile.network !in supported
+        ) {
             return@withLock BindOutcome.Incompatible
         }
         if (!connections.setWalletProfile(connectionId, profileId)) {
@@ -518,6 +542,68 @@ class WalletRepository(
      */
     fun walletFor(connectionId: String): SelectedWallet? =
         (readiness(connectionId) as? WalletReadiness.Ready)?.profile?.selected()
+
+    /**
+     * The wallet a feed operation on [network] uses (SEE-185): chosen per operation, never the
+     * feed's access identity and never one wallet for every feed operation.
+     *
+     * The owner's remembered choice for this feed and network when it still names an authorized
+     * profile on that network; otherwise, when there is no choice yet, the one authorized profile
+     * on that network if there is exactly one. A remembered choice that no longer works chooses
+     * nothing: no other account is put in its place, and the review asks the owner to pick or to
+     * connect one. Null when there is nothing to use.
+     */
+    fun feedWallet(connectionId: String, network: Network): SelectedWallet? {
+        val connection =
+            connections.connection(connectionId)?.takeIf {
+                it.retirement == null && it.mode == ConnectionMode.GatewayFeed
+            } ?: return null
+        val wanted = WalletNetwork.entries.firstOrNull { it.network == network } ?: return null
+        val chosen = _feedChoices.value[FeedWalletStore.Key(connection.id, network)]
+        if (chosen != null) {
+            return held
+                .profile(chosen)
+                ?.takeIf { it.network == wanted && it.authorized }
+                ?.selected()
+        }
+        return held.profiles
+            .filter { it.network == wanted && it.authorized }
+            .singleOrNull()
+            ?.selected()
+    }
+
+    /** Every saved profile on [network], for the owner to choose a feed operation's wallet from. */
+    fun feedWalletChoices(network: Network): List<WalletProfile> {
+        val wanted =
+            WalletNetwork.entries.firstOrNull { it.network == network } ?: return emptyList()
+        return held.profiles.filter { it.network == wanted }
+    }
+
+    /**
+     * Remembers [profileId] as the wallet for [connectionId]'s operations on [network] (SEE-185).
+     * Refused — false — for a profile that is not on that network, or a connection that is not a
+     * feed. It changes nothing about the feed's access, and nothing already bound.
+     */
+    suspend fun chooseFeedWallet(
+        connectionId: String,
+        network: Network,
+        profileId: String,
+    ): Boolean = lock.withLock {
+        val connection =
+            connections.connection(connectionId)?.takeIf {
+                it.retirement == null && it.mode == ConnectionMode.GatewayFeed
+            } ?: return@withLock false
+        val profile = held.profile(profileId) ?: return@withLock false
+        if (profile.network.network != network) return@withLock false
+        val next = _feedChoices.value + (FeedWalletStore.Key(connection.id, network) to profileId)
+        try {
+            withContext(io) { feedWallets?.write(next) }
+        } catch (_: IOException) {
+            // Remembered for this process; asked again after a restart.
+        }
+        _feedChoices.value = next
+        true
+    }
 
     /**
      * The profile a restricted feed proves its reader with (SEE-156, SEE-174): the connection's
@@ -718,6 +804,15 @@ class WalletRepository(
                 connections.connection(connectionId)?.takeIf { it.retirement == null }
                     ?: return Use.Refused(Refusal.Changed)
             if (bound.walletProfileId != profile.id) return Use.Refused(Refusal.Changed)
+        } else if (
+            connectionId != null &&
+                connections.connection(connectionId)?.mode == ConnectionMode.GatewayFeed
+        ) {
+            // A feed operation's wallet is the one chosen for its network (SEE-185), read again
+            // here under the lock: a choice changed meanwhile is not the wallet the owner reviewed.
+            if (!profile.authorized) return Use.Refused(Refusal.Expired)
+            val chosen = feedWallet(connectionId, profile.network.network)
+            if (chosen?.profileId != profile.id) return Use.Refused(Refusal.Changed)
         } else if (connectionId != null) {
             val readiness = readiness(connectionId)
             if (readiness.profile?.id != profile.id) return Use.Refused(Refusal.Changed)
@@ -889,6 +984,12 @@ fun walletReadiness(
     if (connection == null || connection.retirement != null) return WalletReadiness.NoConnection
     val id = connection.walletProfileId ?: return WalletReadiness.NoProfile
     val profile = profiles.profile(id) ?: return WalletReadiness.ProfileMissing
+    // A feed's profile is only its access identity (SEE-185): ready while it is authorized, on
+    // whatever network. Which wallet a feed operation uses is chosen per operation, by network.
+    if (connection.mode == ConnectionMode.GatewayFeed) {
+        return if (profile.authorized) WalletReadiness.Ready(profile)
+        else WalletReadiness.NeedsReconnect(profile)
+    }
     val supported = connection.server.manifest?.supportedNetworks.orEmpty()
     if (supported.isEmpty()) return WalletReadiness.NetworksUnknown(profile)
     if (profile.network !in supported) {

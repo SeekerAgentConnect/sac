@@ -172,7 +172,7 @@ class ConfirmationWorkTest {
         ConfirmationTracker(
             TrackingStore(File(folder.root, "confirmations")),
             ActivityLog(ActivityStore(File(folder.root, "activity"))),
-            testRpc(File(folder.root, "rpc")) { error("no chain in this test") },
+            testRpc { error("no chain in this test") },
         ) {
             now
         }

@@ -437,15 +437,6 @@ internal val componentGallerySpecimens =
         GallerySpecimen(component = "catalog-card", variant = "sheet=detail") {
             CatalogDetailSheetPreview()
         },
-        GallerySpecimen(component = "rpc-endpoint-card", variant = "status=serves") {
-            RpcEndpointCardServesPreview()
-        },
-        GallerySpecimen(component = "rpc-endpoint-card", variant = "status=problem") {
-            RpcEndpointCardProblemPreview()
-        },
-        GallerySpecimen(component = "rpc-endpoint-card", variant = "sheet=settings") {
-            SolanaRpcSheetPreview()
-        },
         GallerySpecimen(component = "server-row", variant = "state=connected") {
             ServerRowConnectedPreview()
         },

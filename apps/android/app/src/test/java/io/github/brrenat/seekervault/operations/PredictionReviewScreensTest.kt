@@ -24,7 +24,6 @@ import io.github.brrenat.seekervault.plugins.InspectedAction
 import io.github.brrenat.seekervault.plugins.ParameterChoice
 import io.github.brrenat.seekervault.plugins.ParameterValue
 import io.github.brrenat.seekervault.plugins.PluginDestination
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginFact
 import io.github.brrenat.seekervault.plugins.PluginReference
 import io.github.brrenat.seekervault.plugins.PreparedOperation
@@ -189,7 +188,6 @@ class PredictionReviewScreensTest {
             generation = 1,
             record = record,
             standing = ProposalStanding.Open,
-            environment = PluginEnvironment.Production,
             payload = ActionPayload.PredictionBuy(terms),
             form = predictionBuyInputs(terms, PREDICTION_BUY_CAPABILITY),
             choice = choice,

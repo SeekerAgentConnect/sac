@@ -6,7 +6,6 @@ import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionRetirement
 import io.github.brrenat.seekervault.connections.ServerColour
 import io.github.brrenat.seekervault.connections.isConnectionId
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.isPluginId
 import io.github.brrenat.seekervault.servers.ConnectionMode
@@ -37,10 +36,9 @@ import org.json.JSONObject
  * manifest yet. The owner paired it and nothing about it changed, so it keeps working exactly as it
  * did, and the next refresh finds out whether its server publishes one.
  *
- * Version 3 added the environment the connection keeps (SEE-97). An older file is read as
- * production, which is exactly what this build did before the field existed: every connection was
- * production, and one whose server did not serve it was unexecutable and said so. So nothing a
- * phone already holds changes meaning when the app is updated.
+ * Version 3 added the environment the connection keeps (SEE-97). SEE-185 retired it: preview or
+ * execution is chosen per operation, so the field is no longer written, and a value an older record
+ * holds is ignored. Removing a field no reader needs leaves the version where it was.
  *
  * Version 5 retires gateway-private records. Versions 2–4 are read just far enough to recognize the
  * literal old mode, then rewritten without an active mode, credential state, or cached private
@@ -133,8 +131,6 @@ class ConnectionStore(private val dir: File) {
          * Version 1 files predate the mode and the manifest, and are read as direct and unasked.
          */
         const val FIRST_VERSION = 1
-        /** Version 3 added the environment; before it, every connection was production. */
-        const val ENVIRONMENT_VERSION = 3
         /** Version 6 added the marker colour; before it, records had none (SEE-83). */
         const val COLOUR_VERSION = 6
         /**
@@ -167,7 +163,6 @@ class ConnectionStore(private val dir: File) {
                 )
                 .putOpt("mode", connection.mode?.code)
                 .putOpt("retirement", connection.retirement?.code)
-                .put("environment", connection.environment.code)
                 .putOpt("colour", connection.colour?.name)
                 .putOpt("walletProfileId", connection.walletProfileId)
                 .put("server", encodeServer(connection.server))
@@ -221,10 +216,6 @@ class ConnectionStore(private val dir: File) {
                         }
                     },
                 )
-                .put(
-                    "environments",
-                    JSONArray().apply { manifest.environments.forEach { put(it.code) } },
-                )
                 .put("name", manifest.name)
                 .put(
                     "supportedNetworks",
@@ -264,7 +255,6 @@ class ConnectionStore(private val dir: File) {
                     mode = null,
                     retirement = retirement,
                     server = ServerRecord.Unknown,
-                    environment = PluginEnvironment.Production,
                 )
             }
             // An unreadable mode is never guessed at: there is no safe default between a server
@@ -280,19 +270,8 @@ class ConnectionStore(private val dir: File) {
             val server = decodeServer(json.optJSONObject("server")) ?: ServerRecord.Unknown
             if (mode != ConnectionMode.Direct && server !is ServerRecord.Known) return null
             if (server.manifest?.mode?.equals(mode) == false) return null
-            // A direct connection is production whatever the file says, so nothing an edited or
-            // half-written file could hold puts the legacy sidecar path in a simulated mode. A
-            // feed preserves its manifest's environment; an unreadable value makes the
-            // whole record unreadable rather than resolving it toward real money.
-            val environment =
-                when {
-                    mode == ConnectionMode.Direct -> PluginEnvironment.Production
-                    version < ENVIRONMENT_VERSION -> PluginEnvironment.Production
-                    else ->
-                        PluginEnvironment.entries.firstOrNull {
-                            it.code == json.optString("environment")
-                        } ?: return null
-                }
+            // An `environment` a record from before SEE-185 holds is ignored: whether an operation
+            // is previewed or executed is chosen per operation now, never kept on a connection.
             return Connection(
                 id = json.getString("id"),
                 label = json.getString("label"),
@@ -316,7 +295,6 @@ class ConnectionStore(private val dir: File) {
                 hasCredential = mode != ConnectionMode.GatewayFeed,
                 mode = mode,
                 server = server,
-                environment = environment,
                 // A missing or unrecognised name is no colour. The record stays readable and the
                 // repository assigns one (SEE-83).
                 colour =
@@ -402,15 +380,8 @@ class ConnectionStore(private val dir: File) {
                 if (required.any { it.id.value == id }) return null
                 required += PluginRequirement(PluginId(id), least..most)
             }
-            val named = json.optJSONArray("environments") ?: JSONArray()
-            val environments = mutableSetOf<PluginEnvironment>()
-            for (index in 0 until named.length()) {
-                val environment =
-                    PluginEnvironment.entries.firstOrNull { it.code == named.optString(index) }
-                        ?: return null
-                if (!environments.add(environment)) return null
-            }
-            if (environments.isEmpty()) return null
+            // `environments`, in a manifest cached before SEE-185, is ignored: servers no longer
+            // declare one.
             // A manifest cached before SEE-174 has no list, which is what an empty one says: no
             // network declared, so nothing is signed until the server is asked again and answers
             // with its networks under a new revision.
@@ -429,7 +400,6 @@ class ConnectionStore(private val dir: File) {
                 mode = mode,
                 reference = reference,
                 required = required.toList(),
-                environments = environments.toSet(),
                 name = json.optString("name"),
                 supportedNetworks = supportedNetworks.toSet(),
             )

@@ -2,6 +2,7 @@ package io.github.brrenat.seekervault.proposals
 
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.proposal.v1.ProposalStatus as WireStatus
+import io.github.brrenat.seekervault.request.v1.Network
 import io.github.brrenat.seekervault.servers.SWAP_PLUGIN
 import io.github.brrenat.seekervault.servers.ServerSupport
 import java.time.Instant
@@ -112,6 +113,48 @@ class ProposalStateTest {
     }
 
     @Test
+    fun aSignalWhoseNetworkCannotBeUsedIsReadableAndNeverExecutable() {
+        // SEE-185: the network is the signal's own, and it is never inferred — not from a wallet,
+        // and not from the networks the feed's manifest declares.
+        val missing =
+            record().let { it.copy(proposal = it.proposal.copy(network = SignalNetwork.Missing)) }
+        val unknown =
+            record().let {
+                it.copy(proposal = it.proposal.copy(network = SignalNetwork.Unknown(7)))
+            }
+        val devnet =
+            record().let {
+                it.copy(
+                    proposal =
+                        it.proposal.copy(network = SignalNetwork.Declared(Network.NETWORK_DEVNET))
+                )
+            }
+
+        assertEquals(ProposalStanding.NetworkUnusable(NetworkReason.Missing), standing(missing))
+        assertEquals(ProposalStanding.NetworkUnusable(NetworkReason.Unknown), standing(unknown))
+        assertEquals(ProposalStanding.NetworkUnusable(NetworkReason.NotDeclared), standing(devnet))
+        // A feed that declares no network at all executes nothing, rather than everything.
+        assertEquals(
+            ProposalStanding.NetworkUnusable(NetworkReason.NotDeclared),
+            standing(record(), networks = emptySet()),
+        )
+        assertFalse(standing(missing).executable)
+        assertEquals(
+            ProposalStanding.Open,
+            standing(devnet, networks = setOf(Network.NETWORK_MAINNET, Network.NETWORK_DEVNET)),
+        )
+        // An unsupported server is said first: its signals are not about networks at all.
+        val unsupported = ServerSupport.PluginMissing(listOf(PluginId(SWAP_PLUGIN)))
+        assertEquals(ProposalStanding.Unsupported(unsupported), standing(missing, unsupported))
+        // And a legacy, contract-1 document declares none, whatever else it says.
+        val legacy =
+            (proposalFrom(wireProposal(), ProposalExpectation(serverId = wireProposal().serverId))
+                    as ProposalResult.Valid)
+                .proposal
+        assertEquals(SignalNetwork.Missing, legacy.network)
+    }
+
+    @Test
     fun onlyAnOpenProposalIsExecutable() {
         assertTrue(ProposalStanding.Open.executable)
         assertFalse(ProposalStanding.Executed(ProposalOutcome.Declined).executable)
@@ -120,6 +163,7 @@ class ProposalStateTest {
         assertFalse(ProposalStanding.Cancelled.executable)
         assertFalse(ProposalStanding.Expired.executable)
         assertFalse(ProposalStanding.Unsupported(ServerSupport.Unknown).executable)
+        assertFalse(ProposalStanding.NetworkUnusable(NetworkReason.Missing).executable)
     }
 
     @Test
@@ -150,8 +194,10 @@ class ProposalStateTest {
     private fun standing(
         record: ProposalRecord,
         support: ServerSupport = ServerSupport.Supported,
+        /** What the feed's manifest declares; mainnet, the network the fixtures' signals name. */
+        networks: Set<Network> = setOf(Network.NETWORK_MAINNET),
         at: Instant = NOW,
-    ) = proposalStanding(record, support, at)
+    ) = proposalStanding(record, support, networks, at)
 
     private companion object {
         const val CONNECTION = "11111111-2222-4333-8444-555555555555"

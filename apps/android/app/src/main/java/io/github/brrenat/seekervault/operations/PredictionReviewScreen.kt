@@ -79,6 +79,8 @@ fun PredictionReviewScreen(
     onBack: () -> Unit,
     onOpenLink: (url: String, deepLink: String?) -> Unit,
     modifier: Modifier = Modifier,
+    /** Previews the prepared order without sending it (SEE-185). */
+    onPreview: () -> Unit = {},
 ) {
     val resources = LocalContext.current.resources
     val clipboard = LocalClipboard.current
@@ -109,6 +111,7 @@ fun PredictionReviewScreen(
         },
         onConfirmedChange = onAcknowledge,
         onRefreshQuote = onPrepare,
+        onPreview = onPreview,
         modifier = modifier.testTag(PredictionReviewTags.SHEET),
     )
 }

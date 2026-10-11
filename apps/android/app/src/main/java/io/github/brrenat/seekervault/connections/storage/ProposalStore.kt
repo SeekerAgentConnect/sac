@@ -29,12 +29,14 @@ import io.github.brrenat.seekervault.proposals.ProposalDismissal
 import io.github.brrenat.seekervault.proposals.ProposalExecution
 import io.github.brrenat.seekervault.proposals.ProposalKey
 import io.github.brrenat.seekervault.proposals.ProposalOutcome
+import io.github.brrenat.seekervault.proposals.ProposalPreview
 import io.github.brrenat.seekervault.proposals.ProposalProblem
 import io.github.brrenat.seekervault.proposals.ProposalRecord
 import io.github.brrenat.seekervault.proposals.ProposalReview
 import io.github.brrenat.seekervault.proposals.ProposalStatus
 import io.github.brrenat.seekervault.proposals.ProposalValue
 import io.github.brrenat.seekervault.proposals.ProposalValueKind
+import io.github.brrenat.seekervault.proposals.SignalNetwork
 import io.github.brrenat.seekervault.request.v1.Network
 import java.io.File
 import java.io.IOException
@@ -163,6 +165,8 @@ class ProposalStore(private val dir: File) {
                 .putOpt("dismissed", record.dismissed?.let(::encodeDismissal))
                 .putOpt("review", record.review?.let(::encodeReview))
                 .putOpt("execution", record.execution?.let(::encodeExecution))
+                // Additive (SEE-185): the latest preview, which never consumes the proposal.
+                .putOpt("preview", record.preview?.let(::encodePreview))
                 // Which rule a delivery broke, when the publisher contradicted itself about the
                 // terms. It is kept so a restart does not start acting on a proposal this phone
                 // had stopped acting on (ProposalRecord.refused).
@@ -190,6 +194,17 @@ class ProposalStore(private val dir: File) {
                 .put("updatedAt", proposal.updatedAt.toString())
                 .put("expiresAt", proposal.expiresAt.toString())
                 .put("note", proposal.note)
+                // Additive (SEE-185). Absent is a signal that declares none, which is what every
+                // row
+                // written before it was; an unknown value keeps its number so it is said as one.
+                .putOpt(
+                    "network",
+                    when (val network = proposal.network) {
+                        is SignalNetwork.Declared -> network.network.name
+                        SignalNetwork.Missing -> null
+                        is SignalNetwork.Unknown -> "unknown:${network.value}"
+                    },
+                )
                 .put(
                     "values",
                     JSONArray().apply {
@@ -270,6 +285,7 @@ class ProposalStore(private val dir: File) {
                 updatedAt = Instant.parse(json.getString("updatedAt")),
                 expiresAt = Instant.parse(json.getString("expiresAt")),
                 note = json.optString("note"),
+                network = decodeSignalNetwork(json.optString("network")),
                 values =
                     json.optJSONArray("values").let { array ->
                         (0 until (array?.length() ?: 0)).map {
@@ -308,6 +324,18 @@ class ProposalStore(private val dir: File) {
                             )
                         }
                     },
+            )
+        }
+
+        fun encodePreview(preview: ProposalPreview): JSONObject =
+            JSONObject()
+                .put("binding", encodeBinding(preview.binding))
+                .put("at", preview.at.toString())
+
+        fun decodePreview(json: JSONObject?): ProposalPreview? = json?.let {
+            ProposalPreview(
+                binding = decodeBinding(it.getJSONObject("binding")),
+                at = Instant.parse(it.getString("at")),
             )
         }
 
@@ -428,6 +456,24 @@ class ProposalStore(private val dir: File) {
                 // Additive (SEE-181), in the same spelling Activity keeps it in: an older build
                 // ignores it, and a binding without it does not say what it spends.
                 .putOpt("spending", binding.spending?.let(::encodeSpending))
+                // Additive (SEE-185): the exact profile a feed operation was chosen with.
+                .putOpt("walletProfileId", binding.walletProfileId)
+
+        /** A stored signal network, read without guessing: anything unreadable is unknown. */
+        fun decodeSignalNetwork(text: String): SignalNetwork =
+            when {
+                text.isEmpty() -> SignalNetwork.Missing
+                text.startsWith("unknown:") ->
+                    SignalNetwork.Unknown(text.removePrefix("unknown:").toIntOrNull() ?: -1)
+                else ->
+                    Network.entries
+                        .firstOrNull {
+                            it.name == text &&
+                                it != Network.NETWORK_UNSPECIFIED &&
+                                it != Network.UNRECOGNIZED
+                        }
+                        ?.let(SignalNetwork::Declared) ?: SignalNetwork.Unknown(-1)
+            }
 
         fun decodeBinding(json: JSONObject): ExecutionBinding {
             // The bundled-plugin name a row written before SEE-145 carries, when it carries one.
@@ -492,6 +538,7 @@ class ProposalStore(private val dir: File) {
                         }
                     } ?: emptyList(),
                 spending = decodeSpending(json.optJSONObject("spending")),
+                walletProfileId = json.optString("walletProfileId").takeIf(String::isNotEmpty),
             )
         }
 
@@ -539,6 +586,7 @@ class ProposalStore(private val dir: File) {
                 dismissed = decodeDismissal(json.optJSONObject("dismissed")),
                 review = decodeReview(json.optJSONObject("review")),
                 execution = decodeExecution(json.optJSONObject("execution")),
+                preview = decodePreview(json.optJSONObject("preview")),
                 refused =
                     json
                         .optString("refused")

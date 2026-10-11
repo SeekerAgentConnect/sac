@@ -6,7 +6,6 @@ import io.github.brrenat.seekervault.connections.AddConnectionState
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.ConnectionsUiState
 import io.github.brrenat.seekervault.designsystem.CatalogCardStatus
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedAccess
 import io.github.brrenat.seekervault.servers.FeedReference
@@ -63,7 +62,6 @@ class CatalogStandingTest {
                         settingsRevision = 1,
                         mode = ConnectionMode.GatewayFeed,
                         reference = ServerReference.Feed(GATEWAY, channelFor(SERVER_B), access),
-                        environments = setOf(PluginEnvironment.Production),
                         name = "Copy trading",
                     )
                 ),

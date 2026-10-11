@@ -34,7 +34,6 @@ import io.github.brrenat.seekervault.designsystem.InAppNotificationTag
 import io.github.brrenat.seekervault.designsystem.theme.SeekerTheme
 import io.github.brrenat.seekervault.inbox.PendingItem
 import io.github.brrenat.seekervault.plugins.ExecutionProviderId
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.plugins.actionOf
 import io.github.brrenat.seekervault.proposals.Proposal
@@ -462,7 +461,6 @@ class InAppNotificationHostTest {
                                     gatewayUrl = GATEWAY,
                                     channel = channelFor(SERVER_ID),
                                 ),
-                            environments = setOf(PluginEnvironment.Production),
                         )
                     ),
             )

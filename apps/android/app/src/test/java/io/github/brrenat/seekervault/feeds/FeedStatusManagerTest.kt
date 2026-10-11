@@ -2,7 +2,6 @@ package io.github.brrenat.seekervault.feeds
 
 import io.github.brrenat.seekervault.connections.Connection
 import io.github.brrenat.seekervault.connections.GatewayException
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.ServerManifest as Manifest
 import io.github.brrenat.seekervault.servers.ServerRecord
@@ -682,7 +681,6 @@ class FeedStatusManagerTest {
                                     gatewayUrl = gateway,
                                     channel = channelFor(serverId),
                                 ),
-                            environments = setOf(PluginEnvironment.Production),
                         )
                     ),
             )

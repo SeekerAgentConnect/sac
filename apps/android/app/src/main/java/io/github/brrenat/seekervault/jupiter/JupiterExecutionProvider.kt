@@ -55,17 +55,12 @@ class JupiterExecutionProvider(
      * operation, or the held position, was bound to; the application decides where it is asked.
      */
     chain: NetworkAccounts,
-    /**
-     * The SAC service fee this APK was built with (SEE-173, docs/development/swap-fee-config.md).
-     * The application passes it from `BuildConfig`; nothing a feed or a server sends can.
-     */
-    private val swapFee: SwapFeePolicy = SwapFeePolicy.Off,
     now: () -> Instant = Instant::now,
 ) : ExecutionProvider {
 
     override val capabilities: ProviderCapabilities = JUPITER_CAPABILITIES
 
-    private val swap = JupiterSwapAction(swapApi, SWAP_CAPABILITY, now, swapFee, chain)
+    private val swap = JupiterSwapAction(swapApi, SWAP_CAPABILITY, now, chain)
 
     private val prediction =
         JupiterPredictionAction(predictionApi, chain, PREDICTION_BUY_CAPABILITY, now)
@@ -110,7 +105,9 @@ class JupiterExecutionProvider(
 
     override fun about(operation: ActionOperation): ProviderAbout =
         when (operation.payload) {
-            is ActionPayload.Swap -> swapAbout(swapFee)
+            // The fee terms core handed this operation (SEE-185): the gateway's for a feed swap on
+            // its network, none for anything else.
+            is ActionPayload.Swap -> swapAbout(SwapFeePolicy.of(operation.serviceFee))
             is ActionPayload.PredictionBuy -> PREDICTION_ABOUT
         }
 
@@ -205,8 +202,8 @@ val PREDICTION_BUY_CAPABILITY: ActionCapability =
 /**
  * What this build promises about Jupiter.
  *
- * Both environments, and the same work in each: what a sandbox owner reviews is the route or the
- * order this provider actually built, and core is what stops before the wallet (SEE-97,
+ * Both modes, and the same work in each: what an owner previews is the route or the order this
+ * provider actually built, and core is what stops before the wallet (SEE-97, SEE-185,
  * docs/wiki/environments.md). One network, in both of them, because there is no devnet Jupiter.
  *
  * [ProviderCapabilities.legacyPlugins] is how a server manifest written before SEE-145 still

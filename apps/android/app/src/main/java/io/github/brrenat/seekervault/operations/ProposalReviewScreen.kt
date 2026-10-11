@@ -34,7 +34,6 @@ import io.github.brrenat.seekervault.plugins.ParameterField
 import io.github.brrenat.seekervault.plugins.ParameterKey
 import io.github.brrenat.seekervault.plugins.ParameterKind
 import io.github.brrenat.seekervault.plugins.ParameterValue
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.receiptRows
 import io.github.brrenat.seekervault.policy.AmountEntry
 import io.github.brrenat.seekervault.policy.readAmount
@@ -50,6 +49,7 @@ import io.github.brrenat.seekervault.ui.seekerTextFieldColors
 import io.github.brrenat.seekervault.wallet.SelectedWallet
 import io.github.brrenat.seekervault.wallet.encodeBase58
 import io.github.brrenat.seekervault.wallet.networkText
+import io.github.brrenat.seekervault.wallet.walletNetworkOf
 import java.time.Instant
 
 /**
@@ -79,6 +79,10 @@ fun ProposalReviewScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onRules: (() -> Unit)? = null,
+    /** Previews what was prepared without sending it (SEE-185). Null hides the action. */
+    onPreview: (() -> Unit)? = null,
+    /** Opens the choice of this operation's wallet for the signal's network (SEE-185). */
+    onChooseWallet: (() -> Unit)? = null,
     /**
      * Hands a destination — a web address, and the provider's own app link when there is one — to
      * whatever opens it. The app fetches nothing from any of them.
@@ -118,11 +122,10 @@ fun ProposalReviewScreen(
                 verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp12),
             ) {
                 Banner(stringResource(standingText(review.standing)), OperationTags.STANDING)
-                // Said before anything else about this proposal, because it is what the Approve
-                // button at the bottom will do (SEE-97). A rehearsal and a purchase must never
-                // look the same.
-                if (review.environment == PluginEnvironment.Sandbox) {
-                    Banner(stringResource(R.string.operation_sandbox), OperationTags.SANDBOX)
+                // A preview just happened: said before anything else, because what was on screen
+                // is gone and nothing was signed or sent (SEE-185).
+                if (review.previewed && executed == null) {
+                    Banner(stringResource(R.string.operation_previewed), OperationTags.PREVIEWED)
                 }
                 if (executed != null) {
                     Banner(stringResource(outcomeText(executed.outcome)), OperationTags.OUTCOME)
@@ -266,7 +269,18 @@ fun ProposalReviewScreen(
                         }
                     }
                 }
-                if (review.standing.executable && review.served && review.form.problem == null) {
+                // The network the signal names and the wallet chosen for it, before anything is
+                // prepared (SEE-185): an operation is never bound to the feed's own wallet, and the
+                // owner sees which account will sign, on which cluster, before they ask for bytes.
+                if (executed == null && review.standing.executable) {
+                    NetworkAndWallet(review, wallet, onChooseWallet)
+                }
+                if (
+                    review.standing.executable &&
+                        review.served &&
+                        review.form.problem == null &&
+                        wallet != null
+                ) {
                     Section(R.string.operation_your_part) {
                         Column(
                             Modifier.fillMaxWidth(),
@@ -414,26 +428,34 @@ fun ProposalReviewScreen(
                             )
                         }
                     }
-                    val sandbox = review.environment == PluginEnvironment.Sandbox
                     SeekerButton(
-                        text =
-                            stringResource(
-                                if (sandbox) R.string.operation_simulate
-                                else R.string.operation_approve
-                            ),
+                        text = stringResource(R.string.operation_approve),
                         onClick = onApprove,
                         role = SeekerButtonRole.Primary,
                         enabled = !review.sending && (!warns || review.acknowledged),
                         modifier = Modifier.fillMaxWidth().testTag(OperationTags.APPROVE),
                     )
                     Text(
-                        stringResource(
-                            if (sandbox) R.string.operation_simulate_note
-                            else R.string.operation_approve_note
-                        ),
+                        stringResource(R.string.operation_approve_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // The same bytes, the same rules, and no wallet: chosen here, per operation,
+                    // never by where the signal came from (SEE-185).
+                    if (onPreview != null && review.previewable) {
+                        SeekerButton(
+                            text = stringResource(R.string.operation_simulate),
+                            onClick = onPreview,
+                            role = SeekerButtonRole.Neutral,
+                            enabled = !review.sending && (!warns || review.acknowledged),
+                            modifier = Modifier.fillMaxWidth().testTag(OperationTags.PREVIEW),
+                        )
+                        Text(
+                            stringResource(R.string.operation_simulate_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 if (review.standing is ProposalStanding.Open && executed == null) {
                     SeekerButton(
@@ -450,6 +472,51 @@ fun ProposalReviewScreen(
                     stringResource(R.string.operation_revision, proposal.revision),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The network a signal names and the wallet chosen for it (SEE-185): stated before anything is
+ * prepared, with the way to choose another wallet or connect one when there is none.
+ */
+@Composable
+private fun NetworkAndWallet(
+    review: OperationReview,
+    wallet: SelectedWallet?,
+    onChooseWallet: (() -> Unit)?,
+) {
+    val network = review.network?.let { walletNetworkOf(it) } ?: return
+    Section(R.string.operation_fact_network) {
+        Column(
+            Modifier.fillMaxWidth().testTag(OperationTags.NETWORK),
+            verticalArrangement = Arrangement.spacedBy(SeekerTheme.dimensions.dp8),
+        ) {
+            Pair(
+                stringResource(R.string.operation_fact_network),
+                stringResource(R.string.operation_network_value, networkText(network)),
+            )
+            if (wallet != null) {
+                Address(stringResource(R.string.operation_fact_wallet), wallet.address)
+            } else {
+                Text(
+                    stringResource(R.string.operation_wallet_none, networkText(network)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag(OperationTags.WALLET),
+                )
+            }
+            if (onChooseWallet != null) {
+                SeekerButton(
+                    text =
+                        if (wallet != null) stringResource(R.string.operation_choose_wallet)
+                        else
+                            stringResource(R.string.operation_connect_wallet, networkText(network)),
+                    onClick = onChooseWallet,
+                    role = SeekerButtonRole.Neutral,
+                    enabled = !review.sending && !review.preparing,
+                    modifier = Modifier.fillMaxWidth().testTag(OperationTags.CHOOSE_WALLET),
                 )
             }
         }

@@ -39,6 +39,7 @@ import io.github.brrenat.seekervault.connections.HomeRoute
 import io.github.brrenat.seekervault.connections.HomeRouteCallbacks
 import io.github.brrenat.seekervault.connections.InboxSummary
 import io.github.brrenat.seekervault.connections.RequestKey
+import io.github.brrenat.seekervault.connections.accessWalletRow
 import io.github.brrenat.seekervault.connections.bindingText
 import io.github.brrenat.seekervault.connections.connectionWalletFacts
 import io.github.brrenat.seekervault.connections.connectionWalletRow
@@ -85,6 +86,7 @@ import io.github.brrenat.seekervault.notifications.InAppNotifications
 import io.github.brrenat.seekervault.notifications.LocalInAppNotices
 import io.github.brrenat.seekervault.notifications.RequestNotificationPermission
 import io.github.brrenat.seekervault.operations.OperationViewModel
+import io.github.brrenat.seekervault.operations.OperationWalletPicker
 import io.github.brrenat.seekervault.operations.OperationsUiState
 import io.github.brrenat.seekervault.operations.PredictionParametersSheet
 import io.github.brrenat.seekervault.operations.PredictionReviewScreen
@@ -104,8 +106,6 @@ import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyLibrarySheetScreen
 import io.github.brrenat.seekervault.positions.PositionsState
 import io.github.brrenat.seekervault.positions.PositionsViewModel
-import io.github.brrenat.seekervault.rpc.RpcSettingsRoute
-import io.github.brrenat.seekervault.rpc.RpcSettingsViewModel
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedAccess
 import io.github.brrenat.seekervault.servers.FeedReferences
@@ -117,6 +117,7 @@ import io.github.brrenat.seekervault.ui.SheetInputBarrier
 import io.github.brrenat.seekervault.wallet.WalletAddSheetScreen
 import io.github.brrenat.seekervault.wallet.WalletRoute
 import io.github.brrenat.seekervault.wallet.WalletViewModel
+import io.github.brrenat.seekervault.wallet.walletNetworkOf
 import java.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -158,8 +159,6 @@ fun SeekerVaultApp(
     discover: DiscoverViewModel? = null,
     /** The gateway origin [discover] reads from, for what the tab says when it can't reach it. */
     discoveryUrl: String = "",
-    /** Where each Solana network is asked (SEE-184). Without one the sheet doesn't open. */
-    rpcSettings: RpcSettingsViewModel? = null,
 ) {
     val navigator =
         rememberAppNavigator(
@@ -481,7 +480,6 @@ fun SeekerVaultApp(
                     WalletRoute(
                         viewModel = wallet,
                         onAddWallet = { navigator.openAddWallet() },
-                        onSolanaRpc = { if (rpcSettings != null) navigator.openRpcSettings() },
                         onBack = { selectTabAfterSheets(AppScreen.Home) },
                         navigationCallbacks = screenNavigationCallbacks,
                         modifier = rootModifier,
@@ -585,10 +583,20 @@ fun SeekerVaultApp(
                                 (navigation.screen as? AppScreen.AddConnection)?.from
                                     ?: AppScreen.Home
                             )
-                            if (connection.retirement == null) {
+                            // A public feed needs no wallet at all (SEE-185): it is read without
+                            // one, and each operation picks its own wallet for its signal's
+                            // network.
+                            // A direct server signs with the wallet bound here, and a restricted
+                            // feed proves its reader with one — those two choose it next.
+                            val needsWallet =
+                                connection.mode == ConnectionMode.Direct ||
+                                    connection.server.manifest?.feedAccess is FeedAccess.Restricted
+                            if (connection.retirement == null && needsWallet) {
                                 wallet.beginSetup(connection.id)
                                 navigator.openConnectionDetail(connection.id)
                                 navigator.openConnectionWallet(connection.id)
+                            } else if (connection.retirement == null) {
+                                navigator.openConnectionDetail(connection.id)
                             }
                         },
                         modifier = rootModifier,
@@ -609,6 +617,7 @@ fun SeekerVaultApp(
                         modifier =
                             if (
                                 sheetRoute is AppSheet.ConnectionWallet ||
+                                    sheetRoute is AppSheet.OperationWallet ||
                                     sheetRoute is AppSheet.AddWallet
                             ) {
                                 Modifier.background(SeekerTheme.colors.dim)
@@ -631,13 +640,6 @@ fun SeekerVaultApp(
                         aboveKeyboard = sheetRoute is AppSheet.OwnerInput,
                     ) {
                         when (val activeRoute = sheetRoute) {
-                            AppSheet.RpcSettings -> {
-                                if (rpcSettings == null) {
-                                    LaunchedEffect(activeRoute) { if (active) pop() }
-                                } else {
-                                    RpcSettingsRoute(viewModel = rpcSettings, onClose = pop)
-                                }
-                            }
                             is AppSheet.CatalogDetail -> {
                                 val discoverState =
                                     discover?.state?.collectAsStateWithLifecycle()?.value
@@ -881,6 +883,29 @@ fun SeekerVaultApp(
                                     }
                                 }
                             }
+                            is AppSheet.OperationWallet -> {
+                                val open = openOperation?.takeIf {
+                                    it.connectionId == activeRoute.identity.connectionId &&
+                                        it.proposalId == activeRoute.identity.requestId
+                                }
+                                if (operations == null || open == null) {
+                                    RequestGoneScreen(onBack = pop)
+                                } else {
+                                    OperationWalletPicker(
+                                        network = activeRoute.network,
+                                        current = open.wallet?.profileId,
+                                        wallet = walletState,
+                                        onUse = { profileId ->
+                                            // Remembered for this feed and network; what was
+                                            // prepared for another wallet is dropped (SEE-185).
+                                            operations.chooseWallet(profileId)
+                                            pop()
+                                        },
+                                        onAdd = navigator::openAddWallet,
+                                        onDismiss = pop,
+                                    )
+                                }
+                            }
                             is AppSheet.OwnerInput -> {
                                 val open = openOperation?.takeIf {
                                     it.connectionId == activeRoute.identity.connectionId &&
@@ -1116,7 +1141,17 @@ private fun RequestReviewRoute(
                         ),
                     wallet = open.wallet,
                     now = Instant.now(),
-                    onOwnerInput = { navigator.openOwnerInput(identity) },
+                    onOwnerInput = {
+                        // No wallet chosen for the signal's network yet: that is chosen first, so
+                        // the order is never quoted for an account nobody picked (SEE-185).
+                        val network = open.network?.let(::walletNetworkOf)
+                        if (open.wallet == null && network != null) {
+                            navigator.openOperationWallet(identity, network)
+                        } else {
+                            navigator.openOwnerInput(identity)
+                        }
+                    },
+                    onPreview = { operations.preview(open.wallet) },
                     onPrepare = operations::prepare,
                     onApprove = {
                         if (open.requiresWalletHandoff) {
@@ -1151,6 +1186,12 @@ private fun RequestReviewRoute(
                     now = Instant.now(),
                     onChoose = operations::choose,
                     onPrepare = operations::prepare,
+                    onPreview = { operations.preview(open.wallet) },
+                    onChooseWallet = {
+                        open.network?.let(::walletNetworkOf)?.let {
+                            navigator.openOperationWallet(identity, it)
+                        }
+                    },
                     onApprove = {
                         if (open.requiresWalletHandoff) {
                             navigator.openWalletHandoff(
@@ -1407,8 +1448,21 @@ private fun ConnectionDetailsRoute(
         feed = state.feeds.gateways[connection.serverUrl],
         availability = state.feedStatus.availabilityOf(id),
         access = access,
-        walletRow = connectionWalletRow(walletState.readiness[id]),
-        walletFacts = connectionWalletFacts(walletState.readiness[id]),
+        // A public feed has no wallet at all, and a restricted one only the identity its access is
+        // proven with: each signal's operation chooses its own wallet for its network (SEE-185).
+        walletRow =
+            when {
+                connection.mode != ConnectionMode.GatewayFeed ->
+                    connectionWalletRow(walletState.readiness[id])
+                restricted -> accessWalletRow(walletState.readiness[id])
+                else -> null
+            },
+        walletFacts =
+            if (connection.mode != ConnectionMode.GatewayFeed || restricted) {
+                connectionWalletFacts(walletState.readiness[id])
+            } else {
+                emptyList()
+            },
         onWallet = onWallet,
     )
     // What binding came to — how many requests a direct server cancelled, or that it couldn't be

@@ -4,7 +4,6 @@ import io.github.brrenat.seekervault.gateway.v1.FeedEvent
 import io.github.brrenat.seekervault.gateway.v1.GetProposalResponse
 import io.github.brrenat.seekervault.gateway.v1.GetServerManifestResponse
 import io.github.brrenat.seekervault.gateway.v1.ListProposalsResponse
-import io.github.brrenat.seekervault.plugins.PluginEnvironment
 import io.github.brrenat.seekervault.plugins.PluginId
 import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposals.Proposal
@@ -64,10 +63,6 @@ class GatewayProtocolFixturesTest {
         assertEquals(
             listOf(PluginId("jupiter.swap"), PluginId("jupiter.prediction")),
             manifest.required.map { it.id },
-        )
-        assertEquals(
-            setOf(PluginEnvironment.Production, PluginEnvironment.Sandbox),
-            manifest.environments,
         )
         assertEquals("Копи-трейдинг 📈", manifest.name)
     }

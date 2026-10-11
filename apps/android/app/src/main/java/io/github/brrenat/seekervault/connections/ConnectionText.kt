@@ -90,35 +90,24 @@ object ConnectionsTags {
     const val CAROUSEL = "requestCarousel"
     const val GLOBAL_RULES = "globalRules"
     const val LIST = "connectionsList"
+
     /** Which promise a feed keeps, and the owner's switch between them (SEE-97). */
-    const val ENVIRONMENT = "connectionEnvironment"
-
     fun item(id: String) = "connection:$id"
-
-    fun environment(code: String) = "environment:$code"
 
     fun request(key: RequestKey) = "request:${key.connectionId}/${key.requestId}"
 
     fun field(name: String) = "field:$name"
 }
 
-/** Keeps the plugin-owned environment type behind the existing connection boundary. */
-internal fun Connection.isSandboxEnvironment(): Boolean = environment == PluginEnvironment.Sandbox
-
-/** Which promise a connection keeps, in a word (SEE-97, docs/wiki/environments.md). */
+/**
+ * Whether an operation was a preview or a real execution, in a word (SEE-97, SEE-185,
+ * docs/wiki/environments.md). It is the operation's own, chosen when the owner acted.
+ */
 @StringRes
 fun environmentText(environment: PluginEnvironment): Int =
     when (environment) {
         PluginEnvironment.Production -> R.string.connection_environment_production
         PluginEnvironment.Sandbox -> R.string.connection_environment_sandbox
-    }
-
-/** And what it means, in one sentence, because the word alone is not a promise anybody can read. */
-@StringRes
-fun environmentNote(environment: PluginEnvironment): Int =
-    when (environment) {
-        PluginEnvironment.Production -> R.string.connection_environment_production_note
-        PluginEnvironment.Sandbox -> R.string.connection_environment_sandbox_note
     }
 
 /**
@@ -304,8 +293,7 @@ private fun supportText(support: ServerSupport): String =
             is ServerSupport.PluginMissing -> R.string.connection_status_unsupported_plugin
             is ServerSupport.PluginIncompatible -> R.string.connection_status_unsupported_version
             is ServerSupport.ProtocolUnsupported -> R.string.connection_status_unsupported_protocol
-            is ServerSupport.EnvironmentUnsupported ->
-                R.string.connection_status_unsupported_environment
+            is ServerSupport.OtherGateway -> R.string.connection_status_other_gateway
             is ServerSupport.ManifestRefused -> R.string.connection_status_manifest_refused
             // Not reached: these are the executable states, and this is only asked about the
             // others. Named rather than left to an else, so a state added later is decided here.
@@ -366,6 +354,8 @@ fun feedReferenceProblemText(problem: FeedReferenceProblem): String =
             FeedReferenceProblem.BadServerId -> R.string.feed_reference_bad_server_id
             FeedReferenceProblem.BadAccess -> R.string.feed_reference_bad_access
             FeedReferenceProblem.BadInvitation -> R.string.feed_reference_bad_invitation
+            FeedReferenceProblem.ForeignGateway -> R.string.feed_reference_foreign_gateway
+            FeedReferenceProblem.NoGateway -> R.string.feed_reference_no_gateway
         }
     )
 

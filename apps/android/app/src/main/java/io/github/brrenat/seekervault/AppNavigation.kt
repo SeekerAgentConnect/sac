@@ -125,6 +125,12 @@ sealed interface AppSheet {
         }
     }
 
+    /**
+     * Choosing the wallet one feed signal's operation uses on [network] (SEE-185), over its review.
+     * Remembered for the feed and the network; it never changes the feed's access.
+     */
+    data class OperationWallet(val identity: ReviewIdentity, val network: WalletNetwork) : AppSheet
+
     /** Adding a wallet from the Wallet tab or from a connection's wallet picker (SEE-178). */
     data class AddWallet(val presetNetwork: WalletNetwork? = null) : AppSheet
 
@@ -147,9 +153,6 @@ sealed interface AppSheet {
     }
 
     data object GlobalRules : AppSheet
-
-    /** Where this phone asks each Solana network (SEE-184), over the Wallet tab. */
-    data object RpcSettings : AppSheet
 
     /** [assetId] is null for Add and identifies an existing draft row for Edit. */
     data class AssetEditor(
@@ -243,6 +246,9 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
 
     fun openAddWallet(network: WalletNetwork? = null): Boolean = push(AppSheet.AddWallet(network))
 
+    fun openOperationWallet(identity: ReviewIdentity, network: WalletNetwork): Boolean =
+        push(AppSheet.OperationWallet(identity, network))
+
     fun openConnectionRules(connectionId: String): Boolean =
         push(AppSheet.ConnectionRules(connectionId))
 
@@ -253,8 +259,6 @@ class AppNavigator(initialState: NavigationState = NavigationState()) {
     fun openOwnerInput(identity: ReviewIdentity): Boolean = push(AppSheet.OwnerInput(identity))
 
     fun openGlobalRules(): Boolean = push(AppSheet.GlobalRules)
-
-    fun openRpcSettings(): Boolean = push(AppSheet.RpcSettings)
 
     fun openAssetEditor(
         connectionId: String,
@@ -336,11 +340,14 @@ private fun NavigationState.canPush(sheet: AppSheet): Boolean =
         is AppSheet.ConnectionWallet ->
             sheets.size == 1 &&
                 (sheets.single() as? AppSheet.ConnectionDetail)?.connectionId == sheet.connectionId
+        is AppSheet.OperationWallet ->
+            sheets.size == 1 &&
+                (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity
         is AppSheet.AddWallet ->
             (sheets.isEmpty() && screen == AppScreen.Wallet) ||
-                (sheets.size == 2 && sheets.last() is AppSheet.ConnectionWallet)
+                (sheets.size == 2 && sheets.last() is AppSheet.ConnectionWallet) ||
+                (sheets.size == 2 && sheets.last() is AppSheet.OperationWallet)
         is AppSheet.CatalogDetail -> sheets.isEmpty() && screen == AppScreen.Discover
-        AppSheet.RpcSettings -> sheets.isEmpty() && screen == AppScreen.Wallet
         is AppSheet.OwnerInput ->
             sheets.size == 1 &&
                 (sheets.single() as? AppSheet.RequestReview)?.identity == sheet.identity
@@ -394,6 +401,11 @@ internal fun encodeNavigationState(state: NavigationState): List<String> = build
                 addIdentity(sheet.identity)
                 add(sheet.kind.name)
             }
+            is AppSheet.OperationWallet -> {
+                add(SHEET_OPERATION_WALLET)
+                addIdentity(sheet.identity)
+                add(sheet.network.name)
+            }
             is AppSheet.OwnerInput -> {
                 add(SHEET_OWNER_INPUT)
                 addIdentity(sheet.identity)
@@ -425,7 +437,6 @@ internal fun encodeNavigationState(state: NavigationState): List<String> = build
                 add(sheet.connectionId)
             }
             AppSheet.GlobalRules -> add(SHEET_GLOBAL_RULES)
-            AppSheet.RpcSettings -> add(SHEET_RPC)
             is AppSheet.AssetEditor -> {
                 add(SHEET_ASSET)
                 add(sheet.connectionId)
@@ -461,6 +472,8 @@ internal fun decodeNavigationState(saved: List<String>): NavigationState? = runC
                         kind = enumValueOf(cursor.next()),
                     )
                 SHEET_OWNER_INPUT -> AppSheet.OwnerInput(cursor.nextIdentity())
+                SHEET_OPERATION_WALLET ->
+                    AppSheet.OperationWallet(cursor.nextIdentity(), enumValueOf(cursor.next()))
                 SHEET_POSITION_SALE -> AppSheet.PositionSale(cursor.nextIdentity())
                 SHEET_DETAIL -> AppSheet.ConnectionDetail(cursor.next())
                 SHEET_CONNECTION_WALLET -> AppSheet.ConnectionWallet(cursor.next())
@@ -475,7 +488,6 @@ internal fun decodeNavigationState(saved: List<String>): NavigationState? = runC
                 SHEET_CATALOG -> AppSheet.CatalogDetail(cursor.next(), cursor.next())
                 SHEET_RULES -> AppSheet.ConnectionRules(cursor.next())
                 SHEET_GLOBAL_RULES -> AppSheet.GlobalRules
-                SHEET_RPC -> AppSheet.RpcSettings
                 SHEET_ASSET -> {
                     val connectionId = cursor.next()
                     val kind = enumValueOf<AssetEditorKind>(cursor.next())
@@ -566,6 +578,7 @@ private const val SCREEN_HISTORY_DETAIL = "history_detail"
 private const val SHEET_REVIEW = "review"
 private const val SHEET_HANDOFF = "wallet_handoff"
 private const val SHEET_OWNER_INPUT = "owner_input"
+private const val SHEET_OPERATION_WALLET = "operation_wallet"
 private const val SHEET_POSITION_SALE = "position_sale"
 private const val SHEET_DETAIL = "connection_detail"
 private const val SHEET_CONNECTION_WALLET = "connection_wallet"
@@ -573,7 +586,6 @@ private const val SHEET_ADD_WALLET = "add_wallet"
 private const val SHEET_CATALOG = "catalog_detail"
 private const val SHEET_RULES = "connection_rules"
 private const val SHEET_GLOBAL_RULES = "global_rules"
-private const val SHEET_RPC = "rpc_settings"
 private const val SHEET_ASSET = "asset_editor"
 private const val SHEET_ADDRESS = "address_editor"
 private const val IDENTITY_PRIVATE = "private"
