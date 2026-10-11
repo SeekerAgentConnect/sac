@@ -131,7 +131,12 @@ openDirectServer({
 `parseSupportedNetworks` accepts `mainnet`, `devnet` and `testnet` (lowercase), or `none` alone,
 refuses unknown names, duplicates and empty entries, and returns canonical order. `openDirectServer` refuses an
 invalid list before opening anything. Changing the list moves the manifest's settings revision; an
-unchanged list, in any order, keeps it. Network is not environment: `production` is not Mainnet.
+unchanged list, in any order, keeps it.
+
+The manifest declares no sandbox or production environment (SEE-185): a direct server is always
+real execution, and previewing a request without executing it is a choice made on the phone. The
+first start after upgrading to an SDK without the retired `environments` field moves the settings
+revision once, because the published manifest changed.
 
 ## Persistence and shutdown
 

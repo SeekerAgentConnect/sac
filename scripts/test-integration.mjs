@@ -12,7 +12,7 @@
 // runs the phone's own cross-component cases.
 //
 // Three things it deliberately does not do: reach a network, need a credential, or spend anything.
-// Both publisher deployments run as sandbox, the provider is this repository's committed captures
+// Nothing in the run executes a signal, the provider is this repository's committed captures
 // served back on loopback, and the wallet is a throwaway key pair.
 //
 // Every leg is reported at the end as PASS, FAIL or NOT RUN, with the reason. A leg that could not
