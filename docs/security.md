@@ -848,7 +848,11 @@ served the table. This app does not call that trustless and does not call it off
   a proposal, or a provider's answer can set it, because an endpoint chosen by the thing being
   reviewed is not a second opinion;
 - it is **empty by default**, so a checkout reaches no cluster and a build that wants prediction
-  orders configures one deliberately (`-Pseekervault.solanaRpc=…`);
+  orders configures one deliberately (`-Pseekervault.solanaRpc.mainnet=…`), or the owner sets one
+  on the phone (SEE-184, [solana-rpc.md](wiki/solana-rpc.md));
+- it is **proven before it is believed**: its genesis hash must name the network the operation was
+  bound to, an endpoint for another cluster is refused, and no read ever falls back to another
+  network's endpoint;
 - the component has **one method** and it is a read: no send, no simulate, no subscribe, no
   signature lookup, no balance query — not because those are unreachable over the same wire, but
   because a component with one method cannot grow a second use by accident, and a boundary test

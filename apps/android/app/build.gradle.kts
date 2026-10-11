@@ -34,8 +34,10 @@ if (firebaseConfigured) {
     apply(plugin = "com.google.gms.google-services")
 }
 
-// The Solana endpoint the app reads accounts from, which one plugin needs and nothing else does
-// (SEE-94, docs/wiki/jupiter-prediction.md#why-the-phone-reads-the-chain). It is **empty by
+// The build's general Solana endpoint (SEE-94). Since SEE-184 it is the *legacy* fallback: a
+// network with neither an owner's setting on the phone nor its own endpoint below is asked here,
+// and only once the endpoint's genesis hash proves it serves that network — never for every network
+// at once (docs/wiki/solana-rpc.md). It is **empty by
 // default**, on purpose and in two senses: a checkout reaches no cluster, so no check here ever
 // quietly depends on somebody else's public endpoint; and it is the application's own setting,
 // never a publisher's, so nothing a server sends can point the phone at an endpoint of the server's
@@ -47,12 +49,14 @@ if (firebaseConfigured) {
 //   apps/android/gradlew -p apps/android :app:assembleDebug -Pseekervault.solanaRpc=https://…
 val solanaRpc = (providers.gradleProperty("seekervault.solanaRpc").orNull ?: "").trim()
 
-// Per-cluster endpoints the phone checks its own sent transactions against (SEE-165,
-// docs/wiki/chain-confirmation.md#endpoints). Each is **empty by default** for the reasons above.
-// A record is only ever checked on the cluster it was bound to, so a transaction sent on devnet is
-// asked about at the devnet endpoint (or at `seekervault.solanaRpc` once its genesis hash proves it
-// serves devnet) and nowhere else. A debug build may point one at a local test validator, whose
-// genesis hash no cluster has; a release build may not.
+// Per-network endpoints (SEE-165, SEE-184, docs/wiki/solana-rpc.md): each network's account reads
+// (lookup tables, swap fee accounts, staking positions) and its confirmation reads all go here.
+// They are the **initial defaults** only: the owner can replace any of them on the phone (Wallet →
+// Solana RPC) without a rebuild, and reset back to them. Each is **empty by default** for the
+// reasons above. An operation is only ever read on the network it was bound to, so a devnet
+// transaction is asked about at the devnet endpoint (or at `seekervault.solanaRpc` once its genesis
+// hash proves it serves devnet) and nowhere else. A debug build may point devnet or testnet at a
+// local test validator, whose genesis hash no cluster has; a release build may not.
 //
 //   apps/android/gradlew -p apps/android :app:assembleDebug \
 //     -Pseekervault.solanaRpc.devnet=https://…
@@ -171,10 +175,14 @@ if (swapFeeBps > 0) {
         swapFeeProblem("a nonzero rate needs at least one seekervault.swapFee.accounts entry")
     }
     // The phone reads each account from the chain before it charges anything to it, through the
-    // app's own endpoint. Without one it would never charge, so a fee build without it is a
-    // mistake worth stopping here.
-    if (solanaRpc.isEmpty()) {
-        swapFeeProblem("a nonzero rate needs seekervault.solanaRpc to verify the fee accounts")
+    // app's own mainnet endpoint. Without one it would never charge, so a fee build without it is a
+    // mistake worth stopping here. A mainnet endpoint is enough on its own (SEE-184); the general
+    // one still counts for a build configured the old way.
+    if (clusterRpc("mainnet").isEmpty() && solanaRpc.isEmpty()) {
+        swapFeeProblem(
+            "a nonzero rate needs seekervault.solanaRpc.mainnet (or seekervault.solanaRpc) " +
+                "to verify the fee accounts"
+        )
     }
 }
 

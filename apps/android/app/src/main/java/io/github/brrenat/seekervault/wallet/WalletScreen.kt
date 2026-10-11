@@ -40,6 +40,9 @@ import io.github.brrenat.seekervault.designsystem.ScreenDestination
 import io.github.brrenat.seekervault.designsystem.ScreenNavigationCallbacks
 import io.github.brrenat.seekervault.designsystem.ScreenScaffold
 import io.github.brrenat.seekervault.designsystem.ScreenScrollBody
+import io.github.brrenat.seekervault.designsystem.SeekerButton
+import io.github.brrenat.seekervault.designsystem.SeekerButtonSize
+import io.github.brrenat.seekervault.designsystem.SeekerButtonVariant
 import io.github.brrenat.seekervault.designsystem.WalletAppRowModel
 import io.github.brrenat.seekervault.designsystem.WalletProfileCard
 import io.github.brrenat.seekervault.designsystem.WalletProfileCardModel
@@ -140,6 +143,8 @@ data class WalletScreenCallbacks(
     val onRemove: (String) -> Unit = {},
     val onConfirmRemove: () -> Unit = {},
     val onCancelRemove: () -> Unit = {},
+    /** Opens where each Solana network is asked (SEE-184). */
+    val onSolanaRpc: () -> Unit = {},
 )
 
 /** Keeps wallet state collection and actions outside the display-only screen. */
@@ -150,6 +155,7 @@ fun WalletRoute(
     onBack: () -> Unit,
     navigationCallbacks: ScreenNavigationCallbacks,
     modifier: Modifier = Modifier,
+    onSolanaRpc: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var expandedProfileId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -185,6 +191,7 @@ fun WalletRoute(
                 onRemove = viewModel::askToRemove,
                 onConfirmRemove = viewModel::confirmRemove,
                 onCancelRemove = viewModel::cancelRemove,
+                onSolanaRpc = onSolanaRpc,
             ),
         modifier = modifier,
     )
@@ -291,6 +298,13 @@ fun WalletScreen(
                     label = stringResource(R.string.wallet_profiles_add),
                     onClick = callbacks.onAddWallet,
                     modifier = Modifier.testTag(WalletTags.ADD),
+                )
+                SeekerButton(
+                    label = stringResource(R.string.rpc_open),
+                    onClick = callbacks.onSolanaRpc,
+                    variant = SeekerButtonVariant.Neutral,
+                    size = SeekerButtonSize.Lg,
+                    modifier = Modifier.fillMaxWidth().testTag(WalletTags.RPC_SETTINGS),
                 )
                 Spacer(Modifier.height(SeekerTheme.spacing.xs))
                 state.explanation?.let { explanation -> ScreenCaption(text = explanation) }

@@ -295,6 +295,34 @@ class ConfirmationTracker(
             waiting.isNotEmpty()
         }
 
+    /**
+     * The owner changed where [network] is asked (SEE-184). A record of that network whose last
+     * check stopped at the endpoint — none set, another cluster, unreachable, refused, unusable,
+     * rate limited — is due now, through the endpoint as it is now. Records of every other network
+     * are left exactly as they were, and no record is ever moved to another network: the cluster a
+     * record was bound to when its transaction was sent is the only one it is asked about. Returns
+     * whether anything became due.
+     */
+    fun endpointChanged(network: Network): Boolean {
+        val due =
+            synchronized(lock) {
+                val at = now()
+                val waiting =
+                    store.list().filter { tracking ->
+                        tracking.network == network &&
+                            tracking.signature != null &&
+                            tracking.check.state == ChainState.Checking &&
+                            tracking.check.reason in ENDPOINT_REASONS &&
+                            tracking.check.nextCheckAt?.let { it <= at } != true
+                    }
+                waiting.forEach { store.put(it.copy(check = it.check.copy(nextCheckAt = at))) }
+                if (waiting.isNotEmpty()) publishAll()
+                waiting.isNotEmpty()
+            }
+        if (due) onDue()
+        return due
+    }
+
     /** When the next automatic check is due, or null when nothing is waiting. */
     fun nextDue(): Instant? =
         synchronized(lock) {
@@ -683,14 +711,24 @@ class ConfirmationTracker(
 
         private val UNSETTLED = setOf(ActivityOutcome.Sent, ActivityOutcome.Unknown)
 
+        /** Why a check stopped at the endpoint rather than at anything about the transaction. */
+        private val ENDPOINT_REASONS =
+            setOf(
+                ChainReason.NoEndpoint,
+                ChainReason.WrongCluster,
+                ChainReason.Unreachable,
+                ChainReason.RateLimited,
+                ChainReason.Refused,
+                ChainReason.Unusable,
+            )
+
         fun reasonOf(e: SolanaException): ChainReason =
             when (e.problem) {
                 SolanaProblem.NoEndpoint -> ChainReason.NoEndpoint
                 SolanaProblem.Unreachable -> ChainReason.Unreachable
                 SolanaProblem.RateLimited -> ChainReason.RateLimited
-                SolanaProblem.Refused ->
-                    if (e.detail == ChainEndpoints.WRONG_CLUSTER) ChainReason.WrongCluster
-                    else ChainReason.Refused
+                SolanaProblem.WrongNetwork -> ChainReason.WrongCluster
+                SolanaProblem.Refused -> ChainReason.Refused
                 SolanaProblem.Unusable -> ChainReason.Unusable
             }
 

@@ -104,6 +104,8 @@ import io.github.brrenat.seekervault.policy.PolicyEditorViewModel
 import io.github.brrenat.seekervault.policy.PolicyLibrarySheetScreen
 import io.github.brrenat.seekervault.positions.PositionsState
 import io.github.brrenat.seekervault.positions.PositionsViewModel
+import io.github.brrenat.seekervault.rpc.RpcSettingsRoute
+import io.github.brrenat.seekervault.rpc.RpcSettingsViewModel
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedAccess
 import io.github.brrenat.seekervault.servers.FeedReferences
@@ -156,6 +158,8 @@ fun SeekerVaultApp(
     discover: DiscoverViewModel? = null,
     /** The gateway origin [discover] reads from, for what the tab says when it can't reach it. */
     discoveryUrl: String = "",
+    /** Where each Solana network is asked (SEE-184). Without one the sheet doesn't open. */
+    rpcSettings: RpcSettingsViewModel? = null,
 ) {
     val navigator =
         rememberAppNavigator(
@@ -477,6 +481,7 @@ fun SeekerVaultApp(
                     WalletRoute(
                         viewModel = wallet,
                         onAddWallet = { navigator.openAddWallet() },
+                        onSolanaRpc = { if (rpcSettings != null) navigator.openRpcSettings() },
                         onBack = { selectTabAfterSheets(AppScreen.Home) },
                         navigationCallbacks = screenNavigationCallbacks,
                         modifier = rootModifier,
@@ -626,6 +631,13 @@ fun SeekerVaultApp(
                         aboveKeyboard = sheetRoute is AppSheet.OwnerInput,
                     ) {
                         when (val activeRoute = sheetRoute) {
+                            AppSheet.RpcSettings -> {
+                                if (rpcSettings == null) {
+                                    LaunchedEffect(activeRoute) { if (active) pop() }
+                                } else {
+                                    RpcSettingsRoute(viewModel = rpcSettings, onClose = pop)
+                                }
+                            }
                             is AppSheet.CatalogDetail -> {
                                 val discoverState =
                                     discover?.state?.collectAsStateWithLifecycle()?.value

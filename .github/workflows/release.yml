@@ -312,6 +312,8 @@ jobs:
     # this job never sees it. docs/development/releases.md § Android build configuration.
     env:
       SEEKERVAULT_GOOGLE_SERVICES_JSON: ${{ vars.SEEKERVAULT_GOOGLE_SERVICES_JSON }}
+      # Each network's initial endpoint; the owner can replace any on the phone (SEE-184). The
+      # general SEEKERVAULT_SOLANA_RPC is the legacy fallback and is not needed beside _MAINNET.
       SEEKERVAULT_SOLANA_RPC: ${{ vars.SEEKERVAULT_SOLANA_RPC }}
       SEEKERVAULT_SOLANA_RPC_MAINNET: ${{ vars.SEEKERVAULT_SOLANA_RPC_MAINNET }}
       SEEKERVAULT_SOLANA_RPC_DEVNET: ${{ vars.SEEKERVAULT_SOLANA_RPC_DEVNET }}

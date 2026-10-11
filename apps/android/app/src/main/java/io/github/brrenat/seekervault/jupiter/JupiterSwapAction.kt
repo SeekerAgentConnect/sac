@@ -15,7 +15,7 @@ import io.github.brrenat.seekervault.plugins.actions.SwapPayload
 import io.github.brrenat.seekervault.plugins.actions.message
 import io.github.brrenat.seekervault.plugins.actions.swapChoiceFrom
 import io.github.brrenat.seekervault.plugins.actions.swapInputs
-import io.github.brrenat.seekervault.solana.SolanaAccounts
+import io.github.brrenat.seekervault.solana.NetworkAccounts
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
@@ -63,8 +63,11 @@ internal class JupiterSwapAction(
     private val now: () -> Instant,
     /** The build's SAC service fee (SEE-173). Off unless the APK was built with one. */
     private val fee: SwapFeePolicy = SwapFeePolicy.Off,
-    /** Where a configured fee account is verified before it is used. The app's own endpoint. */
-    private val chain: SolanaAccounts? = null,
+    /**
+     * Where a configured fee account is verified before it is used: the application's own endpoint
+     * for the swap's network, the same one every other mainnet read uses (SEE-184).
+     */
+    private val chain: NetworkAccounts? = null,
 ) {
 
     // What was offered for the bytes that were built, keyed by those exact bytes. It is the only
@@ -96,8 +99,11 @@ internal class JupiterSwapAction(
         // The fee is decided before anything is quoted, from the build's policy and the chain,
         // and then bound to the bytes with the quote: nothing later can change it (SEE-173).
         val decided =
-            if (fee.enabled && chain != null) decideSwapFee(fee, payload.outputMint, chain)
-            else SwapFee.Disabled
+            if (fee.enabled && chain != null) {
+                decideSwapFee(fee, payload.outputMint, chain.on(wallet.network.network))
+            } else {
+                SwapFee.Disabled
+            }
         val charged = decided as? SwapFee.Charged
         val quote =
             try {

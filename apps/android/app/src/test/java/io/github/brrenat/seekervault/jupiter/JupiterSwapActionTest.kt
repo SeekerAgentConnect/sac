@@ -23,6 +23,7 @@ import io.github.brrenat.seekervault.plugins.actions.SwapPayloadResult
 import io.github.brrenat.seekervault.plugins.actions.SwapTermNames
 import io.github.brrenat.seekervault.plugins.actions.swapPayloadFrom
 import io.github.brrenat.seekervault.request.v1.Network
+import io.github.brrenat.seekervault.rpc.serving
 import io.github.brrenat.seekervault.solana.AccountSnapshot
 import io.github.brrenat.seekervault.solana.SolanaAccounts
 import io.github.brrenat.seekervault.transactions.Verdict
@@ -137,7 +138,7 @@ class JupiterSwapActionTest {
     }
 
     private fun plugin(provider: JupiterProvider, at: Instant = Instant.ofEpochSecond(1_000)) =
-        JupiterExecutionProvider(provider, FakePrediction(), OrderChain()) { at }
+        JupiterExecutionProvider(provider, FakePrediction(), OrderChain().serving()) { at }
 
     @Test
     fun itDeclaresWhoItIsWhatItServesAndWhereItServesIt() {
@@ -382,7 +383,7 @@ class JupiterSwapActionTest {
     }
 
     private fun feePlugin(provider: JupiterProvider, chain: SolanaAccounts) =
-        JupiterExecutionProvider(provider, FakePrediction(), chain, feePolicy) {
+        JupiterExecutionProvider(provider, FakePrediction(), chain.serving(), feePolicy) {
             Instant.ofEpochSecond(1_000)
         }
 
@@ -478,7 +479,7 @@ class JupiterSwapActionTest {
             JupiterExecutionProvider(
                 provider,
                 FakePrediction(),
-                chain,
+                chain.serving(),
                 SwapFeePolicy(20, FEE_OWNER, mapOf(JUP_MINT to FEE_ACCOUNT_USDC)),
             ) {
                 Instant.ofEpochSecond(1_000)

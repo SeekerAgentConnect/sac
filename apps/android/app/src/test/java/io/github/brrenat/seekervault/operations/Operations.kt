@@ -34,6 +34,7 @@ import io.github.brrenat.seekervault.proposal.v1.Proposal as WireProposal
 import io.github.brrenat.seekervault.proposals.PREDICTION
 import io.github.brrenat.seekervault.proposals.SWAP
 import io.github.brrenat.seekervault.proposals.wireProposal
+import io.github.brrenat.seekervault.rpc.serving
 import io.github.brrenat.seekervault.servers.ConnectionMode
 import io.github.brrenat.seekervault.servers.FeedReference
 import io.github.brrenat.seekervault.servers.GATEWAY
@@ -88,7 +89,7 @@ class Phone(
     val chain = OrderChain()
 
     /** The real bundled provider, with only the two APIs it reaches stood in for (SEE-145). */
-    val jupiter = JupiterExecutionProvider(provider, markets, chain, now = clock)
+    val jupiter = JupiterExecutionProvider(provider, markets, chain.serving(), now = clock)
     val plugins: ProviderRegistry =
         ProviderRegistry.of(*(listOf(jupiter) + alternates).toTypedArray())
 

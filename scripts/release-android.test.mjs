@@ -73,6 +73,45 @@ test("the full official configuration reaches Gradle", () => {
   assert.match(config.googleServices, /sac-example/);
 });
 
+test("a mainnet endpoint satisfies the release without a redundant general one", () => {
+  const config = androidReleaseConfig(
+    {
+      SEEKERVAULT_SOLANA_RPC_MAINNET: "https://mainnet.example.com",
+      REQUIRE: "solanaRpc",
+      RELEASE: "true",
+    },
+    APP,
+  );
+  assert.deepEqual(config.problems, []);
+  assert.deepEqual(config.gradleArgs, [
+    "-Pseekervault.solanaRpc.mainnet=https://mainnet.example.com",
+  ]);
+  assert.equal(config.features.solanaRpc, true);
+  assert.deepEqual(config.features.solanaRpcNetworks, ["mainnet"]);
+});
+
+test("a general-only build still satisfies the release; devnet alone does not", () => {
+  const general = androidReleaseConfig(
+    {
+      SEEKERVAULT_SOLANA_RPC: "https://rpc.example.com",
+      REQUIRE: "solanaRpc",
+      RELEASE: "true",
+    },
+    APP,
+  );
+  assert.deepEqual(general.problems, []);
+  assert.equal(general.features.solanaRpc, true);
+  const devnet = androidReleaseConfig(
+    {
+      SEEKERVAULT_SOLANA_RPC_DEVNET: "https://devnet.example.com",
+      REQUIRE: "solanaRpc",
+      RELEASE: "true",
+    },
+    APP,
+  );
+  assert.match(devnet.problems.join(), /requires solanaRpc/);
+});
+
 test("an explicit discovery origin is passed on its own", () => {
   const config = androidReleaseConfig(
     { SEEKERVAULT_DISCOVERY_URL: "https://catalog.example.com" },
