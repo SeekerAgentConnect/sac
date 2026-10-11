@@ -139,9 +139,9 @@ type StoredClientConfig struct {
 	UpdatedAt time.Time
 }
 
-// ErrInvalidClientConfig is a configuration the rules refuse (rules.ClientConfig), reaching the
-// store anyway. The operator's surfaces check first and say why; the store checks again so that no
-// path can save one, and saves nothing.
+// ErrInvalidClientConfig is a configuration the rules refuse (rules.ClientConfig). The store is
+// where the whole configuration is checked, after a change is applied to what is held, so no path
+// can save one; it wraps the rules.ConfigProblem the operator's surfaces show, and saves nothing.
 var ErrInvalidClientConfig = errors.New("not a valid client configuration")
 
 // --- the Discover catalog (SEE-176) --------------------------------------------
@@ -378,6 +378,15 @@ type PublisherAdminStore interface {
 	// writes nothing — the revision does not move for a retry or an unchanged form — and any other
 	// is stored at the held revision plus exactly one, answered with true.
 	SaveClientConfig(context.Context, *gatewayv1.ClientConfig, time.Time) (*StoredClientConfig, bool, error)
+	// UpdateClientConfig is the operator changing part of the client configuration — the
+	// endpoints, one network's endpoint, or the fee — which is what the admin page and
+	// feed-gatewayctl do. The change is applied to what is held inside the same transaction that
+	// checks and writes the result, so two changes to different halves saved at once each keep the
+	// other's, instead of the later one writing back a stale copy of the half it did not touch. It
+	// answers like SaveClientConfig, and an invalid result is ErrInvalidClientConfig wrapping the
+	// rules.ConfigProblem it broke, with nothing written. The change may be called with a fresh
+	// copy more than once, so it must only set fields.
+	UpdateClientConfig(context.Context, func(*gatewayv1.ClientConfig), time.Time) (*StoredClientConfig, bool, error)
 	Forget(context.Context, string, string) error
 	Publishers(context.Context) ([]Publisher, error)
 	Publisher(context.Context, string) (*Publisher, error)

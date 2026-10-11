@@ -2,27 +2,28 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 )
 
 // The gateway-wide client configuration (SEE-185): the Solana RPC endpoint each network is read
 // through, and the SAC swap service fee, for every app whose build names this gateway.
 //
-// It is feed-gatewayctl client-config on this page. Both read the configuration, change one half of
-// it, and save the whole through storage.PublisherAdminStore.SaveClientConfig, which validates it
-// with rules.ClientConfig — so the page and the CLI accept and refuse exactly the same things, and
-// a refusal saves nothing at all. Saving what is already held is answered as unchanged and does not
-// move the revision.
+// It is feed-gatewayctl client-config on this page. Both change one half of the configuration
+// through storage.PublisherAdminStore.UpdateClientConfig, which applies the change to what is held
+// and validates the whole with rules.ClientConfig inside one transaction — so the page and the CLI
+// accept and refuse exactly the same things, a refusal saves nothing at all, and an endpoint saved
+// while the fee is being saved (or the other way round) is never written back over with a stale
+// copy. Saving what is already held is answered as unchanged and does not move the revision.
 //
 // Nothing here is a secret, and the page says so where the values are typed: every client may read
 // all of it. An endpoint that needs a credential is not configured here; an operator puts a proxy of
@@ -109,9 +110,8 @@ func (s *Server) saveRPC(writer http.ResponseWriter, request *http.Request, at *
 		serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET:  strings.TrimSpace(request.PostFormValue("devnet")),
 		serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET: strings.TrimSpace(request.PostFormValue("testnet")),
 	}
-	s.saveClientConfig(writer, request, at, "rpc", func(config *gatewayv1.ClientConfig) string {
+	s.saveClientConfig(writer, request, at, "rpc", "", func(config *gatewayv1.ClientConfig) {
 		config.RpcEndpoints = RPCEndpoints(typed)
-		return ""
 	}, func(view *ClientConfigView) {
 		view.Mainnet = typed[serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET]
 		view.Devnet = typed[serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET]
@@ -125,39 +125,41 @@ func (s *Server) saveFee(writer http.ResponseWriter, request *http.Request, at *
 	network := strings.TrimSpace(request.PostFormValue("network"))
 	owner := strings.TrimSpace(request.PostFormValue("owner"))
 	accounts := strings.TrimSpace(strings.ReplaceAll(request.PostFormValue("accounts"), "\r\n", "\n"))
-	s.saveClientConfig(writer, request, at, "fee", func(config *gatewayv1.ClientConfig) string {
-		fee, err := SwapFee(bps, network, owner, strings.Split(accounts, "\n"))
-		if err != nil {
-			return sentence(err.Error())
-		}
+	fee, err := SwapFee(bps, network, owner, strings.Split(accounts, "\n"))
+	problem := ""
+	if err != nil {
+		problem = sentence(err.Error())
+	}
+	s.saveClientConfig(writer, request, at, "fee", problem, func(config *gatewayv1.ClientConfig) {
 		config.SwapFee = fee
-		return ""
 	}, func(view *ClientConfigView) {
 		view.Bps, view.Network, view.Owner, view.Accounts = bps, network, owner, accounts
 	})
 }
 
-// saveClientConfig is the half both forms share: read what is held, change one half, check the
-// whole with the rules, and save it. A refusal re-renders the page with what was typed and the
-// rule it broke, and writes nothing.
+// saveClientConfig is the half both forms share: change one half of what is held, and let the
+// store check the whole with the rules and save it, in one transaction. A problem with what was
+// typed — found reading the form, or by the rules — re-renders the page with what was typed and
+// the rule it broke, and writes nothing.
 func (s *Server) saveClientConfig(
 	writer http.ResponseWriter,
 	request *http.Request,
 	at *visit,
 	half string,
-	change func(*gatewayv1.ClientConfig) string,
+	problem string,
+	change func(*gatewayv1.ClientConfig),
 	typed func(*ClientConfigView),
 ) {
 	ctx := request.Context()
-	held, err := s.options.Store.ClientConfig(ctx)
-	if err != nil {
-		s.failed(writer, "read client configuration", err)
-		return
-	}
-	next := proto.CloneOf(held.Document)
-	problem := change(next)
+	var (
+		saved   *storage.StoredClientConfig
+		changed bool
+		err     error
+	)
 	if problem == "" {
-		if _, refused := rules.ClientConfig(next); refused != nil {
+		saved, changed, err = s.options.Store.UpdateClientConfig(ctx, change, s.options.Now())
+		var refused *rules.ConfigProblem
+		if errors.As(err, &refused) {
 			problem = ConfigProblem(refused)
 		}
 	}
@@ -173,10 +175,6 @@ func (s *Server) saveClientConfig(
 		s.pages.render(writer, http.StatusBadRequest, "clientconfig", view)
 		return
 	}
-	saved, changed, err := s.options.Store.SaveClientConfig(ctx, next, s.options.Now())
-	// The store checks again with the same rules, so a refusal from it here would be the two
-	// disagreeing — a programming error, reported as a failure rather than as the operator's
-	// mistake, and with nothing saved either way.
 	if err != nil {
 		s.record("client-config", half, "failed")
 		s.failed(writer, "save client configuration", err)

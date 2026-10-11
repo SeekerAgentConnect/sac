@@ -6,7 +6,10 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/admin"
+	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 )
@@ -126,6 +129,69 @@ func TestTheOperatorSetsEndpointsAndAFeeThroughThePage(t *testing.T) {
 	_ = response.Body.Close()
 	if !strings.Contains(body, "20 bps (0.20%)") || !strings.Contains(body, usdc+"="+usdcAccount) {
 		t.Fatalf("the page does not show the fee:\n%s", body)
+	}
+}
+
+// interleaved is a store on which another operator's fee is saved while the page is handling a
+// form: after the page's first read of the client configuration, or before its write if it reads
+// nothing first. That is the overlap in which a page that saved a copy it had read would write the
+// old fee back over the new one.
+type interleaved struct {
+	admin.Store
+	competing func()
+}
+
+func (s *interleaved) compete() {
+	if s.competing != nil {
+		competing := s.competing
+		s.competing = nil
+		competing()
+	}
+}
+
+func (s *interleaved) ClientConfig(ctx context.Context) (*storage.StoredClientConfig, error) {
+	held, err := s.Store.ClientConfig(ctx)
+	s.compete()
+	return held, err
+}
+
+func (s *interleaved) UpdateClientConfig(
+	ctx context.Context,
+	change func(*gatewayv1.ClientConfig),
+	at time.Time,
+) (*storage.StoredClientConfig, bool, error) {
+	s.compete()
+	return s.Store.UpdateClientConfig(ctx, change, at)
+}
+
+// Saving the endpoints while someone else saves the fee keeps both: the endpoint form changes the
+// endpoints of what is held when it is written, not of a copy read before the fee was saved.
+func TestSavingEndpointsKeepsAFeeSavedMeanwhile(t *testing.T) {
+	var store *interleaved
+	one := newFixtureOver(t, openLimiter{}, func(documents admin.Store) admin.Store {
+		store = &interleaved{Store: documents}
+		return store
+	})
+	one.logIn()
+	page := at + "/client-config"
+
+	rpc := url.Values{"csrf": {one.token(page)}, "mainnet": {"https://rpc.example.com"}}
+	store.competing = func() {
+		if _, _, err := one.documents.UpdateClientConfig(context.Background(), func(config *gatewayv1.ClientConfig) {
+			config.SwapFee = &gatewayv1.SwapFee{Bps: 20, Network: serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
+				Owner: feeOwner, Accounts: []*gatewayv1.SwapFeeAccount{{Mint: usdc, TokenAccount: usdcAccount}}}
+		}, time.Now()); err != nil {
+			t.Error(err)
+		}
+	}
+	response := one.post(page+"/rpc", rpc)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		t.Fatalf("saving endpoints answered %s", response.Status)
+	}
+	held := heldConfig(t, one).Document
+	if held.GetSwapFee().GetBps() != 20 || len(held.GetRpcEndpoints()) != 1 || held.GetRevision() != 2 {
+		t.Fatalf("one of the two saves was lost: %v", held)
 	}
 }
 

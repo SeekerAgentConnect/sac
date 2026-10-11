@@ -162,10 +162,10 @@ command prints that every stream name issued under the old policy is retired and
 should publish its manifest again, because the manifest must state the policy this registration
 holds.
 
-**`client-config` is the operator's, and public.** Each change reads what is held, replaces one half
-of it (one network's endpoint, or the whole fee), and saves the whole through
-`PublisherAdminStore.SaveClientConfig`, which validates it with `rules.ClientConfig` — the same path
-the admin page takes. A refusal names the rule and saves nothing; saving what is already held is
+**`client-config` is the operator's, and public.** Each change replaces one half of what is held
+(one network's endpoint, or the whole fee) through `PublisherAdminStore.UpdateClientConfig`, which
+applies it and validates the whole with `rules.ClientConfig` inside the store's write transaction —
+the same path the admin page takes, so a change saved from the page at the same moment is kept. A refusal names the rule and saves nothing; saving what is already held is
 reported as unchanged, at the same revision. Never put a secret in it: every app may read all of it,
 so an RPC provider that needs a key goes behind a proxy of your own. The rules and what the app does
 with it are in [`docs/wiki/client-config.md`](../wiki/client-config.md); the fee procedure is
@@ -323,9 +323,9 @@ hosted invitation route is absent from both surviving listeners.
 | `internal/gateway/publish_test.go` | Two publishers that cannot reach each other, credentials and rotation, refusing a redirection, retries and conflicts, withdrawal, the channel bound, rate limits, a restart that still owes a fan-out, and a publisher adding a Solana network at a higher revision while a malformed list is `bad_network` and a reordered one is a retry (SEE-174); a signal on a network its manifest does not declare (`other_network`), the protocol-1 views never offering a network-declaring signal, and a protocol-1 row migrating forward without a conflict (SEE-185) |
 | `internal/rules/request_test.go` | The common envelope's rules, including that a signal names its own known network (`bad_network` otherwise) and that it must be one the manifest declares (SEE-185) |
 | `internal/rules/clientconfig_test.go` | The client configuration (SEE-185): addresses are base58 32-byte keys, the canonical form, an empty configuration is no endpoints and no fee, an endpoint is public and usable, and a fee is refused whole rather than repaired |
-| `internal/storage/sqlite/clientconfig_test.go`, `internal/storage/postgres/clientconfig_test.go` | Revision 0 before anything is set, a revision that moves only when the configuration does, and nothing invalid ever saved; on SQLite also survival across a restart and the version-9 migration retiring stored manifest environments |
+| `internal/storage/sqlite/clientconfig_test.go`, `internal/storage/postgres/clientconfig_test.go` | Revision 0 before anything is set, a revision that moves only when the configuration does, nothing invalid ever saved, and overlapping endpoint and fee changes each kept; on SQLite also survival across a restart and the version-9 migration retiring stored manifest environments |
 | `internal/gateway/clientconfig_test.go` | Every app reads the operator's configuration anonymously on the read listener |
-| `internal/admin/clientconfig_test.go`, `cmd/feed-gatewayctl/clientconfig_test.go` | The page and the CLI: only the operator can change it, endpoints and a fee set through each, and an invalid configuration refused whole |
+| `internal/admin/clientconfig_test.go`, `cmd/feed-gatewayctl/clientconfig_test.go` | The page and the CLI: only the operator can change it, endpoints and a fee set through each, a fee saved while the endpoint form is being saved kept, and an invalid configuration refused whole |
 | `internal/gateway/publisher_storage_test.go` | A fully evaluated publication whose storage commit fails answers failure, wakes no fan-out, and leaves neither document nor notice visible |
 | `internal/gateway/http_publication_test.go` | A plain HTTP client, with no generated binding, publishes a manifest, creates and updates a feed item, withdraws it, and reads the authoritative result |
 | `internal/gateway/read_test.go` | A phone reading a feed with no credential, a walk that stays stable while the feed moves, the caching answers, what a reader cannot ask for, and expiry and retention |

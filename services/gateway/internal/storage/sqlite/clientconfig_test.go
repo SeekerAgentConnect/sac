@@ -12,6 +12,7 @@ import (
 
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
+	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/rules"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage"
 )
 
@@ -115,6 +116,71 @@ func TestAnInvalidConfigurationIsNeverSaved(t *testing.T) {
 	if held := readConfig(t, documents); held.Document.GetRevision() != 1 ||
 		held.Document.GetSwapFee().GetBps() != 20 {
 		t.Fatalf("a refused configuration changed what is held: %v", held.Document)
+	}
+}
+
+// Two operators changing different halves at once — the endpoints on the page, the fee from
+// feed-gatewayctl — each keep the other's change. The fee change is held open inside its
+// transaction while the endpoint change is already waiting to start, which is exactly when a save
+// built from a copy read before the wait would write the old fee back.
+func TestOverlappingChangesToTheTwoHalvesKeepBoth(t *testing.T) {
+	documents := openStore(t)
+	ctx := context.Background()
+	if _, _, err := documents.SaveClientConfig(ctx, clientConfig(20), published); err != nil {
+		t.Fatal(err)
+	}
+
+	inside, release := make(chan struct{}), make(chan struct{})
+	fee := make(chan error, 1)
+	go func() {
+		_, _, err := documents.UpdateClientConfig(ctx, func(config *gatewayv1.ClientConfig) {
+			config.GetSwapFee().Bps = 30
+			close(inside)
+			<-release
+		}, published)
+		fee <- err
+	}()
+	<-inside
+	endpoints := make(chan error, 1)
+	go func() {
+		_, _, err := documents.UpdateClientConfig(ctx, func(config *gatewayv1.ClientConfig) {
+			config.RpcEndpoints = append(config.RpcEndpoints, &gatewayv1.RpcEndpoint{
+				Network: serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET, Url: "https://api.devnet.solana.com",
+			})
+		}, published)
+		endpoints <- err
+	}()
+	time.Sleep(50 * time.Millisecond) // let the endpoint change reach the writer and wait there
+	close(release)
+	if err := <-fee; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-endpoints; err != nil {
+		t.Fatal(err)
+	}
+
+	held := readConfig(t, documents).Document
+	if held.GetRevision() != 3 || held.GetSwapFee().GetBps() != 30 || len(held.GetRpcEndpoints()) != 2 {
+		t.Fatalf("one of the overlapping changes was lost: %v", held)
+	}
+}
+
+// A change whose result breaks a rule is refused with the rule it broke, and saves nothing.
+func TestAChangeThatBreaksARuleSavesNothing(t *testing.T) {
+	documents := openStore(t)
+	ctx := context.Background()
+	if _, _, err := documents.SaveClientConfig(ctx, clientConfig(20), published); err != nil {
+		t.Fatal(err)
+	}
+	saved, changed, err := documents.UpdateClientConfig(ctx, func(config *gatewayv1.ClientConfig) {
+		config.GetSwapFee().Bps = 101
+	}, published)
+	var problem *rules.ConfigProblem
+	if !errors.Is(err, storage.ErrInvalidClientConfig) || !errors.As(err, &problem) || saved != nil || changed {
+		t.Fatalf("a rate above the bound answered %v changed=%v (%v)", saved, changed, err)
+	}
+	if held := readConfig(t, documents).Document; held.GetRevision() != 1 || held.GetSwapFee().GetBps() != 20 {
+		t.Fatalf("a refused change changed what is held: %v", held)
 	}
 }
 

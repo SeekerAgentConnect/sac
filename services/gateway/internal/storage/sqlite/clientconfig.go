@@ -43,18 +43,28 @@ func readClientConfig(ctx context.Context, from querier) (*storage.StoredClientC
 	return &storage.StoredClientConfig{Document: config, UpdatedAt: instant(updated)}, nil
 }
 
-// SaveClientConfig replaces the client configuration, or changes nothing when it is the one held
-// (storage.PublisherAdminStore). The read and the write are one transaction on the one writer, so
-// two operators saving at once cannot both move the revision from the same number.
+// SaveClientConfig replaces the whole client configuration with the one given
+// (storage.PublisherAdminStore): UpdateClientConfig with a change that discards what is held.
 func (s *Store) SaveClientConfig(
 	ctx context.Context,
 	given *gatewayv1.ClientConfig,
 	at time.Time,
 ) (*storage.StoredClientConfig, bool, error) {
-	content, problem := rules.ClientConfig(given)
-	if problem != nil {
-		return nil, false, fmt.Errorf("%w: %v", storage.ErrInvalidClientConfig, problem)
-	}
+	return s.UpdateClientConfig(ctx, func(config *gatewayv1.ClientConfig) {
+		proto.Reset(config)
+		proto.Merge(config, given)
+	}, at)
+}
+
+// UpdateClientConfig changes the client configuration held, or changes nothing when the change
+// leaves it as it is (storage.PublisherAdminStore). Reading what is held, changing it, checking it
+// and writing it are one transaction on the one writer, so two operators changing different halves at once
+// each keep the other's change, and cannot both move the revision from the same number.
+func (s *Store) UpdateClientConfig(
+	ctx context.Context,
+	change func(*gatewayv1.ClientConfig),
+	at time.Time,
+) (*storage.StoredClientConfig, bool, error) {
 	var (
 		saved   *storage.StoredClientConfig
 		changed bool
@@ -65,6 +75,12 @@ func (s *Store) SaveClientConfig(
 			return err
 		}
 		revision := held.Document.GetRevision()
+		next := proto.CloneOf(held.Document)
+		change(next)
+		content, problem := rules.ClientConfig(next)
+		if problem != nil {
+			return fmt.Errorf("%w: %w", storage.ErrInvalidClientConfig, problem)
+		}
 		current := proto.CloneOf(held.Document)
 		current.Revision = 0
 		if proto.Equal(current, content) {

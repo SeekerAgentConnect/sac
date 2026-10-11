@@ -75,7 +75,7 @@ type Store interface {
 	Manifest(context.Context, string) (*storage.StoredManifest, error)
 	Sequence(context.Context, string) (uint64, error)
 	// ClientConfig is the gateway-wide client configuration (SEE-185), which this surface shows and
-	// replaces through PublisherAdminStore.SaveClientConfig.
+	// changes through PublisherAdminStore.UpdateClientConfig.
 	ClientConfig(context.Context) (*storage.StoredClientConfig, error)
 	// RelayStatus is the aggregate a relay server's page shows. It is counts and instants by
 	// construction: there is no query behind it that could return a device target, a push handle

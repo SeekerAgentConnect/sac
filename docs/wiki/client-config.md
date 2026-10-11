@@ -59,10 +59,12 @@ records nothing, so it says something about the deployment and never about the c
 
 ## Configuring it
 
-The operator sets it on the gateway's admin page or with `feed-gatewayctl`. Both read the held
-configuration, replace one half of it, and save the whole through the same store method
-(`SaveClientConfig`), which validates it with `rules.ClientConfig`. The two surfaces accept and
-refuse exactly the same things.
+The operator sets it on the gateway's admin page or with `feed-gatewayctl`. Both replace one half
+of it — the endpoints, one network's endpoint, or the fee — through the same store method
+(`UpdateClientConfig`). The store applies the change to the configuration it holds and validates the
+whole with `rules.ClientConfig` inside one write transaction, so the two surfaces accept and refuse
+exactly the same things, and an endpoint change and a fee change saved at the same moment (two
+browser tabs, the page and the CLI, two gateway replicas) each keep the other's change.
 
 **Admin page.** `<admin path>/client-config` (`/admin/client-config` by default), **Client
 configuration** in the sidebar. It shows the revision being served and the current fee in one
@@ -202,7 +204,8 @@ Gateway (`services/gateway`):
 
 - `internal/rules/clientconfig.go`: `ClientConfig` (validation and canonical form), `NetworkName`,
   `NetworkNamed`, `IsAddress`.
-- `internal/storage/storage.go`: `StoredClientConfig`, `ClientConfig`, `SaveClientConfig`.
+- `internal/storage/storage.go`: `StoredClientConfig`, `ClientConfig`, `SaveClientConfig`,
+  `UpdateClientConfig`.
 - `internal/storage/sqlite/clientconfig.go`, `internal/storage/postgres/clientconfig.go`: the
   single-row table and its revision.
 - `internal/gateway/feed.go`: `Feed.GetClientConfig`.

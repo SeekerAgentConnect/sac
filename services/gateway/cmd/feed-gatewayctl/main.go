@@ -58,7 +58,6 @@ import (
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/postgres"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/storage/sqlite"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 )
 
 // operates is what this tool needs of a store: the operator's own surface, and the close. It is
@@ -568,10 +567,11 @@ type clientConfigFlags struct {
 }
 
 // clientConfig is `client-config`: the admin page's client configuration (SEE-185) for an operator
-// with a shell instead of a browser. Each change reads what is held, replaces one half of it — one
-// network's endpoint, or the whole fee — and saves the whole through the same store method and the
-// same rules as the page, so a refusal names the rule and saves nothing, and saving what is already
-// held is reported as unchanged with the revision where it was.
+// with a shell instead of a browser. Each change replaces one half of what is held — one network's
+// endpoint, or the whole fee — through the same store method and the same rules as the page, inside
+// the store's transaction, so a change saved by the page or another shell at the same moment is
+// kept, a refusal names the rule and saves nothing, and saving what is already held is reported as
+// unchanged with the revision where it was.
 func clientConfig(
 	ctx context.Context,
 	documents operates,
@@ -581,13 +581,13 @@ func clientConfig(
 	now time.Time,
 	out io.Writer,
 ) error {
-	held, err := documents.ClientConfig(ctx)
-	if err != nil {
-		return err
-	}
-	next := proto.CloneOf(held.Document)
+	var change func(*gatewayv1.ClientConfig)
 	switch subcommand {
 	case "show":
+		held, err := documents.ClientConfig(ctx)
+		if err != nil {
+			return err
+		}
 		written, err := protojson.MarshalOptions{
 			Multiline: true, Indent: "  ", EmitUnpopulated: true,
 		}.Marshal(held.Document)
@@ -602,16 +602,19 @@ func clientConfig(
 		if !rules.KnownNetwork(chosen) {
 			return fmt.Errorf("--network must be mainnet, devnet or testnet")
 		}
-		var endpoints []*gatewayv1.RpcEndpoint
-		for _, endpoint := range next.GetRpcEndpoints() {
-			if endpoint.GetNetwork() != chosen {
-				endpoints = append(endpoints, endpoint)
+		written := strings.TrimSpace(flags.url)
+		change = func(next *gatewayv1.ClientConfig) {
+			var endpoints []*gatewayv1.RpcEndpoint
+			for _, endpoint := range next.GetRpcEndpoints() {
+				if endpoint.GetNetwork() != chosen {
+					endpoints = append(endpoints, endpoint)
+				}
 			}
+			if written != "" {
+				endpoints = append(endpoints, &gatewayv1.RpcEndpoint{Network: chosen, Url: written})
+			}
+			next.RpcEndpoints = endpoints
 		}
-		if written := strings.TrimSpace(flags.url); written != "" {
-			endpoints = append(endpoints, &gatewayv1.RpcEndpoint{Network: chosen, Url: written})
-		}
-		next.RpcEndpoints = endpoints
 
 	case "set-fee":
 		if !given["bps"] {
@@ -621,15 +624,16 @@ func clientConfig(
 		if err != nil {
 			return fmt.Errorf("the fee was not saved: %v", err)
 		}
-		next.SwapFee = fee
+		change = func(next *gatewayv1.ClientConfig) { next.SwapFee = fee }
 
 	default:
 		return fmt.Errorf("client-config needs show, set-rpc or set-fee, not %q", subcommand)
 	}
-	if _, problem := rules.ClientConfig(next); problem != nil {
+	saved, changed, err := documents.UpdateClientConfig(ctx, change, now)
+	var problem *rules.ConfigProblem
+	if errors.As(err, &problem) {
 		return fmt.Errorf("nothing was saved: %v", problem)
 	}
-	saved, changed, err := documents.SaveClientConfig(ctx, next, now)
 	if err != nil {
 		return err
 	}

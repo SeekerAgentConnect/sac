@@ -66,6 +66,13 @@ type fixture struct {
 
 func newFixture(t *testing.T, logins admin.Limiter) *fixture {
 	t.Helper()
+	return newFixtureOver(t, logins, func(documents admin.Store) admin.Store { return documents })
+}
+
+// newFixtureOver is newFixture with the page reading and writing through wrap's store, for a test
+// that has to make something happen between two of the page's own store calls.
+func newFixtureOver(t *testing.T, logins admin.Limiter, wrap func(admin.Store) admin.Store) *fixture {
+	t.Helper()
 	documents, err := sqlite.Open(filepath.Join(t.TempDir(), "broadcast.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +94,7 @@ func newFixture(t *testing.T, logins admin.Limiter) *fixture {
 		SessionLifetime: time.Hour,
 		PublicURL:       "https://feeds.example.com",
 		PublisherURL:    "https://feeds.example.com",
-		Store:           documents,
+		Store:           wrap(documents),
 		Logins:          logins,
 		Caller:          func(*http.Request) string { return "test" },
 		Log:             slog.New(slog.NewTextHandler(io.Discard, nil)),
