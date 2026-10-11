@@ -1,0 +1,91 @@
+{{template "head" .}}
+{{$c := .CSRF}}{{$v := .}}
+<div class="page-heading">
+  <div><p class="eyebrow">Gateway administration</p><h1>Client configuration</h1></div>
+</div>
+{{template "flash" .}}
+
+<section class="card facts-card" aria-label="What every app reads">
+  <dl class="facts">
+    <div><dt>Revision</dt><dd><span class="pill {{if .Revision}}good{{else}}neutral{{end}}">{{if .Revision}}revision {{.Revision}}{{else}}never configured (revision 0){{end}}</span>
+        {{if .Revision}}<span class="sub block">saved {{instant .UpdatedAt}}</span>{{end}}</dd></div>
+    <div><dt>Service fee</dt><dd>{{.FeeSentence}}</dd></div>
+    <div><dt>Who reads it</dt><dd>Every app whose build names this gateway, anonymously, through
+        <code>FeedService.GetClientConfig</code>.
+        <span class="sub block">It is the same answer for everyone, and asking records nothing. No
+        publisher, manifest, signal or link can set or override it.</span></dd></div>
+  </dl>
+</section>
+
+<p class="section-copy"><strong>Everything on this page is public.</strong> Any client can read every
+value here, including a URL's path and query. Never put a secret here: a URL with a user name or
+password is refused, and if your RPC provider needs a secret key, put a proxy of your own in front of
+it and enter the proxy's URL instead.</p>
+
+<section class="section-block" aria-labelledby="rpc-title">
+  <h2 id="rpc-title">Solana RPC endpoints</h2>
+  <form method="post" action="{{at "/client-config/rpc"}}" class="card form-card">
+    <input type="hidden" name="csrf" value="{{$c}}">
+    <p class="hint">One endpoint per network. Leave a field empty for no endpoint: the app then reads
+    nothing on that network and says so, and never reads it through another network's endpoint. The
+    app proves each one serves the network it is listed for before trusting anything it reads.</p>
+    <div class="field">
+      <label for="rpc-mainnet">Mainnet</label>
+      <input id="rpc-mainnet" name="mainnet" value="{{.Mainnet}}" spellcheck="false" autocomplete="off"
+             maxlength="512" placeholder="https://rpc.example.com">
+    </div>
+    <div class="field">
+      <label for="rpc-devnet">Devnet</label>
+      <input id="rpc-devnet" name="devnet" value="{{.Devnet}}" spellcheck="false" autocomplete="off"
+             maxlength="512" placeholder="https://api.devnet.solana.com">
+    </div>
+    <div class="field">
+      <label for="rpc-testnet">Testnet</label>
+      <input id="rpc-testnet" name="testnet" value="{{.Testnet}}" spellcheck="false" autocomplete="off"
+             maxlength="512" placeholder="https://api.testnet.solana.com">
+    </div>
+    <p class="hint">An absolute <code>https://</code> URL with no user name, password or fragment, at
+    most 512 bytes. Plain <code>http://</code> is accepted only for localhost, 127.0.0.1 or [::1].</p>
+    <button type="submit" class="button primary">Save endpoints</button>
+  </form>
+</section>
+
+<section class="section-block" aria-labelledby="fee-title">
+  <h2 id="fee-title">SAC swap service fee</h2>
+  <form method="post" action="{{at "/client-config/fee"}}" class="card form-card">
+    <input type="hidden" name="csrf" value="{{$c}}">
+    <p class="hint">The fee the app adds to a feed swap's output, credited by the swap program to
+    token accounts you created beforehand. It applies to swaps on the chosen network only, and only
+    when the output mint is listed below. 0 is no fee, and is the default.</p>
+    <div class="field">
+      <label for="fee-bps">Rate, in whole basis points (0–100)</label>
+      <input id="fee-bps" name="bps" value="{{.Bps}}" inputmode="numeric" autocomplete="off"
+             placeholder="0">
+    </div>
+    <div class="field">
+      <label for="fee-network">Network</label>
+      <select id="fee-network" name="network">
+        <option value="" {{if not .Network}}selected{{end}}>None</option>
+        {{range .Networks}}<option value="{{.}}" {{if eq . $v.Network}}selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </div>
+    <div class="field">
+      <label for="fee-owner">Owner wallet</label>
+      <input id="fee-owner" name="owner" value="{{.Owner}}" spellcheck="false" autocomplete="off"
+             placeholder="The public address that owns every receiving account">
+    </div>
+    <div class="field">
+      <label for="fee-accounts">Receiving accounts</label>
+      <textarea id="fee-accounts" name="accounts" rows="4" spellcheck="false"
+                placeholder="mint=token_account, one per line">{{.Accounts}}</textarea>
+      <p class="hint">One <code>mint=token_account</code> per line: the classic SPL token account,
+      owned by the wallet above, that receives the fee in that mint. Each mint once; an account is
+      never the owner wallet itself or its own mint.</p>
+    </div>
+    <p class="hint">A nonzero rate needs a network, an owner and at least one account. Anything you
+    fill in is checked even at 0, and a configuration that breaks a rule is refused whole — nothing
+    is saved, and no rate or recipient is adjusted to make it fit.</p>
+    <button type="submit" class="button primary">Save fee</button>
+  </form>
+</section>
+{{template "foot" .}}

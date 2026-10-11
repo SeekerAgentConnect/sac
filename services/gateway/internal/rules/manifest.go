@@ -93,26 +93,6 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 			MaxContract: most,
 		})
 	}
-	environments := make([]serverv1.ServerEnvironment, 0, len(message.GetEnvironments()))
-	named := make(map[serverv1.ServerEnvironment]bool, len(message.GetEnvironments()))
-	for _, environment := range message.GetEnvironments() {
-		switch environment {
-		case serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX:
-		default:
-			// Unspecified, or an environment from a later version of the format. Either way the
-			// gateway does not know what promise it names, and it does not pick one.
-			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ENVIRONMENT, "environments")
-		}
-		if named[environment] {
-			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ENVIRONMENT, "environments")
-		}
-		named[environment] = true
-		environments = append(environments, environment)
-	}
-	if len(environments) == 0 {
-		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_ENVIRONMENT, "environments")
-	}
 	// A name is a label rather than prose, so a line break is a control character here.
 	if !printable(message.GetDisplayName(), MaxNameBytes, false) {
 		return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NAME, "display_name")
@@ -123,7 +103,6 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 		SettingsRevision: revision,
 		Mode:             message.GetMode(),
 		RequiredPlugins:  required,
-		Environments:     environments,
 		DisplayName:      message.GetDisplayName(),
 	}
 	rebuilt.Reference = &serverv1.ServerManifest_Feed{Feed: feedReference}
@@ -141,30 +120,20 @@ func Manifest(message *serverv1.ServerManifest, expect Expectation) (*serverv1.S
 // happened to read. A lower revision is refused because a late retry must not restore settings the
 // publisher has moved past.
 //
-// One field cannot move at all (SEE-97). A higher revision may change anything a publisher may
-// change — the plugins it needs, the name it calls itself — but not the environments it serves: an
-// environment is what a server promises when the owner approves, and a promise that a higher
-// revision can raise is not one. A phone that added a demonstration would be moved to real money
-// by a document nobody looked at. A second environment is a second deployment, with its own server
-// ID, credential and database, which is the same rule the publisher's own database stamp keeps at
-// its end (docs/wiki/environments.md).
+// Nothing about a server's deployment is a promise a higher revision has to hold still since
+// SEE-185: a manifest no longer names an environment, because whether an operation is previewed or
+// executed is the owner's choice on the phone, per operation. What a higher revision may not move
+// is the mode, below — the transport relationship a phone confirmed.
 //
-// The Solana networks a server runs on are not that kind of promise, and a higher revision may
-// change them (SEE-174): a publisher that adds Devnet has changed what it can do, not what an owner
-// already agreed to, because the phone binds each connection to one wallet profile and refuses to
-// sign for a connection whose network the manifest no longer lists. At the same revision they are
-// ordinary content — both documents have been through [Manifest], which stores them in canonical
+// The Solana networks a server runs on may change on a higher revision (SEE-174): a publisher
+// that adds Devnet has changed what it can do, not what an owner already agreed to, because the
+// phone binds each connection to one wallet profile and refuses to sign for a connection whose
+// network the manifest no longer lists, and each signal names its own network (SEE-185), which
+// must be one listed when it is published. At the same revision they are ordinary content — both documents have been through [Manifest], which stores them in canonical
 // order, so a reordered list is a retry and a different one is a conflict.
 func AdvanceManifest(held, next *serverv1.ServerManifest) (Decision, *Fault) {
 	if held == nil {
 		return Stored, nil
-	}
-	if !sameEnvironments(held.GetEnvironments(), next.GetEnvironments()) {
-		return Stored, &Fault{
-			Problem: gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT,
-			Field:   "environments",
-			Held:    held.GetSettingsRevision(),
-		}
 	}
 	// The mode is the transport relationship a phone confirmed, not mutable presentation.
 	if held.GetMode() != next.GetMode() {
@@ -222,15 +191,7 @@ func supportedNetworks(declared []serverv1.SolanaNetwork) ([]serverv1.SolanaNetw
 	}
 	networks := make([]serverv1.SolanaNetwork, 0, len(declared))
 	for _, network := range declared {
-		switch network {
-		case serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET,
-			serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET,
-			serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET:
-		default:
-			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK,
-				"feed.supported_networks")
-		}
-		if slices.Contains(networks, network) {
+		if !KnownNetwork(network) || slices.Contains(networks, network) {
 			return nil, fault(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK,
 				"feed.supported_networks")
 		}
@@ -238,20 +199,4 @@ func supportedNetworks(declared []serverv1.SolanaNetwork) ([]serverv1.SolanaNetw
 	}
 	slices.Sort(networks)
 	return networks, nil
-}
-
-// sameEnvironments is whether two manifests promise the same thing, compared as sets: the order a
-// publisher wrote them in is not part of the promise, and a document that reorders them is a retry
-// rather than a change of mind. Both have been through [Manifest], which refuses an empty set, an
-// unknown value and a repeated one, so length and membership are the whole comparison.
-func sameEnvironments(held, next []serverv1.ServerEnvironment) bool {
-	if len(held) != len(next) {
-		return false
-	}
-	for _, environment := range held {
-		if !slices.Contains(next, environment) {
-			return false
-		}
-	}
-	return true
 }

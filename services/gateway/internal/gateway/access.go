@@ -160,7 +160,6 @@ func stamped(manifest *serverv1.ServerManifest, access storage.Access) *serverv1
 		SettingsRevision: manifest.GetSettingsRevision(),
 		Mode:             manifest.GetMode(),
 		RequiredPlugins:  manifest.GetRequiredPlugins(),
-		Environments:     manifest.GetEnvironments(),
 		DisplayName:      manifest.GetDisplayName(),
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: feed.GetGatewayUrl(),

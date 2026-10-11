@@ -60,9 +60,6 @@ func manifest(serverID string, revision uint64) *serverv1.ServerManifest {
 		ProtocolVersion:  1,
 		SettingsRevision: revision,
 		Mode:             serverv1.ConnectionMode_CONNECTION_MODE_GATEWAY_FEED,
-		Environments: []serverv1.ServerEnvironment{
-			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-		},
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: "https://feeds.example.com",
 			Channel:    "server/" + serverID,

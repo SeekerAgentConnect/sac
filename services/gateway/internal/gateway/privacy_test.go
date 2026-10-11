@@ -222,6 +222,12 @@ func TestReadingAFeedWritesNothingDown(t *testing.T) {
 			})); err != nil {
 			t.Fatal(err)
 		}
+		// Asking for the client configuration is the same for everyone and records nothing either
+		// (SEE-185).
+		if _, err := gateway.feed.GetClientConfig(ctx,
+			connect.NewRequest(&gatewayv1.GetClientConfigRequest{})); err != nil {
+			t.Fatal(err)
+		}
 	}
 	after := rowCounts(t, gateway.path)
 	if fmt.Sprint(before) != fmt.Sprint(after) {
@@ -235,8 +241,9 @@ func TestReadingAFeedWritesNothingDown(t *testing.T) {
 	// Reading a public feed still writes nothing anywhere, the relay's own tables included: a feed
 	// read never touches them, and nothing in them is reachable from the feed API at all. The same
 	// holds for access_grant (SEE-156): a restricted read looks a grant up and records nothing, which
-	// restricted_test.go checks on its own.
-	expected := "[access_grant channel_sequence manifest notice proposal publisher " +
+	// restricted_test.go checks on its own. client_config (SEE-185) is the operator's one row, and a
+	// read of it is a read.
+	expected := "[access_grant channel_sequence client_config manifest notice proposal publisher " +
 		"publisher_credential relay_binding relay_installation]"
 	if fmt.Sprint(tables) != expected {
 		t.Fatalf("the store holds %v, expected %s", tables, expected)

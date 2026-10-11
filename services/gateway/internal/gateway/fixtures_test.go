@@ -58,10 +58,6 @@ func TestTheFixturesAreWhatTheGatewayServes(t *testing.T) {
 			{PluginId: "jupiter.swap", MinContract: 1, MaxContract: 1},
 			{PluginId: "jupiter.prediction", MinContract: 1, MaxContract: 2},
 		},
-		Environments: []serverv1.ServerEnvironment{
-			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
-		},
 		DisplayName: "Копи-трейдинг 📈",
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: fixtureGateway,

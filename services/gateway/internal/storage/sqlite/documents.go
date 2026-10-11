@@ -151,7 +151,10 @@ func readProposal(ctx context.Context, from querier, channel, proposalID string)
 func storedProposal(document []byte, sequence, updated int64, channel, proposalID string) (*StoredProposal, error) {
 	common := &requestv2.Request{}
 	if err := proto.Unmarshal(document, common); err == nil && common.GetContractVersion() > 0 && common.GetIdentity() != nil {
-		return &StoredProposal{Document: rules.ProposalFromRequest(common), Sequence: uint64(sequence), UpdatedAt: instant(updated)}, nil
+		return &StoredProposal{
+			Document: rules.ProposalFromRequest(common), Sequence: uint64(sequence), UpdatedAt: instant(updated),
+			Network: common.GetAction().GetNetwork(),
+		}, nil
 	}
 	proposal := &proposalv1.Proposal{}
 	if err := proto.Unmarshal(document, proposal); err != nil {

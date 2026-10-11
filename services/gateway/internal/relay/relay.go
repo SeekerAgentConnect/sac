@@ -70,13 +70,15 @@ const CollapseKey = "seeker-vault-feed-invalidation-v1"
 // the owner's next glance runs, and delivering it then would wake a phone to learn nothing.
 const Lifetime = 5 * time.Minute
 
-// Environments a topic may be scoped to. They are the two the manifest already names (SEE-97's
-// ServerEnvironment), because a deployment that serves sandbox publishers and one that serves
-// production publishers must not share a topic — the same publisher ID in both would otherwise be
-// the same topic, and a sandbox publication would wake a production subscriber.
+// Environments a topic may be scoped to, because two deployments of this gateway — a staging one
+// and a production one, say — must not share a topic: the same publisher ID in both would
+// otherwise be the same topic, and one deployment's publication would wake the other's subscriber.
+// They are the push credential's two FCM environments, named by the operator.
 //
-// It is **not** SEE-97's environment model. Nothing here decides what a server promises when the
-// owner approves; this is one label in a topic name, chosen by the operator of the deployment.
+// It is not an environment model. Manifests stopped naming sandbox or production at SEE-185 —
+// preview or execute is the owner's choice on the phone — and nothing here decides what a server
+// promises when the owner approves; this is one label in a topic name, chosen by the operator of
+// the deployment.
 const (
 	Production = "production"
 	Sandbox    = "sandbox"

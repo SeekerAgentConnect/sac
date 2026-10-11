@@ -276,6 +276,12 @@ func (f *Feed) ListProposals(
 	}
 	answer.Proposals = make([]*proposalv1.Proposal, 0, len(page))
 	for _, stored := range page {
+		// A network-declaring document has no protocol-1 form a client could execute safely, so it
+		// is not in this view at all (rules.ProtocolOneMayShow). The cursor below still continues
+		// after the last row read, so a page that left one out is shorter and loses nothing.
+		if !rules.ProtocolOneMayShow(stored.Network) {
+			continue
+		}
 		answer.Proposals = append(answer.Proposals, stored.Document)
 	}
 	if more && len(page) > 0 {
@@ -306,12 +312,37 @@ func (f *Feed) GetProposal(
 	if err != nil {
 		return nil, internal(err)
 	}
-	if proposal == nil {
+	// The same answer as for a document that does not exist: in the protocol-1 view it does not
+	// (rules.ProtocolOneMayShow), and GetRequest is where it is.
+	if proposal == nil || !rules.ProtocolOneMayShow(proposal.Network) {
 		return nil, problem(gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL, "proposal_id")
 	}
 	return uncached(connect.NewResponse(&gatewayv1.GetProposalResponse{
 		Proposal: proposal.Document,
 	})), nil
+}
+
+// GetClientConfig answers with the client configuration this gateway's operator set (SEE-185): the
+// Solana RPC endpoint per network and the SAC swap service fee, or revision 0 with neither when the
+// operator never set one.
+//
+// It is read anonymously on the read listener and rate limited like every other read, and the
+// answer is the same for every caller: it is about the deployment, never about whoever asks, and
+// asking writes nothing down. Nothing in it is a secret — the rules refuse an endpoint with user
+// info — so there is nothing here a caller has to be trusted with.
+func (f *Feed) GetClientConfig(
+	ctx context.Context,
+	_ *connect.Request[gatewayv1.GetClientConfigRequest],
+) (*connect.Response[gatewayv1.GetClientConfigResponse], error) {
+	held, err := f.storage.ClientConfig(ctx)
+	if err != nil {
+		return nil, internal(err)
+	}
+	config := held.Document
+	if config == nil {
+		config = &gatewayv1.ClientConfig{}
+	}
+	return uncached(connect.NewResponse(&gatewayv1.GetClientConfigResponse{Config: config})), nil
 }
 
 // uncached asks anything in between not to keep the answer. Caching is in the contract instead —

@@ -35,6 +35,7 @@ import (
 	gatewayv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/gateway/v1/gatewayv1connect"
 	proposalv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/proposal/v1"
+	requestv2 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/request/v2"
 	serverv1 "github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/gen/seekervault/server/v1"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/pushrelay"
 	"github.com/BrRenat/SeekerAgentWallet/feed-gateway/internal/relay"
@@ -445,9 +446,6 @@ func manifestOf(serverID string, revision uint64, change ...func(*serverv1.Serve
 		RequiredPlugins: []*serverv1.PluginRequirement{
 			{PluginId: "jupiter.swap", MinContract: 1, MaxContract: 1},
 		},
-		Environments: []serverv1.ServerEnvironment{
-			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_PRODUCTION,
-		},
 		DisplayName: "Copy trading",
 		Reference: &serverv1.ServerManifest_Feed{Feed: &serverv1.GatewayFeed{
 			GatewayUrl: gatewayURL,
@@ -485,6 +483,24 @@ func proposalOf(
 			{Key: "published_price", Text: "139420000"},
 		},
 	}
+	for _, apply := range change {
+		apply(message)
+	}
+	return message
+}
+
+// requestOf is a signal as a current publisher sends one (SEE-185): the common contract at version
+// 2, naming the network its action executes on. It is the proposal above in the common shape, so a
+// test can compare the two views of one document.
+func requestOf(
+	serverID, requestID string,
+	revision uint64,
+	network serverv1.SolanaNetwork,
+	change ...func(*requestv2.Request),
+) *requestv2.Request {
+	message := rules.RequestFromProposal(proposalOf(serverID, requestID, revision))
+	message.ContractVersion = rules.RequestContract
+	message.Action.Network = network
 	for _, apply := range change {
 		apply(message)
 	}

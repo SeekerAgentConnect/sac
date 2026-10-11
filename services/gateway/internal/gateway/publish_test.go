@@ -20,10 +20,11 @@ import (
 func TestAProtocolOneRowMigratesForwardWithoutARevisionConflictOrDowngrade(t *testing.T) {
 	gateway := newGateway(t)
 	publisher := gateway.publisher(gateway.register(publisherA))
+	gateway.publishManifest(publisher, manifestOf(publisherA, 1))
 	legacy := proposalOf(publisherA, proposalA, 1)
 	gateway.publishProposal(publisher, legacy)
 
-	common := rules.RequestFromProposal(legacy)
+	common := requestOf(publisherA, proposalA, 1, serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET)
 	common.Presentation.Title = "Swap SOL for USDC"
 	common.OwnerInputs = []*requestv2.OwnerInput{{
 		Key: "input_amount", Label: "Amount",
@@ -35,11 +36,14 @@ func TestAProtocolOneRowMigratesForwardWithoutARevisionConflictOrDowngrade(t *te
 		t.Fatalf("same legacy revision did not migrate compatibly: answer=%v err=%v", answer, err)
 	}
 	// The old row stays byte-stable at the same revision, so a phone cannot see changed terms under
-	// one revision. Its common read is the documented protocol-1 adapter.
+	// one revision — a network included, which is a change of terms (SEE-185). Its common read is
+	// the documented protocol-1 adapter: the legacy contract, with no network, so not executable.
 	held, err := gateway.feed.GetRequest(context.Background(), connect.NewRequest(
 		&gatewayv1.GetRequestRequest{Channel: rules.ChannelFor(publisherA), RequestId: proposalA}))
 	if err != nil || held.Msg.GetRequest().GetPresentation().GetTitle() != "swap" ||
-		len(held.Msg.GetRequest().GetOwnerInputs()) != 0 {
+		len(held.Msg.GetRequest().GetOwnerInputs()) != 0 ||
+		held.Msg.GetRequest().GetContractVersion() != rules.LegacyRequestContract ||
+		held.Msg.GetRequest().GetAction().GetNetwork() != serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED {
 		t.Fatalf("legacy row changed under revision one: held=%v err=%v", held, err)
 	}
 
@@ -53,7 +57,8 @@ func TestAProtocolOneRowMigratesForwardWithoutARevisionConflictOrDowngrade(t *te
 	held, err = gateway.feed.GetRequest(context.Background(), connect.NewRequest(
 		&gatewayv1.GetRequestRequest{Channel: rules.ChannelFor(publisherA), RequestId: proposalA}))
 	if err != nil || held.Msg.GetRequest().GetPresentation().GetTitle() != "Swap SOL for USDC" ||
-		len(held.Msg.GetRequest().GetOwnerInputs()) != 1 {
+		len(held.Msg.GetRequest().GetOwnerInputs()) != 1 ||
+		held.Msg.GetRequest().GetAction().GetNetwork() != serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET {
 		t.Fatalf("common revision was not preserved: held=%v err=%v", held, err)
 	}
 
@@ -66,7 +71,8 @@ func TestAProtocolOneRowMigratesForwardWithoutARevisionConflictOrDowngrade(t *te
 func TestCancelProposalKeepsACommonRowsPresentationAndInputs(t *testing.T) {
 	gateway := newGateway(t)
 	publisher := gateway.publisher(gateway.register(publisherA))
-	common := rules.RequestFromProposal(proposalOf(publisherA, proposalA, 1))
+	gateway.publishManifest(publisher, manifestOf(publisherA, 1))
+	common := requestOf(publisherA, proposalA, 1, serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET)
 	common.Presentation.Title = "Swap SOL for USDC"
 	common.OwnerInputs = []*requestv2.OwnerInput{{
 		Key: "input_amount", Label: "Amount",
@@ -90,7 +96,8 @@ func TestCancelProposalKeepsACommonRowsPresentationAndInputs(t *testing.T) {
 	if got.GetPresentation().GetTitle() != "Swap SOL for USDC" ||
 		len(got.GetOwnerInputs()) != 1 ||
 		got.GetLifecycle().GetStatus() != requestv2.RequestStatus_REQUEST_STATUS_CANCELLED ||
-		got.GetLifecycle().GetRevision() != 2 {
+		got.GetLifecycle().GetRevision() != 2 ||
+		got.GetAction().GetNetwork() != serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET {
 		t.Fatalf("common cancellation lost source fields: %+v", got)
 	}
 }
@@ -222,68 +229,141 @@ func TestACredentialIsTheWholeOfTheGrant(t *testing.T) {
 	})
 }
 
-// The other rule that is the gateway's own: a document read from here can never change what a
-// server promises when the owner approves (SEE-97). A phone caches a manifest by revision, so a
-// publisher that could raise its own environment could move every subscriber from a demonstration
-// to real money with a document nobody looked at.
-func TestTheGatewayWillNotRelayAPromotionToProduction(t *testing.T) {
+// A manifest names no environment since SEE-185 — preview or execute is the owner's choice on the
+// phone — and one feed may publish signals for every network it declares, one after another. Each
+// signal names its own network, and a network the held manifest does not declare is refused, as is
+// any signal from a publisher with no manifest here at all.
+func TestASignalRunsOnANetworkItsManifestDeclares(t *testing.T) {
 	gateway := newGateway(t)
 	publisher := gateway.publisher(gateway.register(publisherA))
 	ctx := context.Background()
-	sandbox := func(m *serverv1.ServerManifest) {
-		m.Environments = []serverv1.ServerEnvironment{
-			serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX,
+	mainnet := serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET
+	devnet := serverv1.SolanaNetwork_SOLANA_NETWORK_DEVNET
+	testnet := serverv1.SolanaNetwork_SOLANA_NETWORK_TESTNET
+	publish := func(request *requestv2.Request) (*connect.Response[gatewayv1.PublishRequestResponse], error) {
+		return publisher.PublishRequest(ctx, connect.NewRequest(&gatewayv1.PublishRequestRequest{Request: request}))
+	}
+
+	// No manifest yet: no network has been declared, so none is accepted.
+	_, err := publish(requestOf(publisherA, proposalA, 1, mainnet))
+	detail := refused(t, err, connect.CodeFailedPrecondition,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_NETWORK)
+	if detail.GetField() != "action.network" {
+		t.Fatalf("the refusal named %q", detail.GetField())
+	}
+
+	if answer := gateway.publishManifest(publisher, manifestOf(publisherA, 1,
+		func(m *serverv1.ServerManifest) {
+			m.GetFeed().SupportedNetworks = []serverv1.SolanaNetwork{devnet, mainnet}
+		})); answer.GetStatus() != gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
+		t.Fatalf("a manifest with no environment answered %v", answer.GetStatus())
+	}
+
+	// Two signals, one per declared network, both accepted and each served with its own.
+	for requestID, network := range map[string]serverv1.SolanaNetwork{proposalA: mainnet, proposalB: devnet} {
+		answer, err := publish(requestOf(publisherA, requestID, 1, network))
+		if err != nil || answer.Msg.GetStatus() != gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
+			t.Fatalf("a %v signal answered %v (%v)", network, answer, err)
+		}
+		held, err := gateway.feed.GetRequest(ctx, connect.NewRequest(&gatewayv1.GetRequestRequest{
+			Channel: rules.ChannelFor(publisherA), RequestId: requestID,
+		}))
+		if err != nil || held.Msg.GetRequest().GetAction().GetNetwork() != network ||
+			held.Msg.GetRequest().GetContractVersion() != rules.RequestContract {
+			t.Fatalf("a %v signal is served as %v (%v)", network, held, err)
 		}
 	}
-	if answer := gateway.publishManifest(publisher,
-		manifestOf(publisherA, 1, sandbox)); answer.GetStatus() !=
-		gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
-		t.Fatalf("a sandbox manifest answered %v", answer.GetStatus())
-	}
 
-	// Everything else about the document may move with a revision, and does here: the name
-	// changes too, so what is refused is the environment and not the settings.
-	_, err := publisher.PublishManifest(ctx, connect.NewRequest(&gatewayv1.PublishManifestRequest{
-		Manifest: manifestOf(publisherA, 2, func(m *serverv1.ServerManifest) {
-			m.DisplayName = "Copy trading (live)"
-		}),
+	// A network the manifest does not declare is refused, and nothing is written.
+	undeclared := "d4c3b2a1-f6e5-4897-9dcb-ba9876543210"
+	_, err = publish(requestOf(publisherA, undeclared, 1, testnet))
+	refused(t, err, connect.CodeFailedPrecondition,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_NETWORK)
+	_, err = gateway.feed.GetRequest(ctx, connect.NewRequest(&gatewayv1.GetRequestRequest{
+		Channel: rules.ChannelFor(publisherA), RequestId: undeclared,
 	}))
-	detail := refused(t, err, connect.CodeFailedPrecondition,
-		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_ENVIRONMENT)
-	// The held revision, as for the other refusals about what the gateway already holds: a
-	// publisher that lost its own state gets one number to catch up with.
-	if detail.GetHeldRevision() != 1 {
-		t.Fatalf("the refusal held %d, expected 1", detail.GetHeldRevision())
-	}
+	refused(t, err, connect.CodeNotFound, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL)
 
-	// And nothing was written: what a subscriber reads is still the sandbox document at revision 1.
-	answer, err := gateway.feed.GetServerManifest(ctx,
-		connect.NewRequest(&gatewayv1.GetServerManifestRequest{ServerId: publisherA}))
+	// A signal that names no network, and one in the legacy contract, are not publications at all.
+	_, err = publish(requestOf(publisherA, undeclared, 1, serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED))
+	refused(t, err, connect.CodeInvalidArgument, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_BAD_NETWORK)
+	_, err = publish(requestOf(publisherA, undeclared, 1, mainnet, func(r *requestv2.Request) {
+		r.ContractVersion = rules.LegacyRequestContract
+	}))
+	refused(t, err, connect.CodeInvalidArgument, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_PROTOCOL)
+
+	// Dropping a network at a higher revision takes effect for the next signal: it is decided
+	// against the manifest held when the signal is stored.
+	gateway.publishManifest(publisher, manifestOf(publisherA, 2))
+	_, err = publish(requestOf(publisherA, proposalB, 2, devnet, func(r *requestv2.Request) {
+		r.Lifecycle.UpdatedAt = timestamppb.New(published.Add(time.Hour))
+	}))
+	refused(t, err, connect.CodeFailedPrecondition,
+		gatewayv1.GatewayProblem_GATEWAY_PROBLEM_OTHER_NETWORK)
+}
+
+// The protocol-1 views cannot carry a network, and a protocol-1 client executes what it reads on
+// whichever network its connection is bound to — so a network-declaring signal is not in them at
+// all, while a proposal published through the legacy method is in both views, network-less and
+// readable, exactly as before (SEE-185).
+func TestTheLegacyViewsNeverOfferANetworkDeclaringSignal(t *testing.T) {
+	gateway := newGateway(t)
+	publisher := gateway.publisher(gateway.register(publisherA))
+	ctx := context.Background()
+	channel := rules.ChannelFor(publisherA)
+	gateway.publishManifest(publisher, manifestOf(publisherA, 1))
+	if _, err := publisher.PublishRequest(ctx, connect.NewRequest(&gatewayv1.PublishRequestRequest{
+		Request: requestOf(publisherA, proposalA, 1, serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET),
+	})); err != nil {
+		t.Fatal(err)
+	}
+	gateway.publishProposal(publisher, proposalOf(publisherA, proposalB, 1))
+
+	// One row per page, so the left-out signal falls on a page of its own and the walk still
+	// reaches the proposal after it.
+	var listed []string
+	token := ""
+	for {
+		page := gateway.list(channel, func(request *gatewayv1.ListProposalsRequest) {
+			request.PageSize, request.PageToken = 1, token
+		})
+		for _, proposal := range page.GetProposals() {
+			listed = append(listed, proposal.GetProposalId())
+		}
+		if token = page.GetNextPageToken(); token == "" {
+			break
+		}
+	}
+	if len(listed) != 1 || listed[0] != proposalB {
+		t.Fatalf("the protocol-1 view listed %v", listed)
+	}
+	_, err := gateway.feed.GetProposal(ctx, connect.NewRequest(&gatewayv1.GetProposalRequest{
+		Channel: channel, ProposalId: proposalA,
+	}))
+	refused(t, err, connect.CodeNotFound, gatewayv1.GatewayProblem_GATEWAY_PROBLEM_NO_SUCH_PROPOSAL)
+
+	// The common view holds both: the signal with its network, and the legacy proposal as the
+	// legacy contract with none — readable, and never executable on a phone.
+	all, err := gateway.feed.ListRequests(ctx, connect.NewRequest(&gatewayv1.ListRequestsRequest{Channel: channel}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	held := answer.Msg.GetManifest()
-	if held.GetSettingsRevision() != 1 || held.GetDisplayName() != "Copy trading" {
-		t.Fatalf("the refused publication was stored: %v", held)
+	networks := map[string]serverv1.SolanaNetwork{}
+	contracts := map[string]uint32{}
+	for _, request := range all.Msg.GetRequests() {
+		networks[request.GetIdentity().GetRequestId()] = request.GetAction().GetNetwork()
+		contracts[request.GetIdentity().GetRequestId()] = request.GetContractVersion()
 	}
-	if len(held.GetEnvironments()) != 1 || held.GetEnvironments()[0] !=
-		serverv1.ServerEnvironment_SERVER_ENVIRONMENT_SANDBOX {
-		t.Fatalf("a subscriber would read %v", held.GetEnvironments())
-	}
-
-	// The way it is actually done: the same environment at a higher revision is an ordinary
-	// change, and a second environment is a second deployment with its own server ID.
-	if answer := gateway.publishManifest(publisher,
-		manifestOf(publisherA, 2, sandbox, func(m *serverv1.ServerManifest) {
-			m.DisplayName = "Copy trading (demo)"
-		})); answer.GetStatus() != gatewayv1.PublishStatus_PUBLISH_STATUS_STORED {
-		t.Fatalf("a sandbox manifest at a higher revision answered %v", answer.GetStatus())
+	if len(networks) != 2 || networks[proposalA] != serverv1.SolanaNetwork_SOLANA_NETWORK_MAINNET ||
+		networks[proposalB] != serverv1.SolanaNetwork_SOLANA_NETWORK_UNSPECIFIED ||
+		contracts[proposalA] != rules.RequestContract || contracts[proposalB] != rules.LegacyRequestContract {
+		t.Fatalf("the common view holds %v at contracts %v", networks, contracts)
 	}
 }
 
 // The Solana networks a server runs on (SEE-174), end to end: a malformed list is refused as a
 // malformed document, a reordered one at the same revision is a retry, and a higher revision may
-// add a network — unlike an environment, which it may never move.
+// add a network.
 func TestAPublisherMayAddANetworkAtAHigherRevision(t *testing.T) {
 	gateway := newGateway(t)
 	publisher := gateway.publisher(gateway.register(publisherA))
