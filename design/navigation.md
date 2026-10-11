@@ -31,14 +31,14 @@ the four-item bar.
 
 | Destination | Type and stack | Entry points | Exit behavior | Reference |
 | --- | --- | --- | --- | --- |
-| Request review | Bottom sheet over the current base: `[review]` | Home request tile; pending Inbox row **Review** | Close removes Review. Reject/Dismiss, Acknowledge, and sandbox Simulate finish and close it. Production transfer/sign approval pushes Wallet hand-off. | [`review`](./screens/review.png) |
+| Request review | Bottom sheet over the current base: `[review]` | Home request tile; pending Inbox row **Review** | Close removes Review. Reject/Dismiss and Acknowledge finish and close it. Production transfer/sign approval pushes Wallet hand-off. A feed signal's review has **Preview without sending** beside its approval (SEE-185): it records a preview, keeps the signal open and returns to the review with nothing prepared; it never pushes Wallet hand-off. | [`review`](./screens/review.png) |
 | Wallet hand-off | Stacked sheet: `[review, wallet]` | Approve a production transfer or signature | Approve or Decline closes both sheets. Close / **Leave without answering** removes Wallet hand-off only, records the outcome as unknown, and reveals Review with the request still present. | [`walletHandoff`](./screens/walletHandoff.png) |
 | Owner input | Stacked sheet: `[review, params]`; not a numbered flow-map node | Choose/Edit amount for Swap; Choose/Edit side and stake for Prediction | Close removes Owner input only. **Use these** validates, updates the choice, clears warning acknowledgement, and returns to Review. | Review-state references below |
+| Operation wallet | Stacked sheet: `[review, wallet]` over a feed signal's review (SEE-185); not a numbered flow-map node | **Choose wallet** / **Connect a wallet on …** on a swap review; Choose with no wallet yet on a prediction review | Close removes it only. **Use this wallet** remembers the profile for this feed and the signal's network, drops anything prepared for another wallet, and returns to Review. Add pushes Add wallet preset to that network. It never changes the feed's access identity. | Hand-written: reuses `ConnectionWalletPickerSheet` |
 | Catalog detail | Bottom sheet over Discover: `[catalog]` (SEE-176) | A Discover card | Close removes it and reveals Discover at the same scroll position. **Connect** / **Request access** closes it and opens Add connection prefilled; **Open** replaces it with Connection detail. Nothing is added by opening it. | Hand-written |
 | Connection detail | Bottom sheet: `[connection]` over Home or Discover | Paired-server row on Home; Add connection Continue; **Open** on a Discover card for a feed already added | Close removes it. **Its inbox** closes all sheets and opens Inbox/Pending filtered to that server. Rules pushes Connection rules. | [`connection`](./screens/connection.png) |
 | Rules, this connection | Usually `[connection, rules]`; `[review, rules]` from a verdict | Rules row on Connection detail; Rules action on a review verdict | Close removes Rules only, revealing Connection detail or Review. Global pushes Global rules. Asset/address actions push their editors. | [`rulesConn`](./screens/rulesConn.png) |
 | Global rules | `[global]` from Home, otherwise stacked over the current sheet | Global Rules row on Home; Global link in Connection rules; Edit global daily limit in Asset editor | Close removes Global rules only and reveals the exact destination underneath. | [`rulesGlobal`](./screens/rulesGlobal.png) |
-| Solana RPC | Bottom sheet over Wallet: `[rpc]` (SEE-184) | **Solana RPC** under Add wallet on the Wallet tab | Close removes it and reveals Wallet. Saving or resetting one network's endpoint changes only that network and leaves the sheet open. Nothing here selects an active network. | Hand-written: [`rpc-endpoint-card`](./components/rpc-endpoint-card/spec.md) |
 | Add / edit asset | `[connection, rules, asset]` or `[global, asset]` | Asset row; Add asset | Close or successful Add/Save removes Asset editor and returns to its rules editor. Editing the global daily limit from a connection asset can push `[connection, rules, asset, global]`. | [`assetEdit`](./screens/assetEdit.png) |
 | Add address | `[connection, rules, address]` or `[global, address]` | Add under Recipients or Programs | Close or successful Add removes Address editor and returns to its rules editor. The same destination serves wallet-recipient and program-address content. | [`addAddress`](./screens/addAddress.png) |
 
@@ -63,7 +63,6 @@ The unrolled review references and [`rail-unrolled`](./screens/rail-unrolled.png
 - Home paired-server row → Connection detail → Rules, this connection → Global rules.
 - Rules, this connection → Add / edit asset.
 - Rules, this connection → Add address.
-- Wallet → Solana RPC (SEE-184, hand-written; not in the Stage 7.2 export).
 
 ## Open questions in the export
 
