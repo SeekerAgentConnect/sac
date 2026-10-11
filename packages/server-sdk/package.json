@@ -1,6 +1,6 @@
 {
   "name": "@seekeragentconnect/server-sdk",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Embeddable TypeScript SDK for Seeker Agent Connect direct servers",
   "keywords": [
     "seeker",

@@ -54,7 +54,7 @@ import { SkrStakingProvider, UnsupportedStaking } from "./skr/provider.ts";
 import { mcpEndpoint, type McpEndpoint } from "./mcp-endpoint.ts";
 import { PAIRING_PAGE, qrModulePath } from "./pairing/landing-page.ts";
 
-export const VERSION = "0.0.1";
+export const VERSION = "0.0.2";
 
 // How long close() lets in-flight responses finish before it ends the sessions still open.
 const CLOSE_GRACE_MS = 1000;
