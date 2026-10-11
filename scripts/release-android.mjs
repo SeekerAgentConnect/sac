@@ -19,12 +19,9 @@ import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 
-const NETWORKS = ["mainnet", "devnet", "testnet"];
-
 /**
- * @param {object} environment  SEEKERVAULT_GOOGLE_SERVICES_JSON, SEEKERVAULT_SOLANA_RPC,
- *   SEEKERVAULT_SOLANA_RPC_{MAINNET,DEVNET,TESTNET}, SEEKERVAULT_RELAY_URL,
- *   SEEKERVAULT_DISCOVERY_URL, REQUIRE (comma-separated features), RELEASE ("true" enforces it)
+ * @param {object} environment  SEEKERVAULT_GOOGLE_SERVICES_JSON, SEEKERVAULT_GATEWAY_URL,
+ *   REQUIRE (comma-separated features), RELEASE ("true" enforces it)
  * @param {string} applicationId
  */
 export function androidReleaseConfig(environment, applicationId) {
@@ -43,59 +40,43 @@ export function androidReleaseConfig(environment, applicationId) {
     }
   }
 
-  const rpc = (name, property) => {
-    const text = value(name);
-    if (!text) return "";
+  // The one network setting an APK carries (SEE-185): the trusted gateway's origin. Feeds, the
+  // Discover catalog, the push relay and the client configuration — the Solana RPC endpoint per
+  // network and the SAC swap fee — all come from it, and none of those is compiled in.
+  let gatewayUrl = "";
+  const gateway = value("SEEKERVAULT_GATEWAY_URL");
+  if (gateway) {
     try {
-      const url = checkUrl(text, { origin: false });
-      if (url.search) {
-        warnings.push(
-          `${name} carries a query string; it is compiled into the APK and readable by anyone ` +
-            "who has it, so it must be a key meant for distribution",
-        );
-      }
-      gradleArgs.push(`-P${property}=${text}`);
-      return text;
+      gatewayUrl = checkUrl(gateway, { origin: true }).origin;
+      gradleArgs.push(`-Pseekervault.gatewayUrl=${gatewayUrl}`);
     } catch (error) {
-      problems.push(`${name}: ${error.message}`);
-      return "";
+      problems.push(`SEEKERVAULT_GATEWAY_URL: ${error.message}`);
     }
-  };
-  const solanaRpc = rpc("SEEKERVAULT_SOLANA_RPC", "seekervault.solanaRpc");
-  const networks = {};
-  for (const network of NETWORKS) {
-    networks[network] = rpc(
-      `SEEKERVAULT_SOLANA_RPC_${network.toUpperCase()}`,
-      `seekervault.solanaRpc.${network}`,
-    );
   }
-
-  const origin = (name, property) => {
-    const text = value(name);
-    if (!text) return "";
-    try {
-      const normalized = checkUrl(text, { origin: true }).origin;
-      gradleArgs.push(`-P${property}=${normalized}`);
-      return normalized;
-    } catch (error) {
-      problems.push(`${name}: ${error.message}`);
-      return "";
+  // Retired with SEE-185. A variable still set is said once, so an owner removes it rather than
+  // believing it does something.
+  for (const name of [
+    "SEEKERVAULT_SOLANA_RPC",
+    "SEEKERVAULT_SOLANA_RPC_MAINNET",
+    "SEEKERVAULT_SOLANA_RPC_DEVNET",
+    "SEEKERVAULT_SOLANA_RPC_TESTNET",
+    "SEEKERVAULT_RELAY_URL",
+    "SEEKERVAULT_DISCOVERY_URL",
+    "SEEKERVAULT_SWAP_FEE_BPS",
+    "SEEKERVAULT_SWAP_FEE_OWNER",
+    "SEEKERVAULT_SWAP_FEE_ACCOUNTS",
+  ]) {
+    if (value(name)) {
+      warnings.push(
+        `${name} is retired and ignored: RPC endpoints and the swap fee are the gateway's ` +
+          "client configuration now (docs/wiki/client-config.md)",
+      );
     }
-  };
-  const relayUrl = origin("SEEKERVAULT_RELAY_URL", "seekervault.relayUrl");
-  // Unset, Gradle falls back to the relay's origin, so the feature exists whenever either does.
-  const discoveryUrl =
-    origin("SEEKERVAULT_DISCOVERY_URL", "seekervault.discoveryUrl") || relayUrl;
+  }
 
   const features = {
     firebase: googleServices !== null,
-    // The official build's chain reads are mainnet's (prediction orders, the swap fee): a mainnet
-    // endpoint satisfies it on its own (SEE-184), and a general-only build still does, because the
-    // app proves the general endpoint's cluster before using it for any network.
-    solanaRpc: Boolean(networks.mainnet || solanaRpc),
-    solanaRpcNetworks: NETWORKS.filter((network) => networks[network]),
-    relayUrl,
-    discoveryUrl,
+    gatewayUrl,
   };
 
   const required = value("REQUIRE")

@@ -24,102 +24,65 @@ const client = (packageName = APP) =>
   });
 
 test("an unconfigured dry run builds a plain app and says what it lacks", () => {
-  const config = androidReleaseConfig({ REQUIRE: "firebase,relayUrl" }, APP);
+  const config = androidReleaseConfig({ REQUIRE: "firebase,gatewayUrl" }, APP);
   assert.deepEqual(config.problems, []);
   assert.deepEqual(config.gradleArgs, []);
   assert.equal(config.googleServices, null);
-  assert.match(config.warnings.join(), /requires firebase, relayUrl/);
+  assert.match(config.warnings.join(), /requires firebase, gatewayUrl/);
 });
 
 test("a real release stops when a required feature is missing", () => {
   const config = androidReleaseConfig(
-    { REQUIRE: "firebase,solanaRpc,relayUrl", RELEASE: "true" },
+    { REQUIRE: "firebase,gatewayUrl", RELEASE: "true" },
     APP,
   );
-  assert.match(
-    config.problems.join(),
-    /requires firebase, solanaRpc, relayUrl/,
-  );
+  assert.match(config.problems.join(), /requires firebase, gatewayUrl/);
 });
 
-test("the full official configuration reaches Gradle", () => {
+test("the full official configuration is one gateway origin and Firebase", () => {
   const config = androidReleaseConfig(
     {
       SEEKERVAULT_GOOGLE_SERVICES_JSON: client(),
-      SEEKERVAULT_SOLANA_RPC: "https://rpc.example.com",
-      SEEKERVAULT_SOLANA_RPC_MAINNET: "https://mainnet.example.com",
-      SEEKERVAULT_SOLANA_RPC_DEVNET: "https://devnet.example.com/?key=public",
-      SEEKERVAULT_RELAY_URL: "https://feeds.example.com/",
-      REQUIRE: "firebase,solanaRpc,relayUrl,discoveryUrl",
+      SEEKERVAULT_GATEWAY_URL: "https://feeds.example.com/",
+      REQUIRE: "firebase,gatewayUrl",
       RELEASE: "true",
     },
     APP,
   );
   assert.deepEqual(config.problems, []);
+  assert.deepEqual(config.warnings, []);
   assert.deepEqual(config.gradleArgs, [
-    "-Pseekervault.solanaRpc=https://rpc.example.com",
-    "-Pseekervault.solanaRpc.mainnet=https://mainnet.example.com",
-    "-Pseekervault.solanaRpc.devnet=https://devnet.example.com/?key=public",
-    "-Pseekervault.relayUrl=https://feeds.example.com",
+    "-Pseekervault.gatewayUrl=https://feeds.example.com",
   ]);
   assert.deepEqual(config.features, {
     firebase: true,
-    solanaRpc: true,
-    solanaRpcNetworks: ["mainnet", "devnet"],
-    relayUrl: "https://feeds.example.com",
-    discoveryUrl: "https://feeds.example.com",
+    gatewayUrl: "https://feeds.example.com",
   });
-  assert.match(config.warnings.join(), /DEVNET carries a query string/);
   assert.match(config.googleServices, /sac-example/);
 });
 
-test("a mainnet endpoint satisfies the release without a redundant general one", () => {
+test("no RPC endpoint or swap fee reaches the APK, and a leftover variable is said once (SEE-185)", () => {
   const config = androidReleaseConfig(
     {
+      SEEKERVAULT_GATEWAY_URL: "https://feeds.example.com",
       SEEKERVAULT_SOLANA_RPC_MAINNET: "https://mainnet.example.com",
-      REQUIRE: "solanaRpc",
-      RELEASE: "true",
+      SEEKERVAULT_RELAY_URL: "https://feeds.example.com",
+      SEEKERVAULT_SWAP_FEE_BPS: "20",
     },
     APP,
   );
   assert.deepEqual(config.problems, []);
   assert.deepEqual(config.gradleArgs, [
-    "-Pseekervault.solanaRpc.mainnet=https://mainnet.example.com",
+    "-Pseekervault.gatewayUrl=https://feeds.example.com",
   ]);
-  assert.equal(config.features.solanaRpc, true);
-  assert.deepEqual(config.features.solanaRpcNetworks, ["mainnet"]);
-});
-
-test("a general-only build still satisfies the release; devnet alone does not", () => {
-  const general = androidReleaseConfig(
-    {
-      SEEKERVAULT_SOLANA_RPC: "https://rpc.example.com",
-      REQUIRE: "solanaRpc",
-      RELEASE: "true",
-    },
-    APP,
+  assert.equal(config.warnings.length, 3);
+  assert.match(
+    config.warnings.join(),
+    /SEEKERVAULT_SOLANA_RPC_MAINNET is retired/,
   );
-  assert.deepEqual(general.problems, []);
-  assert.equal(general.features.solanaRpc, true);
-  const devnet = androidReleaseConfig(
-    {
-      SEEKERVAULT_SOLANA_RPC_DEVNET: "https://devnet.example.com",
-      REQUIRE: "solanaRpc",
-      RELEASE: "true",
-    },
-    APP,
-  );
-  assert.match(devnet.problems.join(), /requires solanaRpc/);
-});
-
-test("an explicit discovery origin is passed on its own", () => {
-  const config = androidReleaseConfig(
-    { SEEKERVAULT_DISCOVERY_URL: "https://catalog.example.com" },
-    APP,
-  );
-  assert.deepEqual(config.gradleArgs, [
-    "-Pseekervault.discoveryUrl=https://catalog.example.com",
-  ]);
+  assert.match(config.warnings.join(), /SEEKERVAULT_SWAP_FEE_BPS is retired/);
+  assert.ok(!config.gradleArgs.join().includes("solanaRpc"));
+  assert.ok(!config.gradleArgs.join().includes("swapFee"));
 });
 
 test("a Firebase service account is refused: it is a server credential", () => {
@@ -151,7 +114,7 @@ test("a google-services.json for another application or not JSON is refused", ()
   assert.throws(() => checkGoogleServices("{}", APP), /no project_info/);
 });
 
-test("URLs must be https and carry no credentials; relay and discovery are origins", () => {
+test("URLs must be https and carry no credentials; the gateway is an origin", () => {
   assert.throws(
     () => checkUrl("http://rpc.example.com", { origin: false }),
     /not https/,
@@ -166,8 +129,8 @@ test("URLs must be https and carry no credentials; relay and discovery are origi
   );
   assert.throws(() => checkUrl("feeds", { origin: true }), /not a URL/);
   const config = androidReleaseConfig(
-    { SEEKERVAULT_RELAY_URL: "https://feeds.example.com/path" },
+    { SEEKERVAULT_GATEWAY_URL: "https://feeds.example.com/path" },
     APP,
   );
-  assert.match(config.problems.join(), /SEEKERVAULT_RELAY_URL/);
+  assert.match(config.problems.join(), /SEEKERVAULT_GATEWAY_URL/);
 });
