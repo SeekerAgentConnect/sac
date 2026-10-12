@@ -255,7 +255,12 @@ test("the Android release carries its application id, code and requirements", ()
   assert.equal(app.java_version, "21");
   assert.equal(app.has_image, false);
   assert.equal(app.has_npm, false);
-  assert.match(app.checks, /check:android/);
+  // The Android unit tests start the real MCP server, which imports packages/server-sdk/dist; no
+  // install creates it, so the SDK is built first, as CI's Android job does.
+  assert.deepEqual(JSON.parse(app.checks), [
+    "pnpm build:server-sdk",
+    "pnpm check:android",
+  ]);
 });
 
 test("every component runs its own checks on the released commit", () => {
