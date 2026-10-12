@@ -211,7 +211,7 @@
       "toolchains": {
         "java": "21"
       },
-      "checks": ["pnpm check:android"],
+      "checks": ["pnpm build:server-sdk", "pnpm check:android"],
       "previousVersions": ["0.1.0"],
       "previousArtifacts": []
     }
