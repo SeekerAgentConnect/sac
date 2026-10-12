@@ -1,0 +1,87 @@
+name: Release publication
+
+# Merging the release pull request pushes `chore(release):` to master. This workflow tags that
+# exact commit and dispatches .github/workflows/release.yml for each planned component. Tags are
+# pushed with GITHUB_TOKEN, which does not start the tag push trigger, so publication is invoked
+# here on purpose. A manual run retries the same commit; dry_run is the default and only prints
+# the plan. do-deploy is not involved.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Release commit to publish or retry. Empty uses the workflow ref.
+        required: false
+        type: string
+      dry_run:
+        description: Check the plan and create no tags
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  NX_NO_CLOUD: "true"
+
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'chore(release):')
+    name: Tag and publish the planned components
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+          ref: ${{ inputs.commit || github.sha }}
+      - name: Fetch tags
+        run: git fetch origin '+refs/tags/*:refs/tags/*'
+      - id: plan
+        name: Check release/plan.json against the manifest
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+        run: |
+          node scripts/nx/publish-plan.mjs "$GITHUB_SHA" | tee /tmp/publish-plan.txt
+          echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Publication"
+            echo
+            echo '```'
+            cat /tmp/publish-plan.txt
+            echo '```'
+            echo
+            echo "dry run: $DRY_RUN"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Create tags and dispatch publication
+        if: steps.plan.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while read -r id version tag; do
+            [ -n "$id" ] || continue
+            existing="$(git rev-parse -q --verify "refs/tags/${tag}^{}" || true)"
+            if [ -z "$existing" ]; then
+              git tag "$tag" "$GITHUB_SHA"
+              git push origin "refs/tags/${tag}"
+            elif [ "$existing" != "$GITHUB_SHA" ]; then
+              echo "::error::${tag} points at ${existing}, not ${GITHUB_SHA}"
+              exit 1
+            else
+              echo "${tag} already points at this commit"
+            fi
+            gh workflow run release.yml --ref "$tag" \
+              -f component="$id" -f version="$version" -f dry_run=false -f channel=release
+          done < /tmp/publish-plan.txt

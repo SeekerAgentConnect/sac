@@ -6,8 +6,10 @@ SEE-182).
 Every component is released **independently**, under its own version and its own tag. One tag
 publishes that component's artifacts and nothing else: its npm package, its GHCR image, or its
 signed APK, built from the one commit the tag points at, plus a GitHub Release that records them.
-[`release/components.json`](../../release/components.json) is where each version is decided;
-everything else follows it.
+**Nx Release** chooses the version from Conventional Commits and the existing
+`<component>-v<version>` tags, and writes it into
+[`release/components.json`](../../release/components.json). That file is still what Gradle and the
+publish workflow read. It is not edited by hand.
 
 > **Not part of this process:** the separate
 > [`SeekerAgentConnect/do-deploy`](https://github.com/SeekerAgentConnect/do-deploy) repository and
@@ -100,62 +102,98 @@ workspace's SDK, and the release's GitHub Release names the bundled SDK version.
 release should carry changed SDK bytes, bump **that server's** version and release it; nothing
 forces it.
 
-## Bumping a version
+## Nx
+
+Nx 23 orchestrates the workspace (`nx.json`, a `project.json` in each component). Native tools still
+build: `tsc`, `go`, Gradle, buf. Nx decides order, inputs and what can be cached.
 
 ```bash
-pnpm release:bump <component> <version>        # e.g. pnpm release:bump gateway 0.0.2
-pnpm release:bump android 0.0.2                # versionCode advances by one
-pnpm release:bump android 0.1.0 --version-code 10
-pnpm release:bump server-sdk 0.1.0-rc.1        # a prerelease
-pnpm check:release
+pnpm exec nx show projects
+pnpm exec nx run server-sdk:build
+pnpm exec nx run gateway:check
+pnpm exec nx run android:check          # needs a JDK and the Android SDK; no emulator
+pnpm exec nx affected -t build typecheck test --base=origin/master
+pnpm release:plan                        # dry-run; writes nothing
 ```
 
-[`scripts/release-bump.mjs`](../../scripts/release-bump.mjs) writes the new version into
-`release/components.json`, the component's `package.json` (npm components), its runtime version
-constant (`servers/mcp-server/src/version.ts`, `servers/mcp-skr-staking/src/server.ts`), and for
-`android` advances `versionCode` and records the code it replaced in `previousVersionCode`. It edits
-in place, so the diff is exactly the version lines. It refuses a version lower than the current one
-unless `--allow-lower` is given — which is only for a deliberate new baseline like `0.0.1`.
+`pnpm check:gateway`, `pnpm check:android`, `pnpm check:demos`, `pnpm generate` and `pnpm build`
+are the same targets. Cached targets are build, lint, typecheck, test, generate and check.
+`publish`, `sign` and `nx-release-publish` are `cache: false`. Nx Cloud is not used
+(`neverConnectToCloud`).
 
-`pnpm check:release` ([`scripts/check-release.mjs`](../../scripts/check-release.mjs)) then proves
-the manifest, the package manifests, the version constants, the Android build, the Dockerfiles and
-both workflows agree. It also runs the planner, retry-state, bump, Android-configuration and
-release-workflow tests. None of them assume the versions the manifest currently pins: scenarios that
-name a version use a pinned copy of the manifest, the live one is held only to what is true at any
-version, and the bump tests bump each kind of component in a scratch repository and run
-`check-release.mjs` on it — so a legitimate bump never fails the checks.
+`gateway` and `gateway-centrifugo` share `services/gateway`. The broker release is only
+`centrifugo.yaml` and `Dockerfile.centrifugo`. A change to the Go module releases `gateway` and not
+the broker. Task inputs say the same thing, so a broker-only edit does not invalidate `gateway:check`.
+
+`mcp-server` and `mcp-skr-staking` vendor the SDK. A releasable SDK change puts both servers on the
+release plan even when their own sources did not change.
+
+## Commit messages
+
+Pull requests are squash-merged. The title is the commit Nx Release reads, and CI rejects a title
+that is not a Conventional Commit (`scripts/check-commit-title.mjs`):
+
+```text
+feat(gateway): describe the change
+fix(server-sdk): correct a cursor
+feat(android)!: drop a field
+```
+
+Types that release: `feat` (minor), `fix`, `perf`, `revert` (patch). A `!` or a `BREAKING CHANGE`
+footer is major. `docs`, `style`, `refactor`, `test`, `build`, `ci` and `chore` do not release.
+
+**Before 1.0** Nx's `adjustSemverBumpsForZeroMajorVersion` (on by default, set explicitly in
+`nx.json`) follows SemVer for a zero major: a breaking change bumps **minor**, a feature bumps
+**patch**. From 1.0.0 the usual major/minor/patch rules apply. A feature on `0.0.2` becomes
+`0.0.3`. A breaking change on `0.0.2` becomes `0.1.0`. Leaving 0.x is a deliberate `1.0.0`, not an
+accidental `feat!:`.
+
+## The release pull request
+
+A push to `master` that is not itself a release merge runs
+[`.github/workflows/release-prepare.yml`](../../.github/workflows/release-prepare.yml). It runs
+`node scripts/nx/prepare-release.mjs`, which asks Nx Release for versions and writes:
+
+- each component's version in `release/components.json`, its `package.json` and its `VERSION` constant
+- Android `versionCode`, by one, only when the Android version actually changes
+- a `CHANGELOG.md` per component, rendered by Nx's changelog renderer from that component's commits
+- `release/plan.json`, the list publication is allowed to tag
+
+The workflow commits that onto `release/next` and opens or updates one pull request titled
+`chore(release): prepare …`. Regenerating the pull request starts again from `master`, so the same
+pending Android release keeps the same `versionCode`. A `chore` commit does not release again.
+
+The push uses the `SAC_RELEASE_TOKEN` secret (a fine-grained personal access token or a GitHub App
+installation token with **Contents: Read and write** and **Pull requests: Read and write**). A pull
+request opened with the workflow's `GITHUB_TOKEN` does not start `pull_request` workflows, so CI
+would never see the plan. Without the secret the workflow fails and changes nothing.
+
+Merging needs the title left as `chore(release):`. CI rejects any other title on a pull request
+that edits `release/plan.json`.
+
+`pnpm check:release` proves the manifest, the package manifests, the version constants, the Android
+build, the Dockerfiles and the workflows agree, and runs the planner, retry-state, Nx plan,
+Android-configuration and release-workflow tests.
 
 The Android build has no version of its own: `apps/android/app/build.gradle.kts` reads `versionName`
 and `versionCode` from the manifest's `android` component, so rebuilding a commit always produces
-the same code. `versionCode` is an explicit integer that only goes up — the published `0.0.1` is
-`2`, above the `1` every earlier build carried — and the release workflow additionally refuses to
-create or resume a release whose code is not above every other published `android-v*` release. A
-release the tag already published is verified against its own record instead, so retrying an older
-release after a newer one shipped keeps its original APK and does not move `latest`.
+the same code. `versionCode` only goes up — the published `0.0.1` is `2`, and `0.0.2` is `3` — and
+the release workflow refuses a new release whose code is not above every other published
+`android-v*` release. A release the tag already published is verified against its own record, so
+retrying it does not advance `versionCode` and does not move `latest`.
 
-## Releasing one component
+## Releasing
 
-1. Bump (above), open a pull request, let CI pass, merge.
-2. Tag the merge commit and push the tag:
-
-   ```bash
-   git switch master && git pull
-   git tag server-sdk-v0.0.1
-   git push origin server-sdk-v0.0.1
-   ```
-
-   The first releases were made exactly this way on 2026-10-07, one tag each, in any order; the
-   same loop releases any set of components bumped together:
-
-   ```bash
-   for component in server-sdk mcp-server mcp-skr-staking gateway gateway-centrifugo \
-                    demo-signals demo-prediction android; do
-     git tag "$component-v0.0.1"
-     git push origin "$component-v0.0.1"
-   done
-   ```
-
-3. The push starts [`.github/workflows/release.yml`](../../.github/workflows/release.yml):
+1. Merge product changes to `master` with a Conventional Commit title. Preparation opens the
+   release pull request. Review the versions and changelogs. Merge it.
+2. [`.github/workflows/release-publish.yml`](../../.github/workflows/release-publish.yml) runs on
+   that `chore(release):` push. It checks `release/plan.json` against the manifest, creates the
+   missing `<component>-v<version>` tags on **that commit**, and dispatches
+   [`.github/workflows/release.yml`](../../.github/workflows/release.yml) once per component with
+   `dry_run: false`. Tags are pushed with `GITHUB_TOKEN`, which does not start the tag trigger, so
+   the dispatch is what publishes. A manual tag push still starts `release.yml` as well; that path
+   remains for a tag a person pushed.
+3. `release.yml` then does what it did before:
 
    | Job | What it does | Credentials |
    | -- | -- | -- |
@@ -198,13 +236,10 @@ official build would require but lacks, and says plainly that **signing was not 
 
 ### Prereleases
 
-```bash
-pnpm release:bump mcp-server 0.1.0-rc.1
-# merge, then
-git tag mcp-server-v0.1.0-rc.1 && git push origin mcp-server-v0.1.0-rc.1
-```
-
-npm gets it under `next`; the image gets `0.1.0-rc.1` and `sha-<commit>`; neither `latest` moves.
+Dispatch **Release preparation** on `master` with channel `rc`, `alpha` or `beta` and `dry_run`
+false (it still needs `SAC_RELEASE_TOKEN`). Nx passes the channel as `--preid`. The first
+prerelease after `0.0.2` is `0.0.3-rc.0` (`semver` counts the prerelease from zero). npm gets it
+under `next`; the image gets `0.0.3-rc.0` and `sha-<commit>`; neither `latest` moves.
 An Android prerelease is published as a GitHub *prerelease* and never becomes the repository's
 latest release.
 
@@ -237,11 +272,18 @@ failure or unreadable reply fails the job; it is never taken to mean "not publis
 
 To retry:
 
-- **Re-run failed jobs** on the failed run (Actions UI, or `gh run rerun <run id> --failed`). The
-  build artifacts of that run are reused, so the npm job publishes exactly the tarball that was
+- **Re-run failed jobs** on the failed `release.yml` run (Actions UI, or `gh run rerun <run id> --failed`).
+  The build artifacts of that run are reused, so the npm job publishes exactly the tarball that was
   audited.
-- Or start a fresh run **from the tag**, which rebuilds and re-checks before finishing the missing
-  steps:
+- Or dispatch **Release publication** on the release commit with `dry_run` false. It creates any
+  missing tag and dispatches `release.yml` again. It does not recompute versions or `versionCode`.
+
+  ```bash
+  gh workflow run release-publish.yml --ref <release-sha> -f commit=<release-sha> -f dry_run=false
+  ```
+
+- Or start a fresh `release.yml` run **from the tag**, which rebuilds and re-checks before finishing
+  the missing steps:
 
   ```bash
   gh workflow run release.yml --ref gateway-v0.0.1 -f component=gateway -f dry_run=false
@@ -262,6 +304,24 @@ at once, while different components release in parallel. A running publication i
 GitHub keeps one pending run per group; if a third run of the same component queues behind a
 pending one, the older pending run is cancelled before it starts — re-run it afterwards.
 
+## First run after adopting Nx
+
+The published baseline is the `<component>-v0.0.2` tags, and `release/components.json` already
+matches them. Do not reset versions, recreate those releases, or publish a throwaway stable version
+to prove the workflow.
+
+1. Confirm the tags: `git ls-remote --tags origin 'refs/tags/*-v0.0.2'`.
+2. Create `SAC_RELEASE_TOKEN` (below) and store it as a repository secret of that name. Actions
+   permissions for the default `GITHUB_TOKEN` stay as the workflows set them; publication still
+   uses the `release` environment's npm, package and Android secrets.
+3. On a checkout of `master`, `pnpm release:plan` prints `Nothing to release.` until a Conventional
+   Commit lands on a component. That dry-run writes nothing and publishes nothing.
+4. Merge a product change. Review the release pull request. Merge it. Publication tags and
+   dispatches `release.yml`. If publication stops halfway, retry as above. It will not mint a new
+   Android `versionCode`.
+
+`do-deploy` and the Docker Hub images it pulls are unchanged.
+
 ## One-time owner setup
 
 These need the owner's accounts. Until they are done, the corresponding first publication fails
@@ -272,6 +332,14 @@ six GHCR packages are public, and the signed APK was published against the pinne
 follows is kept for a **new** package, image or signing setup — and for the two npm steps that only
 the owner's account can confirm, trusted publishing and the bootstrap token's revocation (steps 3
 and 4 below). The next npm release's publish job warns if it still had to use the bootstrap token.
+
+### `SAC_RELEASE_TOKEN`
+
+Repository secret, used only by **Release preparation** to push `release/next` and open the pull
+request. A fine-grained token on a bot account, or a GitHub App installation token, with Contents
+read/write and Pull requests read/write on `SeekerAgentConnect/sac`. It is not an npm token and it
+is not used to push images. Fork pull requests cannot read it: preparation and publication run on
+`master` and `workflow_dispatch` only.
 
 ### The `release` environment
 

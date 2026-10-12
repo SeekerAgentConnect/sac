@@ -1,0 +1,99 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "neverConnectToCloud": true,
+  "analytics": false,
+  "useDaemonProcess": false,
+  "useInferencePlugins": false,
+  "tui": { "enabled": false },
+  "namedInputs": {
+    "sharedGlobals": [
+      "{workspaceRoot}/pnpm-lock.yaml",
+      "{workspaceRoot}/pnpm-workspace.yaml",
+      "{workspaceRoot}/eslint.config.js",
+      "{workspaceRoot}/.nvmrc",
+      "{workspaceRoot}/nx.json"
+    ],
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": [
+      "default",
+      "!{projectRoot}/**/*.md",
+      "!{projectRoot}/**/*.test.ts",
+      "!{projectRoot}/**/*_test.go"
+    ]
+  },
+  "targetDefaults": {
+    "build": { "cache": true },
+    "lint": { "cache": true },
+    "typecheck": { "cache": true },
+    "test": { "cache": true },
+    "generate": { "cache": true },
+    "check": { "cache": true },
+    "package-test": { "cache": true },
+    "publish": { "cache": false },
+    "sign": { "cache": false },
+    "nx-release-publish": { "cache": false }
+  },
+  "release": {
+    "projectsRelationship": "independent",
+    "releaseTag": {
+      "pattern": "{projectName}-v{version}",
+      "checkAllBranchesWhen": true,
+      "requireSemver": true,
+      "strictPreid": true
+    },
+    "conventionalCommits": {
+      "types": {
+        "perf": { "semverBump": "patch" },
+        "revert": {
+          "semverBump": "patch",
+          "changelog": { "hidden": false, "title": "Reverts" }
+        }
+      }
+    },
+    "version": {
+      "conventionalCommits": true,
+      "fallbackCurrentVersionResolver": "disk",
+      "adjustSemverBumpsForZeroMajorVersion": true,
+      "versionActions": "scripts/nx/sac-version-actions.cjs",
+      "preserveLocalDependencyProtocols": true,
+      "updateDependents": "never",
+      "git": {
+        "commit": false,
+        "tag": false,
+        "stageChanges": false
+      }
+    },
+    "changelog": {
+      "workspaceChangelog": false,
+      "projectChangelogs": {
+        "file": "{projectRoot}/CHANGELOG.md",
+        "createRelease": false,
+        "renderOptions": {
+          "authors": false,
+          "applyUsernameToAuthors": false
+        }
+      }
+    },
+    "groups": {
+      "components": {
+        "projects": [
+          "server-sdk",
+          "mcp-server",
+          "mcp-skr-staking",
+          "gateway",
+          "gateway-centrifugo",
+          "demo-signals",
+          "demo-prediction",
+          "android"
+        ],
+        "projectsRelationship": "independent",
+        "version": {
+          "updateDependents": "never"
+        },
+        "changelog": {
+          "projectChangelogs": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "nx-probes",
+  "root": "tools/nx-probes",
+  "projectType": "library",
+  "tags": ["toolchain:nx"],
+  "targets": {
+    "probe": {
+      "command": "node -e \"console.log('probe-ok')\"",
+      "cache": true,
+      "inputs": ["{projectRoot}/probe-input.txt"]
+    },
+    "publish": {
+      "command": "node scripts/nx/side-effect-targets.mjs publish",
+      "cache": false,
+      "inputs": ["{projectRoot}/probe-input.txt"]
+    },
+    "sign": {
+      "command": "node scripts/nx/side-effect-targets.mjs sign",
+      "cache": false,
+      "inputs": ["{projectRoot}/probe-input.txt"]
+    }
+  }
+}

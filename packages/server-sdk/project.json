@@ -1,0 +1,34 @@
+{
+  "name": "server-sdk",
+  "root": "packages/server-sdk",
+  "sourceRoot": "packages/server-sdk/src",
+  "projectType": "library",
+  "tags": ["toolchain:node", "release"],
+  "implicitDependencies": ["protocol"],
+  "targets": {
+    "build": {
+      "command": "pnpm --filter @seekeragentconnect/server-sdk run build",
+      "dependsOn": ["protocol:generate"],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "typecheck": {
+      "command": "pnpm --filter @seekeragentconnect/server-sdk run typecheck"
+    },
+    "test": {
+      "command": "pnpm --filter @seekeragentconnect/server-sdk run test"
+    },
+    "lint": {
+      "command": "eslint packages/server-sdk"
+    },
+    "package-test": {
+      "command": "node scripts/test-server-sdk-package.mjs",
+      "dependsOn": ["build"],
+      "inputs": [
+        "production",
+        "{workspaceRoot}/scripts/test-server-sdk-package.mjs",
+        "{workspaceRoot}/scripts/package-mcp-artifact.mjs",
+        "{workspaceRoot}/release/components.json"
+      ]
+    }
+  }
+}

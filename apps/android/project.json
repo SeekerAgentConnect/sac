@@ -1,0 +1,28 @@
+{
+  "name": "android",
+  "root": "apps/android",
+  "sourceRoot": "apps/android",
+  "projectType": "application",
+  "tags": ["toolchain:android", "release"],
+  "implicitDependencies": ["protocol"],
+  "targets": {
+    "check": {
+      "command": "apps/android/gradlew -p apps/android spotlessCheck checkDesignSystemLiterals :designsystem:verifyRoborazziDebug :app:verifyRoborazziDebug :designsystem:lintDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest",
+      "cache": true,
+      "dependsOn": ["protocol:generate"],
+      "inputs": [
+        "{projectRoot}/**/*",
+        "!{projectRoot}/.gradle/**",
+        "!{projectRoot}/**/build/**",
+        "!{projectRoot}/CHANGELOG.md",
+        "{workspaceRoot}/release/components.json",
+        "{workspaceRoot}/packages/protocol/**/*",
+        "{workspaceRoot}/scripts/check-android-apk.sh"
+      ]
+    },
+    "sign": {
+      "command": "node scripts/nx/side-effect-targets.mjs sign",
+      "cache": false
+    }
+  }
+}

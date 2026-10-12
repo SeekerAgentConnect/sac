@@ -279,7 +279,8 @@ export function androidDecision({
     if (record.versionCode >= versionCode) {
       throw new Error(
         `${release.tag_name} was published with versionCode ${record.versionCode}; ${tag} has ` +
-          `${versionCode}. Bump with \`pnpm release:bump android <version>\` so the code increases`,
+          `${versionCode}. The release plan advances versionCode by one when it plans a new Android ` +
+          `version, and retrying publication does not advance it again`,
       );
     }
   }

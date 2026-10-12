@@ -1,0 +1,125 @@
+name: Release preparation
+
+# On a product push to master, Nx Release plans the components that changed and opens or updates
+# one pull request, `release/next`. Merging that pull request is what publication reacts to
+# (.github/workflows/release-publish.yml). A `chore(release):` push is the merge itself and is
+# ignored here so the plan is not bumped again.
+#
+# The pull request is pushed with SAC_RELEASE_TOKEN, not GITHUB_TOKEN. A pull request opened with
+# GITHUB_TOKEN does not trigger pull_request workflows, so CI would never run on the plan.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: stable, or a prerelease channel (rc, alpha, beta)
+        required: true
+        default: stable
+        type: choice
+        options: [stable, rc, alpha, beta]
+      dry_run:
+        description: Print the plan and write nothing
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  NX_NO_CLOUD: "true"
+  NX_DAEMON: "false"
+  NX_TUI: "false"
+
+concurrency:
+  group: release-prepare
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      !startsWith(github.event.head_commit.message, 'chore(release):')
+    name: Plan component releases
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Fetch published tags
+        run: git fetch origin '+refs/tags/*:refs/tags/*'
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Dry-run the release plan
+        id: plan
+        env:
+          CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'stable' }}
+        run: |
+          args=()
+          if [ "$CHANNEL" != "stable" ]; then args+=("--preid=$CHANNEL"); fi
+          node scripts/nx/prepare-release.mjs "${args[@]}" | tee /tmp/release-plan.txt
+          if grep -q 'Nothing to release\|Publication is still pending' /tmp/release-plan.txt; then
+            echo "apply=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "apply=true" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo "### Release plan"
+            echo
+            echo '```json'
+            grep '^RELEASE_PLAN ' /tmp/release-plan.txt | tail -1 | sed 's/^RELEASE_PLAN //' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit the plan and open the release pull request
+        if: >-
+          steps.plan.outputs.apply == 'true' &&
+          (github.event_name == 'push' || inputs.dry_run == false)
+        env:
+          TOKEN: ${{ secrets.SAC_RELEASE_TOKEN }}
+          CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'stable' }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::SAC_RELEASE_TOKEN is not set. The release PR has to be opened with a token other than GITHUB_TOKEN so CI runs on it (docs/development/releases.md)."
+            exit 1
+          fi
+          args=(--apply)
+          if [ "$CHANNEL" != "stable" ]; then args+=("--preid=$CHANNEL"); fi
+          node scripts/nx/prepare-release.mjs "${args[@]}" | tee /tmp/release-apply.txt
+          grep '^RELEASE_PLAN ' /tmp/release-apply.txt | tail -1 | sed 's/^RELEASE_PLAN //' > /tmp/release-plan.json
+          python3 - <<'PY'
+          import json
+          plan = json.load(open("/tmp/release-plan.json"))
+          title = "chore(release): prepare " + ", ".join(
+              f"{item['id']} {item['version']}" for item in plan["components"]
+          )
+          open("/tmp/release-title.txt", "w").write(title + "\n")
+          open("/tmp/release-body.md", "w").write(
+              "Prepared by Nx Release. Merge this pull request to tag and publish "
+              "only the components listed in `release/plan.json`.\n\n```json\n"
+              + json.dumps(plan, indent=2) + "\n```\n"
+          )
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B release/next
+          git add -A
+          git commit -m "$(cat /tmp/release-title.txt)"
+          git fetch origin release/next || true
+          git push --force-with-lease "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:release/next
+          export GH_TOKEN="$TOKEN"
+          if gh pr view release/next --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh pr edit release/next --repo "$GITHUB_REPOSITORY" \
+              --title "$(cat /tmp/release-title.txt)" \
+              --body-file /tmp/release-body.md
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base master --head release/next \
+              --title "$(cat /tmp/release-title.txt)" \
+              --body-file /tmp/release-body.md
+          fi

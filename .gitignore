@@ -1,6 +1,8 @@
 # Dependencies and build outputs
 node_modules/
 dist/
+.nx/cache/
+.nx/workspace-data/
 build/
 servers/mcp-server/package/
 servers/mcp-skr-staking/package/

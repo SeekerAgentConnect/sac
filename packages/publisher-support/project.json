@@ -1,0 +1,22 @@
+{
+  "name": "publisher-support",
+  "root": "packages/publisher-support",
+  "sourceRoot": "packages/publisher-support",
+  "projectType": "library",
+  "tags": ["toolchain:go"],
+  "implicitDependencies": ["protocol", "gateway"],
+  "targets": {
+    "check": {
+      "command": "node scripts/check-demos.mjs publisher-support",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/scripts/check-demos.mjs",
+        "{workspaceRoot}/services/gateway/**/*.go",
+        "{workspaceRoot}/services/gateway/go.mod",
+        "{workspaceRoot}/services/gateway/go.sum",
+        "{workspaceRoot}/packages/protocol/**/*"
+      ]
+    }
+  }
+}

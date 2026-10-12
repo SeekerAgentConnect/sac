@@ -15,10 +15,13 @@ packages:
 # not that web-app path, so the install must stay deterministic and credential-independent.
 # protobufjs's postinstall only checks and warns about dependency version syntax; no build output
 # depends on it.
+# Nx's postinstall only checks the platform and, when Nx Cloud is configured, updates that client.
+# neverConnectToCloud is set, and the optional @nx/nx-* package is the binary, so the script stays off.
 allowBuilds:
   "@bufbuild/buf": false
   "@firebase/util": false
   bufferutil: false
+  nx: false
   protobufjs: false
   utf-8-validate: false
 
