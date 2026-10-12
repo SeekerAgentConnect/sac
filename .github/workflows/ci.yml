@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+env:
+  NX_NO_CLOUD: "true"
+  NX_DAEMON: "false"
+  NX_TUI: "false"
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -22,23 +27,38 @@ jobs:
   node:
     name: Format, lint, types, tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Affected base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "NX_BASE=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_ENV"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "NX_BASE=${{ github.event.before }}" >> "$GITHUB_ENV"
+          else
+            echo "NX_BASE=HEAD~1" >> "$GITHUB_ENV"
+          fi
       - run: pnpm check:deployments
       # The release manifest, the npm manifests, the in-source version constants and the two
       # workflows have to agree before anything is built. It reads files only: no registry, no
       # credential, nothing published (SEE-168).
       - run: pnpm check:release
-      - run: pnpm check
+      - run: pnpm check:format
+      # ESLint resolves the SDK through its built entry point. The build does not publish.
+      - run: pnpm build:server-sdk
+      - run: pnpm check:lint
+      - name: Affected build, types and unit tests
+        run: pnpm exec nx affected -t build typecheck test --base="$NX_BASE" --head=HEAD -p server-sdk,mcp-server,mcp-skr-staking,test-agent
       - run: pnpm test:hello
       # The Stage 2 acceptance scenario: two sidecar processes with throwaway databases.
       - run: pnpm test:queue
@@ -57,30 +77,47 @@ jobs:
       # endpoint: pairing, MCP discovery and a read-only status round trip, with no cluster.
       - run: pnpm test:skr-staking-package
       - run: pnpm check:generated
-      - run: pnpm build
+      - name: Pull request title is a Conventional Commit
+        if: github.event_name == 'pull_request'
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-commit-title.mjs
 
   gateway:
-    # The feed gateway (SEE-90), services/gateway. Its own toolchain, its own job: the Node checks do not need
-    # Go, and this one does not need pnpm's dependencies beyond the script that runs it.
+    # The feed gateway (SEE-90), services/gateway. Its own toolchain, its own job. Nx runs the
+    # check only when the gateway project is affected; the Centrifugo file check is separate and
+    # cheap, and a gateway-only change does not select it (SEE-187).
     name: Feed gateway formatting, vet, tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           # The one place the Go version is pinned: services/gateway/go.mod's own requirement.
           go-version-file: services/gateway/go.mod
           cache-dependency-path: services/gateway/go.sum
-      # The check itself is a Node script, so that the command CI runs and the command a
-      # contributor runs are the same one. It needs no installed dependencies.
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-      - run: pnpm check:gateway
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Affected base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "NX_BASE=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_ENV"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "NX_BASE=${{ github.event.before }}" >> "$GITHUB_ENV"
+          else
+            echo "NX_BASE=HEAD~1" >> "$GITHUB_ENV"
+          fi
+      - run: node scripts/nx/run-if-affected.mjs gateway check
+      - run: node scripts/nx/run-if-affected.mjs gateway-centrifugo check
 
   publisher-support:
     # The library both public-feed demos are built on (SEE-134). Its own module and its own job, for
@@ -89,11 +126,12 @@ jobs:
     # (docs/development/demos.md).
     name: Publisher support formatting, vet, tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           # packages/publisher-support/go.mod requires the same version services/gateway/go.mod does; a test in
@@ -106,7 +144,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-      - run: pnpm check:publisher-support
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Affected base
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: bash scripts/nx/write-base.sh
+      - run: node scripts/nx/run-if-affected.mjs publisher-support check
 
   demo-signals:
     # The CopyTrading signals demo (SEE-95, SEE-134), examples/demo-signals. A job of its own rather than a step in another,
@@ -115,11 +160,12 @@ jobs:
     # demo-prediction, and nothing here would notice if that module were absent.
     name: CopyTrading demo formatting, vet, tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: examples/demo-signals/go.mod
@@ -131,7 +177,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-      - run: pnpm check:demo-signals
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Affected base
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: bash scripts/nx/write-base.sh
+      - run: node scripts/nx/run-if-affected.mjs demo-signals check
       # The image, built the way its guide says to build it. It proves the documented command works
       # and that the build needs no sibling demo: examples/demo-prediction/ is never copied into the context.
       - run: docker build -f examples/demo-signals/Dockerfile -t demo-signals:ci .
@@ -141,11 +194,12 @@ jobs:
     # way round: this job never builds examples/demo-signals, and its image contains no signal-writing API and no trader UI.
     name: Prediction demo formatting, vet, tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: examples/demo-prediction/go.mod
@@ -157,7 +211,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-      - run: pnpm check:demo-prediction
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Affected base
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: bash scripts/nx/write-base.sh
+      - run: node scripts/nx/run-if-affected.mjs demo-prediction check
       - run: docker build -f examples/demo-prediction/Dockerfile -t demo-prediction:ci .
 
   images:
@@ -221,6 +282,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
@@ -235,17 +297,24 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Affected base
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: bash scripts/nx/write-base.sh
       # The workspace consumes the SDK through its published entry point, packages/server-sdk/dist,
-      # which no install creates: the real sidecars these tests start import it.
-      - run: pnpm build:server-sdk
-      # Includes verifyRoborazziDebug for both Android modules. CI never records over the
-      # source-controlled baselines, so an unapproved rendering change fails this job.
-      - run: pnpm check:android
-      # The unsigned release candidate, as the release workflow builds it with no configuration:
-      # the application id, versionName and versionCode must be release/components.json's. No
-      # signing key exists here, and the check says so (SEE-182).
-      - run: apps/android/gradlew -p apps/android :app:assembleRelease
-      - run: bash scripts/check-android-apk.sh apps/android/app/build/outputs/apk/release/app-release-unsigned.apk
+      # which no install creates: the real sidecars these tests start import it. Skipped when the
+      # Android project is not affected (a protocol change still selects it).
+      - name: Android unit tests, release APK check
+        run: |
+          if ! pnpm exec nx show projects --affected --base="$NX_BASE" --head=HEAD | grep -qx android; then
+            echo "android is not affected"
+            exit 0
+          fi
+          pnpm build:server-sdk
+          pnpm check:android
+          apps/android/gradlew -p apps/android :app:assembleRelease
+          bash scripts/check-android-apk.sh apps/android/app/build/outputs/apk/release/app-release-unsigned.apk
 
   device:
     # The instrumentation UI test on an emulator, against the real sidecar over MCP. An emulator run

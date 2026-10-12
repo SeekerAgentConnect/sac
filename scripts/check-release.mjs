@@ -1,9 +1,9 @@
 /**
  * Prove the release manifest and the repository agree (SEE-168, SEE-182).
  *
- * `release/components.json` is where a component's version is decided. Everything else — the npm
- * manifests, the in-source version constants, the Android build, the Dockerfiles and both
- * workflows — has to follow it, and this check is what says so. It reads only files: it contacts
+ * `release/components.json` holds each component's version after Nx Release writes it. Everything
+ * else — the npm manifests, the in-source version constants, the Android build, the Dockerfiles
+ * and the release workflows — has to follow it, and this check is what says so. It reads only files: it contacts
  * no registry, needs no credential, and publishes nothing, so it runs in PR validation exactly as
  * it runs locally.
  */
@@ -345,6 +345,31 @@ check(".github/workflows/release.yml never cancels a publication", () => {
     "a group cancels in progress",
   );
 });
+
+check(
+  "release preparation opens the pull request with SAC_RELEASE_TOKEN",
+  () => {
+    const text = read(".github/workflows/release-prepare.yml");
+    assert.match(text, /secrets\.SAC_RELEASE_TOKEN/);
+    assert.match(text, /chore\(release\):/);
+    assert.ok(
+      text.includes("cancel-in-progress: true"),
+      "a newer product push should replace a stale release plan",
+    );
+  },
+);
+check(
+  "release publication dispatches release.yml instead of waiting on a tag",
+  () => {
+    const text = read(".github/workflows/release-publish.yml");
+    assert.match(text, /gh workflow run release\.yml/);
+    assert.match(text, /scripts\/nx\/publish-plan\.mjs/);
+    assert.ok(
+      !text.includes("cancel-in-progress: true"),
+      "publication must not be cancelled",
+    );
+  },
+);
 
 // --- CI -------------------------------------------------------------------------------------
 

@@ -1,0 +1,26 @@
+{
+  "name": "test-agent",
+  "root": "tools/test-agent",
+  "sourceRoot": "tools/test-agent/src",
+  "projectType": "application",
+  "tags": ["toolchain:node"],
+  "implicitDependencies": ["server-sdk"],
+  "targets": {
+    "build": {
+      "command": "pnpm --filter @seekeragentconnect/test-agent run build",
+      "dependsOn": ["server-sdk:build"],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "typecheck": {
+      "command": "pnpm --filter @seekeragentconnect/test-agent run typecheck",
+      "dependsOn": ["server-sdk:build"]
+    },
+    "test": {
+      "command": "pnpm --filter @seekeragentconnect/test-agent run test",
+      "dependsOn": ["server-sdk:build"]
+    },
+    "lint": {
+      "command": "eslint tools/test-agent"
+    }
+  }
+}

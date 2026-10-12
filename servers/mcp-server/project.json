@@ -1,0 +1,36 @@
+{
+  "name": "mcp-server",
+  "root": "servers/mcp-server",
+  "sourceRoot": "servers/mcp-server/src",
+  "projectType": "application",
+  "tags": ["toolchain:node", "release"],
+  "implicitDependencies": ["server-sdk", "protocol"],
+  "targets": {
+    "build": {
+      "command": "pnpm --filter @seekeragentconnect/mcp-server run build",
+      "dependsOn": ["server-sdk:build", "protocol:generate"],
+      "outputs": ["{projectRoot}/dist", "{projectRoot}/package"]
+    },
+    "typecheck": {
+      "command": "pnpm --filter @seekeragentconnect/mcp-server run typecheck",
+      "dependsOn": ["server-sdk:build"]
+    },
+    "test": {
+      "command": "pnpm --filter @seekeragentconnect/mcp-server run test",
+      "dependsOn": ["server-sdk:build"]
+    },
+    "lint": {
+      "command": "eslint servers/mcp-server"
+    },
+    "package-test": {
+      "command": "node scripts/test-mcp-server-package.mjs",
+      "dependsOn": ["build"],
+      "inputs": [
+        "production",
+        "^production",
+        "{workspaceRoot}/scripts/test-mcp-server-package.mjs",
+        "{workspaceRoot}/scripts/package-mcp-artifact.mjs"
+      ]
+    }
+  }
+}

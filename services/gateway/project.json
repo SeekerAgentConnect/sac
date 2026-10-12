@@ -1,0 +1,23 @@
+{
+  "name": "gateway",
+  "root": "services/gateway",
+  "sourceRoot": "services/gateway",
+  "projectType": "application",
+  "tags": ["toolchain:go", "release"],
+  "implicitDependencies": ["protocol"],
+  "targets": {
+    "check": {
+      "command": "node scripts/check-feed-gateway.mjs",
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/**/*",
+        "!{projectRoot}/centrifugo.yaml",
+        "!{projectRoot}/Dockerfile.centrifugo",
+        "!{projectRoot}/centrifugo/**",
+        "!{projectRoot}/CHANGELOG.md",
+        "{workspaceRoot}/scripts/check-feed-gateway.mjs",
+        "{workspaceRoot}/packages/protocol/**/*"
+      ]
+    }
+  }
+}

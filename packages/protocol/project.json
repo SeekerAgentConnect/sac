@@ -1,0 +1,38 @@
+{
+  "name": "protocol",
+  "root": "packages/protocol",
+  "sourceRoot": "packages/protocol",
+  "projectType": "library",
+  "tags": ["toolchain:buf"],
+  "targets": {
+    "generate": {
+      "command": "node scripts/generate.mjs",
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/**/*",
+        "{workspaceRoot}/scripts/generate.mjs",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ],
+      "outputs": [
+        "{workspaceRoot}/packages/server-sdk/src/gen",
+        "{workspaceRoot}/servers/mcp-server/src/gen",
+        "{workspaceRoot}/apps/android/app/src/main/generated",
+        "{workspaceRoot}/services/gateway/internal/gen",
+        "{workspaceRoot}/packages/publisher-support/gen",
+        "{workspaceRoot}/tools/loadtest/internal/gen"
+      ]
+    },
+    "check": {
+      "command": "node scripts/generate.mjs --check",
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/**/*",
+        "{workspaceRoot}/scripts/generate.mjs",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ],
+      "dependsOn": []
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "loadtest",
+  "root": "tools/loadtest",
+  "sourceRoot": "tools/loadtest",
+  "projectType": "application",
+  "tags": ["toolchain:go"],
+  "implicitDependencies": ["protocol", "gateway"],
+  "targets": {
+    "check": {
+      "command": "node scripts/check-loadtest.mjs",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/scripts/check-loadtest.mjs",
+        "{workspaceRoot}/packages/protocol/**/*",
+        "{workspaceRoot}/services/gateway/**/*.go",
+        "{workspaceRoot}/services/gateway/go.mod",
+        "{workspaceRoot}/services/gateway/go.sum"
+      ]
+    }
+  }
+}

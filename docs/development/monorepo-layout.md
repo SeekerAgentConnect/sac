@@ -67,6 +67,14 @@ Every existing component is accounted for; nothing was removed or merged.
 Files were moved with `git mv`, so `git log --follow <new path>` shows each file's history from
 before the move.
 
+## Nx
+
+Task orchestration is Nx (`nx.json`, each component's `project.json`). `pnpm exec nx run <project>:<target>`
+runs one target; `pnpm exec nx affected -t <target> --base=origin/master` runs it for what changed.
+`gateway` and `gateway-centrifugo` share `services/gateway`; the broker's inputs are
+`centrifugo.yaml` and `Dockerfile.centrifugo` only. Releases are
+[docs/development/releases.md](releases.md).
+
 ## Dependencies between components
 
 ```text

@@ -1,0 +1,36 @@
+{
+  "name": "mcp-skr-staking",
+  "root": "servers/mcp-skr-staking",
+  "sourceRoot": "servers/mcp-skr-staking/src",
+  "projectType": "application",
+  "tags": ["toolchain:node", "release"],
+  "implicitDependencies": ["server-sdk", "protocol"],
+  "targets": {
+    "build": {
+      "command": "pnpm --filter @seekeragentconnect/mcp-skr-staking run build",
+      "dependsOn": ["server-sdk:build", "protocol:generate"],
+      "outputs": ["{projectRoot}/dist", "{projectRoot}/package"]
+    },
+    "typecheck": {
+      "command": "pnpm --filter @seekeragentconnect/mcp-skr-staking run typecheck",
+      "dependsOn": ["server-sdk:build"]
+    },
+    "test": {
+      "command": "pnpm --filter @seekeragentconnect/mcp-skr-staking run test",
+      "dependsOn": ["server-sdk:build"]
+    },
+    "lint": {
+      "command": "eslint servers/mcp-skr-staking"
+    },
+    "package-test": {
+      "command": "node scripts/test-skr-staking-package.mjs",
+      "dependsOn": ["build"],
+      "inputs": [
+        "production",
+        "^production",
+        "{workspaceRoot}/scripts/test-skr-staking-package.mjs",
+        "{workspaceRoot}/scripts/package-mcp-artifact.mjs"
+      ]
+    }
+  }
+}

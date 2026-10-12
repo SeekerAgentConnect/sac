@@ -1,0 +1,23 @@
+{
+  "name": "demo-prediction",
+  "root": "examples/demo-prediction",
+  "sourceRoot": "examples/demo-prediction",
+  "projectType": "application",
+  "tags": ["toolchain:go", "release"],
+  "implicitDependencies": ["publisher-support", "gateway"],
+  "targets": {
+    "check": {
+      "command": "node scripts/check-demos.mjs demo-prediction",
+      "cache": true,
+      "dependsOn": ["publisher-support:check"],
+      "inputs": [
+        "default",
+        "{workspaceRoot}/scripts/check-demos.mjs",
+        "{workspaceRoot}/packages/publisher-support/**/*",
+        "{workspaceRoot}/services/gateway/**/*.go",
+        "{workspaceRoot}/services/gateway/go.mod",
+        "{workspaceRoot}/services/gateway/go.sum"
+      ]
+    }
+  }
+}
